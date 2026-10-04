@@ -157,7 +157,9 @@ const api = {
   fs: {
     read: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
     write: (path: string, content: string): Promise<boolean> => ipcRenderer.invoke('fs:writeFile', path, content),
-    readImage: (path: string): Promise<string> => ipcRenderer.invoke('fs:readImage', path)
+    readImage: (path: string): Promise<string> => ipcRenderer.invoke('fs:readImage', path),
+    /** 内置示例/未保存的 .ino 暂存为真实临时工程，返回绝对路径（供编译/烧录） */
+    stageTemp: (name: string, content: string): Promise<string> => ipcRenderer.invoke('fs:stageTempSketch', name, content)
   },
 
 

@@ -10,7 +10,7 @@ import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
 import { readSettings, writeSettings } from './settings'
-import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, normalizeSketchPath, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
+import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
 import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
@@ -235,6 +235,16 @@ ipcMain.handle('fs:readImage', async (_e, path: string) => {
   return readImageAsDataUrl(path)
 })
 
+// 内置示例 / 未保存文件 → 暂存为真实临时工程（Arduino IDE 同款思路）：
+// 把当前编辑的 .ino 内容写到 <临时目录>/codelab-sketch-run/<名称>/<名称>.ino，
+// 返回绝对路径供 compile/upload 使用。每次覆盖写入，保证烧的是编辑器里的最新内容。
+ipcMain.handle('fs:stageTempSketch', async (_e, name: string, content: string) => {
+  const safe = String(name).replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_').replace(/^\.+/, '') || 'sketch'
+  const file = join(tmpdir(), 'codelab-sketch-run', safe, `${safe}.ino`)
+  await writeTextFile(file, String(content ?? ''))
+  return file
+})
+
 ipcMain.handle('plugin:list', () => pluginManager.list())
 ipcMain.handle('plugin:projectTypes', () => pluginManager.getProjectTypes())
 ipcMain.handle('plugin:capabilities', () => pluginManager.getCapabilities())
@@ -405,15 +415,12 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   return { id }
 })
 ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string; port: string }) => {
-  const state = arduinoGrpc.getState()
-  if (!state.connected) {
-    await arduinoGrpc.start()
-  }
+  const norm = normalizeSketchPath(require('node:path').resolve(process.cwd(), opts.sketch))
+  const absSketch = norm.path
   const sender = event.sender
   const id = `grpc-upload-${++taskSeq}`
 
   // 校验：工程文件必须真实存在、端口必须已选，否则直接报错（防止 daemon 无输出挂起）
-  const absSketch = require('node:path').resolve(process.cwd(), opts.sketch)
   if (!existsSync(absSketch)) {
     if (!sender.isDestroyed()) {
       sender.send('task:output', { id, chunk: `[错误] 工程文件不存在：${absSketch}\n[提示] 请先「新建项目 / 打开项目」获得真实工程后再烧录。\n` })
@@ -428,24 +435,64 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
     }
     return { id }
   }
-  let upLog = ''
-  arduinoGrpc.upload(opts.sketch, opts.fqbn, opts.port, (line) => {
-    upLog += line
-    if (!sender.isDestroyed()) sender.send('task:output', { id, chunk: line })
-  }, (p) => {
-    if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
-  }).then((result) => {
-    if (!sender.isDestroyed()) {
-      // 失败时补发错误详情（否则 UI 只显示退出码，看不到失败原因）
-      if (!result.success && result.error && !result.output?.includes(result.error)) {
-        sender.send('task:output', { id, chunk: `[错误] ${result.error}\n` })
-        upLog += `[错误] ${result.error}\n`
+
+  // 优先 gRPC daemon；不可用（启动超时/未连接）时降级 CLI 直烧（与 compile 同款降级，杜绝挂死）
+  let grpcOk = arduinoGrpc.getState().connected
+  if (!grpcOk) {
+    const startResult = await arduinoGrpc.start()
+    grpcOk = !!startResult.connected
+    if (!grpcOk) console.log(`[gRPC] daemon 启动失败，降级 CLI 烧录: ${JSON.stringify(startResult)}`)
+  }
+
+  if (grpcOk) {
+    let upLog = ''
+    arduinoGrpc.upload(absSketch, opts.fqbn, opts.port, (line) => {
+      upLog += line
+      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk: line })
+    }, (p) => {
+      if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
+    }).then((result) => {
+      if (norm.cleanup) norm.cleanup()
+      if (!sender.isDestroyed()) {
+        // 失败时补发错误详情（否则 UI 只显示退出码，看不到失败原因）
+        if (!result.success && result.error && !result.output?.includes(result.error)) {
+          sender.send('task:output', { id, chunk: `[错误] ${result.error}\n` })
+          upLog += `[错误] ${result.error}\n`
+        }
+        // 结构化错误分类（P1-8）：烧录失败也走同一套分类（端口/握手/权限等）
+        if (!result.success) sender.send('task:output', { id, chunk: buildDiagnosticChunk(upLog) })
+        sender.send('task:exit', { id, code: result.success ? 0 : 1 })
       }
-      // 结构化错误分类（P1-8）：烧录失败也走同一套分类（端口/握手/权限等）
-      if (!result.success) sender.send('task:output', { id, chunk: buildDiagnosticChunk(upLog) })
-      sender.send('task:exit', { id, code: result.success ? 0 : 1 })
+    })
+    return { id }
+  }
+
+  // ── 降级路径：arduino-cli CLI 直烧 ──
+  const tool = findToolchain()
+  if (!tool) {
+    if (!sender.isDestroyed()) {
+      sender.send('task:output', { id, chunk: '[错误] 未找到 arduino-cli 工具链，且 gRPC daemon 启动失败，无法烧录。\n' })
+      sender.send('task:exit', { id, code: 1 })
     }
-  })
+    return { id }
+  }
+  let cliLog = ''
+  const cp = uploadSketch(
+    { sketch: absSketch, fqbn: opts.fqbn, bin: tool, port: opts.port },
+    (chunk) => {
+      cliLog += chunk
+      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+    },
+    (code) => {
+      if (norm.cleanup) norm.cleanup()
+      if (!sender.isDestroyed()) {
+        // 结构化错误分类（P1-8）
+        if (code !== 0) sender.send('task:output', { id, chunk: buildDiagnosticChunk(cliLog) })
+        sender.send('task:exit', { id, code: code === 0 ? 0 : 1 })
+      }
+    }
+  )
+  activeTasks.set(id, () => { try { cp.kill() } catch { /* 已退出 */ } })
   return { id }
 })
 

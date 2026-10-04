@@ -18,8 +18,9 @@
   "build": {
     "appId": "com.labcode.desktop",
     "productName": "LabCode",
+    "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "pkgout7",
+      "output": "pkgout9",
       "buildResources": "build"
     },
     "files": [

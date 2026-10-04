@@ -39,6 +39,11 @@ function findSketch(node: TreeNode | null): string | null {
   return null
 }
 
+/** 是否为磁盘上的绝对路径（虚拟文件如 welcome/welcome.ino 不是） */
+function isAbsPath(p: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/')
+}
+
 // 从编译/烧录输出中提取错误上下文（供「一键 AI 诊断」使用）
 function extractBuildError(log: string): string | null {
   // 主进程已输出结构化诊断块（分类 + 文件行号 + 修复建议），优先整块送给 AI
@@ -403,43 +408,60 @@ function App(): React.JSX.Element {
   }, [tabs])
 
   // 编译 / 烧录（对齐 TrieCode：门控 + 保存检查 + 状态机 + 流式输出）
+  // 内置示例 / 未保存的 .ino 会自动暂存到临时目录再编译烧录（Arduino IDE 同款做法），无需先建项目。
   const runCompile = useCallback(async () => {
+    // 门控最前：进行中再点击给明确反馈（而不是静默吞掉，避免"点了没反应像卡死"）
+    if (compileState === 'compiling' || compileState === 'uploading') {
+      setOutputLog((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
+      return
+    }
     if (!toolchain?.available || !toolchain.path) {
       setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       return
     }
-    const sketch = findSketch(tree) ?? activePath
+    // sketch 解析：优先工程树中的 .ino；未打开项目时用当前打开的 .ino 标签页（内置示例）
+    let sketch = findSketch(tree)
+    let virtualTab = tabs.find((t) => t.id === sketch)
     if (!sketch) {
-      setOutputLog((prev) => prev + '\n[错误] 未找到 .ino 工程文件。\n')
-      return
+      virtualTab = tabs.find((t) => t.name.endsWith('.ino'))
+      sketch = virtualTab?.id ?? null
     }
-    // 拦截虚拟文件（内置示例 / AI 生成文件）：未落盘为真实工程时 arduino-cli 无法编译
-    if (!/^[a-zA-Z]:[\\/]/.test(sketch) && !sketch.startsWith('/')) {
+    if (!sketch) {
       setOutputLog(
         (prev) =>
           prev +
-          '\n⚠ 无法编译：当前编辑的是内置示例或未保存的文件，还不是磁盘上的真实工程。\n' +
-          '  请先通过 顶栏「文件 → 新建项目 / 打开项目」创建或打开一个工程，再编译 / 烧录。\n'
+          '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再编译。\n'
       )
       setCompileState('error')
       return
     }
-    // 门控：需要开发板
     if (!fqbn) {
       setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
       return
     }
-    // 防重复
-    if (compileState === 'compiling' || compileState === 'uploading') return
 
-    // 保存当前文件（虚拟文件也需落盘，否则 arduino-cli 找不到）
+    // 保存当前编辑的"真实文件"（虚拟文件的相对路径不落盘，避免写到进程 cwd）
     const activeTab = tabs.find((t) => t.id === activePath)
-    if (activeTab) {
+    if (activeTab && isAbsPath(activeTab.id)) {
       try {
         await window.api.fs.write(activeTab.id, activeTab.content)
         setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, dirty: false } : t)))
       } catch {
         setOutputLog((prev) => prev + '\n[错误] 保存失败，已中止编译：请检查磁盘空间或文件权限。\n')
+        return
+      }
+    }
+
+    // 内置示例 / 未保存的 .ino：暂存为真实临时工程再编译（每次覆盖，烧的是编辑器最新内容）
+    if (!isAbsPath(sketch)) {
+      try {
+        const name = sketch.replace(/\.ino$/i, '').split('/').pop() || 'sketch'
+        const staged = await window.api.fs.stageTemp(name, virtualTab?.content ?? '')
+        setOutputLog((prev) => prev + `\nℹ 内置示例已暂存到临时目录编译（不影响原文件）：${staged}\n`)
+        sketch = staged
+      } catch (e) {
+        setOutputLog((prev) => prev + `\n[错误] 示例暂存失败：${(e as Error).message}\n`)
+        setCompileState('error')
         return
       }
     }
@@ -452,6 +474,16 @@ function App(): React.JSX.Element {
       const result = await window.api.grpc.compile({ sketch, fqbn })
       if (result.id) {
         setActiveTaskId(result.id)
+        // 180s 兜底：task:exit 事件万一丢失时复位状态，避免"永久编译中"假死
+        pendingTasksRef.current.set(result.id, () => undefined)
+        setTimeout(() => {
+          if (pendingTasksRef.current.has(result.id)) {
+            pendingTasksRef.current.delete(result.id)
+            setOutputLog((prev) => prev + '\n[错误] 编译超过 180s 无响应，已复位状态。请重试；若反复出现请检查工具链。\n')
+            setCompileState('error')
+            setBusy(false)
+          }
+        }, 180000)
       } else {
         setOutputLog((prev) => prev + '[错误] 编译启动失败（gRPC）\n')
         setCompileState('error')
@@ -465,6 +497,11 @@ function App(): React.JSX.Element {
   }, [toolchain, tree, activePath, fqbn, compileState, tabs])
 
   const runUpload = useCallback(async () => {
+    // 门控最前：进行中再点击给明确反馈（避免静默吞掉像"卡死"）
+    if (compileState === 'compiling' || compileState === 'uploading') {
+      setOutputLog((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
+      return
+    }
     if (!toolchain?.available || !toolchain.path) {
       setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       return
@@ -473,18 +510,18 @@ function App(): React.JSX.Element {
       setOutputLog((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
       return
     }
-    const sketch = findSketch(tree) ?? activePath
+    // sketch 解析：优先工程树中的 .ino；未打开项目时用当前打开的 .ino 标签页（内置示例）
+    let sketch = findSketch(tree)
+    let virtualTab = tabs.find((t) => t.id === sketch)
     if (!sketch) {
-      setOutputLog((prev) => prev + '\n[错误] 未找到 .ino 工程文件。\n')
-      return
+      virtualTab = tabs.find((t) => t.name.endsWith('.ino'))
+      sketch = virtualTab?.id ?? null
     }
-    // 拦截虚拟文件（内置示例 / AI 生成文件）：未落盘为真实工程时无法烧录
-    if (!/^[a-zA-Z]:[\\/]/.test(sketch) && !sketch.startsWith('/')) {
+    if (!sketch) {
       setOutputLog(
         (prev) =>
           prev +
-          '\n⚠ 无法烧录：当前编辑的是内置示例或未保存的文件，还不是磁盘上的真实工程。\n' +
-          '  请先通过 顶栏「文件 → 新建项目 / 打开项目」创建或打开一个工程，再烧录。\n'
+          '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再烧录。\n'
       )
       setCompileState('error')
       return
@@ -493,16 +530,29 @@ function App(): React.JSX.Element {
       setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
       return
     }
-    if (compileState === 'compiling' || compileState === 'uploading') return
 
-    // 保存当前文件（虚拟文件也需落盘）
+    // 保存当前编辑的"真实文件"（虚拟文件不落盘，走下方临时暂存）
     const activeTab = tabs.find((t) => t.id === activePath)
-    if (activeTab) {
+    if (activeTab && isAbsPath(activeTab.id)) {
       try {
         await window.api.fs.write(activeTab.id, activeTab.content)
         setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, dirty: false } : t)))
       } catch {
         setOutputLog((prev) => prev + '\n[错误] 保存失败，已中止烧录。\n')
+        return
+      }
+    }
+
+    // 内置示例 / 未保存的 .ino：暂存为真实临时工程再烧录
+    if (!isAbsPath(sketch)) {
+      try {
+        const name = sketch.replace(/\.ino$/i, '').split('/').pop() || 'sketch'
+        const staged = await window.api.fs.stageTemp(name, virtualTab?.content ?? '')
+        setOutputLog((prev) => prev + `\nℹ 内置示例已暂存到临时目录烧录（不影响原文件）：${staged}\n`)
+        sketch = staged
+      } catch (e) {
+        setOutputLog((prev) => prev + `\n[错误] 示例暂存失败：${(e as Error).message}\n`)
+        setCompileState('error')
         return
       }
     }
@@ -538,7 +588,7 @@ function App(): React.JSX.Element {
         return
       }
       setActiveTaskId(compileResult.id)
-      // 等待编译完成
+      // 等待编译完成（180s 超时兜底）
       const compileCode = await new Promise<number>((resolve) => {
         pendingTasksRef.current.set(compileResult.id, resolve)
         setTimeout(() => {
@@ -550,6 +600,7 @@ function App(): React.JSX.Element {
       })
       if (compileCode !== 0) {
         setOutputLog((prev) => prev + `[错误] 编译失败（退出码 ${compileCode}），已中止烧录。\n`)
+        setCompileState('error')
         setBusy(false)
         await restoreSerial()
         return
@@ -562,19 +613,29 @@ function App(): React.JSX.Element {
       return
     }
 
-    // 编译成功，开始上传
+    // 编译成功，开始上传（grpc:upload；daemon 不可用时主进程自动降级 CLI，不会挂死）
     setOutputLog((prev) => prev + `\n▶ [烧录] arduino-cli upload --fqbn ${fqbn} --port ${selectedPort} ${sketch}\n`)
     setCompileState('uploading')
     try {
-      const uploadResult = await window.api.capability.run('upload', { sketch, fqbn, bin: toolchain.path, port: selectedPort })
-      if (uploadResult.ok && uploadResult.taskId) {
-        setActiveTaskId(uploadResult.taskId)
-        pendingTasksRef.current.set(uploadResult.taskId, async (code) => {
+      const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort })
+      if (uploadResult.id) {
+        setActiveTaskId(uploadResult.id)
+        pendingTasksRef.current.set(uploadResult.id, async () => {
           setBusy(false)
           await restoreSerial()
         })
-      } else if (!uploadResult.ok) {
-        setOutputLog((prev) => prev + `[错误] 烧录失败：${uploadResult.error || '未知错误'}\n`)
+        // 120s 兜底：烧录事件丢失时复位状态，避免"永久烧录中"假死
+        setTimeout(() => {
+          if (pendingTasksRef.current.has(uploadResult.id)) {
+            pendingTasksRef.current.delete(uploadResult.id)
+            setOutputLog((prev) => prev + '\n[错误] 烧录超过 120s 无响应，已复位状态。请检查端口是否被占用/板子是否进入下载模式，再重试。\n')
+            setCompileState('error')
+            setBusy(false)
+            void restoreSerial()
+          }
+        }, 120000)
+      } else {
+        setOutputLog((prev) => prev + '[错误] 烧录启动失败\n')
         setCompileState('error')
         setBusy(false)
         await restoreSerial()
