@@ -19,7 +19,7 @@
     "appId": "com.labcode.desktop",
     "productName": "LabCode",
     "directories": {
-      "output": "pkgout6",
+      "output": "pkgout7",
       "buildResources": "build"
     },
     "files": [
