@@ -3,9 +3,9 @@ import TerminalView, { type TerminalHandle } from './TerminalView'
 import type { Ref } from 'react'
 import type { SerialPortInfo } from '../../../preload'
 
-type OutputKind = '输出' | '问题 2' | '串口监视器' | '绘图仪' | '终端'
+type OutputKind = '输出' | '问题' | '串口监视器' | '终端'
 
-const TABS: OutputKind[] = ['输出', '问题 2', '串口监视器', '绘图仪', '终端']
+const TABS: OutputKind[] = ['输出', '问题', '串口监视器', '终端']
 
 interface Props {
   outputLog: string
@@ -24,6 +24,8 @@ interface Props {
   shell?: 'powershell' | 'cmd' | 'pwsh' | 'bash'
   onClose?: () => void
   defaultTab?: OutputKind
+  buildError?: string | null
+  onDiagnose?: () => void
 }
 
 function OutputPanel({
@@ -42,7 +44,9 @@ function OutputPanel({
   theme,
   shell,
   onClose,
-  defaultTab
+  defaultTab,
+  buildError,
+  onDiagnose
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<OutputKind>(defaultTab ?? '输出')
   const outputRef = useRef<HTMLDivElement>(null)
@@ -81,6 +85,15 @@ function OutputPanel({
         )}
       </div>
       <div className="output-body">
+        {buildError && onDiagnose && (
+          <div className="build-error-banner">
+            <div className="build-error-head">
+              <span className="build-error-title">⚠ 编译 / 烧录失败</span>
+              <button className="build-error-diagnose" onClick={onDiagnose}>🤖 一键 AI 诊断</button>
+            </div>
+            <pre className="build-error-text">{buildError.slice(0, 500)}</pre>
+          </div>
+        )}
         {tab === '输出' && (
           <div className="mono-log" ref={outputRef}>
             {outputLog ? (
@@ -90,7 +103,7 @@ function OutputPanel({
             )}
           </div>
         )}
-        {tab === '问题 2' && (
+        {tab === '问题' && (
           <div className="mono-log">
             {issues.length === 0 ? (
               <span className="dim">无错误与警告。</span>
@@ -144,9 +157,6 @@ function OutputPanel({
               )}
             </div>
           </div>
-        )}
-        {tab === '绘图仪' && (
-          <div className="mono-log dim">串口绘图仪（Serial Plotter）规划中：将从串口数据解析数值并实时绘图。</div>
         )}
         {tab === '终端' && (
           <TerminalView ref={terminalRef} cwd={cwd} onCommand={onRunCommand} theme={theme} shell={shell} />

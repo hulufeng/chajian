@@ -118,7 +118,19 @@ class ArduinoGrpcClient {
         }
       )
 
-      this.instance = await this.createInstance()
+      // 建立 gRPC 连接（instance 初始化加超时防护：若 50051 被其他程序占用导致
+      // socket 探测误判"连接成功"，或 daemon 假死，8 秒内快速失败 → 调用方降级 CLI 直编，
+      // 避免 Compile 对着错误端口永久挂起、界面无任何输出）
+      this.instance = await Promise.race([
+        this.createInstance(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('gRPC instance 初始化超时（8 秒），可能端口被占用或 daemon 假死')), 8000)
+        )
+      ])
+      // instance 为空对象说明 Create/Init 失败，同样视为连接失败以便降级
+      if (!this.instance || !this.instance.number) {
+        throw new Error('gRPC instance 初始化失败（Create/Init 未返回有效 instance）')
+      }
       this.state = { connected: true, port, daemonPid: this.daemon?.pid || null, error: null }
       console.log(`[gRPC] arduino-cli daemon 已连接，端口 ${port}，PID ${this.daemon?.pid}`)
       return this.state

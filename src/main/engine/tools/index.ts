@@ -18,11 +18,13 @@ import { scheduleTools } from './schedule-tools'
 import { skillTools } from './skill-tools'
 import { todoTools } from './todo-tools'
 import { askUserTools } from './ask-user-tool'
+import { projectTools } from './project-tools'
+import { isWriteBlocked } from '../project-config'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
 // 构建产物/依赖目录：agent 浏览项目时应跳过（避免读 .pio/.git/node_modules 等噪音与二进制）
 const SKIP_DIRS = new Set([
-  '.pio', '.git', '.svn', '.hg', 'node_modules', 'dist', 'out', 'build',
+  '.labcode', '.pio', '.git', '.svn', '.hg', 'node_modules', 'dist', 'out', 'build',
   '.next', '.nuxt', '.cache', '__pycache__', '.venv', 'venv', 'target',
   '.idea', '.vscode', '.vs', 'coverage', '.turbo', 'storybook-static'
 ])
@@ -153,6 +155,10 @@ const writeFile: ToolDefinition = {
   execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
     const target = resolve(ctx.projectRoot || ctx.cwd, String(args.path))
     try {
+      // 写保护：.labignore 命中的文件禁止写入（仍可读）
+      if (isWriteBlocked(ctx.projectRoot, target)) {
+        return { ok: false, content: '', error: `该文件被 .labignore 写保护，AI 不可修改（仍可读取）。如需修改请调整 .labignore 规则。目标：${target}` }
+      }
       // 冲突检测：AI 读过该文件后若被外部改动，拒绝覆盖（保护用户工作）
       const conflict = await checkFileConflict(target)
       if (conflict) return { ok: false, content: '', error: conflict }
@@ -238,6 +244,10 @@ const editFile: ToolDefinition = {
   execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
     const target = resolve(ctx.projectRoot || ctx.cwd, String(args.path))
     try {
+      // 写保护：.labignore 命中的文件禁止编辑（仍可读）
+      if (isWriteBlocked(ctx.projectRoot, target)) {
+        return { ok: false, content: '', error: `该文件被 .labignore 写保护，AI 不可修改（仍可读取）。如需修改请调整 .labignore 规则。目标：${target}` }
+      }
       // 冲突检测：AI 读过该文件后若被外部改动，拒绝编辑（防止基于过期快照覆盖用户改动）
       const conflict = await checkFileConflict(target)
       if (conflict) return { ok: false, content: '', error: conflict }
@@ -552,5 +562,6 @@ export const coreTools: ToolDefinition[] = [
   ...scheduleTools,
   ...skillTools,
   ...todoTools,
-  ...askUserTools
+  ...askUserTools,
+  ...projectTools
 ]

@@ -5,6 +5,7 @@ import { coreTools } from './tools'
 import { PermissionPolicy } from './permission-policy'
 import { aiChatStream, getAiState, setLocalModel } from '../services/aiGateway'
 import { searchKnowledge, knowledgeCount } from '../ai/knowledgeBase'
+import { detectFirmwareProject, loadProjectConfigBlock, FIRMWARE_RULES_BLOCK, type FirmwareDetection } from './project-config'
 import { listMemory } from '../services/memoryService'
 import { buildTodosSection as buildTodosSectionFor, loadTodos as loadTodosFor } from './tools/todo-tools'
 import { listSkills } from '../services/skillService'
@@ -87,6 +88,7 @@ export class AgentRunner {
   private stats: AgentStats = { turns: 0, toolCalls: 0, startTime: 0, elapsedMs: 0, inputTokens: 0, outputTokens: 0 }
   private maxTurns = 20
   private projectRoot: string | null = null
+  private firmware: FirmwareDetection | null = null
   private thinkingLevel: 'light' | 'standard' | 'deep' = 'standard'
   private pendingConfirm: ConfirmRequest | null = null
   private confirmResolve: ((action: string) => void) | null = null
@@ -197,6 +199,7 @@ export class AgentRunner {
     this.stats = { turns: 0, toolCalls: 0, startTime: Date.now(), elapsedMs: 0, inputTokens: 0, outputTokens: 0 }
     this.maxTurns = options.maxTurns || 20
     this.projectRoot = options.projectRoot || null
+    this.firmware = detectFirmwareProject(this.projectRoot)
     if (options.securityMode) this.policy.setMode(options.securityMode)
     this.thinkingLevel = options.thinkingLevel || 'standard'
 
@@ -663,7 +666,12 @@ export class AgentRunner {
         : this.thinkingLevel === 'light'
           ? '\n## 思考强度\n当前为轻量思考模式：请直接给出结论并执行，减少不必要的分析过程。\n'
           : ''
-    return `你是 LabCode，一个通用 AI 软件开发智能体。你可以通过工具真正动手写代码、执行命令、搜索网络。
+    const projectCfg = loadProjectConfigBlock(this.projectRoot)
+    // 固件会话：整体替换为固件专用系统提示（身份即固件工程师）
+    if (this.firmware?.firmware) {
+      return this.buildFirmwareSystemPrompt(toolList, projectCfg)
+    }
+    return `${projectCfg ? projectCfg + '\n\n' : ''}你是 LabCode，一个通用 AI 软件开发智能体。你可以通过工具真正动手写代码、执行命令、搜索网络。
 
 ## 工作原则
 1. 先理解用户需求，再动手执行
@@ -718,6 +726,45 @@ ${this.buildTodosSection()}
 
 当你需要使用工具时，通过 function calling 调用。工具结果会返回给你，然后继续思考。
 ${kbBlocks && kbBlocks.length > 0 ? this.buildKnowledgeSection(kbBlocks) : ''}`
+  }
+
+  // 工具调用格式说明（精简，固件会话复用）
+  private toolFormatBlock(): string {
+    return `## 工具调用格式（必须遵守）
+调用工具时严格按下面格式输出（一个调用一块，可连续多块），不要输出裸 JSON、不要用 markdown 代码围栏包裹：
+<tool_call>
+{"name":"工具名","arguments":{"参数名":"参数值"}}
+</tool_call>
+规则：① 每块一行 JSON，用 <tool_call> 和 </tool_call> 包裹，块间可写简短说明；② 调用后必须等工具结果返回再继续；③ 最终总结里不得出现 <tool_call> 块。`
+  }
+
+  // 固件会话专用系统提示（整体替换通用提示）
+  private buildFirmwareSystemPrompt(toolList: string, projectCfg: string): string {
+    const det = this.firmware
+    const hw = det
+      ? `框架: ${det.framework || '未知'} ｜ 构建系统: ${det.buildSystem || '未知'} ｜ 目标/板卡: ${det.mcu || '未知'} ｜ 识别置信度: ${(det.confidence * 100).toFixed(0)}% ｜ 依据: ${det.indicators.join(', ')}`
+      : ''
+    return `${projectCfg ? projectCfg + '\n\n' : ''}你是 LabCode 固件工作台中的 AI 固件工程师。
+
+${FIRMWARE_RULES_BLOCK}
+
+## 识别到的工程
+${hw || '（未明确，可先询问用户或用工具扫描确认）'}
+
+## 可用工具
+${toolList}
+
+${this.toolFormatBlock()}
+
+## 当前环境
+- 项目根目录: ${this.projectRoot || '(未打开项目)'}
+- 操作系统: Windows
+- 安全模式: ${this.policy.getMode()}
+${this.buildMemorySection()}
+${this.buildSkillsSection()}
+${this.buildTodosSection()}
+
+工具结果会返回给你，然后继续思考；达成目标并经构建/烧录/观察验证后，用自然语言汇报结果与产物位置。`
   }
 
   // 教学知识库注入：用户问题命中内置 ESP32 基础教学条目时，附上真实可编译的讲解/代码，避免小模型编造

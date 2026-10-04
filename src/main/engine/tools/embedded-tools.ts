@@ -3,6 +3,7 @@
 // 对齐 TrieCode 截图里 agent 调 compile/upload/run_commands 的能力。
 // 工具名 compile/upload 已被 agent-runner 验证闸门识别为"验证动作"，改文件后调用即视为已验证。
 import { findToolchain, compileSketch, uploadSketch, listConnectedBoardsWithSerial } from '../../services/toolchain'
+import { parseBuildOutput, formatBuildReport } from '../../services/build-diagnostics'
 import { listPorts, openSerialMonitor, writeSerial, closeSerial, readSerialBuffer, listSerialSessions, readSerialLog, clearSerialLog } from '../../services/serialService'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
@@ -47,8 +48,23 @@ const compile: ToolDefinition = {
         (c) => { out += c; ctx.onOutput?.(c) },
         (code) => {
           const ok = code === 0
+          const report = parseBuildOutput(out)
+          const diag = formatBuildReport(report)
           const tail = out.length > 3000 ? '\n...(编译输出较长，仅显示末尾)\n' + out.slice(-3000) : out
-          resolve({ ok, content: `编译${ok ? '成功' : '失败'}（退出码 ${code}）。\n${tail}`, data: { exitCode: code } })
+          const content = ok
+            ? `编译成功（退出码 0）。${report.warningCount ? `\n${diag}` : ''}\n\n--- 原始输出 ---\n${tail}`
+            : `编译失败（退出码 ${code}）。\n${diag}\n\n--- 原始输出（末尾）---\n${tail}`
+          resolve({
+            ok,
+            content,
+            data: {
+              exitCode: code,
+              diagnostics: report.errors.slice(0, 20),
+              warningCount: report.warningCount,
+              suggestions: report.suggestions,
+              summary: report.summary
+            }
+          })
         }
       )
       const timer = setTimeout(() => {
@@ -103,7 +119,12 @@ const upload: ToolDefinition = {
       cp.on('close', () => clearTimeout(t))
     })
     if (!compiled.ok) {
-      return { ok: false, content: `烧录前编译失败（退出码 ${compiled.code}），已中止烧录。\n${compiled.out.slice(-2000)}`, error: '编译失败' }
+      const report = parseBuildOutput(compiled.out)
+      return {
+        ok: false,
+        content: `烧录前编译失败（退出码 ${compiled.code}），已中止烧录。\n${formatBuildReport(report)}\n\n--- 原始输出（末尾）---\n${compiled.out.slice(-2000)}`,
+        error: `编译失败：${report.summary}`
+      }
     }
     // 再烧录
     return new Promise<ToolResult>((resolve) => {
@@ -113,7 +134,16 @@ const upload: ToolDefinition = {
         (c) => { o += c; ctx.onOutput?.(c) },
         (code) => {
           const ok = code === 0
-          resolve({ ok, content: `烧录${ok ? '成功' : '失败'}（退出码 ${code}）。\n${o.length > 2000 ? o.slice(-2000) : o}`, data: { exitCode: code } })
+          const report = parseBuildOutput(o)
+          const diag = formatBuildReport(report)
+          const tail = o.length > 2000 ? o.slice(-2000) : o
+          resolve({
+            ok,
+            content: ok
+              ? `烧录成功（退出码 0）。\n${tail}`
+              : `烧录失败（退出码 ${code}）。\n${diag}\n\n--- 原始输出（末尾）---\n${tail}`,
+            data: { exitCode: code, diagnostics: report.errors.slice(0, 20), suggestions: report.suggestions, summary: report.summary }
+          })
         }
       )
       const timer = setTimeout(() => {

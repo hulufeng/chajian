@@ -1,6 +1,6 @@
 {
   "name": "codelab-desktop",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "代码实验室 · 通用软件开发智能体桌面客户端",
   "main": "./out/main/index.js",
   "author": "LabCode",
@@ -19,7 +19,7 @@
     "appId": "com.labcode.desktop",
     "productName": "LabCode",
     "directories": {
-      "output": "pkgout",
+      "output": "pkgout6",
       "buildResources": "build"
     },
     "files": [
@@ -45,6 +45,12 @@
       }
     ],
     "asar": true,
+    "asarUnpack": [
+      "**/node_modules/node-pty/**",
+      "**/node_modules/@serialport/**",
+      "**/node_modules/serialport/**",
+      "**/*.node"
+    ],
     "npmRebuild": false,
     "win": {
       "target": [

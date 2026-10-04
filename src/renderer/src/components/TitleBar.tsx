@@ -61,41 +61,16 @@ interface TitleBarProps {
   busy: boolean
   compileState: 'idle' | 'compiling' | 'uploading' | 'success' | 'error'
   theme: 'light' | 'dark'
-  fqbn: string
-  onBoardChange: (fqbn: string) => void
-}
-
-const BOARD_PRESETS = [
-  { fqbn: 'arduino:avr:uno', label: 'Arduino Uno' },
-  { fqbn: 'esp32:esp32:esp32c3', label: 'ESP32-C3' },
-  { fqbn: 'esp32:esp32:esp32s3', label: 'ESP32-S3' },
-  { fqbn: 'esp32:esp32:esp32doit-devkit-v1', label: 'ESP32 DevKit' },
-]
-
-function boardLabel(fqbn: string): string {
-  const p = BOARD_PRESETS.find((b) => b.fqbn === fqbn)
-  return p ? p.label : fqbn.split(':').pop() || fqbn
-}
-
-function ChipIcon({ color = '#3b82f6' }: { color?: string }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <rect x="5" y="5" width="14" height="14" rx="2"/>
-      <rect x="9" y="9" width="6" height="6" rx="1"/>
-      <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>
-    </svg>
-  )
 }
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
   onToggleTheme, onOpenSettings, onCompile, onUpload, onToggleTerminal,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
-  busy, compileState, theme, fqbn, onBoardChange
+  busy, compileState, theme
 }: TitleBarProps): React.JSX.Element {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [isMaximized, setIsMaximized] = useState(false)
-  const [boardOpen, setBoardOpen] = useState(false)
   const barRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -209,49 +184,6 @@ function TitleBar({
         ))}
       </nav>
       <div className="titlebar-tools">
-        {/* 开发板快速选择 */}
-        <div style={{ position: 'relative' }}>
-          <button
-            className="tb-btn"
-            title="选择开发板"
-            onClick={() => setBoardOpen((v) => !v)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, fontWeight: 600, padding: '3px 10px',
-              borderRadius: 6, background: 'var(--hover, rgba(255,255,255,0.08))',
-            }}
-          >
-            <ChipIcon />
-            {boardLabel(fqbn)}
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          {boardOpen && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 6,
-              background: 'var(--dropdown-bg, #1e1e2e)', border: '1px solid var(--border, #333)',
-              borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.3)', zIndex: 1000,
-              minWidth: 200, padding: 4,
-            }}>
-              {BOARD_PRESETS.map((b) => (
-                <div
-                  key={b.fqbn}
-                  onClick={() => { onBoardChange(b.fqbn); setBoardOpen(false) }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '7px 10px', cursor: 'pointer', borderRadius: 6, fontSize: 12,
-                    background: b.fqbn === fqbn ? 'var(--accent, #3b82f6)' : 'transparent',
-                    color: b.fqbn === fqbn ? '#fff' : 'inherit',
-                  }}
-                >
-                  <ChipIcon color={b.fqbn === fqbn ? '#fff' : '#3b82f6'} />
-                  <span style={{ flex: 1 }}>{b.label}</span>
-                  <span style={{ fontSize: 10, opacity: 0.5 }}>{b.fqbn.split(':').pop()}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="tb-sep" />
         <button
           className={`tb-btn ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
           title={compileState === 'compiling' ? '编译中…' : compileState === 'uploading' ? '烧录中…' : compileState === 'success' ? '编译成功' : compileState === 'error' ? '编译失败' : '编译'}

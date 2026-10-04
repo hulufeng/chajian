@@ -4,19 +4,32 @@ import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync
 import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
-import { listPorts, writeSerial } from './services/serialService'
+import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
 import { aiChat, listModels, getAiState, setAiState, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type ByokProfile } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
 import { readSettings, writeSettings } from './settings'
-import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, normalizeSketchPath, type InstallProgress } from './services/toolchain'
+import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, normalizeSketchPath, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
+import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
 import type { TreeNode } from './services/fsService'
 import * as nodePty from 'node-pty'
 import { arduinoGrpc } from './services/grpc-client'
+import { parseBuildOutput, formatBuildReport } from './services/build-diagnostics'
 import { listLocalModels } from './ai/modelRuntime'
+
+/** 编译/烧录失败时补发的结构化诊断块（供输出面板与「一键 AI 诊断」使用）。 */
+function buildDiagnosticChunk(log: string): string {
+  try {
+    const report = parseBuildOutput(log)
+    const text = formatBuildReport(report)
+    return text ? `\n[诊断]\n${text}\n` : ''
+  } catch {
+    return ''
+  }
+}
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL']
 
@@ -45,6 +58,9 @@ function createWindow(): void {
       webviewTag: true
     }
   })
+
+  // 更新服务需要主窗口引用（用于发送状态事件 + 原生对话框父窗口）
+  setUpdaterWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     console.log('[codelab] 主进程：窗口已创建，渲染进程加载完成（全部 IPC 能力就绪）')
@@ -316,6 +332,16 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   const sender = event.sender
   const id = `grpc-compile-${++taskSeq}`
 
+  // 校验工程文件真实存在：内置示例 / 未保存的虚拟文件直接报错，
+  // 避免把不存在的路径丢给 daemon/CLI 后无输出挂死
+  if (!existsSync(absSketch)) {
+    if (!sender.isDestroyed()) {
+      sender.send('task:output', { id, chunk: `[错误] 工程文件不存在：${absSketch}\n[提示] 当前编辑的可能是内置示例或未保存文件。请先「新建项目 / 打开项目」获得真实工程后再编译。\n` })
+      sender.send('task:exit', { id, code: 1, buildPath: '' })
+    }
+    return { id }
+  }
+
   // 优先 gRPC daemon；不可用（启动超时/未连接）时降级 CLI 直编（产物路径可控，流式格式一致）
   let grpcOk = arduinoGrpc.getState().connected
   if (!grpcOk) {
@@ -325,7 +351,9 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   }
 
   if (grpcOk) {
+    let log = ''
     arduinoGrpc.compile(absSketch, opts.fqbn, (line) => {
+      log += line
       if (!sender.isDestroyed()) sender.send('task:output', { id, chunk: line })
     }, (p) => {
       if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
@@ -335,7 +363,10 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
         // 失败时补发错误详情（否则 UI 只显示退出码，看不到失败原因）
         if (!result.success && result.error && !result.output?.includes(result.error)) {
           sender.send('task:output', { id, chunk: `[错误] ${result.error}\n` })
+          log += `[错误] ${result.error}\n`
         }
+        // 结构化错误分类（P1-8）：失败时把「分类+文件行号+修复建议」发给 UI 与「一键 AI 诊断」
+        if (!result.success) sender.send('task:output', { id, chunk: buildDiagnosticChunk(log) })
         // 编译成功时把产物目录带给渲染层（模拟烧录"当前代码"用）
         sender.send('task:exit', { id, code: result.success ? 0 : 1, buildPath: result.success ? result.buildPath || '' : '', fqbn: opts.fqbn })
       }
@@ -355,11 +386,17 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   const buildPath = join(tmpdir(), 'codelab-build', `sketch-${Date.now()}`)
   mkdirSync(buildPath, { recursive: true })
   console.log(`[compile] CLI 降级编译: ${absSketch} → ${buildPath}`)
+  let cliLog = ''
   const cp = compileSketch(
     { sketch: absSketch, fqbn: opts.fqbn, bin: tool, buildPath },
-    (chunk) => { if (!sender.isDestroyed()) sender.send('task:output', { id, chunk }) },
+    (chunk) => {
+      cliLog += chunk
+      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+    },
     (code) => {
       if (!sender.isDestroyed()) {
+        // 结构化错误分类（P1-8）
+        if (code !== 0) sender.send('task:output', { id, chunk: buildDiagnosticChunk(cliLog) })
         sender.send('task:exit', { id, code: code === 0 ? 0 : 1, buildPath: code === 0 ? buildPath : '', fqbn: opts.fqbn })
       }
     }
@@ -374,7 +411,26 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
   }
   const sender = event.sender
   const id = `grpc-upload-${++taskSeq}`
+
+  // 校验：工程文件必须真实存在、端口必须已选，否则直接报错（防止 daemon 无输出挂起）
+  const absSketch = require('node:path').resolve(process.cwd(), opts.sketch)
+  if (!existsSync(absSketch)) {
+    if (!sender.isDestroyed()) {
+      sender.send('task:output', { id, chunk: `[错误] 工程文件不存在：${absSketch}\n[提示] 请先「新建项目 / 打开项目」获得真实工程后再烧录。\n` })
+      sender.send('task:exit', { id, code: 1 })
+    }
+    return { id }
+  }
+  if (!opts.port) {
+    if (!sender.isDestroyed()) {
+      sender.send('task:output', { id, chunk: '[错误] 未选择串口端口，无法烧录。请在左侧「设备」面板选择端口。\n' })
+      sender.send('task:exit', { id, code: 1 })
+    }
+    return { id }
+  }
+  let upLog = ''
   arduinoGrpc.upload(opts.sketch, opts.fqbn, opts.port, (line) => {
+    upLog += line
     if (!sender.isDestroyed()) sender.send('task:output', { id, chunk: line })
   }, (p) => {
     if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
@@ -383,7 +439,10 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       // 失败时补发错误详情（否则 UI 只显示退出码，看不到失败原因）
       if (!result.success && result.error && !result.output?.includes(result.error)) {
         sender.send('task:output', { id, chunk: `[错误] ${result.error}\n` })
+        upLog += `[错误] ${result.error}\n`
       }
+      // 结构化错误分类（P1-8）：烧录失败也走同一套分类（端口/握手/权限等）
+      if (!result.success) sender.send('task:output', { id, chunk: buildDiagnosticChunk(upLog) })
       sender.send('task:exit', { id, code: result.success ? 0 : 1 })
     }
   })
@@ -746,6 +805,54 @@ app.whenReady().then(() => {
   initPlugins()
   createWindow()
 
+  // ── 串口热插拔检测：插上开发板自动刷新端口 + 自动识别板卡并选中 ──
+  startPortWatcher(({ ports, added, removed }) => {
+    const broadcast = (channel: string, payload: unknown): void => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send(channel, payload)
+      }
+    }
+    // 1) 端口列表变化 → 刷新界面下拉
+    broadcast('serial:ports-changed', { ports, added, removed })
+
+    // 2) 新端口插入 → 识别板卡（arduino-cli board list + serialport 兜底，识别 ESP32 等），并自动选中
+    if (added.length > 0) {
+      const port = added[added.length - 1]
+      void (async () => {
+        let fqbn = ''
+        let name = ''
+        try {
+          const bin = findToolchain()
+          if (bin) {
+            const boards = (await listConnectedBoardsWithSerial(bin)) as Array<{ fqbn?: string; name?: string; port?: string }>
+            const hit = boards.find((b) => b.port === port) || boards[0]
+            if (hit) {
+              fqbn = hit.fqbn || ''
+              name = hit.name || ''
+            }
+          }
+        } catch {
+          /* 板卡识别失败时仍自动选中端口 */
+        }
+        console.log(`[hotplug] 检测到新端口 ${port}${fqbn ? `，识别板卡 ${name || fqbn}` : '（未识别到板卡型号）'}`)
+        broadcast('device:auto-select', { action: 'added', port, fqbn, name })
+      })()
+    }
+
+    // 3) 端口拔出 → 通知界面清除选中
+    if (removed.length > 0) {
+      broadcast('device:auto-select', { action: 'removed', port: '', fqbn: '', name: '', removed })
+    }
+  })
+
+  // ── 强制更新 / 自动更新：注册 IPC + 启动后延迟自检（仅打包态）──
+  registerUpdaterIpc()
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void checkForUpdates()
+    }, 4000)
+  }
+
   // ── 定时任务服务：注入触发器（开独立 Agent 会话跑 prompt）+ 启动常驻扫描 ──
   schedulerService.setTriggerHandler(async (projectRoot, prompt) => {
     const tail: string[] = []
@@ -775,6 +882,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  stopPortWatcher()
   arduinoGrpc.stop()
   if (process.platform !== 'darwin') app.quit()
 })

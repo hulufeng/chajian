@@ -39,6 +39,34 @@ interface DevicePanelProps {
   onOpenSerialWindow?: () => void
 }
 
+// 插件未声明设备面板时的内置兜底面板：保证「开发板 / 端口 / 烧录」始终可见可用，
+// 避免 panels 为空时整个设备面板空白（表现为烧录与端口识别"没有实现"）。
+const FALLBACK_PANEL: DevicePanelInfo = {
+  plugin: 'builtin',
+  id: 'builtin-device',
+  title: '设备',
+  icon: '🔌',
+  selectors: [
+    {
+      id: 'board',
+      title: '开发板',
+      key: 'fqbn',
+      searchable: true,
+      placeholder: '搜索开发板…',
+      source: { transport: 'backend', service: 'toolchain', method: 'boardSearch' }
+    },
+    {
+      id: 'port',
+      title: '端口',
+      key: 'port',
+      source: { transport: 'backend', service: 'serialport', method: 'list' }
+    }
+  ],
+  actions: [
+    { id: 'open-monitor', title: '串口监视器', kind: 'action', transport: 'internal', internal: { service: 'serialLog', method: 'open' } }
+  ]
+}
+
 function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: DevicePanelProps): React.JSX.Element | null {
   const [panels, setPanels] = useState<DevicePanelInfo[]>([])
   const [boards, setBoards] = useState<Array<{ fqbn: string; name: string; platform?: string }>>([])
@@ -137,6 +165,26 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: Device
     checkToolchain()
   }, [])
 
+  // 热插拔：端口变化自动刷新下拉；自动选中事件同步本地选中态（与 App 全局状态一致）
+  useEffect(() => {
+    const offPorts = window.api.serial.onPortsChanged?.((d) => {
+      setPorts(d.ports as Array<{ path: string; manufacturer?: string }>)
+    })
+    const offAuto = window.api.device.onAutoSelect?.((d) => {
+      if (d.action === 'added') {
+        setDeviceCtx((prev) => ({ board: d.fqbn || prev.board, port: d.port || prev.port }))
+        if (d.fqbn) loadOptions(d.fqbn)
+      } else if (d.action === 'removed') {
+        setDeviceCtx((prev) => ({ ...prev, port: d.removed?.includes(prev.port) ? '' : prev.port }))
+      }
+    })
+    return () => {
+      offPorts?.()
+      offAuto?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const loadBoards = (keyword?: string): void => {
     setLoadingBoards(true)
     window.api.board.list(keyword || '')
@@ -209,7 +257,8 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: Device
     }
   }
 
-  if (panels.length === 0) return null
+  // 插件未就绪时回退到内置面板，避免整块设备面板空白
+  const renderPanels = panels.length > 0 ? panels : [FALLBACK_PANEL]
 
   const filteredBoards = boardSearch
     ? boards.filter((b) => b.name.toLowerCase().includes(boardSearch.toLowerCase()) || b.fqbn.toLowerCase().includes(boardSearch.toLowerCase()))
@@ -217,7 +266,7 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: Device
 
   return (
     <div className="device-panel">
-      {panels.map((panel) => (
+      {renderPanels.map((panel) => (
         <div key={panel.id} className="device-panel-section">
           <div className="device-panel-title">
             <span>{panel.icon || '🔌'} {panel.title}</span>
@@ -267,7 +316,9 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: Device
 
           {panel.selectors.map((sel) => {
             const isBoard = sel.source?.method === 'boardSearch' || (sel.source?.service === 'arduinoCli' && sel.source?.method === 'board.search')
-            const isPort = sel.source?.service === 'serialport' && sel.source?.method === 'list'
+            // 兼容两种 manifest 写法：插件注册的是 backend `serial.list`，
+            // manifest 里可能写 service:"serialport" 或 "serial"，两者都识别为端口选择器
+            const isPort = (sel.source?.service === 'serialport' || sel.source?.service === 'serial') && sel.source?.method === 'list'
 
             if (isBoard) {
               const selectedName = boards.find((b) => b.fqbn === deviceCtx.board)?.name || deviceCtx.board || ''

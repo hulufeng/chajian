@@ -13,7 +13,7 @@ import WelcomeView from './components/WelcomeView'
 import StatusBar from './components/StatusBar'
 import SettingsModal from './components/SettingsModal'
 import type { TerminalHandle } from './components/TerminalView'
-import type { ToolchainStatus, SerialPortInfo } from '../../preload'
+import type { ToolchainStatus, SerialPortInfo, UpdaterStatus } from '../../preload'
 
 type ShellType = 'powershell' | 'cmd' | 'pwsh' | 'bash'
 
@@ -37,6 +37,28 @@ function findSketch(node: TreeNode | null): string | null {
     if (hit) return hit
   }
   return null
+}
+
+// 从编译/烧录输出中提取错误上下文（供「一键 AI 诊断」使用）
+function extractBuildError(log: string): string | null {
+  // 主进程已输出结构化诊断块（分类 + 文件行号 + 修复建议），优先整块送给 AI
+  const marker = log.indexOf('── 构建诊断 ──')
+  if (marker >= 0) {
+    const block = log.slice(marker).trim()
+    return block.length > 2000 ? block.slice(0, 2000) + '\n…(已截断)' : block
+  }
+  const lines = log.split('\n')
+  const errLines: number[] = []
+  lines.forEach((l, i) => {
+    if (/error:|error |错误|undefined reference|exit status|fatal error|Failed uploading|esptool|No such file|exception/i.test(l)) errLines.push(i)
+  })
+  if (errLines.length === 0) return null
+  const last = errLines[errLines.length - 1]
+  const start = Math.max(0, last - 8)
+  const end = Math.min(lines.length, last + 10)
+  let block = lines.slice(start, end).join('\n').trim()
+  if (block.length > 1600) block = block.slice(0, 1600) + '\n…(已截断)'
+  return block
 }
 
 const DEFAULT_TABS: EditorTab[] = [
@@ -131,7 +153,13 @@ function App(): React.JSX.Element {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
+  const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number; autoSend?: boolean } | null>(null)
+  const [buildError, setBuildError] = useState<string | null>(null)
+  const buildLogRef = useRef<string>('')
   const [examplesDir, setExamplesDir] = useState<string>('')
+
+  // 更新（强制更新 / 自动更新）状态
+  const [updater, setUpdater] = useState<UpdaterStatus | null>(null)
 
   const ex = useCallback((fileName: string) => {
     const base = examplesDir || `D:\\工作\\代码实验室\\codelab-desktop\\examples`
@@ -147,6 +175,28 @@ function App(): React.JSX.Element {
     if (id === 'ai') setAiPanelVisible((v) => !v)
     else setActiveSidebar(id)
   }, [])
+
+  // 欢迎页三大能力入口处理
+  const handleFlash = useCallback(() => {
+    setLeftPanelVisible(true)
+    setActiveSidebar('device')
+    setOutputLog((prev) => prev + '\n💡 请在左侧「设备」面板选择开发板和串口，然后点顶栏的「烧录」按钮一键烧录。\n')
+  }, [])
+  const focusAi = useCallback((text: string) => {
+    setAiPanelVisible(true)
+    setAiPrefill({ text, nonce: Date.now() })
+  }, [])
+
+  // 一键 AI 诊断：把捕获到的编译/烧录错误发给 AI 面板自动分析
+  const diagnoseBuildError = useCallback(() => {
+    if (!buildError) return
+    setAiPanelVisible(true)
+    setAiPrefill({
+      text: `我执行编译/烧录时失败了，请帮我诊断原因并给出具体的修复步骤：\n\n${buildError}`,
+      nonce: Date.now(),
+      autoSend: true
+    })
+  }, [buildError])
 
   const cwd = projectRoot ?? (window.api.platform === 'win32' ? 'C:\\' : '/')
 
@@ -175,6 +225,9 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('cmd-')) {
         terminalRef.current?.append(d.chunk)
       } else {
+        if (d.id.startsWith('grpc-compile-') || d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-upload-') || d.id.startsWith('cap-upload-')) {
+          buildLogRef.current += d.chunk
+        }
         setOutputLog((prev) => prev + d.chunk)
       }
     })
@@ -185,10 +238,18 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('cmd-')) terminalRef.current?.append(line)
       else setOutputLog((prev) => prev + line)
       setBusy(false)
-      // 根据 taskId 更新编译状态
-      if (d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-compile-') || d.id.startsWith('cap-upload-') || d.id.startsWith('grpc-upload-')) {
+      // 编译 / 烧录任务：更新状态并捕获错误（供「一键 AI 诊断」）
+      const isCompile = d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-compile-')
+      const isUpload = d.id.startsWith('cap-upload-') || d.id.startsWith('grpc-upload-')
+      if (isCompile || isUpload) {
         setCompileState(d.code === 0 ? 'success' : 'error')
         setCompileProgress(null)
+        if (d.code !== 0) {
+          setBuildError(extractBuildError(buildLogRef.current))
+        } else {
+          setBuildError(null)
+          buildLogRef.current = ''
+        }
       }
       setActiveTaskId(null)
       // resolve pending task
@@ -208,14 +269,65 @@ function App(): React.JSX.Element {
       setSerialLog((prev) => prev + `\n${d.msg}\n`)
       setSerialOpen(false)
     })
+    // 串口热插拔：端口列表变化自动刷新（插上/拔出开发板）
+    const offPorts = window.api.serial.onPortsChanged?.((d) => {
+      setPorts(d.ports as SerialPortInfo[])
+    })
+    // 热插拔自动选中：插入开发板自动选端口 + 板卡 FQBN；拔出则清除选中
+    const offAuto = window.api.device.onAutoSelect?.((d) => {
+      if (d.action === 'added') {
+        if (d.fqbn) {
+          setFqbn(d.fqbn)
+          window.api.device.set({ board: d.fqbn }).catch(() => undefined)
+        }
+        if (d.port) {
+          setSelectedPort(d.port)
+          window.api.device.set({ port: d.port }).catch(() => undefined)
+        }
+        if (d.name) setBoardName(d.name)
+        setOutputLog(
+          (prev) =>
+            prev +
+            `\n🔌 检测到开发板：${d.port}${d.fqbn ? ` · ${d.name || d.fqbn}` : '（未识别到板卡型号，仅选中端口）'}，已自动选中。\n`
+        )
+      } else if (d.action === 'removed') {
+        setSelectedPort((prev) => (d.removed?.includes(prev) ? '' : prev))
+        setOutputLog((prev) => prev + `\n🔌 串口已拔出：${(d.removed || []).join('、')}\n`)
+      }
+    })
     return () => {
       offOutput()
       offExit()
       offProgress?.()
       offSerial()
       offClose()
+      offPorts?.()
+      offAuto?.()
     }
   }, [])
+
+  // 订阅主进程更新状态（检查中 / 可用 / 下载进度 / 已是最新 / 错误）
+  useEffect(() => {
+    const off = window.api.updater.onStatus(setUpdater)
+    return off
+  }, [])
+
+  // 非阻塞状态（已是最新 / 未启用 / 已跳过 / 错误）自动收起，避免长期占用界面
+  useEffect(() => {
+    if (!updater) return
+    if (updater.state === 'postponed') {
+      setUpdater(null)
+      return
+    }
+    if (updater.state === 'up-to-date' || updater.state === 'disabled') {
+      const t = setTimeout(() => setUpdater(null), 3500)
+      return () => clearTimeout(t)
+    }
+    if (updater.state === 'error') {
+      const t = setTimeout(() => setUpdater(null), 8000)
+      return () => clearTimeout(t)
+    }
+  }, [updater])
 
   // 命令面板快捷键 Ctrl+Shift+P
   useEffect(() => {
@@ -301,6 +413,17 @@ function App(): React.JSX.Element {
       setOutputLog((prev) => prev + '\n[错误] 未找到 .ino 工程文件。\n')
       return
     }
+    // 拦截虚拟文件（内置示例 / AI 生成文件）：未落盘为真实工程时 arduino-cli 无法编译
+    if (!/^[a-zA-Z]:[\\/]/.test(sketch) && !sketch.startsWith('/')) {
+      setOutputLog(
+        (prev) =>
+          prev +
+          '\n⚠ 无法编译：当前编辑的是内置示例或未保存的文件，还不是磁盘上的真实工程。\n' +
+          '  请先通过 顶栏「文件 → 新建项目 / 打开项目」创建或打开一个工程，再编译 / 烧录。\n'
+      )
+      setCompileState('error')
+      return
+    }
     // 门控：需要开发板
     if (!fqbn) {
       setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
@@ -353,6 +476,17 @@ function App(): React.JSX.Element {
     const sketch = findSketch(tree) ?? activePath
     if (!sketch) {
       setOutputLog((prev) => prev + '\n[错误] 未找到 .ino 工程文件。\n')
+      return
+    }
+    // 拦截虚拟文件（内置示例 / AI 生成文件）：未落盘为真实工程时无法烧录
+    if (!/^[a-zA-Z]:[\\/]/.test(sketch) && !sketch.startsWith('/')) {
+      setOutputLog(
+        (prev) =>
+          prev +
+          '\n⚠ 无法烧录：当前编辑的是内置示例或未保存的文件，还不是磁盘上的真实工程。\n' +
+          '  请先通过 顶栏「文件 → 新建项目 / 打开项目」创建或打开一个工程，再烧录。\n'
+      )
+      setCompileState('error')
       return
     }
     if (!fqbn) {
@@ -581,17 +715,51 @@ function App(): React.JSX.Element {
         busy={busy}
         compileState={compileState}
         theme={theme}
-        fqbn={fqbn}
-        onBoardChange={(newFqbn) => {
-          setFqbn(newFqbn)
-          window.api.device.set({ board: newFqbn }).catch(() => undefined)
-          setOutputLog((prev) => prev + `\n📌 开发板已切换：${newFqbn}\n`)
-        }}
       />
+      {updater && (
+        <div className={`updater-banner ${updater.state}${updater.force ? ' force' : ''}`}>
+          {updater.state === 'checking' && <span className="updater-text">🔄 正在检查更新…</span>}
+          {updater.state === 'downloading' && (
+            <span className="updater-text">
+              ⬇ 正在下载更新 v{updater.info?.version}
+              {updater.progress != null ? `（${Math.round(updater.progress * 100)}%）` : ''}…
+            </span>
+          )}
+          {updater.state === 'downloaded' && <span className="updater-text">✅ 下载完成，正在重启安装…</span>}
+          {updater.state === 'available' && (
+            <span className="updater-text">
+              🆕 发现新版本 v{updater.info?.version}
+              {updater.force ? '（强制更新）' : ''}
+              {updater.info?.notes ? `：${updater.info.notes}` : ''}
+            </span>
+          )}
+          {updater.state === 'up-to-date' && (
+            <span className="updater-text">✓ {updater.message || '已是最新版本'}</span>
+          )}
+          {updater.state === 'disabled' && <span className="updater-text">⚙ {updater.message || '更新未启用'}</span>}
+          {updater.state === 'error' && <span className="updater-text">⚠ {updater.message || '更新出错'}</span>}
+
+          {updater.state === 'available' && !updater.force && (
+            <button className="updater-btn" onClick={() => void window.api.updater.check({ interactive: true })}>
+              立即更新
+            </button>
+          )}
+          {updater.state === 'error' && (
+            <button className="updater-btn" onClick={() => void window.api.updater.check({ interactive: true })}>
+              重试
+            </button>
+          )}
+          {(updater.state === 'available' || updater.state === 'up-to-date' || updater.state === 'disabled' || updater.state === 'error') && (
+            <button className="updater-close" onClick={() => setUpdater(null)} aria-label="关闭">
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <div className="ide-body">
         {leftPanelVisible && (
           <>
-            <ActivityBar active={activeSidebar} onChange={onActivityChange} />
+            <ActivityBar active={activeSidebar} onChange={onActivityChange} aiActive={aiPanelVisible} />
             <aside className="sidebar">
               {activeSidebar === 'files' && (
                 <ProjectTree
@@ -626,6 +794,9 @@ function App(): React.JSX.Element {
                 void openFile(ex(fileName), fileName)
               }}
               onOpenProject={() => void openProject()}
+              onFlash={handleFlash}
+              onAssist={() => focusAi('')}
+              onSolve={() => focusAi('把这段编译 / 烧录 / 串口报错粘贴给我，我帮你定位原因并给出修复方案：\n')}
             />
           ) : (
             <EditorArea
@@ -657,11 +828,13 @@ function App(): React.JSX.Element {
               shell={shell}
               onClose={() => setTerminalVisible(false)}
               defaultTab="串口监视器"
+              buildError={buildError}
+              onDiagnose={diagnoseBuildError}
             />
           )}
         </div>
         {aiPanelVisible && (
-          <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} />
+          <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} prefill={aiPrefill} />
         )}
       </div>
       <StatusBar

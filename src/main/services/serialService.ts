@@ -29,23 +29,39 @@ export async function listPorts(): Promise<SerialPortInfo[]> {
       /* 回退 mode */
     }
   }
-  // Windows `mode` 命令枚举 COM 口
+  // Windows 兜底：用 PowerShell 调 .NET 的 SerialPort.GetPortNames() 枚举 COM 口。
+  // 注意：不能用 `mode` 命令——它是 cmd.exe 内置命令、没有独立 exe，spawn 不经 shell 必然 ENOENT。
   if (process.platform === 'win32') {
-    try {
-      const r = spawnSync('mode', [], { encoding: 'utf-8', timeout: 4000 })
-      const out = (r.stdout || '').toString()
-      const ports: SerialPortInfo[] = []
-      const re = /COM\d+/g
-      let m
-      while ((m = re.exec(out)) !== null) {
-        ports.push({ path: m[0] })
-      }
-      return ports
-    } catch {
-      return []
-    }
+    const portNames = listPortsViaPowershell()
+    if (portNames.length > 0) return portNames
   }
   return []
+}
+
+/** 通过 PowerShell + .NET SerialPort.GetPortNames() 枚举串口（serialport 不可用时的兜底） */
+function listPortsViaPowershell(): SerialPortInfo[] {
+  try {
+    const r = spawnSync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', '[System.IO.Ports.SerialPort]::GetPortNames()'],
+      { encoding: 'utf-8', timeout: 10000, windowsHide: true }
+    )
+    const out = `${(r.stdout || '')}${(r.stderr || '')}`
+    const ports: SerialPortInfo[] = []
+    const seen = new Set<string>()
+    const re = /COM\d+/gi
+    let m
+    while ((m = re.exec(out)) !== null) {
+      const path = m[0].toUpperCase()
+      if (!seen.has(path)) {
+        seen.add(path)
+        ports.push({ path })
+      }
+    }
+    return ports
+  } catch {
+    return []
+  }
 }
 
 export type SerialSink = (data: string) => void
@@ -165,4 +181,54 @@ export function clearSerialLog(id: string): { ok: boolean; error?: string } {
 /** 列出当前打开的串口会话。 */
 export function listSerialSessions(): Array<{ id: string; open: boolean }> {
   return Array.from(activeSerials.keys()).map((id) => ({ id, open: activeSerials.get(id)?.port.isOpen ?? false }))
+}
+
+// ───────────────────────────────────────────────────────────
+//  串口热插拔检测（USB 插拔无系统事件可用，采用轻量轮询）
+//  listPorts() 基于 serialport，开销极小，2 秒轮询对 CPU 无影响。
+//  端口集合发生变化（新增/移除）时回调，供主进程广播给渲染层。
+// ───────────────────────────────────────────────────────────
+export interface PortsChangePayload {
+  ports: SerialPortInfo[]
+  added: string[]
+  removed: string[]
+}
+
+type PortsChangeHandler = (payload: PortsChangePayload) => void
+
+let watchTimer: ReturnType<typeof setInterval> | null = null
+let lastPortPaths: string[] = []
+
+export function startPortWatcher(handler: PortsChangeHandler, intervalMs = 2000): void {
+  if (watchTimer) return
+  // 建立基线（不触发首次回调，避免启动时误报）
+  void listPorts()
+    .then((p) => {
+      lastPortPaths = p.map((x) => x.path)
+    })
+    .catch(() => undefined)
+
+  watchTimer = setInterval(() => {
+    void listPorts()
+      .then((ports) => {
+        const cur = ports.map((p) => p.path)
+        const added = cur.filter((x) => !lastPortPaths.includes(x))
+        const removed = lastPortPaths.filter((x) => !cur.includes(x))
+        lastPortPaths = cur
+        if (added.length === 0 && removed.length === 0) return
+        try {
+          handler({ ports, added, removed })
+        } catch {
+          /* 回调异常不影响轮询 */
+        }
+      })
+      .catch(() => undefined)
+  }, intervalMs)
+}
+
+export function stopPortWatcher(): void {
+  if (watchTimer) {
+    clearInterval(watchTimer)
+    watchTimer = null
+  }
 }

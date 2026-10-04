@@ -86,6 +86,16 @@ export interface TaskProgress {
   message: string
 }
 
+export interface UpdaterStatus {
+  state: 'disabled' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'postponed' | 'error'
+  info?: { version: string; forceUpdate?: boolean; notes?: string; url?: string }
+  progress?: number
+  bytes?: number
+  total?: number
+  message?: string
+  force?: boolean
+}
+
 export interface GitFileChange {
   path: string
   originalPath?: string
@@ -213,7 +223,13 @@ const api = {
       ipcRenderer.invoke('serial:open', opts),
     close: (id: string): Promise<boolean> => ipcRenderer.invoke('task:kill', id),
     write: (opts: { id: string; data: string }): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('serial:write', opts)
+      ipcRenderer.invoke('serial:write', opts),
+    // 热插拔：串口列表变化（插上/拔出开发板）
+    onPortsChanged: (cb: (d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }): void => cb(d)
+      ipcRenderer.on('serial:ports-changed', listener)
+      return () => ipcRenderer.removeListener('serial:ports-changed', listener)
+    }
   },
 
   // AI
@@ -287,7 +303,13 @@ const api = {
   // 设备上下文（选中的开发板/端口）
   device: {
     get: (): Promise<{ board: string; port: string }> => ipcRenderer.invoke('device:get'),
-    set: (opts: { board?: string; port?: string }): Promise<boolean> => ipcRenderer.invoke('device:set', opts)
+    set: (opts: { board?: string; port?: string }): Promise<boolean> => ipcRenderer.invoke('device:set', opts),
+    // 热插拔自动选中：插入开发板时携带识别到的端口与板卡 FQBN
+    onAutoSelect: (cb: (d: { action: 'added' | 'removed'; port: string; fqbn: string; name: string; removed?: string[] }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, d: { action: 'added' | 'removed'; port: string; fqbn: string; name: string; removed?: string[] }): void => cb(d)
+      ipcRenderer.on('device:auto-select', listener)
+      return () => ipcRenderer.removeListener('device:auto-select', listener)
+    }
   },
 
   // 开发板列表
@@ -341,6 +363,17 @@ const api = {
   },
 
 
+
+  // 更新（强制更新 / 自动更新）
+  updater: {
+    check: (opts?: { interactive?: boolean }): Promise<void> => ipcRenderer.invoke('updater:check', opts),
+    getBaseUrl: (): Promise<string> => ipcRenderer.invoke('updater:getBaseUrl'),
+    onStatus: (cb: (s: UpdaterStatus) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, s: UpdaterStatus): void => cb(s)
+      ipcRenderer.on('updater:status', listener)
+      return () => ipcRenderer.removeListener('updater:status', listener)
+    }
+  },
 
   // 事件订阅（流式输出）
   onTaskOutput: (cb: (d: TaskOutput) => void): (() => void) => {
