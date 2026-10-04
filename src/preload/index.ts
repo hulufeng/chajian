@@ -150,20 +150,7 @@ const api = {
     readImage: (path: string): Promise<string> => ipcRenderer.invoke('fs:readImage', path)
   },
 
-  // Git 源代码管理
-  git: {
-    status: (root: string): Promise<GitStatus> => ipcRenderer.invoke('git:status', root),
-    diff: (opts: { root: string; path: string; staged: boolean }): Promise<string> => ipcRenderer.invoke('git:diff', opts),
-    stage: (opts: { root: string; paths: string[] }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('git:stage', opts),
-    stageAll: (root: string): Promise<{ ok: boolean; error?: string; skipped?: string[] }> => ipcRenderer.invoke('git:stageAll', root),
-    unstage: (opts: { root: string; paths: string[] }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('git:unstage', opts),
-    commit: (opts: { root: string; message: string }): Promise<{ ok: boolean; error?: string; sha?: string }> => ipcRenderer.invoke('git:commit', opts),
-    init: (root: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('git:init', root),
-    log: (opts: { root: string; n?: number }): Promise<GitLogEntry[]> => ipcRenderer.invoke('git:log', opts),
-    pull: (root: string): Promise<{ ok: boolean; text: string }> => ipcRenderer.invoke('git:pull', root),
-    push: (root: string): Promise<{ ok: boolean; text: string }> => ipcRenderer.invoke('git:push', root),
-    applyPatch: (opts: { root: string; patch: string; cached?: boolean }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('git:applyPatch', opts)
-  },
+
 
   // 工具链（arduino-cli）
   toolchain: {
@@ -194,23 +181,7 @@ const api = {
     kill: (id: string): Promise<boolean> => ipcRenderer.invoke('task:kill', id)
   },
 
-  // 模拟烧录（软件内虚拟开发板）
-  simBurn: {
-    list: (): Promise<Array<{ id: string; name: string; revision: string; mac: string }>> =>
-      ipcRenderer.invoke('simBurn:list'),
-    demos: (): Promise<Array<{
-      id: string
-      name: string
-      chip: string
-      baud: number
-      files: Array<{ label: string; path: string; addr: number }>
-    }>> => ipcRenderer.invoke('simBurn:demos'),
-    start: (opts: { chipId: string; files: Array<{ addr: number; path: string; label: string }>; baud?: number }): Promise<{ id: string }> =>
-      ipcRenderer.invoke('simBurn:start', opts),
-    collectBuild: (opts: { buildPath: string }): Promise<{ ok: boolean; files?: Array<{ label: string; path: string; addr: number }>; error?: string }> =>
-      ipcRenderer.invoke('simBurn:collectBuild', opts),
-    kill: (id: string): Promise<boolean> => ipcRenderer.invoke('task:kill', id)
-  },
+
 
   // 真终端（node-pty）
   pty: {
@@ -231,19 +202,9 @@ const api = {
     }
   },
 
-  // MCP 服务器配置
-  mcp: {
-    list: (): Promise<Array<{ name: string; command: string; args?: string[]; transport?: string }>> => ipcRenderer.invoke('mcp:list'),
-    add: (server: { name: string; command: string; args?: string[]; transport?: string }): Promise<boolean> => ipcRenderer.invoke('mcp:add', server),
-    remove: (name: string): Promise<boolean> => ipcRenderer.invoke('mcp:remove', name),
-    test: (server: { name: string; command: string; args?: string[] }): Promise<{ ok: boolean; toolCount?: number; tools?: string[]; error?: string }> => ipcRenderer.invoke('mcp:test', server)
-  },
 
-  // 搜索配置
-  search: {
-    getConfig: (): Promise<{ provider: string; tavilyKey: string; serperKey: string; braveKey: string }> => ipcRenderer.invoke('search:getConfig'),
-    setConfig: (config: Record<string, unknown>): Promise<boolean> => ipcRenderer.invoke('search:setConfig', config)
-  },
+
+
 
   // 串口
   serial: {
@@ -260,11 +221,6 @@ const api = {
     chat: (messages: ChatMessage[]): Promise<ChatResult> => ipcRenderer.invoke('ai:chat', messages),
     models: (): Promise<AiModel[]> => ipcRenderer.invoke('ai:models'),
     state: (): Promise<AiState> => ipcRenderer.invoke('ai:state'),
-    register: (email: string, password: string): Promise<UserInfo> =>
-      ipcRenderer.invoke('ai:register', email, password),
-    login: (email: string, password: string): Promise<UserInfo> =>
-      ipcRenderer.invoke('ai:login', email, password),
-    logout: (): Promise<AiState> => ipcRenderer.invoke('ai:logout'),
     setModel: (modelId: string): Promise<AiState> => ipcRenderer.invoke('ai:setModel', modelId),
     setByok: (byok: { baseUrl: string; apiKey: string; model: string } | null): Promise<AiState> =>
       ipcRenderer.invoke('ai:setByok', byok),
@@ -275,81 +231,18 @@ const api = {
     byokActivate: (id: string | null): Promise<AiState> => ipcRenderer.invoke('ai:byokActivate', id)
   },
 
-  // 硬件配置检测
-  hardware: {
-    info: (): Promise<{
-      cpu: { model: string; cores: number; threads: number; architecture: string; speedMHz: number }
-      totalRAMGB: number
-      gpus: Array<{ name: string; vendor: string; vramMB: number; driverVersion?: string }>
-      disks: Array<{ drive: string; totalGB: number; freeGB: number }>
-      os: { platform: string; release: string; arch: string }
-      capability: { canRun7B: boolean; canRun13B: boolean; canRun34B: boolean; hasGPU: boolean; vramGB: number }
-    }> => ipcRenderer.invoke('hardware:info')
-  },
 
-  // 本地大模型管理
+
+  // 本地模型（供 AiPanel 选择本地 llama 通道）
   model: {
-    catalog: (): Promise<Array<{
-      id: string; name: string; displayName: string; description: string
-      parameters: string; quantization: string; sizeGB: number
-      minRAMGB: number; minVRAMGB: number; ollamaTag: string
-      ggufFile: string
-      category: string; icon: string
-    }>> => ipcRenderer.invoke('model:catalog'),
-    recommend: (): Promise<Array<{
-      id: string; name: string; displayName: string; description: string
-      parameters: string; quantization: string; sizeGB: number
-      minRAMGB: number; minVRAMGB: number; ollamaTag: string
-      ggufFile: string
-      category: string; icon: string
-    }>> => ipcRenderer.invoke('model:recommend'),
-    ollamaStatus: (): Promise<{ installed: boolean; running: boolean; version: string; engineDir: string }> =>
-      ipcRenderer.invoke('model:ollamaStatus'),
-    ensureEngine: (): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('model:ensureEngine'),
-    startOllama: (): Promise<{ started: boolean }> =>
-      ipcRenderer.invoke('model:startOllama'),
     local: (): Promise<Array<{
-      id: string; name: string; sizeGB: number; quantization: string
+      id: string; name: string; sizeGB: number; params?: string
       parameters: string; modifiedAt?: string
-    }>> => ipcRenderer.invoke('model:local'),
-    pull: (tag: string): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke('model:pull', { tag }),
-    delete: (tag: string): Promise<boolean> =>
-      ipcRenderer.invoke('model:delete', tag),
-    chat: (model: string, messages: Array<{ role: string; content: string }>): Promise<{ content: string }> =>
-      ipcRenderer.invoke('model:chat', { model, messages }),
-    onPullProgress: (cb: (p: { tag: string; status: string; percent: number; downloadedMB: number; totalMB: number }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, p: { tag: string; status: string; percent: number; downloadedMB: number; totalMB: number }): void => cb(p)
-      ipcRenderer.on('model:pullProgress', listener)
-      return () => ipcRenderer.removeListener('model:pullProgress', listener)
-    },
-    onChatChunk: (cb: (p: { model: string; chunk: string }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, p: { model: string; chunk: string }): void => cb(p)
-      ipcRenderer.on('model:chatChunk', listener)
-      return () => ipcRenderer.removeListener('model:chatChunk', listener)
-    }
+    }>> => ipcRenderer.invoke('model:local')
   },
 
-  // 教学知识库插件化更新
-  kb: {
-    status: (): Promise<{ version: string; source: 'user' | 'builtin'; builtin: string }> =>
-      ipcRenderer.invoke('kb:status'),
-    check: (): Promise<{
-      current: { version: string; source: 'user' | 'builtin' }
-      latest: { version: string; zipUrl: string; sha256: string; note: string; updatedAt: string } | null
-      hasUpdate: boolean
-    }> => ipcRenderer.invoke('kb:check'),
-    update: (): Promise<{ success: boolean; version?: string; error?: string }> =>
-      ipcRenderer.invoke('kb:update'),
-    reset: (): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('kb:reset'),
-    onProgress: (cb: (p: { status: string; percent: number }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, p: { status: string; percent: number }): void => cb(p)
-      ipcRenderer.on('kb:progress', listener)
-      return () => ipcRenderer.removeListener('kb:progress', listener)
-    }
-  },
+
+
 
   // Agent 智能体（工具调用闭环）
   agent: {
@@ -389,15 +282,6 @@ const api = {
       ipcRenderer.invoke('plugin:devicePanels'),
     commands: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; kind: string; view?: string; placement?: string; when?: string; transport?: string }>> =>
       ipcRenderer.invoke('plugin:commands'),
-    // 插件市场
-    market: (): Promise<Array<{ id: string; name: string; version: string; developer: string; icon: string; description: string; installedCount: number; updatedAt: string; downloadUrl: string; installed?: boolean }>> =>
-      ipcRenderer.invoke('plugin:market'),
-    installed: (): Promise<Array<{ id: string; name: string; version: string; path: string; enabled: boolean }>> =>
-      ipcRenderer.invoke('plugin:installed'),
-    install: (pluginId: string, downloadUrl: string): Promise<{ success: boolean; message: string }> =>
-      ipcRenderer.invoke('plugin:install', pluginId, downloadUrl),
-    uninstall: (pluginId: string): Promise<{ success: boolean; message: string }> =>
-      ipcRenderer.invoke('plugin:uninstall', pluginId)
   },
 
   // 设备上下文（选中的开发板/端口）
@@ -456,31 +340,7 @@ const api = {
       ipcRenderer.invoke('capability:run', { capability, args })
   },
 
-  // 自动更新
-  updater: {
-    check: (): Promise<boolean> => ipcRenderer.invoke('update:check'),
-    download: (): Promise<boolean> => ipcRenderer.invoke('update:download'),
-    install: (): Promise<boolean> => ipcRenderer.invoke('update:install'),
-    getUrl: (): Promise<{ dev: boolean; url: string | null }> => ipcRenderer.invoke('update:getUrl'),
-    onEvent: (cb: (type: string, payload?: unknown) => void): (() => void) => {
-      const channels = [
-        'update:checking',
-        'update:available',
-        'update:not-available',
-        'update:error',
-        'update:progress',
-        'update:downloaded'
-      ]
-      const listeners = channels.map((ch) => {
-        const l = (_e: IpcRendererEvent, payload?: unknown): void => cb(ch.replace('update:', ''), payload)
-        ipcRenderer.on(ch, l)
-        return { ch, l }
-      })
-      return () => {
-        for (const { ch, l } of listeners) ipcRenderer.removeListener(ch, l)
-      }
-    }
-  },
+
 
   // 事件订阅（流式输出）
   onTaskOutput: (cb: (d: TaskOutput) => void): (() => void) => {

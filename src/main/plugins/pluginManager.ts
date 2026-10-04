@@ -308,7 +308,7 @@ class PluginManager {
     try {
       // 延迟导入避免循环依赖
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readSettings } = require('../updater')
+      const { readSettings } = require('../settings')
       const s = readSettings()
       return { board: (s.deviceBoard as string) || '', port: (s.devicePort as string) || '' }
     } catch {

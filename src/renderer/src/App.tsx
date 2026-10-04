@@ -2,16 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import TitleBar from './components/TitleBar'
 import ActivityBar from './components/ActivityBar'
 import ProjectTree, { type TreeNode } from './components/ProjectTree'
-import PluginSidebar from './components/PluginSidebar'
-import GitSidebar from './components/GitSidebar'
-import CurriculumPanel from './components/CurriculumPanel'
-import SimulatorPanel from './components/SimulatorPanel'
-import LessonDetail from './components/LessonDetail'
 import EditorArea, { type EditorTab } from './components/EditorArea'
 import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
-import UpdateBanner from './components/UpdateBanner'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -118,10 +112,6 @@ function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [compileState, setCompileState] = useState<'idle' | 'compiling' | 'uploading' | 'success' | 'error'>('idle')
   const [compileProgress, setCompileProgress] = useState<{ percent: number; message: string } | null>(null)
-  // 最近一次成功编译的产物目录（供模拟烧录"当前代码"）
-  const [lastBuildPath, setLastBuildPath] = useState('')
-  // 最近一次成功编译的目标板卡 fqbn（自动匹配虚拟板卡）
-  const [lastCompileFqbn, setLastCompileFqbn] = useState('')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
 
   // 日志
@@ -129,10 +119,6 @@ function App(): React.JSX.Element {
   const [serialLog, setSerialLog] = useState('')
   // 底部面板重挂载 key（用于从设备面板"串口监视器"按钮切到串口 Tab）
   const [outputKey, setOutputKey] = useState(0)
-  // 插件系统 / 自动更新
-  const [pluginCount, setPluginCount] = useState(0)
-  const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string; percent?: number }>({ status: '' })
-  const [updateUrl, setUpdateUrl] = useState<string | null>(null)
   const [showNewProject, setShowNewProject] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState('general')
@@ -144,17 +130,7 @@ function App(): React.JSX.Element {
   const [terminalVisible, setTerminalVisible] = useState(true)
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
-  const [simulatorVisible, setSimulatorVisibleState] = useState<boolean>(() => {
-    const v = localStorage.getItem('codelab-simulator-visible')
-    return v === null ? true : v === '1'
-  })
-  // 持久化：关闭/打开仿真面板的选择
-  const setSimulatorVisible = useCallback((v: boolean) => {
-    setSimulatorVisibleState(v)
-    localStorage.setItem('codelab-simulator-visible', v ? '1' : '0')
-  }, [])
-  const [simulatorFile, setSimulatorFile] = useState<string | null>(null)
-  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
+  const [aiPanelVisible, setAiPanelVisible] = useState(true)
   const [examplesDir, setExamplesDir] = useState<string>('')
 
   const ex = useCallback((fileName: string) => {
@@ -167,6 +143,10 @@ function App(): React.JSX.Element {
 
   const toggleLeftPanel = useCallback(() => setLeftPanelVisible((v) => !v), [])
   const toggleEditor = useCallback(() => setEditorVisible((v) => !v), [])
+  const onActivityChange = useCallback((id: string) => {
+    if (id === 'ai') setAiPanelVisible((v) => !v)
+    else setActiveSidebar(id)
+  }, [])
 
   const cwd = projectRoot ?? (window.api.platform === 'win32' ? 'C:\\' : '/')
 
@@ -180,10 +160,6 @@ function App(): React.JSX.Element {
       if (d.port) setSelectedPort(d.port)
     }).catch(() => undefined)
     window.api.plugin
-      .list()
-      .then((list) => setPluginCount(list.filter((p) => p.loaded).length))
-      .catch(() => setPluginCount(0))
-    window.api.plugin
       .projectTypes()
       .then((pts) =>
         setPluginTypes(
@@ -191,37 +167,6 @@ function App(): React.JSX.Element {
         )
       )
       .catch(() => setPluginTypes([]))
-    window.api.updater
-      .getUrl()
-      .then((r) => setUpdateUrl(r.url))
-      .catch(() => setUpdateUrl(null))
-  }, [])
-
-  // 订阅自动更新事件
-  useEffect(() => {
-    return window.api.updater.onEvent((type, payload) => {
-      const p = (payload ?? {}) as { version?: string; percent?: number; message?: string }
-      switch (type) {
-        case 'checking':
-          setUpdateInfo({ status: '正在检查更新…' })
-          break
-        case 'available':
-          setUpdateInfo({ status: `发现新版本 ${p.version ?? ''}`, version: p.version })
-          break
-        case 'not-available':
-          setUpdateInfo({ status: '已是最新版本' })
-          break
-        case 'progress':
-          setUpdateInfo({ status: '正在下载…', percent: p.percent })
-          break
-        case 'downloaded':
-          setUpdateInfo({ status: '更新已就绪，点击安装', version: p.version })
-          break
-        case 'error':
-          setUpdateInfo({ status: `更新失败：${p.message ?? p}` })
-          break
-      }
-    })
   }, [])
 
   // 订阅主进程流式事件
@@ -244,11 +189,6 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-compile-') || d.id.startsWith('cap-upload-') || d.id.startsWith('grpc-upload-')) {
         setCompileState(d.code === 0 ? 'success' : 'error')
         setCompileProgress(null)
-        // 编译成功 → 记录产物目录与目标板卡，供模拟烧录"当前代码"使用
-        if (d.code === 0 && (d as any).buildPath) {
-          setLastBuildPath((d as any).buildPath)
-          if ((d as any).fqbn) setLastCompileFqbn((d as any).fqbn)
-        }
       }
       setActiveTaskId(null)
       // resolve pending task
@@ -610,7 +550,6 @@ function App(): React.JSX.Element {
 
   return (
     <div className="ide">
-      <UpdateBanner />
       <CommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
@@ -630,13 +569,11 @@ function App(): React.JSX.Element {
           setOutputLog((prev) => prev + '\n📁 项目已关闭\n')
         }}
         onExit={() => window.api?.window?.close?.()}
-        onCheckUpdate={() => void window.api.updater.check()}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => { setSettingsTab('general'); setShowSettings(true) }}
         onCompile={() => void runCompile()}
         onUpload={() => void runUpload()}
         onToggleTerminal={() => setTerminalVisible((v) => !v)}
-        onOpenSimulator={() => setSimulatorVisible(true)}
         leftPanelVisible={leftPanelVisible}
         editorVisible={editorVisible}
         onToggleLeftPanel={toggleLeftPanel}
@@ -654,7 +591,7 @@ function App(): React.JSX.Element {
       <div className="ide-body">
         {leftPanelVisible && (
           <>
-            <ActivityBar active={activeSidebar} onChange={setActiveSidebar} />
+            <ActivityBar active={activeSidebar} onChange={onActivityChange} />
             <aside className="sidebar">
               {activeSidebar === 'files' && (
                 <ProjectTree
@@ -663,22 +600,6 @@ function App(): React.JSX.Element {
                   activePath={activePath}
                   onOpenFile={(p, n) => void openFile(p, n)}
                   onOpenProject={() => void openProject()}
-                />
-              )}
-              {activeSidebar === 'git' && (
-                <GitSidebar root={projectRoot} />
-              )}
-              {activeSidebar === 'curriculum' && (
-                <CurriculumPanel
-                  onOpenExample={(fileName) => {
-                    void openFile(ex(fileName), fileName)
-                  }}
-                  onOpenWokwi={(exampleFile) => {
-                    setSimulatorFile(ex(exampleFile))
-                    setSimulatorVisible(true)
-                  }}
-                  onSelectLesson={(id) => setSelectedLessonId(id)}
-                  selectedLessonId={selectedLessonId}
                 />
               )}
               {activeSidebar === 'device' && (
@@ -695,32 +616,11 @@ function App(): React.JSX.Element {
                   }}
                 />
               )}
-              {activeSidebar === 'plugins' && (
-                <PluginSidebar />
-              )}
             </aside>
           </>
         )}
         <div className="ide-center">
-          {selectedLessonId !== null && (
-            <LessonDetail
-              lessonId={selectedLessonId}
-              onBack={() => setSelectedLessonId(null)}
-              onOpenExample={(fileName) => {
-                void openFile(ex(fileName), fileName)
-                setSelectedLessonId(null)
-              }}
-              onOpenSimulator={(exampleFile) => {
-                setSimulatorFile(ex(exampleFile))
-                setSimulatorVisible(true)
-              }}
-              onToggleDone={(id) => {
-                // 简单 toggle，课程面板自己管理进度
-              }}
-              done={false}
-            />
-          )}
-          {selectedLessonId === null && editorVisible && (tabs.length === 0 ? (
+          {editorVisible && (tabs.length === 0 ? (
             <WelcomeView
               onOpenExample={(fileName) => {
                 void openFile(ex(fileName), fileName)
@@ -760,14 +660,8 @@ function App(): React.JSX.Element {
             />
           )}
         </div>
-        <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} />
-        {simulatorVisible && (
-          <SimulatorPanel
-            inoCode={tabs.find((t) => t.id === activePath)?.content || ''}
-            lastBuildPath={lastBuildPath}
-            lastCompileFqbn={lastCompileFqbn}
-            onClose={() => setSimulatorVisible(false)}
-          />
+        {aiPanelVisible && (
+          <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} />
         )}
       </div>
       <StatusBar
@@ -776,11 +670,6 @@ function App(): React.JSX.Element {
         port={selectedPort}
         baud={baud}
         board={boardName}
-        pluginCount={pluginCount}
-        updateInfo={updateInfo}
-        updateUrl={updateUrl}
-        onCheckUpdate={() => void window.api.updater.check()}
-        onInstallUpdate={() => void window.api.updater.install()}
       />
       {showNewProject && (
         <NewProjectDialog

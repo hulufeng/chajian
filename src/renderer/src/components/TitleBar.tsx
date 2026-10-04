@@ -38,8 +38,6 @@ const MENU_TREE: Record<string, MenuItem[]> = {
     { label: '设置…', shortcut: 'Ctrl+,', action: 'openSettings' },
   ],
   帮助: [
-    { label: '检查更新', action: 'checkUpdate' },
-    { label: '', action: '', separator: true },
     { label: '关于 LabCode', action: 'about' },
   ],
 }
@@ -51,13 +49,11 @@ interface TitleBarProps {
   onSave: () => void
   onCloseProject: () => void
   onExit: () => void
-  onCheckUpdate: () => void
   onToggleTheme: () => void
   onOpenSettings: () => void
   onCompile: () => void
   onUpload: () => void
   onToggleTerminal: () => void
-  onOpenSimulator: () => void
   leftPanelVisible: boolean
   editorVisible: boolean
   onToggleLeftPanel: () => void
@@ -93,7 +89,7 @@ function ChipIcon({ color = '#3b82f6' }: { color?: string }) {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onCheckUpdate, onToggleTheme, onOpenSettings, onCompile, onUpload, onToggleTerminal, onOpenSimulator,
+  onToggleTheme, onOpenSettings, onCompile, onUpload, onToggleTerminal,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme, fqbn, onBoardChange
 }: TitleBarProps): React.JSX.Element {
@@ -152,7 +148,6 @@ function TitleBar({
       case 'toggleTheme': onToggleTheme(); break
       case 'toggleTerminal': onToggleTerminal(); break
       case 'openSettings': onOpenSettings(); break
-      case 'checkUpdate': onCheckUpdate(); break
       case 'about':
         alert('LabCode 代码实验室\n通用软件开发智能体 · 插件系统 · 桌面客户端\n版本 0.1.9')
         break
@@ -284,9 +279,6 @@ function TitleBar({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-        </button>
-        <button className="tb-btn" title="软件内仿真（离线）" onClick={onOpenSimulator}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         </button>
         <div className="tb-sep" />
         <button className="tb-btn" title="终端" onClick={onToggleTerminal}>

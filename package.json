@@ -19,7 +19,7 @@
     "appId": "com.labcode.desktop",
     "productName": "LabCode",
     "directories": {
-      "output": "dist",
+      "output": "pkgout",
       "buildResources": "build"
     },
     "files": [
@@ -65,13 +65,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "LabCode 代码实验室"
-    },
-    "publish": [
-      {
-        "provider": "generic",
-        "url": "https://bluebubai.work/updates/"
-      }
-    ]
+    }
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.4",
@@ -79,7 +73,6 @@
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "electron-updater": "^6.8.9",
     "monaco-editor": "^0.56.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.8",

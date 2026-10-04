@@ -354,7 +354,6 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   const [messages, setMessages] = useState<AgentMessage[]>(INITIAL)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [kbOpen, setKbOpen] = useState(false)
   const [agentStatus, setAgentStatus] = useState<string>('idle')
   const [stats, setStats] = useState<AgentStats>({ turns: 0, toolCalls: 0, elapsedMs: 0 })
   const [securityMode, setSecurityMode] = useState<'auto' | 'default' | 'plan'>('default')
@@ -368,12 +367,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
 
   const [models, setModels] = useState<AiModel[]>([])
   const [state, setState] = useState<AiState | null>(null)
-  const [showLogin, setShowLogin] = useState(false)
   const [showByok, setShowByok] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [authBusy, setAuthBusy] = useState(false)
-  const [authErr, setAuthErr] = useState('')
   const [byokForm, setByokForm] = useState({ baseUrl: '', apiKey: '', model: '' })
   const [byokSaved, setByokSaved] = useState(false)
 
@@ -808,24 +802,6 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
 
   const removeContext = (id: string): void => setContextItems((prev) => prev.filter((c) => c.id !== id))
 
-  const doAuth = async (mode: 'login' | 'register'): Promise<void> => {
-    if (!email || !password) { setAuthErr('请输入邮箱和密码'); return }
-    setAuthBusy(true)
-    setAuthErr('')
-    try {
-      const user = mode === 'login' ? await window.api.ai.login(email, password) : await window.api.ai.register(email, password)
-      setState((prev) => ({ ...(prev as AiState), token: 'set', email: user.email, totalCredits: user.totalCredits }))
-      setShowLogin(false)
-      setEmail('')
-      setPassword('')
-      void load()
-    } catch (e) {
-      setAuthErr((e as Error).message)
-    } finally {
-      setAuthBusy(false)
-    }
-  }
-
   const changeModel = async (id: string): Promise<void> => {
     setShowByok(id === 'byok')
     await window.api.ai.setModel(id)
@@ -837,11 +813,6 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     await window.api.ai.setByok(byokForm)
     await window.api.ai.setModel('byok')
     setByokSaved(true)
-    void load()
-  }
-
-  const logout = async (): Promise<void> => {
-    await window.api.ai.logout()
     void load()
   }
 
@@ -921,15 +892,6 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
               ))}
             </optgroup>
           </select>
-          <button
-            title="教学知识库（更新/恢复）"
-            onClick={() => setKbOpen(true)}
-            style={{
-              fontSize: 11, padding: '3px 8px', borderRadius: 6,
-              border: '1px solid var(--border)', background: 'var(--panel-2)',
-              color: 'var(--text)', cursor: 'pointer', whiteSpace: 'nowrap'
-            }}
-          >📚 知识库</button>
           <button
             title="模型设置"
             onClick={() => onOpenSettings?.()}
@@ -1019,34 +981,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
         </div>
       )}
 
-      {/* 登录栏 */}
-      {state?.token ? (
-        <div className="ai-authbar">
-          <span className="ai-user">{state.email}</span>
-          <span className="ai-credits">积分 {state.totalCredits ?? 0}</span>
-          <button className="ai-linkbtn" onClick={() => void logout()}>退出</button>
-        </div>
-      ) : (
-        <div className="ai-authbar">
-          <span className="ai-credits">未登录</span>
-          <button className="ai-linkbtn" onClick={() => setShowLogin((v) => !v)}>{showLogin ? '收起' : '登录'}</button>
-        </div>
-      )}
         </>
-      )}
-
-      {/* 登录表单 */}
-      {showLogin && !state?.token && (
-        <div className="ai-login">
-          <input placeholder="邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input placeholder="密码（≥6位）" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <div className="ai-login-actions">
-            <button onClick={() => void doAuth('login')} disabled={authBusy}>{authBusy ? '…' : '登录'}</button>
-            <button onClick={() => void doAuth('register')} disabled={authBusy}>注册</button>
-          </div>
-          {authErr && <div className="ai-err">{authErr}</div>}
-          <div className="ai-login-tip">注册即赠 5000 积分 · 套餐积分每月重置</div>
-        </div>
       )}
 
       {/* BYOK 提示（未配置时引导去设置页） */}
@@ -1277,131 +1212,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
         </div>
       )}
 
-      {/* 教学知识库管理弹窗 */}
-      {kbOpen && <KnowledgeBaseModal onClose={() => setKbOpen(false)} />}
     </aside>
-  )
-}
-
-// ── 教学知识库管理（插件化一键更新）─────────────────────────────
-function KnowledgeBaseModal({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [status, setStatus] = useState<{ version: string; source: 'user' | 'builtin'; builtin: string } | null>(null)
-  const [latest, setLatest] = useState<{ version: string; note: string; updatedAt: string } | null>(null)
-  const [hasUpdate, setHasUpdate] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const [updating, setUpdating] = useState(false)
-  const [progress, setProgress] = useState<{ status: string; percent: number } | null>(null)
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
-  const [checked, setChecked] = useState(false)
-
-  useEffect(() => {
-    void window.api.kb.status().then(setStatus).catch(() => undefined)
-    const unsub = window.api.kb.onProgress(setProgress)
-    return unsub
-  }, [])
-
-  const doCheck = async (): Promise<void> => {
-    setChecking(true)
-    setMsg(null)
-    try {
-      const r = await window.api.kb.check()
-      setStatus((s) => ({ version: r.current.version, source: r.current.source, builtin: s?.builtin ?? '' }))
-      setLatest(r.latest)
-      setHasUpdate(r.hasUpdate)
-      setChecked(true)
-    } catch (e) {
-      setMsg({ text: `检查失败：${(e as Error).message}（请确认网络可访问）`, ok: false })
-    }
-    setChecking(false)
-  }
-
-  const doUpdate = async (): Promise<void> => {
-    setUpdating(true)
-    setMsg(null)
-    setProgress(null)
-    try {
-      const r = await window.api.kb.update()
-      if (r.success) {
-        setMsg({ text: `更新成功（v${r.version}）。重启软件后生效。`, ok: true })
-        setHasUpdate(false)
-        if (r.version) setStatus((s) => (s ? { ...s, version: r.version ?? '', source: 'user' } : s))
-      } else {
-        setMsg({ text: `更新失败：${r.error}`, ok: false })
-      }
-    } catch (e) {
-      setMsg({ text: `更新失败：${(e as Error).message}`, ok: false })
-    }
-    setUpdating(false)
-  }
-
-  const doReset = async (): Promise<void> => {
-    if (!confirm('确定恢复内置知识库？将删除本机已更新的知识库（重启后回退内置版本）。')) return
-    setMsg(null)
-    try {
-      const r = await window.api.kb.reset()
-      if (r.success) {
-        setMsg({ text: '已恢复内置知识库，重启后生效。', ok: true })
-        setStatus((s) => (s ? { ...s, source: 'builtin', version: s.builtin } : s))
-        setLatest(null)
-        setHasUpdate(false)
-        setChecked(false)
-      } else {
-        setMsg({ text: `恢复失败：${r.error}`, ok: false })
-      }
-    } catch (e) {
-      setMsg({ text: `恢复失败：${(e as Error).message}`, ok: false })
-    }
-  }
-
-  return (
-    <div className="kb-modal-mask" onClick={onClose}>
-      <div className="kb-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="kb-modal-head">
-          <span>教学知识库</span>
-          <button className="kb-modal-close" title="关闭" onClick={onClose}>✕</button>
-        </div>
-        <div className="kb-modal-body">
-          <p className="kb-modal-desc">
-            内置 43 条 ESP32 基础教学条目（GPIO/外设/编码/流程）。知识库以独立目录维护，可在任意编辑工具（如 ima）中编辑后打包发布，软件内一键更新。
-          </p>
-          <div className="kb-ver-row">
-            <span className="kb-ver-label">当前版本</span>
-            <span className="kb-ver-value">{status ? `v${status.version}` : '…'}</span>
-            <span className={`kb-ver-source ${status?.source === 'user' ? 'user' : 'builtin'}`}>
-              {status?.source === 'user' ? '已更新（用户版）' : '内置'}
-            </span>
-          </div>
-          {latest && (
-            <div className="kb-latest">
-              <div className="kb-latest-row">最新版本：v{latest.version}（{latest.updatedAt}）</div>
-              <div className="kb-latest-note">{latest.note || '（无更新说明）'}</div>
-            </div>
-          )}
-          {checked && !latest && !hasUpdate && <div className="kb-msg ok">已是最新版本</div>}
-          {msg && <div className={`kb-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</div>}
-          {progress && updating && (
-            <div className="kb-progress">
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
-              </div>
-              <span className="progress-text">{progress.status} {progress.percent}%</span>
-            </div>
-          )}
-        </div>
-        <div className="kb-modal-foot">
-          <button className="kb-btn" disabled={checking || updating} onClick={() => void doCheck()}>
-            {checking ? '检查中…' : '检查更新'}
-          </button>
-          <button className="kb-btn primary" disabled={checking || updating || !hasUpdate} onClick={() => void doUpdate()}>
-            {updating ? '更新中…' : hasUpdate ? '一键更新' : '已最新'}
-          </button>
-          <button className="kb-btn danger" disabled={updating} onClick={() => void doReset()}>
-            恢复内置
-          </button>
-          <button className="kb-btn" onClick={onClose}>关闭</button>
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -5,46 +5,18 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 import { listPorts, writeSerial } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, clearAiState, getLocalModel, authRegister, authLogin, refreshMe, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type UserInfo, type ByokProfile } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type ByokProfile } from './services/aiGateway'
 import { runCommand } from './services/commandService'
-import { runSimBurn, type SimBurnFile } from './services/simBurnService'
-import { FAKE_CHIPS } from './services/fakeBoardService'
-import * as gitSvc from './services/gitService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
-import { fetchMarketPlugins, installPlugin, uninstallPlugin, getInstalledPlugins, loadUserPlugins } from './plugins/pluginMarket'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
-import { load as loadEspIdfPlugin, manifest as espIdfManifest } from './plugins/esp-idf-toolchain'
-import { load as loadStm32Plugin, manifest as stm32Manifest } from './plugins/stm32-cube-toolchain'
-import { initUpdater, readSettings, writeSettings } from './updater'
+import { readSettings, writeSettings } from './settings'
 import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, normalizeSketchPath, type InstallProgress } from './services/toolchain'
-import { AgentRunner } from './engine/agent-runner'
 import { schedulerService } from './services/scheduler'
+import { AgentRunner } from './engine/agent-runner'
 import type { TreeNode } from './services/fsService'
 import * as nodePty from 'node-pty'
-import { startMcpClient, stopMcpClient, getMcpClient } from './services/mcp-client'
 import { arduinoGrpc } from './services/grpc-client'
-import { getHardwareInfo } from './system/hardwareInfo'
-import {
-  MODEL_CATALOG,
-  isOllamaInstalled,
-  isOllamaRunning,
-  startOllama,
-  listLocalModels,
-  pullModel,
-  deleteModel,
-  recommendModels,
-  chatWithLocalModel,
-  ensureEngine,
-  getEngineStatus,
-  type ModelDefinition,
-} from './ai/modelRuntime'
-import {
-  getCurrentKbVersion,
-  KB_BUILTIN_VERSION,
-  checkKnowledgeUpdate,
-  updateKnowledge,
-  resetKnowledge,
-} from './ai/knowledgeUpdater'
+import { listLocalModels } from './ai/modelRuntime'
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL']
 
@@ -96,9 +68,6 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // 自动更新（仅打包后生效）
-  initUpdater(mainWindow)
-
   // 窗口控制 IPC（自定义标题栏用）
   ipcMain.handle('window:minimize', () => mainWindow.minimize())
   ipcMain.handle('window:maximize', () => {
@@ -114,17 +83,8 @@ function createWindow(): void {
 
 // ---------- 插件系统初始化 ----------
 function initPlugins(): void {
-  // 内置官方插件：Arduino CLI / ESP-IDF / STM32Cube 工具链
+  // 内置官方插件：Arduino CLI 工具链（ESP32 烧录硬链路）
   pluginManager.registerBuiltin(arduinoManifest, loadArduinoPlugin)
-  pluginManager.registerBuiltin(espIdfManifest, loadEspIdfPlugin)
-  pluginManager.registerBuiltin(stm32Manifest, loadStm32Plugin)
-  // 磁盘插件发现（未来第三方插件目录）
-  const pluginDir = app.isPackaged
-    ? join(process.resourcesPath, 'plugins')
-    : join(process.cwd(), 'src', 'main', 'plugins')
-  pluginManager.loadFromDir(pluginDir)
-  // 加载用户已安装的插件（%APPDATA%/LabCode/plugins）
-  loadUserPlugins()
   const loaded = pluginManager.init()
   console.log(
     `[plugin] 插件系统就绪：${loaded.length} 个，已启用 ${loaded.filter((p) => p.loaded).length} 个（${loaded.map((p) => p.manifest.name).join(', ')}）`
@@ -265,22 +225,6 @@ ipcMain.handle('plugin:capabilities', () => pluginManager.getCapabilities())
 ipcMain.handle('plugin:devicePanels', () => pluginManager.getDevicePanels())
 ipcMain.handle('plugin:commands', () => pluginManager.getCommands())
 
-// ========== 插件市场（真实下载/安装/卸载） ==========
-ipcMain.handle('plugin:market', async () => {
-  try {
-    return await fetchMarketPlugins()
-  } catch (e) {
-    console.warn('[plugin-market] 获取市场列表失败:', (e as Error).message)
-    return []
-  }
-})
-ipcMain.handle('plugin:installed', () => getInstalledPlugins())
-ipcMain.handle('plugin:install', async (_event, pluginId: string, downloadUrl: string) => {
-  return installPlugin(pluginId, downloadUrl)
-})
-ipcMain.handle('plugin:uninstall', (_event, pluginId: string) => {
-  return uninstallPlugin(pluginId)
-})
 
 // 能力驱动：按 capability ID 路由到插件声明的工具（capability 能力路由模式）
 ipcMain.handle('capability:run', (event, opts: { capability: string; args: Record<string, unknown> }) => {
@@ -613,53 +557,6 @@ ipcMain.handle('task:kill', (_e, id: string) => {
   return false
 })
 
-// ---------- 模拟烧录（软件内虚拟开发板，RFC2217 协议） ----------
-ipcMain.handle('simBurn:list', () =>
-  FAKE_CHIPS.map((c) => ({ id: c.id, name: c.name, revision: c.revision, mac: c.mac }))
-)
-
-ipcMain.handle('simBurn:start', (event, opts: { chipId: string; files: SimBurnFile[]; baud?: number }) => {
-  const id = `simburn-${++taskSeq}`
-  const sender = event.sender
-  const cancelFlag = { cancelled: false }
-  const push = (chunk: string): void => {
-    if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
-  }
-  const prog = (percent: number, message: string): void => {
-    if (!sender.isDestroyed()) sender.send('task:progress', { id, percent, message })
-  }
-  const done = (code: number): void => {
-    if (!sender.isDestroyed()) sender.send('task:exit', { id, code })
-    activeTasks.delete(id)
-  }
-  runSimBurn({ ...opts, cancelFlag }, push, prog).then(
-    (r) => done(r.ok ? 0 : 1),
-    (err) => {
-      push(`${err?.message || err}\n`)
-      done(1)
-    }
-  )
-  activeTasks.set(id, () => {
-    cancelFlag.cancelled = true
-  })
-  return { id }
-})
-
-// ---------- Git 源代码管理 ----------
-ipcMain.handle('git:status', (_e, root: string) => gitSvc.getStatus(root))
-ipcMain.handle('git:diff', (_e, opts: { root: string; path: string; staged: boolean }) =>
-  gitSvc.getDiff(opts.root, opts.path, opts.staged))
-ipcMain.handle('git:stage', (_e, opts: { root: string; paths: string[] }) => gitSvc.stage(opts.root, opts.paths))
-ipcMain.handle('git:stageAll', (_e, root: string) => gitSvc.stageAll(root))
-ipcMain.handle('git:unstage', (_e, opts: { root: string; paths: string[] }) => gitSvc.unstage(opts.root, opts.paths))
-ipcMain.handle('git:commit', (_e, opts: { root: string; message: string }) => gitSvc.commit(opts.root, opts.message))
-ipcMain.handle('git:init', (_e, root: string) => gitSvc.initRepo(root))
-ipcMain.handle('git:log', (_e, opts: { root: string; n?: number }) => gitSvc.getLog(opts.root, opts.n))
-ipcMain.handle('git:pull', (_e, root: string) => gitSvc.pull(root))
-ipcMain.handle('git:push', (_e, root: string) => gitSvc.push(root))
-ipcMain.handle('git:applyPatch', (_e, opts: { root: string; patch: string; cached?: boolean }) =>
-  gitSvc.applyPatch(opts.root, opts.patch, opts.cached !== false))
-
 // ---------- 真终端（node-pty） ----------
 const SHELL_MAP: Record<string, string> = {
   powershell: 'powershell.exe',
@@ -723,46 +620,6 @@ ipcMain.handle('pty:kill', (_e, id: string) => {
   return false
 })
 
-// ---------- MCP 服务器配置 ----------
-ipcMain.handle('mcp:list', () => {
-  const s = readSettings()
-  return (s.mcpServers as Array<Record<string, unknown>>) || []
-})
-ipcMain.handle('mcp:add', (_e, server: { name: string; command: string; args?: string[]; transport?: string }) => {
-  const s = readSettings()
-  const list = ((s.mcpServers as Array<Record<string, unknown>>) || []).filter((x) => x.name !== server.name)
-  list.push({ ...server, args: server.args || [], transport: server.transport || 'stdio' })
-  writeSettings({ mcpServers: list })
-  return true
-})
-ipcMain.handle('mcp:remove', (_e, name: string) => {
-  const s = readSettings()
-  const list = ((s.mcpServers as Array<Record<string, unknown>>) || []).filter((x) => x.name !== name)
-  writeSettings({ mcpServers: list })
-  stopMcpClient(name)
-  return true
-})
-
-ipcMain.handle('mcp:test', async (_e, server: { name: string; command: string; args?: string[] }) => {
-  try {
-    const client = await startMcpClient(server.name, server.command, server.args || [])
-    const tools = await client.listTools()
-    return { ok: true, toolCount: tools.length, tools: tools.map((t) => t.name) }
-  } catch (e) {
-    return { ok: false, error: (e as Error).message }
-  }
-})
-
-// ---------- 搜索配置 ----------
-ipcMain.handle('search:getConfig', () => {
-  const s = readSettings()
-  return (s.searchConfig as Record<string, unknown>) || { provider: 'auto', tavilyKey: '', serperKey: '', braveKey: '' }
-})
-ipcMain.handle('search:setConfig', (_e, config: Record<string, unknown>) => {
-  writeSettings({ searchConfig: config })
-  return true
-})
-
 ipcMain.handle('serial:list', () => listPorts())
 
 ipcMain.handle('serial:write', (_e, opts: { id: string; data: string }) => {
@@ -795,121 +652,16 @@ ipcMain.handle('ai:models', async () => {
 
 ipcMain.handle('ai:state', () => getAiState())
 
-ipcMain.handle('ai:register', async (_e, email: string, password: string) => {
-  const { token, user } = await authRegister(email, password)
-  applyUserState(token, user)
-  return user
-})
-
-ipcMain.handle('ai:login', async (_e, email: string, password: string) => {
-  const { token, user } = await authLogin(email, password)
-  applyUserState(token, user)
-  return user
-})
-
-ipcMain.handle('ai:logout', () => clearAiState())
-
-ipcMain.handle('ai:setModel', (_e, modelId: string) => {
-  const s = getAiState()
-  s.modelId = modelId
-  setAiState(s)
-  return s
-})
-
-ipcMain.handle('ai:setByok', (_e, byok: { baseUrl: string; apiKey: string; model: string } | null) => {
-  const s = getAiState()
-  s.byok = byok
-  setAiState(s)
-  return s
-})
-
 // ---------- 多 BYOK profile ----------
 ipcMain.handle('ai:byokProfiles', () => listByokProfiles())
 ipcMain.handle('ai:byokSave', (_e, profile: ByokProfile) => saveByokProfile(profile))
 ipcMain.handle('ai:byokDelete', (_e, id: string) => deleteByokProfile(id))
 ipcMain.handle('ai:byokActivate', (_e, id: string | null) => setActiveByok(id))
 
-// ---------- 硬件检测与本地大模型管理 ----------
-ipcMain.handle('hardware:info', async () => {
-  return getHardwareInfo()
-})
-
-ipcMain.handle('model:catalog', () => {
-  return MODEL_CATALOG
-})
-
-ipcMain.handle('model:recommend', async () => {
-  const hw = await getHardwareInfo()
-  return recommendModels({
-    totalRAMGB: hw.totalRAMGB,
-    hasGPU: hw.capability.hasGPU,
-    vramGB: hw.capability.vramGB,
-  })
-})
-
-ipcMain.handle('model:ollamaStatus', async () => {
-  const st = await getEngineStatus()
-  return { installed: st.installed, running: st.running, version: st.version, engineDir: st.engineDir }
-})
-
-ipcMain.handle('model:ensureEngine', async (event) => {
-  const sender = event.sender
-  return ensureEngine((p) => {
-    sender.send('model:pullProgress', { tag: '__engine__', ...p })
-  })
-})
-
-ipcMain.handle('model:startOllama', () => {
-  // 内置引擎无需"启动"——下载即用；此处仅触发一次引擎下载
-  const cp = startOllama()
-  return { started: !!cp }
-})
-
+// ---------- 本地模型列表（供 AiPanel 选择本地 llama 通道） ----------
 ipcMain.handle('model:local', async () => {
   // 本地模型：直接扫描已安装 GGUF（无需 Ollama；llama-server 内置引擎同样识别）
   return listLocalModels()
-})
-
-// ---------- 教学知识库插件化更新 ----------
-ipcMain.handle('kb:status', async () => {
-  const { version, source } = getCurrentKbVersion()
-  return { version, source, builtin: KB_BUILTIN_VERSION }
-})
-ipcMain.handle('kb:check', async () => checkKnowledgeUpdate())
-ipcMain.handle('kb:update', async (event) => {
-  const sender = event.sender
-  return updateKnowledge((p) => {
-    sender.send('kb:progress', p)
-  })
-})
-ipcMain.handle('kb:reset', async () => resetKnowledge())
-
-ipcMain.handle('model:pull', async (event, opts: { tag: string }) => {
-  const sender = event.sender
-  // 无需 Ollama：先确保内置引擎，再直接下载 GGUF
-  const eng = await ensureEngine((p) => {
-    sender.send('model:pullProgress', { tag: '__engine__', ...p })
-  })
-  if (!eng.success) return { success: false, error: eng.error || '引擎下载失败' }
-  await pullModel(opts.tag, (progress) => {
-    sender.send('model:pullProgress', { tag: opts.tag, ...progress })
-  })
-  return { success: true }
-})
-
-ipcMain.handle('model:delete', async (_e, tag: string) => {
-  return deleteModel(tag)
-})
-
-ipcMain.handle('model:chat', async (event, opts: {
-  model: string
-  messages: Array<{ role: string; content: string }>
-}) => {
-  const sender = event.sender
-  const fullText = await chatWithLocalModel(opts.model, opts.messages, (chunk) => {
-    sender.send('model:chatChunk', { model: opts.model, chunk })
-  })
-  return { content: fullText }
 })
 
 // ---------- Agent 引擎（AI 智能体，工具调用闭环） ----------
@@ -989,105 +741,6 @@ function resolveExamplesDir(): string {
 ipcMain.handle('app:getExamplesDir', () => {
   return resolveExamplesDir()
 })
-
-// 模拟烧录：内置演示固件清单（扫描 examples/sim-firmware* 目录）
-ipcMain.handle('simBurn:demos', () => {
-  const examplesDir = resolveExamplesDir()
-  const out: Array<{ id: string; name: string; chip: string; baud: number; files: Array<{ label: string; path: string; addr: number }> }> = []
-  if (!existsSync(examplesDir)) return out
-  try {
-    for (const sub of readdirSync(examplesDir)) {
-      if (!sub.startsWith('sim-firmware')) continue
-      const fwDir = join(examplesDir, sub)
-      if (!statSync(fwDir).isDirectory()) continue
-      const manifestPath = join(fwDir, 'manifest.json')
-      if (!existsSync(manifestPath)) continue
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-      out.push({
-        id: sub,
-        name: manifest.name ?? sub,
-        chip: manifest.chip ?? 'esp32c3',
-        baud: Number(manifest.baud) || 921600,
-        files: (manifest.files ?? []).map((f: { label: string; path: string; addr: string }) => ({
-          label: f.label,
-          path: join(fwDir, f.path),
-          addr: typeof f.addr === 'string' ? parseInt(f.addr, 16) : Number(f.addr),
-        })),
-      })
-    }
-  } catch {
-    return out
-  }
-  return out
-})
-
-// 模拟烧录：收集当前编译产物（arduino-cli build_path → 4 个可烧录 bin）
-ipcMain.handle('simBurn:collectBuild', async (_e, opts: { buildPath: string }) => {
-  const dir = opts?.buildPath || ''
-  if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) {
-    return { ok: false, error: '编译产物目录不存在，请先在下方点「编译」生成固件' }
-  }
-  try {
-    const files = readdirSync(dir)
-    // 主固件：最大的非系统 .bin（排除 bootloader/partitions/boot_app0/merged）
-    const mainBin = files
-      .filter((f) => f.endsWith('.bin') && !/bootloader|partitions|boot_app0|merged/i.test(f))
-      .map((f) => ({ name: f, size: statSync(join(dir, f)).size }))
-      .sort((a, b) => b.size - a.size)[0]
-    // arduino-cli 产物命名：<sketch>.ino.bootloader.bin / <sketch>.ino.partitions.bin
-    const bootloader = files.find((f) => /bootloader\.bin$/i.test(f))
-    const partitions = files.find((f) => /partitions\.bin$/i.test(f))
-    // boot_app0.bin：优先产物目录，其次 Arduino15 esp32 工具包（按版本号取最高）
-    let bootApp0 = files.find((f) => /boot_app0\.bin$/i.test(f)) || ''
-    if (!bootApp0) {
-      const localAppData = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
-      const arduino15Esp32 = join(localAppData, 'Arduino15', 'packages', 'esp32', 'hardware', 'esp32')
-      if (existsSync(arduino15Esp32)) {
-        for (const v of readdirSync(arduino15Esp32).sort().reverse()) {
-          const cand = join(arduino15Esp32, v, 'tools', 'partitions', 'boot_app0.bin')
-          if (existsSync(cand)) { bootApp0 = cand; break }
-        }
-      }
-    }
-    const out: Array<{ label: string; path: string; addr: number }> = []
-    if (bootloader) out.push({ label: bootloader, path: join(dir, bootloader), addr: 0x1000 })
-    if (partitions) out.push({ label: partitions, path: join(dir, partitions), addr: 0x8000 })
-    // boot_app0：可能命中产物目录文件名，也可能是 Arduino15 的绝对路径
-    const bootApp0Path = bootApp0 && (bootApp0.includes('\\') || bootApp0.includes('/') || bootApp0.includes(':'))
-      ? bootApp0
-      : bootApp0 ? join(dir, bootApp0) : ''
-    if (bootApp0Path) out.push({ label: 'boot_app0.bin', path: bootApp0Path, addr: 0xe000 })
-    if (mainBin) out.push({ label: mainBin.name, path: join(dir, mainBin.name), addr: 0x10000 })
-    if (out.length === 0) return { ok: false, error: `产物目录 ${dir} 中未找到可烧录 bin 文件` }
-    return { ok: true, files: out }
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) }
-  }
-})
-
-function applyUserState(token: string, user: UserInfo): void {
-  const s = getAiState()
-  s.token = token
-  s.email = user.email
-  s.planCredits = user.planCredits
-  s.rechargeCredits = user.rechargeCredits
-  s.totalCredits = user.totalCredits
-  s.planMonth = user.planMonth
-  setAiState(s)
-  // 后台刷新一次最新积分
-  void refreshMe(token)
-    .then((u) => {
-      const cur = getAiState()
-      cur.planCredits = u.planCredits
-      cur.rechargeCredits = u.rechargeCredits
-      cur.totalCredits = u.totalCredits
-      cur.planMonth = u.planMonth
-      setAiState(cur)
-    })
-    .catch(() => {
-      /* 静默 */
-    })
-}
 
 app.whenReady().then(() => {
   initPlugins()

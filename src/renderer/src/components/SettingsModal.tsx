@@ -34,12 +34,9 @@ const BYOK_PROVIDERS: Array<{ value: string; label: string; baseUrl: string; mod
 ]
 
 const CATEGORIES = [
-  { id: 'account', label: '账户', icon: '👤' },
   { id: 'models', label: '模型', icon: '🧠' },
   { id: 'general', label: '常规', icon: '⚙️' },
   { id: 'skills', label: '技能', icon: '✨' },
-  { id: 'mcp', label: 'MCP 服务器', icon: '🔌' },
-  { id: 'search', label: '搜索', icon: '🔍' },
   { id: 'plugins', label: '插件', icon: '🧩' },
   { id: 'hooks', label: '钩子', icon: '🪝' },
 ]
@@ -52,12 +49,6 @@ interface PluginItem {
 
 function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
-  const [account, setAccount] = useState<{
-    email?: string | null
-    planCredits?: number | null
-    rechargeCredits?: number | null
-    totalCredits?: number | null
-  } | null>(null)
   const [plugins, setPlugins] = useState<PluginItem[]>([])
   const [fontSize, setFontSize] = useState<number>(() => Number(localStorage.getItem('codelab-fontsize')) || 14)
   // BYOK 自定义模型（多 profile）
@@ -71,22 +62,9 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [byokApiKey, setByokApiKey] = useState('')
   const [byokModel, setByokModel] = useState('')
   const [byokSaved, setByokSaved] = useState(false)
-  // MCP
-  const [mcpServers, setMcpServers] = useState<Array<{ name: string; command: string; args?: string[]; transport?: string }>>([])
-  const [mcpName, setMcpName] = useState('')
-  const [mcpCommand, setMcpCommand] = useState('')
-  const [mcpArgs, setMcpArgs] = useState('')
-  const [mcpTestResult, setMcpTestResult] = useState<string>('')
-  // 搜索
-  const [searchProvider, setSearchProvider] = useState('auto')
-  const [tavilyKey, setTavilyKey] = useState('')
-  const [serperKey, setSerperKey] = useState('')
-  const [braveKey, setBraveKey] = useState('')
-  const [searchSaved, setSearchSaved] = useState(false)
 
   useEffect(() => {
     window.api.ai.state().then((s) => {
-      setAccount({ email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits, totalCredits: s.totalCredits })
       // 加载多 BYOK profile
       const profiles = s.byokProfiles || []
       setByokProfiles(profiles)
@@ -99,15 +77,8 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
       } else {
         setActiveByokId(null)
       }
-    }).catch(() => setAccount(null))
-    window.api.plugin.list().then(setPlugins).catch(() => setPlugins([]))
-    window.api.mcp.list().then(setMcpServers).catch(() => setMcpServers([]))
-    window.api.search.getConfig().then((c) => {
-      setSearchProvider(c.provider || 'auto')
-      setTavilyKey(c.tavilyKey || '')
-      setSerperKey(c.serperKey || '')
-      setBraveKey(c.braveKey || '')
     }).catch(() => undefined)
+    window.api.plugin.list().then(setPlugins).catch(() => setPlugins([]))
   }, [])
 
   useEffect(() => {
@@ -147,30 +118,6 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
             ))}
           </aside>
           <section className="settings-content">
-            {active === 'account' && (
-              <div className="settings-section">
-                <h3>账户</h3>
-                <div className="settings-row">
-                  <span>用户ID</span>
-                  <span className="settings-val">{account?.email ? '已登录' : '未登录'}</span>
-                </div>
-                <div className="settings-row">
-                  <span>邮箱</span>
-                  <span className="settings-val">{account?.email ?? '未登录'}</span>
-                </div>
-                <div className="settings-row">
-                  <span>套餐积分</span>
-                  <span className="settings-val">{account?.planCredits ?? 0}（30天周期重置）</span>
-                </div>
-                <div className="settings-row">
-                  <span>额外积分</span>
-                  <span className="settings-val">{account?.rechargeCredits ?? 0}（永久有效）</span>
-                </div>
-                <div className="settings-actions">
-                  <button className="settings-btn" onClick={() => { void window.api.ai.logout().then((s) => setAccount({ email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits, totalCredits: s.totalCredits })) }}>退出登录</button>
-                </div>
-              </div>
-            )}
             {active === 'models' && (
               <div className="settings-section">
                 <h3>模型</h3>
@@ -361,100 +308,6 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                 <div className="settings-skill">创建插件 <span className="settings-tag">插件</span></div>
                 <div className="settings-skill">easyeda-agent <span className="settings-tag">共享</span></div>
                 <p className="settings-desc">在 AI 输入框输入 / 可弹出技能列表。</p>
-              </div>
-            )}
-            {active === 'mcp' && (
-              <div className="settings-section">
-                <h3>MCP 服务器</h3>
-                <p className="settings-desc">支持 stdio / http / sse 传输方式。配置后 AI 可调用 MCP 服务器提供的工具。</p>
-                {mcpServers.length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    {mcpServers.map((s) => (
-                      <div key={s.name} className="settings-row">
-                        <span>{s.name} <span className="settings-tag">{s.transport || 'stdio'}</span></span>
-                        <span className="settings-val" style={{ fontFamily: 'monospace', fontSize: 11 }}>{s.command} {s.args?.join(' ') || ''}</span>
-                        <button className="settings-btn" onClick={() => {
-                          void window.api.mcp.remove(s.name).then(() => window.api.mcp.list().then(setMcpServers))
-                        }}>删除</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="settings-row">
-                  <span>名称</span>
-                  <input className="settings-input" value={mcpName} onChange={(e) => setMcpName(e.target.value)} placeholder="my-mcp" />
-                </div>
-                <div className="settings-row">
-                  <span>命令</span>
-                  <input className="settings-input" value={mcpCommand} onChange={(e) => setMcpCommand(e.target.value)} placeholder="npx -y @modelcontextprotocol/server-filesystem" />
-                </div>
-                <div className="settings-row">
-                  <span>参数</span>
-                  <input className="settings-input" value={mcpArgs} onChange={(e) => setMcpArgs(e.target.value)} placeholder="空格分隔，如 /path/to/dir" />
-                </div>
-                <div className="settings-actions">
-                  <button className="settings-btn" onClick={() => {
-                    if (!mcpName.trim() || !mcpCommand.trim()) return
-                    void window.api.mcp.add({
-                      name: mcpName.trim(),
-                      command: mcpCommand.trim(),
-                      args: mcpArgs.trim() ? mcpArgs.trim().split(/\s+/) : []
-                    }).then(() => {
-                      setMcpName(''); setMcpCommand(''); setMcpArgs('')
-                      window.api.mcp.list().then(setMcpServers)
-                    })
-                  }}>添加服务器</button>
-                  <button className="settings-btn" onClick={() => {
-                    if (!mcpName.trim() || !mcpCommand.trim()) { setMcpTestResult('请填写名称和命令'); return }
-                    setMcpTestResult('测试中…')
-                    void window.api.mcp.test({
-                      name: mcpName.trim(),
-                      command: mcpCommand.trim(),
-                      args: mcpArgs.trim() ? mcpArgs.trim().split(/\s+/) : []
-                    }).then((r) => {
-                      setMcpTestResult(r.ok ? `✓ 连接成功，发现 ${r.toolCount} 个工具：${(r.tools || []).join(', ')}` : `✗ 连接失败：${r.error}`)
-                    })
-                  }}>测试连接</button>
-                </div>
-                {mcpTestResult && <div className="settings-desc" style={{ marginTop: 8 }}>{mcpTestResult}</div>}
-              </div>
-            )}
-            {active === 'search' && (
-              <div className="settings-section">
-                <h3>搜索</h3>
-                <p className="settings-desc">Web 搜索 / 抓取配置。默认使用免密钥 DuckDuckGo，也可配置第三方搜索 API。web_fetch 始终免费，且阻止内网访问。</p>
-                <div className="settings-row">
-                  <span>搜索提供方</span>
-                  <select className="settings-select" value={searchProvider} onChange={(e) => { setSearchProvider(e.target.value); setSearchSaved(false) }}>
-                    <option value="auto">自动（DuckDuckGo 免密钥）</option>
-                    <option value="tavily">Tavily</option>
-                    <option value="serper">Serper</option>
-                    <option value="brave">Brave Search</option>
-                  </select>
-                </div>
-                {searchProvider === 'tavily' && (
-                  <div className="settings-row">
-                    <span>Tavily API Key</span>
-                    <input className="settings-input" type="password" value={tavilyKey} onChange={(e) => { setTavilyKey(e.target.value); setSearchSaved(false) }} placeholder="tvly-..." />
-                  </div>
-                )}
-                {searchProvider === 'serper' && (
-                  <div className="settings-row">
-                    <span>Serper API Key</span>
-                    <input className="settings-input" type="password" value={serperKey} onChange={(e) => { setSerperKey(e.target.value); setSearchSaved(false) }} placeholder="..." />
-                  </div>
-                )}
-                {searchProvider === 'brave' && (
-                  <div className="settings-row">
-                    <span>Brave API Key</span>
-                    <input className="settings-input" type="password" value={braveKey} onChange={(e) => { setBraveKey(e.target.value); setSearchSaved(false) }} placeholder="..." />
-                  </div>
-                )}
-                <div className="settings-actions">
-                  <button className="settings-btn" onClick={() => {
-                    void window.api.search.setConfig({ provider: searchProvider, tavilyKey, serperKey, braveKey }).then(() => setSearchSaved(true))
-                  }}>{searchSaved ? '✓ 已保存' : '保存配置'}</button>
-                </div>
               </div>
             )}
             {active === 'plugins' && (
