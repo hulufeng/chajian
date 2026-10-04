@@ -1,0 +1,101 @@
+{
+  "name": "codelab-desktop",
+  "version": "1.1.2",
+  "description": "代码实验室 · 通用软件开发智能体桌面客户端",
+  "main": "./out/main/index.js",
+  "author": "LabCode",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && powershell -NoProfile -Command \"if(Test-Path proto){Copy-Item -Path proto -Destination out/main/proto -Recurse -Force; Write-Host 'proto copied'}\"",
+    "start": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "dist": "electron-vite build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.labcode.desktop",
+    "productName": "LabCode",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "proto",
+        "to": "proto"
+      },
+      {
+        "from": "resources/knowledge",
+        "to": "knowledge"
+      },
+      {
+        "from": "examples",
+        "to": "examples"
+      },
+      {
+        "from": "resources/llama",
+        "to": "llama"
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "LabCode-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LabCode 代码实验室"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://bluebubai.work/updates/"
+      }
+    ]
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
+    "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.9",
+    "monaco-editor": "^0.56.0",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "serialport": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "png-to-ico": "^3.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
+  }
+}

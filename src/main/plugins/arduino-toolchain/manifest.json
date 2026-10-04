@@ -1,0 +1,161 @@
+{
+  "id": "arduino-cli-toolchain",
+  "name": "Arduino CLI 工具链",
+  "displayName": "Arduino CLI 工具链",
+  "version": "0.4.0",
+  "developer": "LabCode",
+  "icon": "🔌",
+  "description": "Arduino（AVR / ESP32 / ESP8266）编译烧录、板卡与库管理、串口监视",
+  "minAppVersion": "0.1.0",
+  "entry": "./index.ts",
+  "capabilities": {
+    "compile": { "transport": "backend", "service": "toolchain", "method": "compile", "output": "avr-gcc" },
+    "upload": { "transport": "backend", "service": "toolchain", "method": "upload" },
+    "board-search": { "transport": "backend", "service": "toolchain", "method": "boardSearch" },
+    "board-manage": { "transport": "backend", "service": "toolchain", "method": "boardList" },
+    "library-manage": { "transport": "backend", "service": "toolchain", "method": "librarySearch" },
+    "library-install": { "transport": "backend", "service": "toolchain", "method": "libraryInstall" },
+    "platform-install": { "transport": "backend", "service": "toolchain", "method": "platformInstall" },
+    "platform-list": { "transport": "backend", "service": "toolchain", "method": "platformList" }
+  },
+  "tools": [
+    {
+      "name": "compile",
+      "description": "编译 Arduino 工程",
+      "transport": "internal",
+      "category": "execute",
+      "internal": { "service": "arduinoCli", "method": "compile" },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sketch": { "type": "string", "description": "工程目录或 .ino 文件路径" },
+          "fqbn": { "type": "string", "description": "完全限定板卡名，如 esp32:esp32:esp32c3" }
+        },
+        "required": ["sketch", "fqbn"]
+      },
+      "stream": true,
+      "timeoutMs": 300000
+    },
+    {
+      "name": "upload",
+      "description": "烧录固件到设备",
+      "transport": "internal",
+      "category": "execute",
+      "internal": { "service": "arduinoCli", "method": "upload" },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sketch": { "type": "string" },
+          "fqbn": { "type": "string" },
+          "port": { "type": "string", "description": "串口端口，如 COM3" }
+        },
+        "required": ["sketch", "fqbn", "port"]
+      },
+      "stream": true,
+      "timeoutMs": 300000,
+      "pauseSerialPort": true
+    },
+    {
+      "name": "board_list",
+      "description": "列出已连接的开发板",
+      "transport": "internal",
+      "category": "query",
+      "internal": { "service": "arduinoCli", "method": "board.list" }
+    },
+    {
+      "name": "serial_list",
+      "description": "列出串口",
+      "transport": "internal",
+      "category": "query",
+      "internal": { "service": "serialport", "method": "list" }
+    },
+    {
+      "name": "serial_open",
+      "description": "打开串口监视器",
+      "transport": "internal",
+      "category": "execute",
+      "internal": { "service": "serialLog", "method": "open" },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "port": { "type": "string" },
+          "baud": { "type": "number", "default": 115200 }
+        },
+        "required": ["port"]
+      },
+      "stream": true
+    }
+  ],
+  "projectTypes": [
+    {
+      "id": "arduino",
+      "title": "Arduino 项目",
+      "icon": "🔌",
+      "scaffold": [
+        { "file": "{name}.ino", "content": "// {name} - Arduino 项目\nvoid setup() {\n  Serial.begin(115200);\n  pinMode(2, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(2, HIGH);\n  delay(500);\n  digitalWrite(2, LOW);\n  delay(500);\n}\n" },
+        { "file": "README.md", "content": "# {name}\n\nArduino 项目，由 LabCode 生成。板卡：esp32:esp32:esp32c3\n" }
+      ]
+    }
+  ],
+  "devicePanel": {
+    "id": "arduino-board",
+    "title": "Arduino 设备",
+    "selectors": [
+      {
+        "id": "board",
+        "title": "开发板",
+        "source": { "transport": "backend", "service": "toolchain", "method": "boardSearch" },
+        "searchable": true,
+        "key": "fqbn",
+        "placeholder": "搜索开发板…"
+      },
+      {
+        "id": "port",
+        "title": "端口",
+        "source": { "transport": "backend", "service": "serialport", "method": "list" },
+        "key": "port"
+      }
+    ],
+    "actions": [
+      {
+        "id": "open-monitor",
+        "title": "串口监视器",
+        "kind": "action",
+        "placement": "device-panel.action",
+        "transport": "internal",
+        "internal": { "service": "serialLog", "method": "open" }
+      }
+    ]
+  },
+  "views": [
+    { "id": "platforms", "title": "平台管理", "icon": "📦", "slot": "sidebar", "type": "webview", "entry": "ui/platforms.html" },
+    { "id": "libraries", "title": "库管理", "icon": "📚", "slot": "sidebar", "type": "webview", "entry": "ui/libraries.html" }
+  ],
+  "detection": {
+    "tool": "arduino-cli",
+    "versionArgs": ["version"]
+  },
+  "channels": {
+    "internal": ["arduino.version", "arduino.detect"],
+    "backend": [
+      "toolchain.detect",
+      "toolchain.boardSearch",
+      "toolchain.boardList",
+      "toolchain.librarySearch",
+      "toolchain.libraryList",
+      "toolchain.libraryInstall",
+      "toolchain.platformList",
+      "toolchain.platformInstall",
+      "toolchain.platformUninstall",
+      "toolchain.compile",
+      "toolchain.upload",
+      "serial.list",
+      "serial.open"
+    ],
+    "cli": [],
+    "http": [],
+    "grpc": [],
+    "mcp": [],
+    "mqtt": []
+  }
+}

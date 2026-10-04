@@ -1,0 +1,26 @@
+{
+  "id": "esp-idf-toolchain",
+  "name": "esp-idf-toolchain",
+  "displayName": "ESP-IDF 工具链",
+  "version": "0.1.11",
+  "developer": "LabCode",
+  "icon": "📡",
+  "description": "ESP-IDF 全流程：build / flash / set_target / Kconfig 图形化 / 串口日志",
+  "author": "LabCode",
+  "minAppVersion": "0.1.0",
+  "entry": "./index.ts",
+  "channels": {
+    "internal": ["espidf.version"],
+    "backend": [
+      "espidf.detect",
+      "espidf.build",
+      "espidf.flash",
+      "espidf.setTarget"
+    ],
+    "cli": ["idf.py build", "idf.py flash", "idf.py set-target"],
+    "http": [],
+    "grpc": [],
+    "mcp": [],
+    "mqtt": []
+  }
+}

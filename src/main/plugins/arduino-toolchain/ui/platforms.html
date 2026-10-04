@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>平台管理</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    color: #1A1B1C;
+    background: #F4F3EE;
+    padding: 12px;
+    overflow-x: hidden;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .header h3 {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .btn {
+    padding: 4px 10px;
+    border: 1px solid #E4E3DD;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    color: #1A1B1C;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: #EFEFEA; }
+  .btn-primary {
+    background: #2563EB;
+    color: #fff;
+    border-color: #2563EB;
+  }
+  .btn-primary:hover { background: #1D4ED8; }
+  .btn-danger {
+    color: #DC2626;
+    border-color: #FECACA;
+  }
+  .btn-danger:hover { background: #FEF2F2; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .search-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .search-bar input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid #E4E3DD;
+    border-radius: 6px;
+    font-size: 12px;
+    background: #fff;
+  }
+  .search-bar input:focus { outline: none; border-color: #2563EB; }
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6B7280;
+    margin: 12px 0 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .platform-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .platform-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid #E4E3DD;
+    border-radius: 8px;
+  }
+  .platform-info { flex: 1 1 auto; min-width: 0; }
+  .platform-name {
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .platform-meta {
+    font-size: 11px;
+    color: #6B7280;
+    margin-top: 2px;
+  }
+  .platform-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .progress-wrap {
+    margin-top: 8px;
+  }
+  .progress-bar {
+    height: 4px;
+    background: #E4E3DD;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #2563EB;
+    transition: width 0.3s;
+  }
+  .progress-text {
+    font-size: 11px;
+    color: #6B7280;
+    margin-top: 4px;
+  }
+  .empty {
+    text-align: center;
+    padding: 24px;
+    color: #6B7280;
+    font-size: 12px;
+  }
+  .loading {
+    text-align: center;
+    padding: 16px;
+    color: #6B7280;
+    font-size: 12px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .badge-installed { background: #DCFCE7; color: #166534; }
+  .badge-available { background: #DBEAFE; color: #1E40AF; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h3>📦 开发板平台</h3>
+    <button class="btn" id="refreshBtn" onclick="loadPlatforms()">↻ 刷新</button>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="搜索平台（如 esp32、avr、stm32）…" oninput="filterPlatforms()">
+    <button class="btn btn-primary" onclick="searchPlatforms()">搜索</button>
+  </div>
+
+  <div class="section-title">已安装</div>
+  <div id="installedList" class="platform-list">
+    <div class="loading">加载中…</div>
+  </div>
+
+  <div class="section-title">可安装</div>
+  <div id="availableList" class="platform-list">
+    <div class="empty">输入关键词搜索可安装的平台</div>
+  </div>
+
+  <div id="progressWrap" class="progress-wrap" style="display:none;">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-text" id="progressText">准备安装…</div>
+  </div>
+
+<script>
+  // 通过 postMessage 与宿主通信
+  function callHost(method, args) {
+    return new Promise((resolve, reject) => {
+      const id = Date.now() + Math.random();
+      const handler = (e) => {
+        if (e.data && e.data.id === id) {
+          window.removeEventListener('message', handler);
+          if (e.data.error) reject(new Error(e.data.error));
+          else resolve(e.data.result);
+        }
+      };
+      window.addEventListener('message', handler);
+      window.parent.postMessage({ type: 'plugin:invoke', id, method, args }, '*');
+      setTimeout(() => {
+        window.removeEventListener('message', handler);
+        reject(new Error('timeout'));
+      }, 30000);
+    });
+  }
+
+  let installedPlatforms = [];
+  let availablePlatforms = [];
+
+  async function loadPlatforms() {
+    const list = document.getElementById('installedList');
+    list.innerHTML = '<div class="loading">加载中…</div>';
+    try {
+      const result = await callHost('platform:list', {});
+      installedPlatforms = result.platforms || [];
+      renderInstalled();
+    } catch (e) {
+      list.innerHTML = '<div class="empty">加载失败: ' + e.message + '</div>';
+    }
+  }
+
+  async function searchPlatforms() {
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (!keyword) {
+      availablePlatforms = [];
+      renderAvailable();
+      return;
+    }
+    const list = document.getElementById('availableList');
+    list.innerHTML = '<div class="loading">搜索中…</div>';
+    try {
+      const result = await callHost('platform:search', { keyword });
+      availablePlatforms = result.platforms || [];
+      renderAvailable();
+    } catch (e) {
+      list.innerHTML = '<div class="empty">搜索失败: ' + e.message + '</div>';
+    }
+  }
+
+  function filterPlatforms() {
+    // 实时过滤已安装列表
+    renderInstalled();
+  }
+
+  function renderInstalled() {
+    const list = document.getElementById('installedList');
+    const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+    const filtered = keyword
+      ? installedPlatforms.filter(p => (p.name + p.id + p.architecture).toLowerCase().includes(keyword))
+      : installedPlatforms;
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">暂无已安装平台</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(p => `
+      <div class="platform-item">
+        <div class="platform-info">
+          <div class="platform-name">${p.name || p.id} <span class="badge badge-installed">v${p.version || '?'}</span></div>
+          <div class="platform-meta">${p.id} · ${p.architecture || ''}</div>
+        </div>
+        <div class="platform-actions">
+          <button class="btn btn-danger" onclick="uninstallPlatform('${p.id}')">卸载</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderAvailable() {
+    const list = document.getElementById('availableList');
+    if (availablePlatforms.length === 0) {
+      list.innerHTML = '<div class="empty">无匹配结果</div>';
+      return;
+    }
+    list.innerHTML = availablePlatforms.map(p => `
+      <div class="platform-item">
+        <div class="platform-info">
+          <div class="platform-name">${p.name || p.id}</div>
+          <div class="platform-meta">${p.id} · ${p.latestVersion || ''}</div>
+        </div>
+        <div class="platform-actions">
+          <button class="btn btn-primary" onclick="installPlatform('${p.id}')">安装</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function installPlatform(platformId) {
+    const wrap = document.getElementById('progressWrap');
+    const fill = document.getElementById('progressFill');
+    const text = document.getElementById('progressText');
+    wrap.style.display = 'block';
+    fill.style.width = '0%';
+    text.textContent = '准备安装 ' + platformId + '…';
+
+    try {
+      // 监听安装进度
+      const progressHandler = (e) => {
+        if (e.data && e.data.type === 'platform:install-progress') {
+          fill.style.width = (e.data.percent || 0) + '%';
+          text.textContent = e.data.message || '安装中…';
+        }
+      };
+      window.addEventListener('message', progressHandler);
+
+      await callHost('platform:install', { platform: platformId });
+      window.removeEventListener('message', progressHandler);
+      text.textContent = '安装成功！';
+      fill.style.width = '100%';
+      setTimeout(() => { wrap.style.display = 'none'; loadPlatforms(); }, 1000);
+    } catch (e) {
+      text.textContent = '安装失败: ' + e.message;
+      setTimeout(() => { wrap.style.display = 'none'; }, 3000);
+    }
+  }
+
+  async function uninstallPlatform(platformId) {
+    if (!confirm('确定要卸载 ' + platformId + ' 吗？')) return;
+    try {
+      await callHost('platform:uninstall', { platform: platformId });
+      loadPlatforms();
+    } catch (e) {
+      alert('卸载失败: ' + e.message);
+    }
+  }
+
+  // 通知宿主页面已就绪
+  window.parent.postMessage({ type: 'ready', view: 'platforms' }, '*');
+  loadPlatforms();
+</script>
+</body>
+</html>

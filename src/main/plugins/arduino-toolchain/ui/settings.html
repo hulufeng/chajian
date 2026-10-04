@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    color: #ccc;
+    background: transparent;
+    padding: 12px;
+    overflow-x: hidden;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #faad14;
+    background: rgba(250, 173, 20, 0.12);
+    border: 1px solid rgba(250, 173, 20, 0.3);
+    border-radius: 4px;
+  }
+  .desc {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .url-list {
+    margin-bottom: 10px;
+  }
+  .url-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+  .url-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: #aaa;
+    word-break: break-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .url-remove {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .url-remove:hover { color: #ff6b6b; background: rgba(255,107,107,0.1); }
+  .add-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .add-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #ddd;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    outline: none;
+  }
+  .add-input:focus { border-color: #4a9eff; }
+  .add-input::placeholder { color: #666; }
+  .btn {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: #4a9eff;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #3a8eef; }
+  .btn-secondary {
+    background: rgba(255,255,255,0.08);
+    color: #ccc;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+  .action-row {
+    display: flex;
+    gap: 8px;
+  }
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 12px 0;
+  }
+  .status-msg {
+    font-size: 11px;
+    margin-top: 8px;
+    min-height: 16px;
+  }
+  .status-msg.success { color: #52c41a; }
+  .status-msg.error { color: #ff6b6b; }
+</style>
+</head>
+<body>
+  <div class="section-title">
+    开发板管理器附加地址
+    <span class="badge">需重启生效</span>
+  </div>
+  <div class="desc">
+    第三方开发板包索引 URL（如 esp32/esp8266 镜像）。用户覆盖优先于 manifest 默认值；与官方 Arduino IDE 的板卡源自动去重合并。留空数组可清除默认源。
+  </div>
+
+  <div class="url-list" id="urlList"></div>
+
+  <div class="add-row">
+    <input type="text" class="add-input" id="urlInput" placeholder="https://..." />
+    <button class="btn btn-primary" id="addBtn">添加</button>
+  </div>
+
+  <div class="action-row">
+    <button class="btn btn-primary" id="saveBtn">保存</button>
+    <button class="btn btn-secondary" id="resetBtn">恢复默认</button>
+  </div>
+  <div class="status-msg" id="statusMsg"></div>
+
+<script>
+(function() {
+  const urlList = document.getElementById('urlList');
+  const urlInput = document.getElementById('urlInput');
+  const addBtn = document.getElementById('addBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusMsg = document.getElementById('statusMsg');
+
+  let urls = [];
+  let reqId = 0;
+  const pending = new Map();
+
+  function invoke(method, args) {
+    return new Promise((resolve, reject) => {
+      const id = 'req_' + (++reqId);
+      pending.set(id, { resolve, reject });
+      window.parent.postMessage({ type: 'plugin:invoke', id, method, args }, '*');
+      setTimeout(() => {
+        if (pending.has(id)) {
+          pending.delete(id);
+          reject(new Error('timeout'));
+        }
+      }, 10000);
+    });
+  }
+
+  window.addEventListener('message', (e) => {
+    const data = e.data;
+    if (!data || !data.id) return;
+    const p = pending.get(data.id);
+    if (!p) return;
+    pending.delete(data.id);
+    if (data.error) p.reject(new Error(data.error));
+    else p.resolve(data.result);
+  });
+
+  function render() {
+    urlList.innerHTML = '';
+    if (urls.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-size:12px;color:#666;padding:8px;text-align:center;';
+      empty.textContent = '暂无附加地址';
+      urlList.appendChild(empty);
+      return;
+    }
+    urls.forEach((url, idx) => {
+      const item = document.createElement('div');
+      item.className = 'url-item';
+      const text = document.createElement('div');
+      text.className = 'url-text';
+      text.textContent = url;
+      text.title = url;
+      const remove = document.createElement('button');
+      remove.className = 'url-remove';
+      remove.textContent = '✕';
+      remove.title = '删除';
+      remove.onclick = () => {
+        urls.splice(idx, 1);
+        render();
+      };
+      item.appendChild(text);
+      item.appendChild(remove);
+      urlList.appendChild(item);
+    });
+  }
+
+  function showStatus(msg, type) {
+    statusMsg.textContent = msg;
+    statusMsg.className = 'status-msg ' + (type || '');
+    setTimeout(() => { statusMsg.textContent = ''; statusMsg.className = 'status-msg'; }, 3000);
+  }
+
+  addBtn.onclick = () => {
+    const val = urlInput.value.trim();
+    if (!val) return;
+    if (!/^https?:\/\//i.test(val)) {
+      showStatus('URL 必须以 http:// 或 https:// 开头', 'error');
+      return;
+    }
+    if (urls.includes(val)) {
+      showStatus('该地址已存在', 'error');
+      return;
+    }
+    urls.push(val);
+    urlInput.value = '';
+    render();
+  };
+
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addBtn.click();
+  });
+
+  saveBtn.onclick = async () => {
+    try {
+      await invoke('settings:setBoardUrls', { urls });
+      showStatus('已保存，重启后生效', 'success');
+    } catch (err) {
+      showStatus('保存失败: ' + err.message, 'error');
+    }
+  };
+
+  resetBtn.onclick = async () => {
+    try {
+      await invoke('settings:resetBoardUrls', {});
+      urls = [];
+      render();
+      showStatus('已恢复默认，重启后生效', 'success');
+    } catch (err) {
+      showStatus('恢复失败: ' + err.message, 'error');
+    }
+  };
+
+  // 加载已保存的地址
+  invoke('settings:getBoardUrls', {}).then((result) => {
+    urls = Array.isArray(result) ? result : (result?.urls || []);
+    render();
+  }).catch(() => {
+    urls = [];
+    render();
+  });
+})();
+</script>
+</body>
+</html>

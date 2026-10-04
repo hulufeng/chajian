@@ -1,0 +1,7 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+# 大型运行时二进制（本地资源，不入库；构建时由 extraResources 从磁盘拷贝）
+resources/llama/

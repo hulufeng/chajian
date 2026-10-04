@@ -1,0 +1,11 @@
+{
+  "name": "Blink 点灯演示",
+  "chip": "esp32c3",
+  "baud": 921600,
+  "files": [
+    { "label": "bootloader.bin", "path": "bootloader.bin", "addr": "0x1000" },
+    { "label": "partitions.bin", "path": "partitions.bin", "addr": "0x8000" },
+    { "label": "boot_app0.bin", "path": "boot_app0.bin", "addr": "0xe000" },
+    { "label": "app.bin", "path": "app.bin", "addr": "0x10000" }
+  ]
+}

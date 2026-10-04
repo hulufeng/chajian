@@ -1,0 +1,68 @@
+[
+  {
+    "tag": "t1-gen",
+    "q": "写一个 ESP32 按键控制板载 LED 开关的 Ard",
+    "elapsed": "3s",
+    "answer": "CPP\n应用到文件\n复制\nconst int btn = 9; int last = HIGH; unsigned long lastT = 0;\nconst int led = 2; // 使用板载 LED\n\nvoid setup() {\n  pinMode(btn, INPUT_PULLUP);\n  pinMode(led, OUTPUT);\n  Serial.begin(115200);\n}\n\nvoid loop() {\n  in"
+  },
+  {
+    "tag": "t2-explain",
+    "q": "解释当前打开的文件做了什么",
+    "elapsed": "5s",
+    "answer": "当前打开的文件 01-blink.ino 是一个简单的 Arduino 程序，用于让板载 LED 闪烁。以下是该文件的主要内容：\n定义 LED 引脚：\nCPP\n应用到文件\n复制\n   #define LED_PIN 2\n   \n   这行代码定义了 LED 信号线连接的引脚号为 2。\n初始化函数 `setup()`：\nCPP\n应用到文件\n复制\n   void setup() {\n     pinMode(LED_PIN, OUTPUT)"
+  },
+  {
+    "tag": "t3-modify",
+    "q": "把当前打开文件里 LED 闪烁的 delay 改成 50",
+    "elapsed": "3s",
+    "answer": "INO\n应用到文件\n复制\n// Day 1: Blink - 让板载 LED 闪烁\n// 板载 LED 引脚：ESP32 Dev Module 通常是 GPIO2（或 GPIO13，看板子丝印）\n\n#define LED_PIN 2\n\nvoid setup() {\n  pinMode(LED_PIN, OUTPUT);\n  Serial.begin(115200);\n  Serial.println(\"Day1 Blink 启动\");\n"
+  },
+  {
+    "tag": "t4-kb",
+    "q": "ESP32 的 ADC 引脚使用有什么注意事项？",
+    "elapsed": "5s",
+    "answer": "ESP32 的 ADC 引脚使用时需要注意以下几点：\n引脚选择：ESP32-C3 只有 ADC1（GPIO0-4），ADC2 与 WiFi 共用不可用。GPIO5/18 等内部有 ADC 但不同型号引脚不同，先查引脚图。\n测量范围：ESP32 的 ADC 返回 0-4095（12 位），对应 0-3.3V。测量范围超 3.3V 会烧 ADC，必须分压。\n引脚电平：ESP32 引脚是 3.3V 电平，不能直接接 5V 器件。\n输出电流：E"
+  },
+  {
+    "tag": "t5-q1",
+    "q": "ESP32 一般用什么语言编程？",
+    "elapsed": "3s",
+    "answer": "ESP32 一般用 C 或 C++ 编程。ESP32 是基于 Xtensa 内核的微控制器，而 C 和 C++ 是 Xtensa 内核支持的两种编程语言。"
+  },
+  {
+    "tag": "t5-q2",
+    "q": "那它和普通 C 语言有什么区别？",
+    "elapsed": "3s",
+    "answer": "ESP32/Arduino 编程与普通 C 语言的主要区别在于：\n硬件支持：ESP32/Arduino 提供了对 ESP32 硬件的直接支持，包括 GPIO、I2C、SPI、UART、PWM 等。普通 C 语言需要手动处理这些硬件接口。\n库支持：ESP32/Arduino 提供了丰富的库，如 Wire、SPI、Adafruit_Sensor 等，简化了硬件操作。普通 C 语言需要自己编写或查找相应的库。\n编译环境：ESP32/Ardui"
+  },
+  {
+    "tag": "t6-combo",
+    "q": "写一个读取 DHT22 温湿度传感器的程序，然后解释里面",
+    "elapsed": "5s",
+    "answer": "好的，下面是一个完整的 Arduino 程序，用于读取 DHT22 温湿度传感器的数据，并解释其中的关键函数。\nCPP\n应用到文件\n复制\n#include <DHT.h>\n\n// 定义 DHT22 的引脚和类型\n#define DHTPIN 6\n#define DHTTYPE DHT22\n\n// 创建 DHT 对象\nDHT dht(DHTPIN, DHTTYPE);\n\nvoid setup() {\n  // 初始化串口通信\n  Seri"
+  },
+  {
+    "tag": "t7-edge",
+    "q": "ESP32 能不能直接播放 MP4 视频文件？",
+    "elapsed": "5s",
+    "answer": "ESP32 本身不能直接播放 MP4 视频文件，因为它的硬件资源有限，无法处理复杂的视频解码和播放任务。不过，你可以通过以下几种方式实现视频播放：\n使用第三方库：\n   - 使用 FFmpeg 库来处理视频文件，然后在 ESP32 上播放解码后的视频。\n   - 使用 OpenCV 库来处理视频文件，然后在 ESP32 上播放解码后的视频。\n使用硬件解码：\n   - 如果你的视频文件是 H.264 格式的，并且你的 ESP32 支持硬件"
+  },
+  {
+    "tag": "t8-debug",
+    "q": "帮我看看这段代码有什么问题：void setup(){ ",
+    "elapsed": "3s",
+    "answer": "你的代码中确实缺少了 delay 函数的头文件。在 Arduino 中，delay 函数是 Arduino.h 头文件的一部分。你需要在 setup 函数之前包含这个头文件。\n以下是修正后的代码：\nCPP\n应用到文件\n复制\n// Day 1: Blink - 让板载 LED 闪烁\n// 板载 LED 引脚：ESP32 Dev Module 通常是 GPIO2（或 GPIO13，看板子丝印）\n\n#define LED_PIN 2\n\nvoi"
+  },
+  {
+    "tag": "t9-short",
+    "q": "用一句话回答：什么是 PWM？",
+    "elapsed": "3s",
+    "answer": "PWM 是快速切换高低的方波，通过改变占空比控制平均电压。"
+  },
+  {
+    "tag": "t10-serial",
+    "q": "ESP32 的串口打印为什么会出现乱码？",
+    "elapsed": "3s",
+    "answer": "ESP32 的串口打印出现乱码的原因可能是波特率不匹配。波特率是串口通信中数据传输的速率，必须与串口监视器的波特率一致。如果波特率不匹配，串口监视器将无法正确解码串口输出的数据，导致出现乱码。\n解决方法是检查代码中的 Serial.begin() 函数，确保波特率参数与串口监视器的波特率一致。例如，如果串口监视器的波特率是 115200，那么代码中应该写成 Serial.begin(115200)。"
+  }
+]
