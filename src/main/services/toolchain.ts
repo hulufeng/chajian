@@ -11,7 +11,7 @@ const WIN = process.platform === 'win32'
 const EXE = WIN ? 'arduino-cli.exe' : 'arduino-cli'
 
 /** 用户目录下的工具链安装路径（新用户一键安装到此） */
-function userToolDir(): string {
+export function userToolDir(): string {
   const appData = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming')
   return join(appData, 'codelab-desktop', 'tools', 'arduino-cli')
 }

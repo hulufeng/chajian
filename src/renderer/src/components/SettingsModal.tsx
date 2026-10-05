@@ -35,6 +35,8 @@ const BYOK_PROVIDERS: Array<{ value: string; label: string; baseUrl: string; mod
 
 const CATEGORIES = [
   { id: 'models', label: '模型', icon: '🧠' },
+  { id: 'engine', label: '本地引擎', icon: '🖥️' },
+  { id: 'svd', label: '寄存器数据', icon: '🧾' },
   { id: 'general', label: '常规', icon: '⚙️' },
   { id: 'skills', label: '技能', icon: '✨' },
   { id: 'plugins', label: '插件', icon: '🧩' },
@@ -62,6 +64,51 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [byokApiKey, setByokApiKey] = useState('')
   const [byokModel, setByokModel] = useState('')
   const [byokSaved, setByokSaved] = useState(false)
+
+  // ── 寄存器数据（CMSIS-SVD）──
+  interface SvdChip { chip: string; bytes: number; mtime: number }
+  const [svdList, setSvdList] = useState<{ dir: string; installed: SvdChip[]; known: string[] } | null>(null)
+  const [svdBusy, setSvdBusy] = useState<string | null>(null) // 正在操作的芯片
+  const [svdProgress, setSvdProgress] = useState<number | null>(null)
+  const [svdMsg, setSvdMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [svdImportChip, setSvdImportChip] = useState('esp32s3')
+
+  // ── 本地模型引擎（llama.cpp）──
+  interface EngineModel { id: string; name: string; sizeGB: number; quantization: string; parameters: string }
+  interface EngineStatus { installed: boolean; running: boolean; version: string; engineDir: string }
+  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null)
+  const [engineModels, setEngineModels] = useState<EngineModel[]>([])
+  const [engineSel, setEngineSel] = useState('')
+  const [engineBusy, setEngineBusy] = useState<string | null>(null) // 'start' | 'stop' | 'models'
+  const [engineMsg, setEngineMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const refreshEngine = (): void => {
+    window.api.engine.status()
+      .then((s) => setEngineStatus(s))
+      .catch(() => setEngineStatus(null))
+    window.api.engine.models()
+      .then((m) => {
+        setEngineModels(m)
+        if (m.length > 0) setEngineSel((prev) => prev || m[0].id)
+      })
+      .catch(() => setEngineModels([]))
+  }
+
+  const refreshSvd = (): void => {
+    window.api.svd.list().then((r) => {
+      setSvdList({ dir: r.dir, installed: r.installed, known: r.known })
+    }).catch((e: Error) => setSvdMsg({ text: e.message, ok: false }))
+  }
+
+  useEffect(() => {
+    refreshSvd()
+    const off = window.api.svd.onProgress((p) => setSvdProgress(p.percent))
+    return () => off()
+  }, [])
+
+  useEffect(() => {
+    refreshEngine()
+  }, [])
 
   useEffect(() => {
     window.api.ai.state().then((s) => {
@@ -270,6 +317,206 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     <span className="byok-chip">其他兼容接口</span>
                   </div>
                 </div>
+              </div>
+            )}
+            {active === 'engine' && (
+              <div className="settings-section">
+                <h3>本地模型引擎（llama.cpp）</h3>
+                <p className="settings-desc">
+                  完全离线地跑模型：引擎本体已经在用户目录装好，下载好 gguf 模型后可给 Agent 当 GPT 兼容性端点用（http://127.0.0.1:8080/v1），不花钱、不联网、代码不上传。
+                </p>
+                {!engineStatus ? (
+                  <div className="svd-empty">正在读取引擎状态…</div>
+                ) : !engineStatus.installed ? (
+                  <div className="svd-empty">
+                    未检测到本地引擎（engine 目录为空）。引擎随安装包附带；若被杀毒软件清过，请在设置→插件里重新拉取，或到
+                    <code> llama.cpp release </code> 下载 <code>llama-server</code> 后放进 <code>{engineStatus.engineDir}</code>。
+                  </div>
+                ) : (
+                  <>
+                    <div className="settings-row">
+                      <span>引擎</span>
+                      <span className="settings-val">
+                        {engineStatus.installed ? `已安装${engineStatus.version ? ` · ${engineStatus.version}` : ''}` : '缺失'} ·{' '}
+                        {engineStatus.running ? <span style={{ color: '#2e9e5b' }}>运行中 :8080</span> : <span style={{ color: 'var(--text-dim)' }}>已停止</span>}
+                      </span>
+                    </div>
+                    <div className="settings-row">
+                      <span>引擎目录</span>
+                      <span className="settings-val">{engineStatus.engineDir}</span>
+                    </div>
+
+                    <div className="settings-actions" style={{ paddingTop: 8, paddingBottom: 8, display: 'flex', gap: 8 }}>
+                      <button
+                        className="settings-btn"
+                        disabled={engineBusy !== null || engineStatus.running}
+                        onClick={() => {
+                          setEngineBusy('start')
+                          setEngineMsg(null)
+                          window.api.engine.start(engineSel ? { model: engineSel } : undefined)
+                            .then((r) => {
+                              setEngineMsg(r.ok
+                                ? { text: `引擎已启动，模型 ${r.model || engineSel || '默认'} 已就绪（http://127.0.0.1:8080/v1）`, ok: true }
+                                : { text: `启动失败：${r.error || '未知错误'}`, ok: false })
+                            })
+                            .catch((e: Error) => setEngineMsg({ text: e.message, ok: false }))
+                            .finally(() => { setEngineBusy(null); refreshEngine() })
+                        }}
+                      >
+                        {engineBusy === 'start' ? '启动中…' : '启动引擎'}
+                      </button>
+                      <button
+                        className="settings-btn"
+                        disabled={engineBusy !== null || !engineStatus.running}
+                        onClick={() => {
+                          setEngineBusy('stop')
+                          setEngineMsg(null)
+                          window.api.engine.stop()
+                            .then(() => setEngineMsg({ text: '引擎已停止', ok: true }))
+                            .catch((e: Error) => setEngineMsg({ text: e.message, ok: false }))
+                            .finally(() => { setEngineBusy(null); refreshEngine() })
+                        }}
+                      >
+                        {engineBusy === 'stop' ? '停止中…' : '停止引擎'}
+                      </button>
+                    </div>
+
+                    <div className="svd-block-title" style={{ marginTop: 4 }}>已下载模型</div>
+                    {engineModels.length === 0 ? (
+                      <div className="svd-empty">还没有模型文件。到「模型」页添加 BYOK 时选「内置本地引擎 (llama.cpp)」即可边下边用，建议先取 qwen2.5-coder-3b。</div>
+                    ) : (
+                      <div className="engine-model-list">
+                        {engineModels.map((m) => (
+                          <div key={m.id} className={`engine-model ${engineSel === m.id ? 'active' : ''}`} onClick={() => setEngineSel(m.id)}>
+                            <div className="engine-model-main">
+                              <span className="engine-model-name">{m.name}</span>
+                              <span className="engine-model-meta">{m.parameters}{m.quantization ? ` · ${m.quantization}` : ''} · {m.sizeGB.toFixed(2)} GB</span>
+                            </div>
+                            {engineSel === m.id && <span className="byok-badge-active">选中</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {engineMsg && <div className={`svd-msg ${engineMsg.ok ? 'ok' : 'err'}`} style={{ marginTop: 10 }}>{engineMsg.text}</div>}
+                  </>
+                )}
+              </div>
+            )}
+            {active === 'svd' && (
+              <div className="settings-section">
+                <h3>寄存器数据（CMSIS-SVD）</h3>
+                <p className="settings-desc">
+                  查寄存器地址/位域时，AI 会读这里的数据（来自乐鑫官方仓库 <code>espressif/svd</code>），不会凭记忆编造。数据只在本地缓存，不进安装包、不上服务器。
+                </p>
+
+                <div className="svd-block">
+                  <div className="svd-block-title">已安装</div>
+                  {(svdList?.installed.length ?? 0) === 0 && (
+                    <div className="svd-empty">还没有安装任何芯片的 SVD 数据</div>
+                  )}
+                  {(svdList?.installed ?? []).map((c) => (
+                    <div key={c.chip} className="svd-row">
+                      <span className="svd-chip">{c.chip}</span>
+                      <span className="svd-meta">{(c.bytes / 1024).toFixed(0)} KB</span>
+                      <button
+                        className="settings-btn"
+                        disabled={svdBusy === c.chip}
+                        onClick={() => {
+                          setSvdBusy(c.chip)
+                          void window.api.svd.remove(c.chip).then(() => {
+                            refreshSvd()
+                            setSvdBusy(null)
+                            setSvdMsg({ text: `已删除 ${c.chip}`, ok: true })
+                          })
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="svd-block">
+                  <div className="svd-block-title">从官方仓库安装</div>
+                  <div className="svd-picker">
+                    <select
+                      className="settings-select"
+                      defaultValue="esp32s3"
+                      onChange={(e) => { setSvdImportChip(e.target.value) }}
+                    >
+                      {(svdList?.known ?? []).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="settings-btn"
+                      disabled={!!svdBusy}
+                      onClick={() => {
+                        const chip = svdImportChip || 'esp32s3'
+                        setSvdBusy(chip)
+                        setSvdProgress(0)
+                        setSvdMsg(null)
+                        void window.api.svd.install({ chip })
+                          .then(() => {
+                            refreshSvd()
+                            setSvdMsg({ text: `${chip} 安装完成`, ok: true })
+                          })
+                          .catch((e: Error) => setSvdMsg({ text: e.message, ok: false }))
+                          .finally(() => {
+                            setSvdBusy(null)
+                            setSvdProgress(null)
+                          })
+                      }}
+                    >
+                      下载安装
+                    </button>
+                  </div>
+                  {svdProgress !== null && (
+                    <div className="svd-progress">
+                      <div className="svd-progress-bar" style={{ width: `${svdProgress}%` }} />
+                      <span className="svd-progress-text">{svdProgress}%</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="svd-block">
+                  <div className="svd-block-title">导入本地文件（离线/内网）</div>
+                  <div className="svd-picker">
+                    <input
+                      className="settings-input"
+                      placeholder="导入后使用的芯片名（如 esp32c3）"
+                      value={svdImportChip}
+                      onChange={(e) => setSvdImportChip(e.target.value)}
+                    />
+                    <button
+                      className="settings-btn"
+                      disabled={!!svdBusy}
+                      onClick={() => {
+                        void window.api.svd.pickFile().then((p) => {
+                          if (!p) return
+                          const auto = p.replace(/\\/g, '/').split('/').pop()?.replace(/\.svd$/i, '') || ''
+                          setSvdImportChip(auto)
+                          setSvdBusy(auto)
+                          void window.api.svd.import({ chip: auto, filePath: p })
+                            .then(() => {
+                              refreshSvd()
+                              setSvdMsg({ text: `已导入 ${auto}（${p}）`, ok: true })
+                            })
+                            .catch((e: Error) => setSvdMsg({ text: e.message, ok: false }))
+                            .finally(() => setSvdBusy(null))
+                        })
+                      }}
+                    >
+                      选择 .svd 文件
+                    </button>
+                  </div>
+                </div>
+
+                {svdMsg && <div className={`svd-msg ${svdMsg.ok ? 'ok' : 'err'}`}>{svdMsg.text}</div>}
+
+                {svdList?.dir && (
+                  <div className="svd-note">缓存目录：{svdList.dir}</div>
+                )}
               </div>
             )}
             {active === 'general' && (

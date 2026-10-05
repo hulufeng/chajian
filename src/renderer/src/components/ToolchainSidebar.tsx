@@ -1,23 +1,29 @@
 import { useState, useEffect, useRef } from 'react'
 import DevicePanel from './DevicePanel'
+import DeviceFilesPanel from './DeviceFilesPanel'
 
 interface ToolchainSidebarProps {
+  projectRoot?: string | null
   onBoardChange?: (fqbn: string, name?: string) => void
   onPortChange?: (port: string) => void
   onOpenSerialWindow?: () => void
   onGenerateWiring?: () => void
+  onOpenFile?: (path: string, name?: string) => void
+  /** 已打开的串口会话（设备文件浏览复用同一条串口） */
+  serialSessionId?: string | null
 }
 
-type TabId = 'device' | 'platforms' | 'libraries' | 'settings'
+type TabId = 'device' | 'files' | 'platforms' | 'libraries' | 'settings'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'device', label: '设备', icon: '🔌' },
+  { id: 'files', label: '设备文件', icon: '📁' },
   { id: 'platforms', label: '平台管理', icon: '📦' },
   { id: 'libraries', label: '库管理', icon: '📚' },
   { id: 'settings', label: '设置', icon: '⚙️' }
 ]
 
-function ToolchainSidebar({ onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring }: ToolchainSidebarProps): React.JSX.Element {
+function ToolchainSidebar({ projectRoot, onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring, onOpenFile, serialSessionId }: ToolchainSidebarProps): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>('device')
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -101,11 +107,16 @@ function ToolchainSidebar({ onBoardChange, onPortChange, onOpenSerialWindow, onG
       <div className="toolchain-content">
         {activeTab === 'device' && (
           <DevicePanel
+            projectRoot={projectRoot}
             onBoardChange={onBoardChange}
             onPortChange={onPortChange}
             onOpenSerialWindow={onOpenSerialWindow}
             onGenerateWiring={onGenerateWiring}
+            onOpenFile={onOpenFile}
           />
+        )}
+        {activeTab === 'files' && (
+          <DeviceFilesPanel sessionId={serialSessionId} projectRoot={projectRoot} />
         )}
         {activeTab === 'platforms' && (
           <iframe

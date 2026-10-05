@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DebugChip, DebugState, MemoryReadResult, RegisterValue, ThreadInfo } from '../../../preload'
+import type { DebugChip, DebugState, MemoryReadResult, NvsEntry, PartitionEntry, RegisterValue, ThreadInfo } from '../../../preload'
 
 interface Props {
   /** 当前板卡 FQBN（用于推断调试芯片，如 esp32:esp32:esp32s3 → esp32s3） */
@@ -37,6 +37,10 @@ export default function DebugPanel({ fqbn, onClose }: Props): React.JSX.Element 
   const [bps, setBps] = useState<string[]>([])
   const [ execCmd, setExecCmd] = useState('')
   const [ execOut, setExecOut] = useState('')
+  // 片内 Flash 存储：分区表 + NVS（复用 openocd 读内存，不需要另装 esptool）
+  const [ parts, setParts ] = useState<PartitionEntry[]>([])
+  const [ nvs, setNvs ] = useState<NvsEntry[]>([])
+  const [ storeNote, setStoreNote ] = useState('')
 
   const loadInfo = useCallback((): void => {
     window.api.debug.info().then(setInfo).catch((e: Error) => setInstallErr(e.message))
@@ -241,6 +245,60 @@ export default function DebugPanel({ fqbn, onClose }: Props): React.JSX.Element 
               {bps.length === 0 && <span className="debug-hint">暂无断点</span>}
               {bps.map((b) => (<span key={b} className="debug-tag">{b}</span>))}
             </div>
+
+            <div className="debug-block-title">
+              片内存储 <span className="debug-hint">0x8000 分区表 · nvs</span>
+            </div>
+            <div className="debug-row">
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void run(async () => {
+                  const list = await window.api.debug.partitions()
+                  setParts(list)
+                  setStoreNote(list.length ? '' : '没读到分区表（0x8000 处无 Pi 魔数，确认芯片型号/烧录方式是否带分区表）')
+                  return `读到 ${list.length} 个分区`
+                })}
+              >读分区表</button>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void run(async () => {
+                  const r = await window.api.debug.nvs()
+                  setParts(r.partitions)
+                  setNvs(r.entries)
+                  setStoreNote(r.note || (r.entries.length ? '' : '没解析出 NVS 条目（分区为空或未写入过 NVS）'))
+                  return `NVS 条目 ${r.entries.length} 条`
+                })}
+              >读 NVS</button>
+            </div>
+            {storeNote && <div className="debug-hint">{storeNote}</div>}
+            {parts.length > 0 && (
+              <div className="debug-threads">
+                {parts.map((p) => (
+                  <div key={`${p.address}-${p.name}`} className="debug-thread">
+                    <span className="debug-thread-id">{p.name}</span>
+                    <span className="debug-thread-state">{p.kind}/{p.subtypeName}</span>
+                    <span className="debug-thread-pc">0x{p.address.toString(16)} · {(p.size / 1024).toFixed(1)}KB</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {nvs.length > 0 && (
+              <details className="debug-log">
+                <summary>NVS 条目（{nvs.length}）</summary>
+                <div className="debug-threads">
+                  {nvs.slice(0, 100).map((e, i) => (
+                    <div key={`${e.namespace}-${e.key}-${i}`} className="debug-thread">
+                      <span className="debug-thread-id">{e.key}</span>
+                      <span className="debug-thread-state">{e.type}</span>
+                      <span className="debug-thread-name">{e.value === null ? '—' : String(e.value)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="debug-hint">NVS 为尽力解析（按条目布局扫描、未做 CRC 校验），写操作请自行核对。</div>
+              </details>
+            )}
           </div>
 
           <div className="debug-col">

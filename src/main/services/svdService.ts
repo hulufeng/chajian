@@ -108,13 +108,37 @@ export interface SvdInstallResult {
  * 下载并缓存某芯片的官方 SVD。已在本地时（且 force=false）直接返回。
  * 网络不可达 / 该芯片不存在 → 抛错，由调用方转成可操作提示。
  */
-export async function installSvd(chip: string, opts: { force?: boolean } = {}): Promise<SvdInstallResult> {
+export interface SvdProgress {
+  phase: 'downloading' | 'saving'
+  /** 0-100 */
+  percent: number
+}
+
+/**
+ * 判断本地文件是不是可用的 SVD（防止 0 字节/截断/HTML 错误页被当成「已安装」）。
+ * 少于 1KB 或头部没有 <device> 根节点的一律视为损坏。
+ */
+export function looksLikeSvd(p: string): boolean {
+  try {
+    const st = fs.statSync(p)
+    if (!st.isFile() || st.size < 1024) return false
+    return /<\s*device[\s>]/.test(fs.readFileSync(p, 'utf-8').slice(0, 8192))
+  } catch {
+    return false
+  }
+}
+
+export async function installSvd(
+  chip: string,
+  opts: { force?: boolean; onProgress?: (p: SvdProgress) => void } = {}
+): Promise<SvdInstallResult> {
   const name = normalizeChip(chip)
   if (!name) throw new Error('芯片名不能为空（如 esp32s3）')
   const dir = getSvdDir()
   fs.mkdirSync(dir, { recursive: true })
   const dest = svdFilePath(name)
-  if (!opts.force && fs.existsSync(dest)) {
+  // 本地已有且内容可用才走缓存；损坏文件（0 字节/截断/404 页）必须重下，否则会静默返回坏数据
+  if (!opts.force && looksLikeSvd(dest)) {
     return { chip: name, path: dest, bytes: fs.statSync(dest).size, url: '(本地缓存)' }
   }
 
@@ -123,11 +147,12 @@ export async function installSvd(chip: string, opts: { force?: boolean } = {}): 
   for (const prefix of SVD_MIRROR_PREFIXES) {
     const url = prefix + rel
     try {
-      const xml = await fetchText(url, 180_000)
+      const xml = await fetchText(url, 180_000, opts.onProgress)
       if (!/<\s*device[\s>]/.test(xml)) {
         lastErr = `返回内容不是 SVD（可能是 404 页面）`
         continue
       }
+      opts.onProgress?.({ phase: 'saving', percent: 100 })
       const tmp = dest + '.part'
       fs.writeFileSync(tmp, xml, 'utf-8')
       fs.renameSync(tmp, dest)
@@ -167,16 +192,49 @@ export function removeSvd(chip: string): boolean {
   return true
 }
 
-async function fetchText(url: string, timeoutMs: number): Promise<string> {
+async function fetchText(url: string, timeoutMs: number, onProgress?: (p: SvdProgress) => void): Promise<string> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const resp = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'LabCode/1.1 (+svd-fetch)' } })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    return await resp.text()
+    const total = Number(resp.headers.get('content-length') || 0)
+    if (!onProgress || !resp.body || !total) return await resp.text()
+    // 大文件（SVD 通常几百 KB～几 MB）按字节流式上报进度，避免 UI 长时间无反馈
+    const reader = resp.body.getReader()
+    const chunks: Uint8Array[] = []
+    let received = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      received += value.byteLength
+      onProgress({ phase: 'downloading', percent: Math.min(99, Math.round((received / total) * 100)) })
+    }
+    const buf = new Uint8Array(received)
+    let off = 0
+    for (const c of chunks) {
+      buf.set(c, off)
+      off += c.byteLength
+    }
+    return new TextDecoder('utf-8').decode(buf)
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * 由板卡 FQBN 推断官方 SVD 芯片名（esp32:esp32:esp32s3 → esp32s3）。
+ * 推断不出时返回 null，由调用方提示用户手填。
+ */
+export function suggestChipByFqbn(fqbn?: string): string | null {
+  const s = String(fqbn || '').toLowerCase()
+  if (!s) return null
+  const hit = [...KNOWN_SVD_CHIPS]
+    .filter((c) => c !== 'esp32s3-ulp')
+    .sort((a, b) => b.length - a.length)
+    .find((c) => s.includes(c))
+  return hit || null
 }
 
 // ── 解析 ────────────────────────────────────────────────────
@@ -317,6 +375,12 @@ export function loadSvd(chip: string): ParsedSvd {
         `  ① 让 AI 执行：svd_query({action:"install", chip:"${name}"})（从乐鑫官方仓库 espressif/svd 下载，需可访问 GitHub）；\n` +
         `  ② 手动把官方 ${name}.svd 放到：${p}\n` +
         `已安装芯片可用 svd_query({action:"list"}) 查看。`
+    )
+  }
+  if (!looksLikeSvd(p)) {
+    throw new Error(
+      `${name}.svd 已存在但内容损坏（0 字节或被截断），不能用于寄存器查询。\n` +
+        `修复：在设置 → 寄存器数据 里重新「下载安装 ${name}」，或替换文件 ${p}。`
     )
   }
   const parsed = parseSvd(fs.readFileSync(p, 'utf-8'))

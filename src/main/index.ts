@@ -44,8 +44,20 @@ import {
   pollTarget,
   setBreakpoint,
   removeBreakpoint,
-  debugExec
+  debugExec,
+  readRawBytes
 } from './services/debugService'
+import {
+  findPio,
+  installPio,
+  detectPioProject,
+  buildPio,
+  uploadPio,
+  monitorPio,
+  type PioEnv
+} from './services/platformio'
+import { readPartitionTable, readNvsEntries } from './services/partitionTable'
+import { createDeviceFs, createSerialFsTransport } from './services/deviceFs'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
   listInstalledChips as listSvdChips,
@@ -1123,6 +1135,158 @@ ipcMain.handle('debug:setBreakpoint', (_e, addr: string | number) => setBreakpoi
 ipcMain.handle('debug:removeBreakpoint', (_e, addr?: string | number) => removeBreakpoint(addr))
 
 ipcMain.handle('debug:exec', (_e, cmd: string) => debugExec(cmd))
+
+// ── 分区表 / NVS（复用 openocd 读内存，不额外拉 esptool）──
+ipcMain.handle('debug:partitions', async () => {
+  if (!isDebugActive()) {
+    throw new Error('先连接片上调试器（工具栏「片上调试器」→ 连接调试器），再读分区表')
+  }
+  return readPartitionTable(readRawBytes)
+})
+
+ipcMain.handle(
+  'debug:nvs',
+  async (_e, opts?: { addr?: number; size?: number }) => {
+    if (!isDebugActive()) {
+      throw new Error('先连接片上调试器（工具栏「片上调试器」→ 连接调试器），再读 NVS')
+    }
+    const partitions = await readPartitionTable(readRawBytes)
+    const nvsPart = opts?.addr
+      ? {
+          address: opts.addr,
+          tablePos: 0,
+          name: 'nvs',
+          type: 1,
+          subtype: 2,
+          offset: 0,
+          size: opts.size ?? 0x4000,
+          flags: 0,
+          kind: 'data' as const,
+          subtypeName: 'nvs'
+        }
+      : partitions.find((p) => p.kind === 'data' && p.subtypeName === 'nvs')
+    if (!nvsPart) {
+      return { entries: [], partitions, note: '分区表里没找到 nvs 分区（自定义分区表？）' }
+    }
+    const entries = await readNvsEntries(readRawBytes, nvsPart, opts?.size ?? 0x4000)
+    return { entries, partitions, note: '' }
+  }
+)
+
+// ── PlatformIO（对标 Embedist / Espressif-IDE 的 pio 链路）──
+let pioMonitorStopper: { stop: () => void } | null = null
+
+ipcMain.handle('platformio:info', (_e, opts?: { projectRoot?: string | null }) => {
+  const root = opts?.projectRoot ?? null
+  return { ...findPio(root), project: detectPioProject(root) }
+})
+
+ipcMain.handle('platformio:install', (event) => {
+  const sender = event.sender
+  return installPio((p) => {
+    if (!sender.isDestroyed()) sender.send('pio:progress', p)
+  })
+})
+
+ipcMain.handle('platformio:envs', (_e, opts: { projectRoot: string | null }) =>
+  detectPioProject(opts?.projectRoot ?? null)
+)
+
+ipcMain.handle('platformio:build', (event, opts: { projectRoot: string; env?: string }) => {
+  const id = `pio-build-${++taskSeq}`
+  const sender = event.sender
+  activeTasks.set(id, () => undefined)
+  const push = (chunk: string): void => {
+    if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+  }
+  return buildPio(opts.projectRoot, opts.env, push).then((r) => {
+    if (!sender.isDestroyed()) sender.send('task:exit', { id, code: r.ok ? 0 : 1 })
+    activeTasks.delete(id)
+    return r
+  })
+})
+
+ipcMain.handle('platformio:upload', (event, opts: { projectRoot: string; env?: string; port?: string }) => {
+  const id = `pio-upload-${++taskSeq}`
+  const sender = event.sender
+  activeTasks.set(id, () => undefined)
+  const push = (chunk: string): void => {
+    if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+  }
+  return uploadPio(opts.projectRoot, { env: opts.env, port: opts.port }, push).then((r) => {
+    if (!sender.isDestroyed()) sender.send('task:exit', { id, code: r.ok ? 0 : 1 })
+    activeTasks.delete(id)
+    return r
+  })
+})
+
+ipcMain.handle(
+  'platformio:monitor',
+  (event, opts: { projectRoot: string; env?: string; port?: string; baud?: number }) => {
+    const id = `pio-monitor-${++taskSeq}`
+    const sender = event.sender
+    activeTasks.set(id, () => undefined)
+    pioMonitorStopper?.stop()
+    const push = (chunk: string): void => {
+      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+    }
+    const finish = (msg: string): void => {
+      if (!sender.isDestroyed()) sender.send('task:exit', { id, code: 0, message: msg })
+      activeTasks.delete(id)
+      pioMonitorStopper = null
+    }
+    pioMonitorStopper = monitorPio(opts.projectRoot, opts, push, finish)
+    return { id }
+  }
+)
+
+ipcMain.handle('platformio:stop-monitor', () => {
+  pioMonitorStopper?.stop()
+  pioMonitorStopper = null
+  return { ok: true }
+})
+
+// ── 设备端文件系统（串口 FS 行协议：浏览 / 读写 / 文件夹同步）──
+function deviceFsFor(sessionId: string): ReturnType<typeof createDeviceFs> {
+  return createDeviceFs(createSerialFsTransport(sessionId))
+}
+
+ipcMain.handle('devicefs:list', (_e, opts: { sessionId: string; path: string }) =>
+  deviceFsFor(opts.sessionId).list(opts.path)
+)
+
+ipcMain.handle('devicefs:read', (_e, opts: { sessionId: string; path: string }) =>
+  deviceFsFor(opts.sessionId).read(opts.path)
+)
+
+ipcMain.handle('devicefs:write', (_e, opts: { sessionId: string; path: string; content: string }) =>
+  deviceFsFor(opts.sessionId).write(opts.path, opts.content)
+)
+
+ipcMain.handle('devicefs:mkdir', (_e, opts: { sessionId: string; path: string }) =>
+  deviceFsFor(opts.sessionId).mkdir(opts.path)
+)
+
+ipcMain.handle('devicefs:remove', (_e, opts: { sessionId: string; path: string }) =>
+  deviceFsFor(opts.sessionId).remove(opts.path)
+)
+
+ipcMain.handle('devicefs:stat', (_e, opts: { sessionId: string; path: string }) =>
+  deviceFsFor(opts.sessionId).stat(opts.path)
+)
+
+ipcMain.handle(
+  'devicefs:sync',
+  (event, opts: { sessionId: string; localDir: string; deviceDir: string }) => {
+    const sender = event.sender
+    return deviceFsFor(opts.sessionId)
+      .syncUp(opts.localDir, opts.deviceDir, (msg) => {
+        if (!sender.isDestroyed()) sender.send('devicefs:progress', msg)
+      })
+      .then((r) => ({ ...r, ok: true }))
+      .catch((e: Error) => ({ ok: false, uploaded: [], skipped: [], error: e.message }))
+  }
+)
 
 /** 调试会话被外部动作（如烧录）终止时通知渲染层刷新面板 */
 function broadcastDebugStopped(): void {

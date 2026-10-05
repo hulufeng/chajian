@@ -56,6 +56,8 @@ interface TitleBarProps {
   onToggleTerminal: () => void
   onToggleDebug: () => void
   debugVisible: boolean
+  onTogglePio: () => void
+  pioVisible: boolean
   leftPanelVisible: boolean
   editorVisible: boolean
   onToggleLeftPanel: () => void
@@ -67,7 +69,7 @@ interface TitleBarProps {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible,
+  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme
 }: TitleBarProps): React.JSX.Element {
@@ -221,6 +223,13 @@ function TitleBar({
           onClick={onToggleDebug}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+        </button>
+        <button
+          className={`tb-btn ${pioVisible ? 'tb-success' : ''}`}
+          title="PlatformIO（pio run 构建/烧录/串口监视，多 env）"
+          onClick={onTogglePio}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18.5" cy="17" r="2.5"/></svg>
         </button>
         <button className="tb-btn" title="终端" onClick={onToggleTerminal}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>

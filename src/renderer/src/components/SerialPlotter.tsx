@@ -64,6 +64,27 @@ export default function SerialPlotter({
   const [manualMin, setManualMin] = useState(0)
   const [manualMax, setManualMax] = useState(1024)
   const [stats, setStats] = useState<{ ch: number; points: number }>({ ch: 0, points: 0 })
+  // AI 解读（差异化功能 #3：串口日志 → 当前 AI 通道解读，先给规则命中的证据再下结论）
+  const [explainBusy, setExplainBusy] = useState(false)
+  const [explainOut, setExplainOut] = useState<{ text: string; channel: string; findings: Array<{ kind: string; line: number; text: string }> } | null>(null)
+  const [explainErr, setExplainErr] = useState('')
+
+  const runExplain = (): void => {
+    if (explainBusy) return
+    if (!serialLog || !serialLog.trim()) {
+      setExplainErr('串口还没有输出，先让设备发点数据（或打开串口监视器产生日志）再解读。')
+      setExplainOut(null)
+      return
+    }
+    setExplainBusy(true)
+    setExplainErr('')
+    setExplainOut(null)
+    void window.api.serial
+      .explain({ logs: serialLog })
+      .then((r) => setExplainOut({ text: r.text, channel: r.channel, findings: r.findings }))
+      .catch((e: Error) => setExplainErr(e.message))
+      .finally(() => setExplainBusy(false))
+  }
 
   // 把 ref 的 paused 与 state 同步
   useEffect(() => {
@@ -261,6 +282,9 @@ export default function SerialPlotter({
         <button style={btnStyle()} onClick={clearPlot}>
           🗑 清空
         </button>
+        <button style={btnStyle()} onClick={runExplain} disabled={explainBusy}>
+          {explainBusy ? '🤖 解读中…' : '🤖 AI 解读日志'}
+        </button>
         <label style={{ fontSize: 12, color: theme === 'dark' ? '#bbb' : '#444', marginLeft: 6 }}>
           <input
             type="checkbox"
@@ -294,6 +318,54 @@ export default function SerialPlotter({
       <div ref={wrapRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       </div>
+      {explainErr && (
+        <div style={expStyle(theme)}>
+          <div style={{ color: '#c0392b' }}>解读失败：{explainErr}</div>
+        </div>
+      )}
+      {explainOut && (
+        <div style={expStyle(theme)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <strong style={{ fontSize: 12 }}>AI 解读</strong>
+            <span style={{ fontSize: 11, color: theme === 'dark' ? '#888' : '#666' }}>
+              通道：{explainOut.channel} · 规则命中 {explainOut.findings.length} 条
+            </span>
+            <button
+              style={{ marginLeft: 'auto', ...btnStyle(false) }}
+              onClick={() => {
+                // 命中证据也一并展示，便于人工复核（不让 AI 结论变成黑箱）
+                void navigator.clipboard?.writeText(
+                  [explainOut.text, '', '【规则命中证据】', ...explainOut.findings.map((f) => `- [${f.kind}] 第${f.line}行 ${f.text}`)].join('\n')
+                )
+              }}
+            >
+              复制
+            </button>
+          </div>
+          {(explainOut.findings.length > 0 || explainOut.text) && (
+            <div style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{explainOut.text}</div>
+          )}
+          {explainOut.findings.length > 0 && (
+            <div style={{ marginTop: 6, maxHeight: 96, overflow: 'auto', fontSize: 11, color: theme === 'dark' ? '#999' : '#777' }}>
+              {explainOut.findings.map((f, i) => (
+                <div key={i}>
+                  <span style={{ fontFamily: 'var(--mono)' }}>[{f.kind}]</span> 第 {f.line} 行：{f.text}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
+}
+
+function expStyle(theme: 'light' | 'dark'): React.CSSProperties {
+  return {
+    borderTop: `1px solid ${theme === 'dark' ? '#333' : '#e0e0e0'}`,
+    padding: 8,
+    background: theme === 'dark' ? '#1e1e1e' : '#fbfbfb',
+    maxHeight: 240,
+    overflow: 'auto'
+  }
 }

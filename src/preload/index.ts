@@ -544,6 +544,11 @@ const api = {
     setBreakpoint: (addr: string | number): Promise<string> => ipcRenderer.invoke('debug:setBreakpoint', addr),
     removeBreakpoint: (addr?: string | number): Promise<string> => ipcRenderer.invoke('debug:removeBreakpoint', addr),
     exec: (cmd: string): Promise<string> => ipcRenderer.invoke('debug:exec', cmd),
+    /** 读片内分区表（0x8000 起，需要已连接片上调试器） */
+    partitions: (): Promise<PartitionEntry[]> => ipcRenderer.invoke('debug:partitions'),
+    /** 读 NVS 条目（尽力解析，不做 CRC 校验） */
+    nvs: (opts?: { addr?: number; size?: number }): Promise<{ entries: NvsEntry[]; partitions: PartitionEntry[]; note: string }> =>
+      ipcRenderer.invoke('debug:nvs', opts),
     onProgress: (cb: (p: InstallProgress) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, p: InstallProgress): void => cb(p)
       ipcRenderer.on('debug:progress', listener)
@@ -554,6 +559,46 @@ const api = {
       const listener = (_e: IpcRendererEvent, s: DebugState): void => cb(s)
       ipcRenderer.on('debug:stopped', listener)
       return () => ipcRenderer.removeListener('debug:stopped', listener)
+    }
+  },
+
+  // PlatformIO（pio CLI 集成：多 env 解析 / 构建 / 烧录 / 串口监视）
+  platformio: {
+    info: (projectRoot?: string | null): Promise<PioInfo> => ipcRenderer.invoke('platformio:info', { projectRoot }),
+    install: (): Promise<{ success: boolean; command?: string; version?: string; error?: string }> =>
+      ipcRenderer.invoke('platformio:install'),
+    envs: (projectRoot: string | null): Promise<PioProject> => ipcRenderer.invoke('platformio:envs', { projectRoot }),
+    build: (opts: { projectRoot: string; env?: string }): Promise<{ ok: boolean; output: string; hint?: string }> =>
+      ipcRenderer.invoke('platformio:build', opts),
+    upload: (opts: { projectRoot: string; env?: string; port?: string }): Promise<{ ok: boolean; output: string; hint?: string }> =>
+      ipcRenderer.invoke('platformio:upload', opts),
+    monitor: (opts: { projectRoot: string; env?: string; port?: string; baud?: number }): Promise<{ id: string }> =>
+      ipcRenderer.invoke('platformio:monitor', opts),
+    stopMonitor: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('platformio:stop-monitor'),
+    onProgress: (cb: (p: { phase: string; percent: number; message: string }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, p: { phase: string; percent: number; message: string }): void => cb(p)
+      ipcRenderer.on('pio:progress', listener)
+      return () => ipcRenderer.removeListener('pio:progress', listener)
+    }
+  },
+
+  // 设备端文件系统（串口 FS 行协议）
+  devicefs: {
+    list: (opts: { sessionId: string; path: string }): Promise<DeviceFsNode[]> => ipcRenderer.invoke('devicefs:list', opts),
+    read: (opts: { sessionId: string; path: string }): Promise<string> => ipcRenderer.invoke('devicefs:read', opts),
+    write: (opts: { sessionId: string; path: string; content: string }): Promise<void> =>
+      ipcRenderer.invoke('devicefs:write', opts),
+    mkdir: (opts: { sessionId: string; path: string }): Promise<void> => ipcRenderer.invoke('devicefs:mkdir', opts),
+    remove: (opts: { sessionId: string; path: string }): Promise<void> => ipcRenderer.invoke('devicefs:remove', opts),
+    stat: (opts: { sessionId: string; path: string }): Promise<DeviceFsStat> => ipcRenderer.invoke('devicefs:stat', opts),
+    sync: (
+      opts: { sessionId: string; localDir: string; deviceDir: string }
+    ): Promise<{ ok: boolean; uploaded: string[]; skipped: string[]; error?: string }> =>
+      ipcRenderer.invoke('devicefs:sync', opts),
+    onProgress: (cb: (msg: string) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, msg: string): void => cb(msg)
+      ipcRenderer.on('devicefs:progress', listener)
+      return () => ipcRenderer.removeListener('devicefs:progress', listener)
     }
   },
 
@@ -597,5 +642,65 @@ const api = {
 }
 
 contextBridge.exposeInMainWorld('api', api)
+
+// ── PlatformIO / 设备文件系统 / 分区表 相关类型 ──
+export interface PioEnvInfo {
+  name: string
+  board?: string
+  platform?: string
+  framework?: string
+  monitorSpeed?: string
+  uploadPort?: string
+  uploadSpeed?: string
+  freq?: string
+}
+
+export interface PioProject {
+  found: boolean
+  root: string | null
+  envs: PioEnvInfo[]
+  defaultEnv: string | null
+  note?: string
+}
+
+export interface PioInfo {
+  installed: boolean
+  command: string | null
+  version: string
+  source: 'user-dir' | 'path' | 'project' | 'none'
+  hint: string
+  project: PioProject
+}
+
+export interface DeviceFsNode {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+  size?: number
+}
+
+export interface DeviceFsStat {
+  type: 'file' | 'dir'
+  size: number
+}
+
+export interface PartitionEntry {
+  address: number
+  name: string
+  type: number
+  subtype: number
+  offset: number
+  size: number
+  flags: number
+  kind: 'app' | 'data' | 'unknown'
+  subtypeName: string
+}
+
+export interface NvsEntry {
+  namespace: string
+  key: string
+  type: string
+  value: string | number | null
+}
 
 export type Api = typeof api

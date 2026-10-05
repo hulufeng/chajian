@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export interface ProjectTypeItem {
   id: string
@@ -26,6 +26,13 @@ const TYPE_FILES: Record<string, string[]> = {
   generic: ['README.md', 'main.txt'],
 }
 
+interface TemplateItemLike {
+  id: string
+  name: string
+  desc: string
+  category: string
+}
+
 interface NewProjectDialogProps {
   pluginTypes: ProjectTypeItem[]
   onClose: () => void
@@ -39,6 +46,33 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
   const [keyword, setKeyword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // 模板 / 示例库（差异化功能 #2）
+  const [mode, setMode] = useState<'type' | 'template'>('type')
+  const [groups, setGroups] = useState<Array<{ category: string; items: TemplateItemLike[] }>>([])
+  const [tplKeyword, setTplKeyword] = useState('')
+  const [tplId, setTplId] = useState('')
+  const [tplDetail, setTplDetail] = useState<{ files: Array<{ path: string; content: string }> } | null>(null)
+
+  useEffect(() => {
+    void window.api.template.groups().then((g) => setGroups(g)).catch(() => setGroups([]))
+  }, [])
+
+  const allTemplates = useMemo(() => groups.flatMap((g) => g.items), [groups])
+  const filteredTemplates = useMemo(() => {
+    const k = tplKeyword.trim().toLowerCase()
+    const list = k ? allTemplates.filter((t) => t.name.toLowerCase().includes(k) || t.desc.toLowerCase().includes(k)) : allTemplates
+    return list
+  }, [allTemplates, tplKeyword])
+
+  useEffect(() => {
+    if (tplId && mode === 'template') {
+      void window.api.template.get(tplId).then(setTplDetail).catch(() => setTplDetail(null))
+    } else {
+      setTplDetail(null)
+    }
+  }, [tplId, mode])
+
+  const selectedTemplate = allTemplates.find((t) => t.id === tplId) || null
 
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase()
@@ -47,9 +81,12 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
   }, [allTypes, keyword])
 
   const selected = allTypes.find((t) => t.id === type) ?? allTypes[0]
-  const previewFiles = selected?.scaffold
-    ? selected.scaffold.map((f) => f.file)
-    : TYPE_FILES[selected?.id ?? ''] ?? ['README.md']
+  const previewFiles =
+    mode === 'template'
+      ? (tplDetail?.files ?? []).map((f) => f.path)
+      : selected?.scaffold
+        ? selected.scaffold.map((f) => f.file)
+        : TYPE_FILES[selected?.id ?? ''] ?? ['README.md']
 
   const submit = async (): Promise<void> => {
     if (!name.trim()) {
@@ -59,7 +96,13 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
     setBusy(true)
     setErr('')
     try {
-      await onCreate(type, name.trim(), selected?.scaffold)
+      if (mode === 'template' && selectedTemplate) {
+        // 模板文件直接作为 scaffold 内容生成，不是占位注释
+        const scaffold = (tplDetail?.files ?? []).map((f) => ({ file: f.path, content: f.content }))
+        await onCreate('arduino', name.trim(), scaffold)
+      } else {
+        await onCreate(type, name.trim(), selected?.scaffold)
+      }
       onClose()
     } catch (e) {
       setErr((e as Error).message)
@@ -73,15 +116,29 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">新建工程</div>
         <div className="modal-body">
+          <div className="np-tabs">
+            <div className={`np-tab ${mode === 'type' ? 'active' : ''}`} onClick={() => setMode('type')}>工程类型</div>
+            <div className={`np-tab ${mode === 'template' ? 'active' : ''}`} onClick={() => setMode('template')}>模板 / 示例（{allTemplates.length}）</div>
+          </div>
           <div className="np-layout">
             {/* 左侧：搜索 + 类型列表 */}
             <div className="np-left">
-              <input
-                className="form-input np-search"
-                placeholder="搜索工程类型…"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-              />
+              {mode === 'type' && (
+                <input
+                  className="form-input np-search"
+                  placeholder="搜索工程类型…"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                />
+              )}
+              {mode === 'template' && (
+                <input
+                  className="form-input np-search"
+                  placeholder="搜索模板…（LED / PWM / OLED / WiFi / ADC …）"
+                  value={tplKeyword}
+                  onChange={(e) => setTplKeyword(e.target.value)}
+                />
+              )}
               <div className="np-type-list">
                 {filtered.map((t) => (
                   <div
@@ -98,6 +155,26 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
                 ))}
                 {filtered.length === 0 && <div className="np-empty">无匹配类型</div>}
               </div>
+
+              {/* 模板列表（按分类分组） */}
+              {mode === 'template' && (
+                <div className="np-type-list">
+                  {filteredTemplates.map((t) => (
+                    <div
+                      key={t.id}
+                      className={`np-type-item ${mode === 'template' && tplId === t.id ? 'active' : ''}`}
+                      onClick={() => setTplId(t.id)}
+                    >
+                      <span className="np-type-icon">🧩</span>
+                      <div className="np-type-info">
+                        <div className="np-type-name">{t.name}</div>
+                        <div className="np-type-desc">{t.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredTemplates.length === 0 && <div className="np-empty">无匹配模板</div>}
+                </div>
+              )}
             </div>
 
             {/* 右侧：详情预览 + 表单 */}
@@ -106,13 +183,21 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
                 <div className="np-preview-title">
                   {selected?.icon} {selected?.name}
                 </div>
-                <div className="np-preview-desc">{selected?.desc}</div>
+                <div className="np-preview-desc">
+                  {mode === 'template' ? selectedTemplate?.desc ?? '选择左侧模板查看生成内容' : selected?.desc}
+                </div>
                 <div className="np-preview-files">
                   <div className="np-preview-label">将生成以下文件：</div>
                   {previewFiles.map((f) => (
                     <div key={f} className="np-file-item">📄 {f.replace(/\{name\}/g, name || 'my-project')}</div>
                   ))}
                 </div>
+                {mode === 'template' && tplDetail?.files && tplDetail.files.length > 0 && (
+                  <div className="np-preview-code">
+                    {tplDetail.files[0].content.split('\n').slice(0, 14).join('\n')}
+                    {tplDetail.files[0].content.split('\n').length > 14 ? '\n…（共 ' + tplDetail.files[0].content.split('\n').length + ' 行）' : ''}
+                  </div>
+                )}
               </div>
 
               <div className="form-row">
@@ -139,7 +224,7 @@ function NewProjectDialog({ pluginTypes, onClose, onCreate }: NewProjectDialogPr
             取消
           </button>
           <button className="btn-primary" onClick={() => void submit()} disabled={busy}>
-            {busy ? '创建中…' : '创建工程'}
+            {busy ? '创建中…' : mode === 'template' ? '用模板创建' : '创建工程'}
           </button>
         </div>
       </div>

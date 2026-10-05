@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import DeviceDiagnosticsModal from './DeviceDiagnosticsModal'
 
 interface DevicePanelInfo {
   plugin: string
@@ -34,10 +35,12 @@ interface ToolchainState {
 }
 
 interface DevicePanelProps {
+  projectRoot?: string | null
   onBoardChange?: (fqbn: string, name?: string) => void
   onPortChange?: (port: string) => void
   onOpenSerialWindow?: () => void
   onGenerateWiring?: () => void
+  onOpenFile?: (path: string, name?: string) => void
 }
 
 // 插件未声明设备面板时的内置兜底面板：保证「开发板 / 端口 / 烧录」始终可见可用，
@@ -69,7 +72,8 @@ const FALLBACK_PANEL: DevicePanelInfo = {
   ]
 }
 
-function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring }: DevicePanelProps): React.JSX.Element | null {
+function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring, onOpenFile }: DevicePanelProps): React.JSX.Element | null {
+  const [diagOpen, setDiagOpen] = useState(false)
   const [panels, setPanels] = useState<DevicePanelInfo[]>([])
   const [boards, setBoards] = useState<Array<{ fqbn: string; name: string; platform?: string }>>([])
   const [ports, setPorts] = useState<Array<{ path: string; manufacturer?: string }>>([])
@@ -445,8 +449,25 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow, onGenera
               ))}
             </div>
           )}
+
+          {/* 诊断工具组：引脚冲突 / 烧录历史 / 分享卡片 */}
+          <div className="device-actions">
+            <button className="device-action-btn" onClick={() => setDiagOpen(true)} title="引脚冲突检测、烧录快照回滚、生成分享卡片">
+              🔧 诊断与回滚
+            </button>
+          </div>
         </div>
       ))}
+
+      {diagOpen && (
+        <DeviceDiagnosticsModal
+          projectRoot={projectRoot}
+          board={deviceCtx.board}
+          port={deviceCtx.port}
+          onClose={() => setDiagOpen(false)}
+          onOpenFile={onOpenFile}
+        />
+      )}
     </div>
   )
 }

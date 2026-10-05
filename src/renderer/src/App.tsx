@@ -7,6 +7,7 @@ import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
 import DebugPanel from './components/DebugPanel'
+import PlatformIOPanel from './components/PlatformIOPanel'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -235,6 +236,7 @@ function App(): React.JSX.Element {
   const [activeSidebar, setActiveSidebar] = useState('files')
   const [terminalVisible, setTerminalVisible] = useState(true)
   const [debugVisible, setDebugVisible] = useState(false)
+  const [pioVisible, setPioVisible] = useState(false)
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
@@ -859,6 +861,8 @@ function App(): React.JSX.Element {
         onToggleTerminal={() => setTerminalVisible((v) => !v)}
         onToggleDebug={() => setDebugVisible((v) => !v)}
         debugVisible={debugVisible}
+        onTogglePio={() => setPioVisible((v) => !v)}
+        pioVisible={pioVisible}
         leftPanelVisible={leftPanelVisible}
         editorVisible={editorVisible}
         onToggleLeftPanel={toggleLeftPanel}
@@ -930,6 +934,7 @@ function App(): React.JSX.Element {
                     if (name) setBoardName(name)
                   }}
                   onPortChange={setSelectedPort}
+                  serialSessionId={serialOpen && selectedPort ? `serial-${selectedPort}` : null}
                   onOpenSerialWindow={() => {
                     // 串口监视器统一走底部面板（不再弹浮窗，避免遮挡编辑器/仿真面板）
                     setTerminalVisible(true)
@@ -989,6 +994,9 @@ function App(): React.JSX.Element {
           )}
           {debugVisible && (
             <DebugPanel fqbn={fqbn} onClose={() => setDebugVisible(false)} />
+          )}
+          {pioVisible && (
+            <PlatformIOPanel projectRoot={projectRoot} onClose={() => setPioVisible(false)} />
           )}
         </div>
         {aiPanelVisible && (

@@ -619,6 +619,16 @@ export async function readMemory(addr: string | number, count = 64): Promise<Mem
   return parseMemory(out)
 }
 
+/** 读原始字节的统一入口（分区表 / NVS 等解析器都注入这个函数，不直接依赖 openocd） */
+export type RawReader = (addr: number, count: number) => Promise<Buffer>
+
+/** 读指定地址的原始字节（走 mdb，解析成 Buffer） */
+export async function readRawBytes(addr: number, count: number): Promise<Buffer> {
+  const mem = await readMemory(addr, count)
+  if (!mem.bytes.length) throw new Error(`读 0x${addr.toString(16)} 未返回字节（openocd 是否有输出？）`)
+  return Buffer.from(mem.bytes)
+}
+
 export interface ThreadInfo {
   id: string
   name: string
