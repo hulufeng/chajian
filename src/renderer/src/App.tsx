@@ -12,7 +12,7 @@ import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
 import AgentBoard from './components/AgentBoard'
-import type { BoardTargetInfo, ChannelHealth } from '../../preload'
+import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -227,7 +227,9 @@ function App(): React.JSX.Element {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
 
   // 编译过程可见化：阶段 / 已用时 / 资源用量（阶段与用量由主进程从真实输出解析）
-  const [buildStage, setBuildStage] = useState<{ stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'; label: string }>({ stage: 'prepare', label: '准备' })
+  // 烧录阶段要走自己的 5 格（连接→擦除→写入→校验→复位），所以这里必须是完整的 BuildStageInfo，
+  // 不能只写 { stage, label } —— 那样 flashStage 会被类型挡掉，烧录阶段条退化成一行文字。
+  const [buildStage, setBuildStage] = useState<BuildStageInfo>({ stage: 'prepare', label: '准备' })
   const [buildUsage, setBuildUsage] = useState<{ flashBytes: number; flashPercent: number; ramBytes: number; ramPercent: number; rawFlash: string; rawRam: string } | null>(null)
   const [buildStartedAt, setBuildStartedAt] = useState<number | null>(null)
   const [buildElapsedMs, setBuildElapsedMs] = useState(0)
@@ -259,9 +261,13 @@ function App(): React.JSX.Element {
     return () => clearInterval(t)
   }, [buildStartedAt])
 
-  /** 编译/烧录进行中 → 自动切到输出面板（否则用户看不到过程） */
+  /**
+   * 编译/烧录进行中 → 自动切到输出面板（否则用户看不到过程）。
+   * 面板**折叠着也要展开**：原来这里 `cur === null` 时保持不变，
+   * 结果面板收起状态下点编译，底部纹丝不动 —— 又变成"点了没反应"。
+   */
   const ensureOutputVisible = useCallback((): void => {
-    setBottomPanel((cur) => (cur === null || cur === 'output' ? cur : 'output'))
+    setBottomPanel('output')
   }, [])
 
   const cancelBuild = useCallback((): void => {
@@ -610,9 +616,12 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('grpc-compile-') || d.id.startsWith('grpc-upload-')) {
         setCompileProgress({ percent: d.percent, message: d.message })
       }
-      // 烧录写入进度：主进程解析的是 esptool 真输出，直接铺到过程条上给用户看
+      // 烧录写入进度：主进程解析的是 esptool 真输出，直接铺到过程条上给用户看。
+      // stage 是烧录子阶段（连接/擦除/写入/校验/复位），阶段条靠它一格一格往前走，
+      // 不然点烧录后编译那排阶段条会整段消失，只剩一行文字，看着像过程条退化。
       if (d.id.startsWith('grpc-upload-') && d.message) {
-        setBuildStage({ stage: 'flashing', label: d.message })
+        const flash = d.stage as FlashStage | undefined
+        setBuildStage({ stage: 'flashing', label: d.message, flashStage: flash })
       }
       // 编译阶段条：主进程按真实输出推进（准备→编译草图→编译库→链接→生成二进制），
       // 界面只显示不猜测——不然编译那几十秒阶段条一直停在「准备」，看着像没在动
@@ -1206,8 +1215,12 @@ function App(): React.JSX.Element {
                   onPortChange={setSelectedPort}
                   serialSessionId={serialOpen && selectedPort ? `serial-${selectedPort}` : null}
                   onOpenSerialWindow={() => {
-                    // 串口监视器统一走底部面板（不再弹浮窗，避免遮挡编辑器/仿真面板）
-                    setTerminalVisible(true)
+                    // 串口监视器统一走底部面板（不再弹浮窗，避免遮挡编辑器/仿真面板）。
+                    // 之前这里只 setTerminalVisible(true) —— 那是个已被 PanelDock 取代的遗留 state
+                    // （现在读的是 bottomPanel === 'output'），改它等于什么都没做：
+                    // 面板折叠着或停在别的页签时，点了毫无反应。
+                    ensureOutputVisible()
+                    // 重建 OutputPanel → 页签回到 defaultTab「串口监视器」
                     setOutputKey((k) => k + 1)
                   }}
                   onGenerateWiring={() => void generateWiring()}
@@ -1239,6 +1252,9 @@ function App(): React.JSX.Element {
               theme={theme}
             />
           ))}
+          {/* 折叠条（showMinibar）不能只在极简模式给：专业模式下把面板收起后，
+              PanelDock 会 return null，底部连一个"再展开"的入口都没有 ——
+              用户只能靠菜单命令把它唤回来，等于功能被藏死了。 */}
           <PanelDock
             active={bottomPanel}
             onChange={(id) => {
@@ -1252,8 +1268,8 @@ function App(): React.JSX.Element {
             height={panelHeight}
             onHeightChange={setPanelHeight}
             badges={{ output: buildError ? '!' : 0, git: gitBadge }}
-            showMinibar={simple}
-            statusText={simple ? dockStatusText : undefined}
+            showMinibar
+            statusText={dockStatusText}
             render={(id) => {
               if (id === 'output') {
                 return (
