@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import BuildProgress from './BuildProgress'
 import TerminalView, { type TerminalHandle } from './TerminalView'
 import SerialPlotter from './SerialPlotter'
 import type { Ref } from 'react'
@@ -28,6 +29,14 @@ interface Props {
   buildError?: string | null
   onDiagnose?: () => void
   onDebugFix?: () => void
+  /** 编译过程：阶段条 / 结果卡（数据由 App 从主进程解析后传入） */
+  buildVisible?: boolean
+  buildActive?: boolean
+  buildStage?: { stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'; label: string }
+  buildElapsedMs?: number
+  buildCancellable?: boolean
+  onCancelBuild?: () => void
+  buildUsage?: { flashBytes: number; flashPercent: number; ramBytes: number; ramPercent: number; rawFlash: string; rawRam: string } | null
 }
 
 /**
@@ -107,7 +116,14 @@ function OutputPanel({
   defaultTab,
   buildError,
   onDiagnose,
-  onDebugFix
+  onDebugFix,
+  buildVisible = false,
+  buildActive = false,
+  buildStage = { stage: 'prepare' as const, label: '准备' },
+  buildElapsedMs = 0,
+  buildCancellable = false,
+  onCancelBuild = () => undefined,
+  buildUsage = null
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<OutputKind>(defaultTab ?? '输出')
   const [serialView, setSerialView] = useState<'文本' | '波形'>('文本')
@@ -179,6 +195,15 @@ function OutputPanel({
         )}
         {tab === '输出' && (
           <div className="mono-log" ref={outputRef}>
+            <BuildProgress
+              visible={buildVisible}
+              active={buildActive}
+              stage={buildStage}
+              elapsedMs={buildElapsedMs}
+              cancellable={buildCancellable}
+              onCancel={onCancelBuild}
+              usage={buildUsage}
+            />
             {outputLog ? (
               <>
                 <OutputLogView text={outputLog} />

@@ -576,6 +576,12 @@ const api = {
       ipcRenderer.invoke('mcp:enable', opts)
   },
 
+  // 编译过程：阶段与资源用量（主进程从真实输出解析，渲染层只负责显示）
+  build: {
+    inspect: (text: string): Promise<{ stage: BuildStageInfo; usage: UsageSummary | null }> =>
+      ipcRenderer.invoke('build:inspect', text)
+  },
+
   // Git（状态 / 暂存 / 提交 / 分支 / 远端）
   git: {
     status: (root: string): Promise<GitStatusInfo> => ipcRenderer.invoke('git:status', { root }),
@@ -887,6 +893,20 @@ export interface McpOverview {
   totalTools: number
   globalPath: string
   projectPath: string | null
+}
+
+export interface BuildStageInfo {
+  stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'
+  label: string
+}
+
+export interface UsageSummary {
+  flashBytes: number
+  flashPercent: number
+  ramBytes: number
+  ramPercent: number
+  rawFlash: string
+  rawRam: string
 }
 
 export type Api = typeof api

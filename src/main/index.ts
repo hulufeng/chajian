@@ -17,7 +17,13 @@ import { AgentRunner } from './engine/agent-runner'
 import type { TreeNode } from './services/fsService'
 import * as nodePty from 'node-pty'
 import { arduinoGrpc } from './services/grpc-client'
-import { parseBuildOutput, formatBuildReport } from './services/build-diagnostics'
+import {
+  parseBuildOutput,
+  formatBuildReport,
+  parseBuildStage,
+  parseUsageSummary,
+  STAGE_LABEL
+} from './services/build-diagnostics'
 import { generateWiringDiagram, readSketchCode } from './services/wiringService'
 import { listLocalModels } from './ai/modelRuntime'
 import { checkPinConflicts, formatPinReport, type PinReport } from './services/pinConflict'
@@ -1198,6 +1204,15 @@ ipcMain.handle('mcp:trust', (_e, opts: { name: string; trusted: boolean; project
 ipcMain.handle('mcp:enable', (_e, opts: { name: string; enabled: boolean; projectRoot?: string | null }) =>
   setMcpServerEnabled(opts.name, opts.enabled, opts.projectRoot ?? null)
 )
+
+// 编译过程：把输出文本解析成「阶段 + 资源用量」，渲染层只显示不猜
+ipcMain.handle('build:inspect', (_e, text: string) => {
+  const stage = parseBuildStage(String(text || ''))
+  return {
+    stage: { stage, label: STAGE_LABEL[stage] },
+    usage: parseUsageSummary(String(text || ''))
+  }
+})
 
 // ── Git 面板（第四批③）：状态 / 暂存 / 提交 / 分支 / 远端 ──
 ipcMain.handle('git:status', (_e, opts: { root: string }) => getGitStatus(opts.root))

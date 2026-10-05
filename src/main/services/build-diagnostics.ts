@@ -59,6 +59,92 @@ export interface BuildNote {
   label?: string
 }
 
+// ============================================================
+//  编译阶段 / 资源用量（让「编译过程」可见）
+// ============================================================
+
+/**
+ * 构建阶段。刻意**不给百分比**：arduino-cli / esptool 都不输出可靠的百分比，
+ * 拿「已用时 + 阶段序号」表达进度比编造一个 0-100 更诚实。
+ */
+export type BuildStage = 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'
+
+export const STAGE_LABEL: Record<BuildStage, string> = {
+  prepare: '准备',
+  sketch: '编译草图',
+  libs: '编译库',
+  link: '链接',
+  image: '生成二进制',
+  done: '完成',
+  flashing: '烧录中',
+  flashed: '烧录完成'
+}
+
+/** 阶段推进顺序（用于阶段条渲染；flashing 之后不再顺序推进） */
+export const STAGE_ORDER: BuildStage[] = ['prepare', 'sketch', 'libs', 'link', 'image', 'done']
+
+/**
+ * 从输出文本推断当前阶段（取最后命中的那一条）。
+ * 只认 arduino-cli / esptool 的真实输出，不做猜测式推进。
+ */
+export function parseBuildStage(text: string): BuildStage {
+  const t = text || ''
+  let stage: BuildStage = 'prepare'
+  const has = (re: RegExp): boolean => re.test(t)
+  // 从后往前找「最晚出现」的标志：直接按出现顺序推进即可满足（输出是顺序追加的）
+  if (has(/Sketch uses \d+ bytes|Global variables use|项目使用|编译完成/i)) stage = 'done'
+  else if (has(/Linking everything together/i)) stage = 'link'
+  else if (has(/Generating binary image|Creating BIN|\.bin.*file|Generating .*\.elf/i)) stage = 'image'
+  else if (has(/Compiling librar|Compiling dependenc/i)) stage = 'libs'
+  else if (has(/Compiling sketch|\.ino\.cpp|Compiling .*\.cpp/i)) stage = 'sketch'
+  // 烧录阶段（esptool）优先级最高：它发生在编译之后
+  if (has(/esptool|Writing at|Hash of data verified|Hard resetting via RTS pin/i)) {
+    return has(/Hard resetting via RTS pin|Hash of data verified/i) ? 'flashed' : 'flashing'
+  }
+  return stage
+}
+
+export interface UsageSummary {
+  flashBytes: number
+  flashPercent: number
+  ramBytes: number
+  ramPercent: number
+  /** 完整原始两行，便于 hover 查看 */
+  rawFlash: string
+  rawRam: string
+}
+
+const FLASH_RE = /Sketch uses (\d+) bytes \(([\d.]+)%\) of program storage space/i
+const FLASH_RE_ALT = /项目使用的.*?(\d+) bytes.*?\(([\d.]+)%\)/i
+const RAM_RE = /Global variables use (\d+) bytes \(([\d.]+)%\) of dynamic memory/i
+
+/**
+ * 解析编译产物资源占用。arduino-cli 的成功输出固定给这两行，
+ * 解析出来做成摘要卡，比让用户自己在日志里找要省事。
+ */
+export function parseUsageSummary(text: string): UsageSummary | null {
+  const t = text || ''
+  const mf = t.match(FLASH_RE) || t.match(FLASH_RE_ALT)
+  const mr = t.match(RAM_RE)
+  if (!mf && !mr) return null
+  return {
+    flashBytes: mf ? Number(mf[1]) : 0,
+    flashPercent: mf ? Number(mf[2]) : 0,
+    ramBytes: mr ? Number(mr[1]) : 0,
+    ramPercent: mr ? Number(mr[2]) : 0,
+    rawFlash: mf ? mf[0] : '',
+    rawRam: mr ? mr[0] : ''
+  }
+}
+
+/** 字节数 → 人类可读（KB/MB） */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
+
 /** 单行输出分类：给 UI 着色用。error 才是真正需要处理的问题。 */
 export type OutputLineKind = 'error' | 'warning' | 'note' | 'context' | 'success' | 'plain'
 

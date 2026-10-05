@@ -225,11 +225,60 @@ function App(): React.JSX.Element {
   const [compileProgress, setCompileProgress] = useState<{ percent: number; message: string } | null>(null)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
 
+  // 编译过程可见化：阶段 / 已用时 / 资源用量（阶段与用量由主进程从真实输出解析）
+  const [buildStage, setBuildStage] = useState<{ stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'; label: string }>({ stage: 'prepare', label: '准备' })
+  const [buildUsage, setBuildUsage] = useState<{ flashBytes: number; flashPercent: number; ramBytes: number; ramPercent: number; rawFlash: string; rawRam: string } | null>(null)
+  const [buildStartedAt, setBuildStartedAt] = useState<number | null>(null)
+  const [buildElapsedMs, setBuildElapsedMs] = useState(0)
+  const [everBuilt, setEverBuilt] = useState(false)
+
+  // 编译中：每 200ms 刷新已用时（真实计时，不编造进度百分比）
+  useEffect(() => {
+    if (buildStartedAt === null) return
+    const t = setInterval(() => setBuildElapsedMs(Date.now() - buildStartedAt), 200)
+    return () => clearInterval(t)
+  }, [buildStartedAt])
+
+  /** 编译/烧录进行中 → 自动切到输出面板（否则用户看不到过程） */
+  const ensureOutputVisible = useCallback((): void => {
+    setBottomPanel((cur) => (cur === null || cur === 'output' ? cur : 'output'))
+  }, [])
+
+  const cancelBuild = useCallback((): void => {
+    if (!activeTaskId) return
+    void window.api.cmd.kill(activeTaskId)
+    setOutputLog((prev) => prev + '\n[取消] 已请求中断当前任务。\n')
+    setCompileState('error')
+    setBusy(false)
+    setBuildStartedAt(null)
+    setActiveTaskId(null)
+  }, [activeTaskId])
+
   // 日志
   const [outputLog, setOutputLog] = useState('')
   const [serialLog, setSerialLog] = useState('')
   // 底部面板重挂载 key（用于从设备面板"串口监视器"按钮切到串口 Tab）
   const [outputKey, setOutputKey] = useState(0)
+
+  // 输出变化时让主进程解析当前阶段与用量（arduino-cli / gRPC 两条路径通用）
+  useEffect(() => {
+    if (!everBuilt) return
+    let alive = true
+    const id = setTimeout(() => {
+      window.api.build
+        .inspect(outputLog.slice(-20000))
+        .then((r) => {
+          if (!alive) return
+          setBuildStage(r.stage)
+          if (r.usage) setBuildUsage(r.usage)
+        })
+        .catch(() => undefined)
+    }, 150)
+    return () => {
+      alive = false
+      clearTimeout(id)
+    }
+  }, [outputLog]) // eslint-disable-line react-hooks/exhaustive-deps
   const [showNewProject, setShowNewProject] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState('general')
@@ -441,6 +490,14 @@ function App(): React.JSX.Element {
       if (isCompile || isUpload) {
         setCompileState(d.code === 0 ? 'success' : 'error')
         setCompileProgress(null)
+        // 过程可见化：停表并冻结最终耗时（结果卡要显示真实耗时）
+        if (buildStartedAt !== null) {
+          setBuildElapsedMs(Date.now() - buildStartedAt)
+          setBuildStartedAt(null)
+        }
+        setBuildStage(isUpload
+          ? { stage: d.code === 0 ? 'flashed' : 'flashing', label: d.code === 0 ? '烧录完成' : '烧录中' }
+          : { stage: d.code === 0 ? 'done' : 'sketch', label: d.code === 0 ? '完成' : '编译中' })
         if (d.code !== 0) {
           setBuildError(extractBuildError(buildLogRef.current))
         } else {
@@ -650,6 +707,12 @@ function App(): React.JSX.Element {
 
     setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
     setCompileState('compiling')
+    // 过程可见化：记录开始时间并自动切到输出面板，否则用户看不到编译过程
+    setBuildStartedAt(Date.now())
+    setBuildElapsedMs(0)
+    setBuildStage({ stage: 'prepare', label: '准备' })
+    setEverBuilt(true)
+    ensureOutputVisible()
     setCompileProgress(null)
     setBusy(true)
     try {
@@ -777,6 +840,10 @@ function App(): React.JSX.Element {
     // 编译成功，开始上传（grpc:upload；daemon 不可用时主进程自动降级 CLI，不会挂死）
     setOutputLog((prev) => prev + `\n▶ [烧录] arduino-cli upload --fqbn ${fqbn} --port ${selectedPort} ${sketch}\n`)
     setCompileState('uploading')
+    setBuildStartedAt(Date.now())
+    setBuildStage({ stage: 'flashing', label: '烧录中' })
+    setEverBuilt(true)
+    ensureOutputVisible()
     try {
       const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort })
       if (uploadResult.id) {
@@ -1077,6 +1144,13 @@ function App(): React.JSX.Element {
                     onClose={() => setBottomPanel(null)}
                     defaultTab="串口监视器"
                     buildError={buildError}
+                    buildVisible={everBuilt}
+                    buildActive={compileState === 'compiling' || compileState === 'uploading'}
+                    buildStage={buildStage}
+                    buildElapsedMs={buildElapsedMs}
+                    buildCancellable={!!activeTaskId}
+                    onCancelBuild={cancelBuild}
+                    buildUsage={buildUsage}
                     onDiagnose={diagnoseBuildError}
                     onDebugFix={debugFixBuildError}
                   />

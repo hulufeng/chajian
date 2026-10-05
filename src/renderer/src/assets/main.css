@@ -4111,3 +4111,88 @@ body.ai-resizing {
 }
 .olog-chip.err { color: #e24b4a; border-color: #e24b4a; }
 .olog-chip.warn { color: #ef9f27; border-color: #ef9f27; }
+
+/* ============ 编译过程条 / 用量摘要卡 ============ */
+.bprog {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.bprog-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  flex-wrap: wrap;
+}
+.bprog-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 68px;
+}
+.bprog-spin {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: bprog-rotate 0.9s linear infinite;
+}
+@keyframes bprog-rotate {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bprog-spin { animation: none; }
+}
+.bprog-ok { color: var(--accent-2); font-size: 12px; }
+.bprog-stages { display: inline-flex; align-items: center; flex-wrap: wrap; }
+.bprog-stage { display: inline-flex; align-items: center; gap: 5px; }
+.bprog-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  display: inline-block;
+  flex: none;
+}
+.bprog-dot.done { background: var(--accent-2); }
+.bprog-dot.now { background: var(--accent); box-shadow: 0 0 0 3px rgba(47, 124, 246, 0.25); }
+.bprog-stage-label { font-size: 12px; color: var(--text-dim); }
+.bprog-stage-label.on { color: var(--text); }
+.bprog-link { width: 14px; height: 1px; background: var(--border); display: inline-block; }
+.bprog-link.done { background: var(--accent-2); }
+.bprog-time { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+.bprog-cancel {
+  border: 1px solid #e24b4a;
+  background: transparent;
+  color: #e24b4a;
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  padding: 1px 9px;
+  cursor: pointer;
+}
+.bprog-cancel:hover { background: rgba(226, 75, 74, 0.12); }
+.bprog-usage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 8px 7px;
+}
+.bprog-usage-cell {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.bprog-usage-k { font-size: 11px; color: var(--text-dim); }
+.bprog-usage-v { font-size: 12px; }
+.bprog-usage-v em { font-style: normal; color: var(--text-dim); }
