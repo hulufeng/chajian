@@ -50,6 +50,12 @@ export interface PluginContext {
   registerInternal: (command: string, handler: CommandHandler) => void
   /** 读插件目录内文件 */
   resolve: (...paths: string[]) => string
+  /**
+   * 调用宿主（或别的插件）已注册的命令。
+   * 插件不直接 require 宿主模块（打包后路径会变），一律走通道互调，
+   * 这样插件运行时和宿主版本的耦合只靠命令名，不靠文件路径。
+   */
+  invoke: (channel: ChannelName, command: string, args?: unknown) => unknown
 }
 
 export interface LoadedPlugin {
@@ -111,6 +117,8 @@ class PluginManager {
       }
       this.manifests.push(manifest)
       const entryPath = join(dir, manifest.entry)
+      // 同一路径反复安装时会命中旧模块缓存，先摘掉再 require，保证加载到新落盘的文件
+      delete require.cache[require.resolve(entryPath)]
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require(entryPath) as {
         load?: (ctx: PluginContext) => void
@@ -145,7 +153,15 @@ class PluginManager {
         register: (channel, command, handler) => this.registerCommand(b.manifest.name, channel, command, handler),
         registerBackend: (command, handler) => this.registerCommand(b.manifest.name, 'backend', command, handler),
         registerInternal: (command, handler) => this.registerCommand(b.manifest.name, 'internal', command, handler),
-        resolve: (...paths) => join(process.cwd(), 'src', 'main', 'plugins', b.manifest.name, ...paths)
+        resolve: (...paths) => join(process.cwd(), 'src', 'main', 'plugins', b.manifest.name, ...paths),
+        // 插件调宿主：命令不存在时返回结构化错误对象（而不是抛），
+        // 让插件能自己降级/报错，异常也不会顺着 IPC 冒到窗口级别。
+        invoke: (channel, command, args) => {
+          if (!this.commands.has(`${channel}:${command}`)) {
+            return { ok: false, error: `宿主命令未注册: ${channel}:${command}` }
+          }
+          return this.invoke(channel, command, args)
+        }
       }
       try {
         b.load(ctx)

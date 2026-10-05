@@ -9,6 +9,15 @@ import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalM
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
+import { load as loadHostAdapter, hostManifest as hostAdapterManifest } from './plugins/hostAdapter'
+import {
+  installPlugin,
+  uninstallPlugin,
+  installedPlugins,
+  listPlugins,
+  scanInstalledPlugins
+} from './plugins/pluginInstaller'
+import type { ChannelName } from './plugins/pluginManager'
 import { readSettings, writeSettings } from './settings'
 import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
@@ -197,7 +206,10 @@ function createWindow(): void {
 function initPlugins(): void {
   // 内置官方插件：Arduino CLI 工具链（ESP32 烧录硬链路）
   pluginManager.registerBuiltin(arduinoManifest, loadArduinoPlugin)
-  const loaded = pluginManager.init()
+  // 宿主能力：把串口会话等宿主接口暴露成命令，供已安装插件通过通道调用
+  pluginManager.registerBuiltin(hostAdapterManifest, loadHostAdapter)
+  // 已装插件（userData/plugins/*）：装完即接入命令面板 / 设备面板 / Agent 工具集
+  const loaded = scanInstalledPlugins()
   console.log(
     `[plugin] 插件系统就绪：${loaded.length} 个，已启用 ${loaded.filter((p) => p.loaded).length} 个（${loaded.map((p) => p.manifest.name).join(', ')}）`
   )
@@ -344,6 +356,25 @@ ipcMain.handle('fs:stageTempSketch', async (_e, name: string, content: string) =
 })
 
 ipcMain.handle('plugin:list', () => pluginManager.list())
+// 插件市场：清单 / 安装 / 卸载 / 已装清单 / 热重载 / 调插件命令
+ipcMain.handle('plugin:catalog', () => listPlugins())
+ipcMain.handle('plugin:install', (_e, id: string, trust?: boolean) => installPlugin(id, { trust: trust === true }))
+ipcMain.handle('plugin:installed', () => installedPlugins())
+ipcMain.handle('plugin:uninstall', (_e, id: string) => uninstallPlugin(id))
+ipcMain.handle('plugin:reload', () => scanInstalledPlugins())
+ipcMain.handle('plugin:getCatalogUrl', () => {
+  const v = readSettings().pluginCatalogUrl
+  return typeof v === 'string' && v.length > 0 ? v : ''
+})
+ipcMain.handle('plugin:setCatalogUrl', (_e, url: string) => {
+  // 空字符串 = 恢复内置清单
+  const next = typeof url === 'string' ? url.trim() : ''
+  writeSettings({ pluginCatalogUrl: next.length > 0 ? next : null })
+  return { ok: true }
+})
+ipcMain.handle('plugin:invoke', (_e, channel: string, command: string, args?: unknown) =>
+  pluginManager.invoke(channel as ChannelName, command, args)
+)
 ipcMain.handle('plugin:projectTypes', () => pluginManager.getProjectTypes())
 ipcMain.handle('plugin:capabilities', () => pluginManager.getCapabilities())
 ipcMain.handle('plugin:devicePanels', () => pluginManager.getDevicePanels())

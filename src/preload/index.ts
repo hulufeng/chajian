@@ -384,6 +384,46 @@ const api = {
       ipcRenderer.invoke('plugin:devicePanels'),
     commands: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; kind: string; view?: string; placement?: string; when?: string; transport?: string }>> =>
       ipcRenderer.invoke('plugin:commands'),
+    // 插件市场（下载安装 / 卸载 / 清单 / 热重载 / 直接调插件命令）
+    catalog: (): Promise<Array<{
+      id: string
+      name: string
+      displayName: string
+      version: string
+      description: string
+      author?: string
+      source: string
+      url: string
+      sha256: string
+      size?: number
+      exposes?: string[]
+      minAppVersion?: string
+      installed?: boolean
+      trusted?: boolean
+    }>> => ipcRenderer.invoke('plugin:catalog'),
+    installed: (): Promise<Array<{
+      id: string
+      name: string
+      displayName: string
+      version: string
+      description: string
+      entry?: string
+      valid: boolean
+      error?: string
+    }>> => ipcRenderer.invoke('plugin:installed'),
+    install: (id: string, trust?: boolean): Promise<{
+      ok: boolean
+      needConfirm: boolean
+      summary?: { id: string; name: string; displayName: string; version: string; loaded: boolean; error?: string }
+      error?: string
+    }> => ipcRenderer.invoke('plugin:install', id, trust),
+    uninstall: (id: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('plugin:uninstall', id),
+    reload: (): Promise<Array<{ manifest: { name: string; displayName: string; version: string }; loaded: boolean; error?: string }>> =>
+      ipcRenderer.invoke('plugin:reload'),
+    getCatalogUrl: (): Promise<string> => ipcRenderer.invoke('plugin:getCatalogUrl'),
+    setCatalogUrl: (url: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('plugin:setCatalogUrl', url),
+    invoke: (channel: 'internal' | 'backend' | 'cli' | 'http' | 'grpc' | 'mcp' | 'mqtt', command: string, args?: unknown): Promise<unknown> =>
+      ipcRenderer.invoke('plugin:invoke', channel, command, args),
   },
 
   // 设备上下文（选中的开发板/端口）

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { McpRuntimeState } from '../../../preload'
+import PluginMarket from './PluginMarket'
 
 type ShellType = 'powershell' | 'cmd' | 'pwsh' | 'bash'
 
@@ -57,15 +58,10 @@ const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
   { title: '扩展能力', items: CATEGORIES.filter((c) => ['mcp', 'plugins', 'skills', 'hooks'].includes(c.id)) }
 ]
 
-interface PluginItem {
-  manifest: { name: string; displayName: string; version: string }
-  loaded: boolean
-  error?: string
-}
+// 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
 function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
-  const [plugins, setPlugins] = useState<PluginItem[]>([])
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
   const [mcpGlobalPath, setMcpGlobalPath] = useState('')
@@ -240,7 +236,6 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
         setActiveByokId(null)
       }
     }).catch(() => undefined)
-    window.api.plugin.list().then(setPlugins).catch(() => setPlugins([]))
   }, [])
 
   useEffect(() => {
@@ -677,18 +672,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                 <p className="settings-desc">在 AI 输入框输入 / 可弹出技能列表。</p>
               </div>
             )}
-            {active === 'plugins' && (
-              <div className="settings-section">
-                <h3>插件</h3>
-                {plugins.length === 0 && <p className="settings-desc">暂无已安装插件</p>}
-                {plugins.map((p) => (
-                  <div key={p.manifest.name} className="settings-row">
-                    <span>{p.manifest.displayName} v{p.manifest.version}</span>
-                    <span className={`settings-tag ${p.loaded ? 'ok' : ''}`}>{p.loaded ? '已启用' : '已禁用'}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {active === 'plugins' && <PluginMarket />}
             {active === 'mcp' && (
               <div className="settings-section">
                 <h3>外部 MCP 服务器</h3>

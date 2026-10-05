@@ -2996,6 +2996,13 @@ body.ai-resizing {
   cursor: pointer;
 }
 .settings-btn:hover { background: var(--panel-hover); }
+/* 主动作按钮：必须写在 .settings-btn 之后才盖得住它（同优先级比顺序） */
+.settings-btn.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.settings-btn.primary:hover { background: var(--accent-hover); }
 .settings-actions { padding-top: 12px; }
 .settings-desc {
   font-size: 12px;
@@ -3032,6 +3039,98 @@ body.ai-resizing {
   color: var(--text-dim);
   text-align: right;
 }
+
+/* ===== 插件市场（设置 › 扩展能力 › 插件）===== */
+.plugin-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.plugin-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plugin-card-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.plugin-card-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 6px 0;
+}
+.plugin-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.plugin-exposes {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: var(--text);
+}
+.plugin-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.plugin-dot.on { background: var(--success); }
+.plugin-dot.off { background: var(--warning); }
+.plugin-log {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.7;
+  max-height: 150px;
+  overflow: auto;
+}
+.plugin-log-line { white-space: pre-wrap; }
+.plugin-log-line.info { color: var(--text-dim); }
+.plugin-log-line.ok { color: var(--success); }
+.plugin-log-line.err { color: var(--danger); }
+.plugin-confirm {
+  margin-top: 12px;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--panel);
+}
+.plugin-confirm-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--warning);
+  margin-bottom: 6px;
+}
+.plugin-confirm-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  padding: 8px 0;
+}
+.plugin-confirm-grid > span:nth-child(odd) {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.plugin-mono { font-family: var(--mono); word-break: break-all; }
 
 /* ===== BYOK 多 profile 美化 ===== */
 .byok-empty {

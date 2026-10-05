@@ -1,0 +1,61 @@
+{
+  "id": "esp32-sensor-lab",
+  "name": "esp32-sensor-lab",
+  "displayName": "ESP32 传感器实验台",
+  "version": "0.1.0",
+  "description": "内置常见传感器读取（温湿度 / 光照 / 距离）与一键数据曲线，直接接串口即出图。",
+  "author": "CodeLab 官方",
+  "minAppVersion": "0.0.1",
+  "entry": "index.js",
+  "channels": {
+    "backend": ["sensor.scan", "sensor.sample", "sensor.history"],
+    "internal": ["sensor.parse"]
+  },
+  "capabilities": {
+    "sensor-read": { "transport": "internal", "service": "sensor", "method": "sample" },
+    "sensor-chart": { "transport": "internal", "service": "sensor", "method": "history" }
+  },
+  "tools": [
+    {
+      "name": "sensor.sample",
+      "transport": "internal",
+      "internal": { "service": "sensor", "method": "sample" },
+      "description": "读一次传感器采样（温度℃ / 湿度% / 光照lux），返回最新一帧与历史均值",
+      "schema": {
+        "type": "object",
+        "properties": { "maxLines": { "type": "number", "description": "最多回溯多少行设备输出", "default": 40 } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sensor.history",
+      "transport": "internal",
+      "internal": { "service": "sensor", "method": "history" },
+      "description": "返回最近 20 次采样序列，供画曲线使用",
+      "schema": { "type": "object", "properties": {}, "additionalProperties": false }
+    }
+  ],
+  "commands": [
+    { "id": "sample", "title": "读一次传感器采样", "kind": "action", "transport": "backend" },
+    { "id": "chart", "title": "查看传感器曲线", "kind": "open-view", "view": "sensor-chart", "transport": "backend" }
+  ],
+  "devicePanel": {
+    "id": "sensor-panel",
+    "title": "传感器读数",
+    "selectors": [
+      {
+        "id": "port",
+        "title": "串口端口",
+        "key": "port",
+        "source": { "transport": "backend", "service": "serial", "method": "list" }
+      }
+    ],
+    "actions": [
+      { "id": "sample", "title": "读一次", "kind": "action", "transport": "backend", "name": "sensor.sample" },
+      { "id": "history", "title": "历史采样", "kind": "action", "transport": "backend", "name": "sensor.history" }
+    ]
+  },
+  "settings": [
+    { "key": "sensor.limit", "label": "采样上限（帧）", "type": "number", "default": 20 }
+  ]
+}
