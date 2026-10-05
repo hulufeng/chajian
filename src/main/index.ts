@@ -492,9 +492,19 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
 
   if (grpcOk) {
     let log = ''
+    let lastStage = ''
     arduinoGrpc.compile(absSketch, opts.fqbn, (line) => {
       log += line
-      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk: line })
+      if (sender.isDestroyed()) return
+      sender.send('task:output', { id, chunk: line })
+      // 编译过程可见化：阶段只由真实输出推进（准备→编译草图→编译库→链接→生成二进制），
+      // 变一次发一次，渲染层不用自己猜。之前只发开始/结束，中间几十秒界面纹丝不动。
+      const stage = parseBuildStage(log)
+      const label = STAGE_LABEL[stage]
+      if (stage !== lastStage) {
+        lastStage = stage
+        sender.send('task:progress', { id, percent: 0, message: label, stage })
+      }
     }, (p) => {
       if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
     }).then((result) => {
@@ -527,11 +537,19 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   mkdirSync(buildPath, { recursive: true })
   console.log(`[compile] CLI 降级编译: ${absSketch} → ${buildPath}`)
   let cliLog = ''
+  let lastStage = ''
   const cp = compileSketch(
     { sketch: absSketch, fqbn: opts.fqbn, bin: tool, buildPath },
     (chunk) => {
       cliLog += chunk
-      if (!sender.isDestroyed()) sender.send('task:output', { id, chunk })
+      if (sender.isDestroyed()) return
+      sender.send('task:output', { id, chunk })
+      // CLI 降级也走同一套阶段推进（与 gRPC 分支一致）
+      const stage = parseBuildStage(cliLog)
+      if (stage !== lastStage) {
+        lastStage = stage
+        sender.send('task:progress', { id, percent: 0, message: STAGE_LABEL[stage], stage })
+      }
     },
     (code) => {
       if (!sender.isDestroyed()) {

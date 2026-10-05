@@ -108,6 +108,8 @@ export interface TaskProgress {
   id: string
   percent: number
   message: string
+  /** 编译阶段名（prepare/sketch/libs/link/image/done）；烧录阶段用 message 文案即可 */
+  stage?: string
 }
 
 // ---- 片上调试（openocd telnet）----

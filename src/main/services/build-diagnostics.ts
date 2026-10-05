@@ -159,10 +159,14 @@ export function parseBuildStage(text: string): BuildStage {
   const t = text || ''
   let stage: BuildStage = 'prepare'
   const has = (re: RegExp): boolean => re.test(t)
-  // 从后往前找「最晚出现」的标志：直接按出现顺序推进即可满足（输出是顺序追加的）
+  // 分支顺序 = 时间倒序（越靠后发生的阶段判得越优先）。
+  // 因为吃的是**累积日志**，日志里会同时含前后两个阶段的行，只能靠优先级取最晚那个。
+  // 顺序必须对着 arduino-cli 的真实输出排：编译草图 → 编译库 → 链接 → 生成二进制 → 用量行。
+  // （原来把 link 排在 image 前面，导致「生成二进制」这一格永远跳不过去——日志一旦出现
+  //   Linking 就一直命中 link，image 分支成了死代码。）
   if (has(/Sketch uses \d+ bytes|Global variables use|项目使用|编译完成/i)) stage = 'done'
-  else if (has(/Linking everything together/i)) stage = 'link'
   else if (has(/Generating binary image|Creating BIN|\.bin.*file|Generating .*\.elf/i)) stage = 'image'
+  else if (has(/Linking everything together/i)) stage = 'link'
   else if (has(/Compiling librar|Compiling dependenc/i)) stage = 'libs'
   else if (has(/Compiling sketch|\.ino\.cpp|Compiling .*\.cpp/i)) stage = 'sketch'
   // 烧录阶段（esptool）优先级最高：它发生在编译之后

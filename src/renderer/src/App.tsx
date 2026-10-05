@@ -614,6 +614,15 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('grpc-upload-') && d.message) {
         setBuildStage({ stage: 'flashing', label: d.message })
       }
+      // 编译阶段条：主进程按真实输出推进（准备→编译草图→编译库→链接→生成二进制），
+      // 界面只显示不猜测——不然编译那几十秒阶段条一直停在「准备」，看着像没在动
+      if (d.id.startsWith('grpc-compile-') && d.message) {
+        const order: Array<'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done'> = [
+          'prepare', 'sketch', 'libs', 'link', 'image', 'done'
+        ]
+        const st = order.find((s) => s === d.stage)
+        setBuildStage({ stage: st ?? 'prepare', label: d.message })
+      }
     })
     const offSerial = window.api.onSerialData((d) => setSerialLog((prev) => prev + d.data))
     const offClose = window.api.onSerialClose((d) => {
