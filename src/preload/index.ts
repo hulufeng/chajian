@@ -582,6 +582,11 @@ const api = {
       ipcRenderer.invoke('build:inspect', text)
   },
 
+  // AI 通道健康度（未登录 / 登录过期 / 本地就绪 / BYOK 激活）
+  aiHealth: {
+    get: (): Promise<ChannelHealth> => ipcRenderer.invoke('ai:health')
+  },
+
   // 多智能体编排（协调者 + 并行 worker）
   orchestra: {
     plan: (opts: {
@@ -932,6 +937,17 @@ export interface UsageSummary {
   ramPercent: number
   rawFlash: string
   rawRam: string
+}
+
+export interface ChannelHealth {
+  loggedIn: boolean
+  /** 登录是否还有效（最近一次云端调用没报 401）；null = 还没试过 */
+  tokenHealthy: boolean | null
+  byokActive: string | null
+  localReady: boolean
+  localModel: string | null
+  modelListOk: boolean | null
+  lastError: string | null
 }
 
 export interface TaskSpecLite {

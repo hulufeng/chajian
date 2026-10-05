@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorTab } from './EditorArea'
+import type { ChannelHealth } from '../../../preload'
 
 // ---------- 类型 ----------
 interface AiModel {
@@ -380,6 +381,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   const [elapsedTick, setElapsedTick] = useState(0)
 
   const [models, setModels] = useState<AiModel[]>([])
+  // 通道健康 / 云端错误：让「能不能用」在界面上直接可见
+  const [health, setHealth] = useState<ChannelHealth | null>(null)
+  const [cloudError, setCloudError] = useState<string | null>(null)
   const [state, setState] = useState<AiState | null>(null)
   const [showByok, setShowByok] = useState(false)
   const [byokForm, setByokForm] = useState({ baseUrl: '', apiKey: '', model: '' })
@@ -615,31 +619,50 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   }, [busy])
 
   const load = async (): Promise<void> => {
-    try {
-      const [m, s, local] = await Promise.all([
-        window.api.ai.models(),
-        window.api.ai.state(),
-        window.api.model.local().catch(() => []),
-      ])
+    // 三路分别容错：云端未登录/过期时，本地模型与 BYOK 仍然可用，
+    // 不能因为一个 Promise reject 就把整个面板状态清空（那正是「看着有模型却发不出消息」的成因）。
+    const [mRes, sRes, localRes] = await Promise.allSettled([
+      window.api.ai.models(),
+      window.api.ai.state(),
+      window.api.model.local().catch(() => [])
+    ])
+
+    const m = mRes.status === 'fulfilled' ? mRes.value : []
+    if (mRes.status === 'fulfilled') {
       setModels(m)
+      setCloudError(null)
+    } else {
+      setModels([])
+      setCloudError((mRes.reason as Error)?.message || '内置模型服务不可用')
+    }
+
+    const s = sRes.status === 'fulfilled' ? sRes.value : null
+    if (s) {
       setState(s)
-      setLocalModels(local)
       setByokForm(s.byok ?? { baseUrl: '', apiKey: '', model: '' })
       if (s.modelId === 'byok' || s.modelId.startsWith('byok:')) setShowByok(true)
       if (s.modelId.startsWith('local:')) {
         setUseLocalModel(true)
         setSelectedLocalModel(s.modelId.replace('local:', ''))
-      } else if (local.length > 0) {
-        // 已安装本地模型 → 默认切到本地（云端不可用时开箱即用）
-        // 默认优先选 3B 代码模型（教学/编码能力更强），未安装才退回列表第一个
-        const id = local.find((m) => m.id.toLowerCase().includes('coder-3b'))?.id || local[0].id
+      }
+    }
+
+    const local = localRes.status === 'fulfilled' ? localRes.value : []
+    setLocalModels(local)
+    if (local.length > 0) {
+      // 有本地模型时优先用本地（云端不可用也能干活）
+      const id = local.find((x) => x.id.toLowerCase().includes('coder-3b'))?.id || local[0].id
+      if (!s?.modelId?.startsWith('local:')) {
         setUseLocalModel(true)
         setSelectedLocalModel(id)
         window.api.ai.setModel(`local:${id}`).catch(() => undefined)
       }
-    } catch {
-      setState(null)
     }
+
+    window.api.aiHealth
+      .get()
+      .then(setHealth)
+      .catch(() => undefined)
   }
 
   const buildUserText = (text: string, inject?: { name: string; content: string }): string => {
@@ -866,6 +889,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
             const hasBuiltin = models.filter((m) => m.available).length > 0
             const hasLocal = localModels.length > 0
             const hasByok = (state?.byokProfiles ?? []).length > 0
+            // 通道健康：云端不可用（未登录/过期）但本地或 BYOK 可用时，要说清楚「现在用的是哪个」，
+            // 否则用户看到模型名就以为云端能用，发消息才吃 401
+            const cloudDown = cloudError !== null
             if (!hasBuiltin && !hasLocal && !hasByok) {
               return (
                 <button
@@ -956,6 +982,32 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           </button>
         </div>
       </div>
+
+      {/* 通道健康条：把「现在能不能用、用的是哪条通道」摆在最显眼处。
+          之前的坑：云端 401 时界面照样显示一个模型名，用户以为能用，一发消息才报错。 */}
+      {(cloudError || health) && (
+        <div className="ai-health">
+          <span className={`ai-health-dot ${cloudError ? 'bad' : 'ok'}`} />
+          {cloudError ? (
+            <span className="ai-health-text" title={cloudError}>
+              内置模型服务不可用（{cloudError}）
+              {localModels.length > 0 && '，已自动使用本地模型'}
+              {localModels.length === 0 && '；本地也没有可用模型，请到设置添加 API Key 或下载本地模型'}
+            </span>
+          ) : health?.localReady ? (
+            <span className="ai-health-text">本地引擎就绪（{health.localModel}）</span>
+          ) : health?.byokActive ? (
+            <span className="ai-health-text">自定义模型通道：{health.byokActive}</span>
+          ) : health?.loggedIn ? (
+            <span className="ai-health-text">已登录，使用内置模型</span>
+          ) : (
+            <span className="ai-health-text">未登录：内置模型不可用，可在设置里登录或改用本地/自定义模型</span>
+          )}
+          <button className="ai-health-fix" onClick={() => onOpenSettings?.()}>
+            去设置
+          </button>
+        </div>
+      )}
 
       {showAdvanced && (
         <>

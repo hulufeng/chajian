@@ -16,6 +16,14 @@ interface Props {
   gitChanges?: number
   /** 当前硬件目标摘要（只读展示，改动去硬件目标面板） */
   targetLabel?: string
+  /** AI 通道健康：本地就绪 / 已登录 / 未登录，直接显示在状态栏 */
+  aiHealth?: {
+    loggedIn: boolean
+    localReady: boolean
+    localModel: string | null
+    byokActive: string | null
+    modelListOk: boolean | null
+  } | null
 }
 
 type Dot = { color: string; text: string; title: string }
@@ -45,7 +53,8 @@ function StatusBar({
   busy,
   debugStatus,
   gitChanges,
-  targetLabel
+  targetLabel,
+  aiHealth
 }: Props): React.JSX.Element {
   const ready = toolchain?.available ? '1/1 后端就绪' : '0/1 后端就绪'
 
@@ -68,6 +77,17 @@ function StatusBar({
     ? { color: '#2f7cf6', text: '编译/烧录中', title: '正在执行编译或烧录' }
     : null
 
+  // AI 通道：能不能用，在状态栏就能看到，不必等发消息才报 401
+  const ai: Dot | null = !aiHealth
+    ? null
+    : aiHealth.localReady
+      ? { color: '#4ade80', text: `本地模型 ${aiHealth.localModel || '就绪'}`, title: '本地引擎就绪，不消耗云端积分' }
+      : aiHealth.byokActive
+        ? { color: '#4ade80', text: `自定义模型 ${aiHealth.byokActive}`, title: '正在使用自带 Key 的自定义模型通道' }
+        : aiHealth.loggedIn && aiHealth.modelListOk !== false
+          ? { color: '#4ade80', text: '内置模型已登录', title: '云端通道可用' }
+          : { color: '#ef9f27', text: 'AI 通道不可用', title: aiHealth.loggedIn ? '登录可能已过期，请重新登录' : '未登录，且没有本地/自定义模型可用' }
+
   return (
     <footer className="statusbar">
       <span>{toolchain?.available ? `工具链 ${toolchain.version.split('\n')[0] || 'arduino-cli'}` : '工具链未安装'}</span>
@@ -79,6 +99,7 @@ function StatusBar({
       <span className="spacer" />
 
       {running ? dot(running) : null}
+      {ai ? dot(ai) : null}
       {serial ? dot(serial) : null}
       {debug ? dot(debug) : null}
       {gitChanges !== undefined && (

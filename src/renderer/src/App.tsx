@@ -12,7 +12,7 @@ import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
 import AgentBoard from './components/AgentBoard'
-import type { BoardTargetInfo } from '../../preload'
+import type { BoardTargetInfo, ChannelHealth } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -233,6 +233,25 @@ function App(): React.JSX.Element {
   const [buildElapsedMs, setBuildElapsedMs] = useState(0)
   const [everBuilt, setEverBuilt] = useState(false)
 
+  // AI 通道健康度：启动拉一次，之后低频刷新（状态栏与 AI 面板共用）
+  useEffect(() => {
+    let alive = true
+    const pull = (): void => {
+      window.api.aiHealth
+        .get()
+        .then((h) => {
+          if (alive) setAiHealth(h)
+        })
+        .catch(() => undefined)
+    }
+    pull()
+    const timer = setInterval(pull, 20000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+
   // 编译中：每 200ms 刷新已用时（真实计时，不编造进度百分比）
   useEffect(() => {
     if (buildStartedAt === null) return
@@ -299,6 +318,7 @@ function App(): React.JSX.Element {
   const [gitBadge, setGitBadge] = useState(0)
   /** 状态栏用：调试会话状态 + 当前目标摘要（只读，改动去硬件目标面板） */
   const [debugStatus, setDebugStatus] = useState<'idle' | 'starting' | 'running' | 'error'>('idle')
+  const [aiHealth, setAiHealth] = useState<ChannelHealth | null>(null)
   const [targetLabel, setTargetLabel] = useState('')
 
   // 调试状态变化时更新状态栏（面板也会自己收，这里只取一份给状态栏用）
@@ -1203,6 +1223,7 @@ function App(): React.JSX.Element {
         busy={busy}
         debugStatus={debugStatus}
         gitChanges={gitBadge}
+        aiHealth={aiHealth}
         targetLabel={targetLabel}
       />
       {showNewProject && (

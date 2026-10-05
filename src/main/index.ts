@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type ByokProfile } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type ByokProfile } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1215,6 +1215,9 @@ ipcMain.handle('build:inspect', (_e, text: string) => {
     usage: parseUsageSummary(String(text || ''))
   }
 })
+
+// AI 通道健康度：让「能不能用」在界面上可见（未登录/登录过期/本地就绪/BYOK 激活）
+ipcMain.handle('ai:health', () => getChannelHealth())
 
 // ── 多智能体编排（协调者 + 并行 worker）──
 ipcMain.handle('orchestra:plan', (_e, opts: { tasks: unknown[]; projectRoot?: string | null }) => {

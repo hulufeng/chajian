@@ -4256,3 +4256,30 @@ body.ai-resizing {
   border: 1px solid var(--border); border-radius: var(--border-radius-md); padding: 6px;
   resize: vertical;
 }
+
+/* ============ AI 通道健康条（能不能用，一眼看见） ============ */
+.ai-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.ai-health-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.ai-health-dot.ok { background: var(--accent-2); }
+.ai-health-dot.bad { background: #ef9f27; }
+.ai-health-text { color: var(--text-dim); line-height: 1.5; }
+.ai-health-fix {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: var(--border-radius-md);
+  font-size: 11px;
+  padding: 0 7px;
+  cursor: pointer;
+  flex: none;
+}
+.ai-health-fix:hover { color: var(--text); border-color: var(--accent); }

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { chatWithLocalModelStream } from '../ai/modelRuntime'
+import { chatWithLocalModel, chatWithLocalModelStream } from '../ai/modelRuntime'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -147,9 +147,64 @@ export function setActiveByok(id: string | null): AiState {
 }
 
 // ---------- 内置模型列表（官方通道） ----------
+/** 通道健康状态：让「能不能用」在界面上可见，而不是等发消息才报 401 */
+export interface ChannelHealth {
+  /** 是否已登录（本地 token 存在） */
+  loggedIn: boolean
+  /** 登录是否还有效（最近一次云端调用没报 401） */
+  tokenHealthy: boolean | null
+  /** 当前激活的 BYOK profile 名 */
+  byokActive: string | null
+  /** 本地引擎是否就绪（llama 已起且有模型） */
+  localReady: boolean
+  localModel: string | null
+  /** 云端模型列表是否可用 */
+  modelListOk: boolean | null
+  /** 最近一次错误（用于界面提示） */
+  lastError: string | null
+}
+
+let lastModelListOk: boolean | null = null
+let lastError: string | null = null
+
+export function getChannelHealth(): ChannelHealth {
+  const state = getAiState()
+  const local = getLocalModel()
+  const byok = resolveActiveByok(state)
+  return {
+    loggedIn: !!state.token,
+    tokenHealthy: state.token ? lastModelListOk : null,
+    byokActive: byok ? byok.name : null,
+    localReady: !!local,
+    localModel: local,
+    modelListOk: lastModelListOk,
+    lastError
+  }
+}
+
+export function noteChannelError(msg: string | null): void {
+  lastError = msg
+}
+
 export async function listModels(): Promise<AiModel[]> {
-  const res = await fetch(`${getServer()}/api/models`)
-  if (!res.ok) throw new Error(`获取模型列表失败（${res.status}）`)
+  let res: Response
+  try {
+    res = await fetch(`${getServer()}/api/models`)
+  } catch (e) {
+    lastModelListOk = false
+    throw new Error(`无法连接内置模型服务（${getServer()}）：${(e as Error).message}。若使用本地模型，请到「设置 → 本地引擎」启动。`)
+  }
+  if (res.status === 401 || res.status === 403) {
+    lastModelListOk = false
+    // 这条最关键：未登录/登录过期时，界面必须显式说出来，
+    // 否则用户会看到「有模型可选」却在发消息时才吃 401
+    throw new Error('内置模型服务未登录或登录已过期。请在「设置 → 模型」里登录，或改用「自定义模型 / 本地引擎」。')
+  }
+  if (!res.ok) {
+    lastModelListOk = false
+    throw new Error(`获取模型列表失败（${res.status}）`)
+  }
+  lastModelListOk = true
   const data = (await res.json()) as { models: AiModel[] }
   return data.models
 }
@@ -208,7 +263,29 @@ export interface ChatResult {
   cost?: number
 }
 
+/** 选了本地模型但引擎没就绪时抛错，避免静默改走云端（会上传代码 + 消耗积分） */
+function assertLocalNotSelected(state: AiState): void {
+  if (String(state.modelId || '').startsWith('local:')) {
+    throw new Error(
+      '你选择的是本地模型，但本地引擎当前未就绪。已阻止改走云端通道（那会把代码上传并消耗积分）。' +
+        '请到「设置 → 本地引擎」下载并启动模型后再试。'
+    )
+  }
+}
+
 export async function aiChat(messages: ChatMessage[], state: AiState = getAiState()): Promise<ChatResult> {
+  // 本地模型分支（与流式路径保持一致）：
+  // 之前只有 aiChatStream 有本地分支，非流式调用会静默落到官方通道 →
+  // 表现为「选了本地模型却报 401 未登录」，甚至悄悄消耗云端积分。
+  const local = getLocalModel()
+  if (local) {
+    const content = await chatWithLocalModel(local, messages)
+    return { content }
+  }
+  // 禁止静默降级：用户明确选了本地模型，但引擎没就绪时必须直说，
+  // 否则会悄悄把代码发到云端并消耗积分 —— 这比报错危险得多。
+  assertLocalNotSelected(state)
+
   // BYOK 模式：直连当前激活的 profile（OpenAI 兼容端点）
   const activeByok = resolveActiveByok(state)
   if (activeByok) {
@@ -368,6 +445,14 @@ export function aiChatStream(
       .then((r) => { if (!cancelled) onDone(null, r?.usage) })
       .catch((e) => { if (!cancelled) onDone(e) })
     return () => { cancelled = true }
+  }
+
+  // 选了本地模型但引擎没起来 → 直说，别偷偷走云端
+  try {
+    assertLocalNotSelected(state)
+  } catch (e) {
+    onDone(e as Error)
+    return () => undefined
   }
 
   console.error('[aiChatStream] state:', JSON.stringify({ token: state.token ? 'yes' : 'no', modelId: state.modelId, email: state.email }))
