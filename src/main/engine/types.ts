@@ -7,6 +7,13 @@ export interface ToolParameter {
   description: string
   enum?: string[]
   default?: unknown
+  /** 数组/对象类型的子结构（多 agent 任务列表这类参数需要） */
+  items?: {
+    type?: string
+    description?: string
+    properties?: Record<string, ToolParameter>
+    required?: string[]
+  }
 }
 
 export interface ToolDefinition {

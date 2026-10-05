@@ -24,6 +24,7 @@ import { closedLoopTools } from './closed-loop-tool'
 import { svdTools } from './svd-tools'
 import { platformioTools } from './platformio-tools'
 import { targetTools } from './target-tools'
+import { multiAgentTools } from './multi-agent-tools'
 import { mcpExternalTools } from './mcp-tools'
 import { isWriteBlocked } from '../project-config'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
@@ -575,5 +576,6 @@ export const coreTools: ToolDefinition[] = [
   ...svdTools,
   ...platformioTools,
   ...targetTools,
-  ...mcpExternalTools
+  ...mcpExternalTools,
+  ...multiAgentTools
 ]

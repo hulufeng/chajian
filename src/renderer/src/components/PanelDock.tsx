@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git'
+export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git' | 'agents'
 
 /** label 用短名（工具栏空间有限），全名放 hint 走 tooltip */
 export const PANEL_META: Array<{ id: PanelId; label: string; hint: string }> = [
@@ -8,7 +8,8 @@ export const PANEL_META: Array<{ id: PanelId; label: string; hint: string }> = [
   { id: 'debug', label: '调试', hint: '调试 · 寄存器 / 内存 / 断点 / 片内存储' },
   { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检' },
   { id: 'platformio', label: 'Pio', hint: 'PlatformIO · pio run 构建 / 烧录 / 串口监视（从硬件目标面板进入）' },
-  { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史' }
+  { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史' },
+  { id: 'agents', label: '协作', hint: '多智能体协作 · 任务分解与并行执行看板' }
 ]
 
 interface Props {

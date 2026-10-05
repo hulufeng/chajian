@@ -582,6 +582,31 @@ const api = {
       ipcRenderer.invoke('build:inspect', text)
   },
 
+  // 多智能体编排（协调者 + 并行 worker）
+  orchestra: {
+    plan: (opts: {
+      tasks: TaskSpecLite[]
+      projectRoot?: string | null
+    }): Promise<{
+      tasks: TaskSpecLite[]
+      conflicts: Array<{ a: string; b: string; files: string[]; resolution: string }>
+      layers: string[][]
+      cyclic: string[]
+      dangling: Array<{ id: string; missing: string }>
+    }> => ipcRenderer.invoke('orchestra:plan', opts),
+    run: (opts: {
+      tasks: TaskSpecLite[]
+      projectRoot?: string | null
+      concurrency?: number
+      approvedIds?: string[]
+    }): Promise<OrchestrationReport> => ipcRenderer.invoke('orchestra:run', opts),
+    onEvent: (cb: (tasks: AgentTaskRun[]) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, tasks: AgentTaskRun[]): void => cb(tasks)
+      ipcRenderer.on('orchestra:event', listener)
+      return () => ipcRenderer.removeListener('orchestra:event', listener)
+    }
+  },
+
   // Git（状态 / 暂存 / 提交 / 分支 / 远端）
   git: {
     status: (root: string): Promise<GitStatusInfo> => ipcRenderer.invoke('git:status', { root }),
@@ -907,6 +932,43 @@ export interface UsageSummary {
   ramPercent: number
   rawFlash: string
   rawRam: string
+}
+
+export interface TaskSpecLite {
+  id: string
+  title?: string
+  role: 'research' | 'code' | 'review' | 'verify' | 'custom'
+  task: string
+  writeScope?: string[]
+  dependsOn?: string[]
+  requireApproval?: boolean
+  maxTurns?: number
+}
+
+export interface AgentTaskRun {
+  spec: TaskSpecLite
+  status: 'pending' | 'awaiting-approval' | 'running' | 'done' | 'failed' | 'skipped' | 'blocked'
+  agentId: string
+  startedAt?: number
+  endedAt?: number
+  elapsedMs?: number
+  summary?: string
+  error?: string
+  toolCalls: Array<{ name: string; ok: boolean }>
+  blockedTools: string[]
+  skipReason?: string
+}
+
+export interface OrchestrationReport {
+  runId: string
+  startedAt: number
+  endedAt: number
+  elapsedMs: number
+  ok: boolean
+  tasks: AgentTaskRun[]
+  layers: string[][]
+  conflicts: Array<{ a: string; b: string; files: string[]; resolution: string }>
+  summary: string
 }
 
 export type Api = typeof api

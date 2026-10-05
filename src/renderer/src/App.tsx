@@ -11,6 +11,7 @@ import PlatformIOPanel from './components/PlatformIOPanel'
 import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
+import AgentBoard from './components/AgentBoard'
 import type { BoardTargetInfo } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
@@ -1183,6 +1184,7 @@ function App(): React.JSX.Element {
                   />
                 )
               }
+              if (id === 'agents') return <AgentBoard projectRoot={projectRoot} onClose={() => setBottomPanel(null)} />
               return <GitPanel projectRoot={projectRoot} onOpenFile={(p) => void openFile(p, p.split(/[\\/]/).pop() || 'file')} onClose={() => setBottomPanel(null)} />
             }}
           />

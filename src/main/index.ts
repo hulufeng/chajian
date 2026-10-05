@@ -71,6 +71,8 @@ import {
   buildPlatformioIni
 } from './services/boardRegistry'
 import { runSelfCheck } from './services/hardwareSelfCheck'
+import { runTasks, detectConflicts, layerize } from './engine/orchestrator'
+import { normalizeAgentTasks } from './engine/tools/multi-agent-tools'
 import {
   getStatus as getGitStatus,
   listBranches as listGitBranches,
@@ -1213,6 +1215,34 @@ ipcMain.handle('build:inspect', (_e, text: string) => {
     usage: parseUsageSummary(String(text || ''))
   }
 })
+
+// ── 多智能体编排（协调者 + 并行 worker）──
+ipcMain.handle('orchestra:plan', (_e, opts: { tasks: unknown[]; projectRoot?: string | null }) => {
+  const specs = normalizeAgentTasks(opts.tasks, opts.projectRoot || process.cwd()).tasks
+  const conflicts = detectConflicts(specs)
+  const { layers, cyclic, dangling } = layerize(specs)
+  return { tasks: specs, conflicts, layers, cyclic, dangling }
+})
+
+ipcMain.handle(
+  'orchestra:run',
+  async (event, opts: { tasks: unknown[]; projectRoot?: string | null; concurrency?: number; approvedIds?: string[] }) => {
+    const { tasks: specs, warnings } = normalizeAgentTasks(opts.tasks, opts.projectRoot || process.cwd())
+    if (!specs.length) {
+      throw new Error(warnings[0] || '没有可执行的任务（每个任务至少要有 task 描述）')
+    }
+    const sender = event.sender
+    return runTasks(specs, {
+      projectRoot: opts.projectRoot || process.cwd(),
+      concurrency: opts.concurrency,
+      approvedIds: opts.approvedIds,
+      // 实时把任务状态推给渲染层，看板才能滚动更新
+      onEvent: (tasks) => {
+        if (!sender.isDestroyed()) sender.send('orchestra:event', tasks)
+      }
+    })
+  }
+)
 
 // ── Git 面板（第四批③）：状态 / 暂存 / 提交 / 分支 / 远端 ──
 ipcMain.handle('git:status', (_e, opts: { root: string }) => getGitStatus(opts.root))
