@@ -21,6 +21,10 @@ interface Props {
   badges?: Partial<Record<PanelId, string | number>>
   /** 各面板内容 */
   render: (id: PanelId) => React.ReactNode
+  /** 折叠时是否显示一条极简状态条（极简模式默认显示，替代常驻 6 个标签） */
+  showMinibar?: boolean
+  /** 状态条上的右侧状态文案，如「编译成功 3.2s」 */
+  statusText?: string
 }
 
 /**
@@ -31,12 +35,18 @@ interface Props {
  * 改之后：底部只有一个容器，一次只显示一个面板；标签式切换 + 可拖拽高度 + 可折叠。
  *         打开另一个面板就是切标签，不会出现「同时开四个、谁也看不清」。
  */
-export default function PanelDock({ active, onChange, height, onHeightChange, badges, render }: Props): React.JSX.Element | null {
+export default function PanelDock({
+  active, onChange, height, onHeightChange, badges, render, showMinibar = true, statusText,
+}: Props): React.JSX.Element | null {
   const dragRef = useRef<{ startY: number; startH: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   /** 已经打开过的面板：保持挂载，只切显隐。
    *  否则每次切标签都会卸载重建 —— 终端滚动历史、波形缓冲、面板内滚动位置全丢。 */
   const [mounted, setMounted] = useState<PanelId[]>([])
+  /** 记住最后打开过的面板：折叠后状态条点一下能原样展开回来 */
+  const lastRef = useRef<PanelId | null>(null)
+  if (active) lastRef.current = active
+  const lastId = lastRef.current
 
   useEffect(() => {
     if (active && !mounted.includes(active)) setMounted((m) => [...m, active])
@@ -72,7 +82,18 @@ export default function PanelDock({ active, onChange, height, onHeightChange, ba
     }
   }, [dragging, onHeightChange])
 
-  if (!active) return null
+  // 折叠态：极简模式下不常驻 6 个标签，只留一条细状态条（点一下原样展开）
+  if (!active) {
+    if (!showMinibar) return null
+    const meta = PANEL_META.find((p) => p.id === lastId)
+    return (
+      <div className="dock-minibar" onClick={() => onChange(lastId || 'output')} title="展开面板">
+        <span className="dock-minibar-chev">▴</span>
+        <span className="dock-minibar-label">{meta ? meta.label : '输出'}</span>
+        {statusText && <span className="dock-minibar-status">{statusText}</span>}
+      </div>
+    )
+  }
 
   return (
     <div className="dock" style={{ height }}>

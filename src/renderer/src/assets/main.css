@@ -4305,3 +4305,168 @@ body.ai-resizing {
   flex: none;
 }
 .ai-health-fix:hover { color: var(--text); border-color: var(--accent); }
+
+/* ==========================================================================
+   极简模式（对齐 WorkBuddy / 豆包的消费级密度）
+   默认砍掉 VSCode 式常驻控件：4 个文字菜单 → 1 个 ☰；
+   7 个工具栏按钮 → 编译 / 烧录 2 个主按钮 + ⋯ 溢出；
+   底部 6 个常驻标签 → 一条 22px 折叠条；左侧图标带去掉文字。
+   功能一个没删，只是收进菜单；☰ 里可一键切回「专业界面」。
+   ========================================================================== */
+
+/* --- 标题栏 --- */
+.titlebar.simple .titlebar-logo svg { width: 22px; height: 22px; }
+.titlebar.simple .titlebar-drag { gap: 2px; }
+.titlebar.simple .titlebar-tools { gap: 4px; padding-left: 6px; }
+
+.tb-btn.tb-main {
+  width: auto;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.tb-btn.tb-main:disabled { opacity: .5; }
+.tb-btn-text { font-size: 13px; font-weight: 500; }
+
+/* --- 下拉：⻰ 菜单靠左、⋯ 菜单靠右（避免溢出窗口） --- */
+.dropdown-left { left: auto; right: 0; min-width: 190px; }
+.dropdown-group {
+  padding: 7px 14px 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+.dropdown-item.on { color: var(--accent); }
+.dropdown-mark { margin-left: 12px; font-size: 12px; }
+
+/* --- 左侧活动栏：极简下只留图标 --- */
+.activitybar.simple { width: 48px; padding-top: 4px; }
+.activitybar.simple .activity-item { width: 48px; min-height: 46px; padding: 4px 0; }
+
+/* --- 底部折叠条（替代常驻 6 个面板标签） --- */
+.dock-minibar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  flex: none;
+  padding: 0 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+  user-select: none;
+}
+.dock-minibar:hover { background: var(--panel-hover); }
+.dock-minibar-chev { font-size: 9px; opacity: 0.7; }
+.dock-minibar-label { color: var(--text); font-weight: 500; }
+.dock-minibar-status { color: var(--text-dim); }
+
+/* --- 极简首页：一屏、只有一个输入框 --- */
+.welcome-simple {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px 24px;
+}
+.welcome-simple-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.2px;
+  text-align: center;
+}
+.welcome-ask {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  max-width: 620px;
+  padding: 7px 7px 7px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.welcome-ask:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.welcome-ask-input {
+  flex: 1;
+  min-height: 26px;
+  max-height: 120px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 22px;
+  padding: 2px 0;
+}
+.welcome-ask-input::placeholder { color: var(--text-dim); }
+.welcome-ask-send {
+  flex: none;
+  height: 30px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.welcome-ask-send:hover { filter: brightness(1.07); }
+.welcome-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.welcome-chip {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.welcome-chip:hover { border-color: var(--accent); color: var(--accent); }
+.welcome-examples-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.welcome-examples-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.welcome-example-chip {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 13px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.welcome-example-chip:hover { border-color: var(--accent); color: var(--accent); }
+.welcome-example-chip.ghost { border-style: solid; }

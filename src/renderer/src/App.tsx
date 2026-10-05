@@ -305,6 +305,20 @@ function App(): React.JSX.Element {
   const [language, setLanguage] = useState<'zh' | 'en'>(() => (localStorage.getItem('codelab-lang') as 'zh' | 'en') || 'zh')
   const [shell, setShell] = useState<ShellType>(() => (localStorage.getItem('codelab-shell') as ShellType) || 'powershell')
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  /**
+   * 极简 / 专业界面。
+   * 默认极简：整个窗口只有「编译 + 烧录」两个主按钮、左侧窄图标带、
+   * 底部面板默认收起、首页只有一个输入框 —— 对齐 WorkBuddy / 豆包的消费级密度。
+   * 想要全套 VSCode 面板的话，在 ☰ 菜单里切「专业界面」，功能一个不丢。
+   */
+  const [simple, setSimple] = useState<boolean>(() => localStorage.getItem('codelab-simple') !== '0')
+  const toggleSimple = useCallback(() => {
+    setSimple((v) => {
+      const next = !v
+      localStorage.setItem('codelab-simple', next ? '1' : '0')
+      return next
+    })
+  }, [])
   const [pluginTypes, setPluginTypes] = useState<ProjectTypeItem[]>([])
   const [activeSidebar, setActiveSidebar] = useState('files')
   const [terminalVisible, setTerminalVisible] = useState(true)
@@ -312,7 +326,8 @@ function App(): React.JSX.Element {
   const [pioVisible, setPioVisible] = useState(false)
   const [targetVisible, setTargetVisible] = useState(false)
   /** 底部统一面板组：一次只显示一个（UI 重设计核心，见 PanelDock 注释） */
-  const [bottomPanel, setBottomPanel] = useState<PanelId | null>('output')
+  // 极简模式默认收起底部面板（编译/烧录/报错时会自动弹开输出，用户不用去找）
+  const [bottomPanel, setBottomPanel] = useState<PanelId | null>(simple ? null : 'output')
   const [panelHeight, setPanelHeight] = useState(280)
   /** Git 面板角标：变更文件数 */
   const [gitBadge, setGitBadge] = useState(0)
@@ -378,7 +393,7 @@ function App(): React.JSX.Element {
     }
   }, [projectRoot])
   const [debugChip, setDebugChip] = useState<string | undefined>(undefined)
-  const [leftPanelVisible, setLeftPanelVisible] = useState(true)
+  const [leftPanelVisible, setLeftPanelVisible] = useState(!simple)
   const [editorVisible, setEditorVisible] = useState(true)
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
   const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number; autoSend?: boolean } | null>(null)
@@ -408,8 +423,36 @@ function App(): React.JSX.Element {
   const toggleLeftPanel = useCallback(() => setLeftPanelVisible((v) => !v), [])
   const toggleEditor = useCallback(() => setEditorVisible((v) => !v), [])
   const onActivityChange = useCallback((id: string) => {
-    if (id === 'ai') setAiPanelVisible((v) => !v)
-    else setActiveSidebar(id)
+    if (id === 'ai') {
+      setAiPanelVisible((v) => !v)
+      return
+    }
+    // 极简模式下左侧栏默认收起：用户点「文件 / 烧录」图标时必须真的给他展开，
+    // 否则图标点了没反应（原来 activeSidebar 改了但 leftPanelVisible 还是 false）
+    if (!leftPanelVisible) setLeftPanelVisible(true)
+    setActiveSidebar(id)
+  }, [leftPanelVisible])
+
+  /** 极简模式的两个轻量入口（⋯ 溢出菜单 / 左下角设置图标）统一回传，避免子组件各自造一套状态 */
+  useEffect(() => {
+    const onPanel = (e: Event): void => {
+      const id = (e as CustomEvent<string>).detail
+      setBottomPanel(id as PanelId)
+      setTerminalVisible(id === 'output')
+      setDebugVisible(id === 'debug')
+      setPioVisible(id === 'platformio')
+      setTargetVisible(id === 'target')
+    }
+    const onSettings = (): void => {
+      setSettingsTab('general')
+      setShowSettings(true)
+    }
+    window.addEventListener('codelab:openPanel', onPanel)
+    window.addEventListener('codelab:openSettings', onSettings)
+    return () => {
+      window.removeEventListener('codelab:openPanel', onPanel)
+      window.removeEventListener('codelab:openSettings', onSettings)
+    }
   }, [])
 
   // 欢迎页三大能力入口处理
@@ -992,6 +1035,16 @@ function App(): React.JSX.Element {
     void onSave(activePath)
   }, [activePath, onSave])
 
+  // 底部折叠条上的一行状态：极简模式用它替代常驻的 6 个面板标签
+  const dockStatusText =
+    compileState === 'compiling' || compileState === 'uploading'
+      ? `${compileState === 'compiling' ? '编译中' : '烧录中'} ${(buildElapsedMs / 1000).toFixed(1)}s`
+      : compileState === 'success'
+        ? `编译成功 ${(buildElapsedMs / 1000).toFixed(1)}s`
+        : compileState === 'error'
+          ? (busy ? '烧录中…' : '编译 / 烧录失败')
+          : serialOpen ? '串口已连接' : ''
+
   return (
     <div className="ide">
       <CommandPalette
@@ -1032,6 +1085,9 @@ function App(): React.JSX.Element {
         busy={busy}
         compileState={compileState}
         theme={theme}
+        simple={simple}
+        onToggleSimple={toggleSimple}
+        onOpenSearch={() => setCommandPaletteOpen(true)}
       />
       {updater && (
         <div className={`updater-banner ${updater.state}${updater.force ? ' force' : ''}`}>
@@ -1074,11 +1130,13 @@ function App(): React.JSX.Element {
         </div>
       )}
       <div className="ide-body">
+        {/* 图标带必须常驻：它是极简模式下唯一的左侧导航，
+            之前把它和 sidebar 一起塞进 leftPanelVisible 里，收起左侧后连「文件」图标都没了 */
+        }
+        <ActivityBar active={activeSidebar} onChange={onActivityChange} aiActive={aiPanelVisible} simple={simple} />
         {leftPanelVisible && (
-          <>
-            <ActivityBar active={activeSidebar} onChange={onActivityChange} aiActive={aiPanelVisible} />
-            <aside className="sidebar">
-              {activeSidebar === 'files' && (
+          <aside className="sidebar">
+            {activeSidebar === 'files' && (
                 <ProjectTree
                   root={projectRoot}
                   tree={tree}
@@ -1105,8 +1163,7 @@ function App(): React.JSX.Element {
                   onGenerateWiring={() => void generateWiring()}
                 />
               )}
-            </aside>
-          </>
+          </aside>
         )}
         <div className="ide-center">
           {editorVisible && (tabs.length === 0 ? (
@@ -1118,6 +1175,8 @@ function App(): React.JSX.Element {
               onFlash={handleFlash}
               onAssist={() => focusAi('')}
               onSolve={() => focusAi('把这段编译 / 烧录 / 串口报错粘贴给我，我帮你定位原因并给出修复方案：\n')}
+              simple={simple}
+              onAsk={(text) => focusAi(text)}
             />
           ) : (
             <EditorArea
@@ -1143,6 +1202,8 @@ function App(): React.JSX.Element {
             height={panelHeight}
             onHeightChange={setPanelHeight}
             badges={{ output: buildError ? '!' : 0, git: gitBadge }}
+            showMinibar={simple}
+            statusText={simple ? dockStatusText : undefined}
             render={(id) => {
               if (id === 'output') {
                 return (

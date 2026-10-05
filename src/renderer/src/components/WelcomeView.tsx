@@ -1,9 +1,15 @@
+import { useState } from 'react'
+
 interface WelcomeViewProps {
   onOpenExample: (fileName: string) => void
   onOpenProject: () => void
   onFlash: () => void
   onAssist: () => void
   onSolve: () => void
+  /** 极简模式：把「三大能力卡 + 示例网格」换成一屏、只有一个输入框的对话首页 */
+  simple?: boolean
+  /** 极简模式下输入框直接发话给 AI */
+  onAsk: (text: string) => void
 }
 
 const FlashIcon = (): React.JSX.Element => (
@@ -52,7 +58,54 @@ const EXAMPLES = [
 ]
 
 /** 欢迎页（突出三大核心能力：烧录 / 辅助编程 / 解决问题） */
-function WelcomeView({ onOpenExample, onOpenProject, onFlash, onAssist, onSolve }: WelcomeViewProps): React.JSX.Element {
+function WelcomeView({ onOpenExample, onOpenProject, onFlash, onAssist, onSolve, simple, onAsk }: WelcomeViewProps): React.JSX.Element {
+  const [draft, setDraft] = useState('')
+
+  /** 极简模式：一个输入框搞定，回车即发（和豆包/WorkBuddy 一样） */
+  if (simple) {
+    const submit = (): void => {
+      const text = draft.trim()
+      if (!text) return
+      setDraft('')
+      onAsk(text)
+    }
+    return (
+      <div className="welcome-simple">
+        <div className="welcome-simple-title">写码 · 烧录 · 排错，一句话就能开始</div>
+        <div className="welcome-ask">
+          <textarea
+            className="welcome-ask-input"
+            value={draft}
+            placeholder="想做什么？比如「帮我点亮板载 LED」或「烧录并看串口输出」"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            rows={1}
+          />
+          <button className="welcome-ask-send" onClick={submit} title="发送（Enter）">发送</button>
+        </div>
+        <div className="welcome-chips">
+          <button className="welcome-chip flash" onClick={onFlash}>⚡ 烧录到开发板</button>
+          <button className="welcome-chip assist" onClick={() => onAssist()}>✨ AI 帮我写代码</button>
+          <button className="welcome-chip solve" onClick={onSolve}>🐛 报错帮我看</button>
+        </div>
+        <div className="welcome-examples-title">或从示例工程开始</div>
+        <div className="welcome-examples-row">
+          {EXAMPLES.map((e) => (
+            <button key={e.file} className="welcome-example-chip" onClick={() => onOpenExample(e.file)}>
+              {e.title}
+            </button>
+          ))}
+          <button className="welcome-example-chip ghost" onClick={onOpenProject}>打开项目…</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="welcome-view">
       <div className="welcome-hero-banner">

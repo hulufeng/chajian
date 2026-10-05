@@ -5,6 +5,8 @@ interface MenuItem {
   shortcut?: string
   action: string
   separator?: boolean
+  /** 分组名：极简模式拍平成一个菜单时用 */
+  group?: string
 }
 
 const MENU_TREE: Record<string, MenuItem[]> = {
@@ -35,12 +37,50 @@ const MENU_TREE: Record<string, MenuItem[]> = {
     { label: '全屏切换', shortcut: 'F11', action: 'toggleFullscreen' },
     { label: '切换终端', shortcut: 'Ctrl+`', action: 'toggleTerminal' },
     { label: '', action: '', separator: true },
+    // 极简模式下这个开关在 ☰ 里；专业模式下 ☰ 不存在，所以必须也挂在「视图」菜单上，
+    // 否则切过去就切不回来了
+    { label: '切换到极简界面（少控件、好上手）', action: 'toggleSimple' },
+    { label: '', action: '', separator: true },
     { label: '设置…', shortcut: 'Ctrl+,', action: 'openSettings' },
   ],
   帮助: [
     { label: '关于 LabCode', action: 'about' },
   ],
 }
+
+/** 分组标题行：用 separator 标记位置，落到渲染层当小标题用 */
+interface FlatGroup { separator: true; group: string }
+type FlatItem = MenuItem | FlatGroup
+
+/** 极简模式：把 文件/编辑/视图/帮助 拍平成一个 ☰ 下拉菜单（分组只保留每一段的标题） */
+const FLAT_MENU: FlatItem[] = Object.entries(MENU_TREE).flatMap(
+  ([group, items], gi) => {
+    const out: FlatItem[] = gi === 0 ? [] : [{ separator: true, group: '' }]
+    let grouped = false
+    for (const it of items) {
+      if (it.separator) {
+        out.push({ separator: true, group: '' })
+        continue
+      }
+      if (!grouped) {
+        out.push({ separator: true, group })
+        grouped = true
+      }
+      out.push({ ...it, group })
+    }
+    return out
+  }
+)
+
+/** 溢出菜单项：极简模式下收进 ⋯，专业模式直接铺在工具栏 */
+const MORE_ITEMS: Array<{ id: string; label: string; title: string; on: boolean }> = [
+  { id: 'output', label: '输出', title: '输出 · 编译日志 / 串口监视 / 终端 / 问题', on: false },
+  { id: 'debug', label: '调试', title: '片上调试器（JTAG/DAP，openocd + telnet）', on: false },
+  { id: 'target', label: '目标', title: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检', on: false },
+  { id: 'platformio', label: 'Pio', title: 'PlatformIO · pio run 构建 / 烧录 / 串口监视', on: false },
+  { id: 'git', label: 'Git', title: 'Git · 变更 / 分支 / 提交历史', on: false },
+  { id: 'agents', label: '协作', title: '多智能体协作 · 任务分解与并行执行看板', on: false },
+]
 
 interface TitleBarProps {
   onNewProject: () => void
@@ -69,13 +109,18 @@ interface TitleBarProps {
   busy: boolean
   compileState: 'idle' | 'compiling' | 'uploading' | 'success' | 'error'
   theme: 'light' | 'dark'
+  /** 极简模式：单菜单 + 双主按钮 + ⋯ 溢出 */
+  simple: boolean
+  onToggleSimple: () => void
+  /** 打开命令面板（极简模式下「搜索」从 ⋯ 里进） */
+  onOpenSearch: () => void
 }
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
   onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, terminalVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
-  busy, compileState, theme
+  busy, compileState, theme, simple, onToggleSimple, onOpenSearch,
 }: TitleBarProps): React.JSX.Element {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -131,14 +176,36 @@ function TitleBar({
       case 'toggleTheme': onToggleTheme(); break
       case 'toggleTerminal': onToggleTerminal(); break
       case 'openSettings': onOpenSettings(); break
+      case 'toggleSimple': onToggleSimple(); break
+      case 'openSearch': onOpenSearch(); break
       case 'about':
-        alert('LabCode 代码实验室\n通用软件开发智能体 · 插件系统 · 桌面客户端\n版本 0.1.9')
+        alert('LabCode 代码实验室\n写码 · 烧录 · AI 辅助 · 排错，一个工具搞定\n版本 0.2.0')
         break
     }
   }
 
+  /** 溢出菜单 → 打开对应底部面板 */
+  const openPanelById = (id: string): void => {
+    setOpenMenu(null)
+    if (id === 'output') onToggleTerminal()
+    else if (id === 'debug') onToggleDebug()
+    else if (id === 'target') onToggleTarget()
+    else if (id === 'git') onToggleGit()
+    else if (id === 'platformio' || id === 'agents') {
+      // Pio / 协作面板由 App 的通用 openPanel 统一处理
+      window.dispatchEvent(new CustomEvent('codelab:openPanel', { detail: id }))
+    }
+  }
+
+  const panelOn: Record<string, boolean> = {
+    output: terminalVisible,
+    debug: debugVisible,
+    target: targetVisible,
+    git: gitVisible,
+  }
+
   return (
-    <header className="titlebar" ref={barRef}>
+    <header className={`titlebar${simple ? ' simple' : ''}`} ref={barRef}>
       <div className="titlebar-drag">
         <span className="titlebar-logo">
           <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
@@ -157,43 +224,78 @@ function TitleBar({
             <text x="32" y="43" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" fill="#ffffff" letter-spacing="-1" opacity="0.18">LC</text>
           </svg>
         </span>
-        <button className="titlebar-quick" title="文件树" onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.5 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
-        </button>
-        <button className="titlebar-quick" title={editorVisible ? "折叠编辑器" : "还原编辑器"} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.5 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
-        </button>
-      </div>
-      <nav className="titlebar-menus">
-        {Object.keys(MENU_TREE).map((name) => (
-          <div key={name} className="menu-wrapper">
-            <span
-              className={`menu ${openMenu === name ? 'active' : ''}`}
-              onClick={() => setOpenMenu((v) => (v === name ? null : name))}
-              onMouseEnter={() => openMenu && setOpenMenu(name)}
-            >
-              {name}
-            </span>
-            {openMenu === name && (
-              <div className="dropdown">
-                {MENU_TREE[name].map((item, i) =>
-                  item.separator ? (
-                    <div key={i} className="dropdown-sep" />
-                  ) : (
-                    <div key={i} className="dropdown-item" onClick={() => handleAction(item.action)}>
-                      <span>{item.label}</span>
-                      {item.shortcut && <span className="dropdown-shortcut">{item.shortcut}</span>}
-                    </div>
-                  )
+
+        {simple ? (
+          <div className="menu-wrapper">
+            <button className="tb-btn tb-menu-btn" title="菜单" onClick={() => setOpenMenu((v) => (v === 'main' ? null : 'main'))}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17"/></svg>
+            </button>
+            {openMenu === 'main' && (
+              <div className="dropdown dropdown-left">
+                {FLAT_MENU.map((item, i) =>
+                  item.separator
+                    ? (item.group
+                        ? <div key={i} className="dropdown-group">{item.group}</div>
+                        : <div key={i} className="dropdown-sep" />)
+                    : (
+                      <div key={i} className="dropdown-item" onClick={() => handleAction(item.action)}>
+                        <span>{item.label}</span>
+                        {item.shortcut && <span className="dropdown-shortcut">{item.shortcut}</span>}
+                      </div>
+                    )
                 )}
+                <div className="dropdown-sep" />
+                <div className="dropdown-item" onClick={() => handleAction('toggleSimple')}>
+                  <span>{simple ? '切换到专业界面（显示全部面板）' : '切换到极简界面'}</span>
+                </div>
               </div>
             )}
           </div>
-        ))}
-      </nav>
+        ) : (
+          <>
+            <button className="titlebar-quick" title="文件树" onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.5 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+            </button>
+            <button className="titlebar-quick" title={editorVisible ? "折叠编辑器" : "还原编辑器"} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.5 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+            </button>
+          </>
+        )}
+      </div>
+
+      {!simple && (
+        <nav className="titlebar-menus">
+          {Object.keys(MENU_TREE).map((name) => (
+            <div key={name} className="menu-wrapper">
+              <span
+                className={`menu ${openMenu === name ? 'active' : ''}`}
+                onClick={() => setOpenMenu((v) => (v === name ? null : name))}
+                onMouseEnter={() => openMenu && setOpenMenu(name)}
+              >
+                {name}
+              </span>
+              {openMenu === name && (
+                <div className="dropdown">
+                  {MENU_TREE[name].map((item, i) =>
+                    item.separator ? (
+                      <div key={i} className="dropdown-sep" />
+                    ) : (
+                      <div key={i} className="dropdown-item" onClick={() => handleAction(item.action)}>
+                        <span>{item.label}</span>
+                        {item.shortcut && <span className="dropdown-shortcut">{item.shortcut}</span>}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </nav>
+      )}
+
       <div className="titlebar-tools">
         <button
-          className={`tb-btn ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
+          className={`tb-btn${simple ? ' tb-main' : ''} ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
           title={compileState === 'compiling' ? '编译中…' : compileState === 'uploading' ? '烧录中…' : compileState === 'success' ? '编译成功' : compileState === 'error' ? '编译失败' : '编译'}
           onClick={onCompile}
           disabled={busy}
@@ -207,9 +309,10 @@ function TitleBar({
           ) : (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/></svg>
           )}
+          {simple && <span className="tb-btn-text">编译</span>}
         </button>
         <button
-          className="tb-btn"
+          className={`tb-btn${simple ? ' tb-main' : ''}`}
           title="烧录到开发板"
           onClick={onUpload}
           style={{
@@ -219,43 +322,77 @@ function TitleBar({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          {simple && <span className="tb-btn-text">烧录</span>}
         </button>
-        <div className="tb-sep" />
-        {/* 第二段：面板开关（都切底部面板组，顺序 = 日常工作流顺序） */}
-        <button
-          className={`tb-btn ${terminalVisible ? 'tb-success' : ''}`}
-          title="输出（编译输出 / 串口 / 终端 / 问题）"
-          onClick={onToggleTerminal}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-        </button>
-        <button
-          className={`tb-btn ${debugVisible ? 'tb-success' : ''}`}
-          title="片上调试器（JTAG/DAP，openocd + telnet）"
-          onClick={onToggleDebug}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
-        </button>
-        <button
-          className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
-          title="Git（变更 / 分支 / 提交历史）"
-          onClick={onToggleGit}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
-        </button>
-        <button
-          className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
-          title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
-          onClick={onToggleTarget}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
-        </button>
-        <div className="tb-sep" />
-        {/* PlatformIO 面板不再占工具栏位置：它属于「构建路径 = PlatformIO」时的操作面板，
-            从硬件目标面板进入即可（选 PlatformIO 路径会自动切过去），避免两个入口含义重叠。 */}
-        <button className="tb-btn" title="搜索">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
-        </button>
+
+        {simple ? (
+          <div className="menu-wrapper">
+            <button
+              className={`tb-btn tb-more ${MORE_ITEMS.some((m) => panelOn[m.id]) ? 'tb-success' : ''}`}
+              title="更多面板"
+              onClick={() => setOpenMenu((v) => (v === 'more' ? null : 'more'))}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            </button>
+            {openMenu === 'more' && (
+              <div className="dropdown dropdown-left">
+                {MORE_ITEMS.map((m) => (
+                  <div key={m.id} className={`dropdown-item${panelOn[m.id] ? ' on' : ''}`} onClick={() => openPanelById(m.id)}>
+                    <span>{m.label}</span>
+                    <span className="dropdown-mark">{panelOn[m.id] ? '✓' : ''}</span>
+                  </div>
+                ))}
+                <div className="dropdown-sep" />
+                <div className="dropdown-item" onClick={() => handleAction('openSearch')}>
+                  <span>搜索 / 命令</span>
+                  <span className="dropdown-shortcut">Ctrl+K</span>
+                </div>
+                <div className="dropdown-item" onClick={() => handleAction('toggleSimple')}>
+                  <span>切到专业界面</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="tb-sep" />
+            {/* 第二段：面板开关（都切底部面板组，顺序 = 日常工作流顺序） */}
+            <button
+              className={`tb-btn ${terminalVisible ? 'tb-success' : ''}`}
+              title="输出（编译输出 / 串口 / 终端 / 问题）"
+              onClick={onToggleTerminal}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+            </button>
+            <button
+              className={`tb-btn ${debugVisible ? 'tb-success' : ''}`}
+              title="片上调试器（JTAG/DAP，openocd + telnet）"
+              onClick={onToggleDebug}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+            </button>
+            <button
+              className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
+              title="Git（变更 / 分支 / 提交历史）"
+              onClick={onToggleGit}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
+            </button>
+            <button
+              className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
+              title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
+              onClick={onToggleTarget}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
+            </button>
+            <div className="tb-sep" />
+            {/* PlatformIO 面板不再占工具栏位置：它属于「构建路径 = PlatformIO」时的操作面板，
+                从硬件目标面板进入即可（选 PlatformIO 路径会自动切过去），避免两个入口含义重叠。 */}
+            <button className="tb-btn" title="搜索" onClick={onOpenSearch}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
+            </button>
+          </>
+        )}
       </div>
       <div className="titlebar-spacer" />
       <div className="titlebar-window">
