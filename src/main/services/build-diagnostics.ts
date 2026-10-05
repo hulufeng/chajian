@@ -134,7 +134,9 @@ export function parseFlashProgress(text: string, port?: string): FlashProgress |
   if (/Wrote\s+\d+\s+bytes/i.test(t)) {
     return { stage: 'write', label: `${FLASH_STAGE_TEXT.write} 100%${tail}`, percent: 100 }
   }
-  if (/connecting|Connecting\.\.\.|esptool\.py|Serial port/i.test(t) && !/Hard resetting/i.test(t)) {
+  // 真实输出首行在不同版本里长得不一样（esptool.py v4.x / esptool v5.x / Serial port COM1），
+  // 都归到"连接芯片"，让界面从第一帧就有反馈
+  if (/(^|\s)esptool(\.py)?\s+v?\d|connecting|Serial port/i.test(t) && !/Hard resetting/i.test(t)) {
     return { stage: 'connect', label: `${FLASH_STAGE_TEXT.connect}${tail}`, percent: null }
   }
   if (/Chip erase|Erasing flash|erase/i.test(t)) {
