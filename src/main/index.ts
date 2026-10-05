@@ -20,6 +20,42 @@ import { arduinoGrpc } from './services/grpc-client'
 import { parseBuildOutput, formatBuildReport } from './services/build-diagnostics'
 import { generateWiringDiagram, readSketchCode } from './services/wiringService'
 import { listLocalModels } from './ai/modelRuntime'
+import { checkPinConflicts, formatPinReport, type PinReport } from './services/pinConflict'
+import { listTemplates, getTemplate, materializeTemplate, groupTemplates } from './services/templateLibrary'
+import { explainSerialLog, type ExplainResult } from './services/logExplainer'
+import { readSerialLog } from './services/serialService'
+import { recordBurn, listBurnHistory, getBurn, rollbackBurn, removeBurn, ensureSnapshot, summarizeBurn } from './services/burnHistory'
+import { buildShareCard, buildAndOpenShareCard, listShareCards } from './services/shareCard'
+import {
+  getOpenocdInfo,
+  installOpenocd,
+  listSupportedChips,
+  startDebug,
+  stopDebug,
+  getDebugState,
+  isDebugActive,
+  readRegisters,
+  readMemory,
+  listThreads,
+  haltDebug,
+  resumeDebug,
+  stepDebug,
+  resetTarget,
+  pollTarget,
+  setBreakpoint,
+  removeBreakpoint,
+  debugExec
+} from './services/debugService'
+import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
+import {
+  listInstalledChips as listSvdChips,
+  installSvd as installSvdFile,
+  importLocalSvd as importSvdFile,
+  removeSvd as removeSvdFile,
+  getSvdDir as getSvdCacheDir,
+  suggestChipByFqbn,
+  KNOWN_SVD_CHIPS
+} from './services/svdService'
 
 /** 编译/烧录失败时补发的结构化诊断块（供输出面板与「一键 AI 诊断」使用）。 */
 function buildDiagnosticChunk(log: string): string {
@@ -198,6 +234,7 @@ ipcMain.handle('project:create', async (_e, opts: { type: string; name: string; 
     for (const [fname, content] of Object.entries(files)) {
       writeFileSync(join(dir, fname), content, 'utf-8')
     }
+    lastProjectRoot = dir
     return { ok: true, root: dir, tree: await listProjectTree(dir) }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -212,6 +249,7 @@ ipcMain.handle('project:open', async () => {
     properties: ['openDirectory']
   })
   if (res.canceled || res.filePaths.length === 0) return null
+  lastProjectRoot = res.filePaths[0]
   return { root: res.filePaths[0], tree: await listProjectTree(res.filePaths[0]) }
 })
 
@@ -420,6 +458,11 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
   const absSketch = norm.path
   const sender = event.sender
   const id = `grpc-upload-${++taskSeq}`
+  // 烧录前先释放调试会话（openocd 与 esptool 不能同时占用目标）
+  if (isDebugActive()) {
+    stopDebug()
+    broadcastDebugStopped()
+  }
 
   // 校验：工程文件必须真实存在、端口必须已选，否则直接报错（防止 daemon 无输出挂起）
   if (!existsSync(absSketch)) {
@@ -649,9 +692,14 @@ ipcMain.handle('toolchain:compile', (event, opts: { sketch: string; fqbn: string
   startPluginStream(event, 'compile', 'backend', 'toolchain.compile', opts)
 )
 
-ipcMain.handle('toolchain:upload', (event, opts: { sketch: string; fqbn: string; bin: string; port: string }) =>
-  startPluginStream(event, 'upload', 'backend', 'toolchain.upload', opts)
-)
+ipcMain.handle('toolchain:upload', (event, opts: { sketch: string; fqbn: string; bin: string; port: string }) => {
+  // 烧录会复位目标，先释放调试会话，避免 openocd 与 esptool 抢同一个 USB 设备
+  if (isDebugActive()) {
+    stopDebug()
+    broadcastDebugStopped()
+  }
+  return startPluginStream(event, 'upload', 'backend', 'toolchain.upload', opts)
+})
 
 ipcMain.handle('cmd:run', (event, opts: { cmd: string; cwd: string; shell?: 'powershell' | 'cmd' | 'pwsh' | 'bash' }) => {
   const id = `cmd-${++taskSeq}`
@@ -858,6 +906,9 @@ ipcMain.handle('agent:status', () => {
 
 
 // examples 目录（开发时在项目根，打包后在 resources 下；不存在时回退源码路径供开发机调试）
+/** 最近一次打开/创建的工程根（无上下文的 UI 入口用，如设置页生成分享卡片）。 */
+let lastProjectRoot = ''
+
 function resolveExamplesDir(): string {
   const dir = app.isPackaged
     ? join(process.resourcesPath, 'examples')
@@ -869,6 +920,216 @@ function resolveExamplesDir(): string {
 ipcMain.handle('app:getExamplesDir', () => {
   return resolveExamplesDir()
 })
+
+/** 用系统默认程序打开一个路径（文件 → 关联程序；目录 → 资源管理器）。
+ *  用于「分享卡片历史 / 烧录快照」等产物需要手动定位到磁盘的场景。 */
+ipcMain.handle('app:openPath', async (_e, p?: string) => {
+  const target = String(p || '').trim()
+  if (!target) throw new Error('路径为空')
+  if (!existsSync(target)) throw new Error(`路径不存在：${target}`)
+  const res = await shell.openPath(target)
+  if (res) throw new Error(await res)
+  return { ok: true }
+})
+
+// ---------- SVD 寄存器数据管理（设置页「寄存器数据」使用）----------
+ipcMain.handle('svd:list', () => {
+  return {
+    dir: getSvdCacheDir(),
+    installed: listSvdChips(),
+    known: [...KNOWN_SVD_CHIPS]
+  }
+})
+
+/** 按板卡 FQBN 推断应安装的芯片名（esp32:esp32:esp32s3 → esp32s3） */
+ipcMain.handle('svd:suggest', (_e, fqbn?: string) => ({
+  chip: suggestChipByFqbn(fqbn)
+}))
+
+/** 从乐鑫官方仓库下载安装（gh-proxy 优先，直连兜底） */
+ipcMain.handle('svd:install', async (event, opts: { chip?: string; force?: boolean }) => {
+  const chip = String(opts.chip || '').trim()
+  if (!chip) throw new Error('请填写芯片名（如 esp32s3 / esp32c3）')
+  const sender = event.sender
+  const result = await installSvdFile(chip, {
+    force: !!opts.force,
+    onProgress: (p) => {
+      if (!sender.isDestroyed()) sender.send('svd:progress', p)
+    }
+  })
+  return { ok: true, chip: result.chip, path: result.path, bytes: result.bytes }
+})
+
+/** 导入本地 .svd（离线/内网场景） */
+ipcMain.handle('svd:import', (_e, opts: { chip?: string; filePath?: string }) => {
+  const chip = String(opts.chip || '').trim()
+  if (!chip) throw new Error('请填写芯片名（如 esp32s3）')
+  const result = importSvdFile(chip, String(opts.filePath || ''))
+  return { ok: true, chip: result.chip, path: result.path, bytes: result.bytes }
+})
+
+/** 选择本地 .svd 文件（走系统对话框） */
+ipcMain.handle('svd:pickFile', async () => {
+  const res = await dialog.showOpenDialog({
+    title: '选择 CMSIS-SVD 文件',
+    filters: [{ name: 'SVD 文件', extensions: ['svd'] }],
+    properties: ['openFile']
+  })
+  if (res.canceled || res.filePaths.length === 0) return null
+  return res.filePaths[0]
+})
+
+ipcMain.handle('svd:remove', (_e, chip: string) => {
+  return { ok: removeSvdFile(String(chip || '')) }
+})
+
+// ---------- 引脚冲突检测 ----------
+ipcMain.handle('pin:check', (_e, opts: { projectRoot?: string; fqbn?: string }) => {
+  const root = String(opts.projectRoot || lastProjectRoot || '')
+  if (!root || !existsSync(root)) {
+    throw new Error('没有可用的工程目录：请先打开或新建一个项目再检查引脚。')
+  }
+  const report = checkPinConflicts(root, { fqbn: opts.fqbn })
+  // 带上可读文本，便于 UI 直接展示 / Agent 直接吃
+  return { ...report, text: formatPinReport(report) }
+})
+
+// ---------- 模板 / 示例库 ----------
+ipcMain.handle('template:groups', () => groupTemplates().map((g) => ({
+  category: g.category,
+  items: g.items.map((t) => ({ id: t.id, name: t.name, desc: t.desc, category: t.category }))
+})))
+
+ipcMain.handle('template:get', (_e, id: string) => {
+  const t = getTemplate(String(id || ''))
+  if (!t) throw new Error(`模板不存在：${id}`)
+  return t
+})
+
+ipcMain.handle('template:apply', (_e, opts: { id: string; targetDir: string }) => {
+  const dir = String(opts.targetDir || '')
+  if (!dir) throw new Error('请指定要生成到的目录')
+  return materializeTemplate(String(opts.id || ''), dir)
+})
+
+// ---------- 串口日志 AI 解读 ----------
+ipcMain.handle('serial:explain', async (_e, opts: { id?: string; logs?: string; maxChars?: number }) => {
+  let logs = String(opts?.logs || '')
+  if (!logs && opts?.id) {
+    const r = readSerialLog(String(opts.id))
+    if (!r.ok) throw new Error(r.error || '取串口日志失败')
+    logs = r.data || ''
+  }
+  const result: ExplainResult = await explainSerialLog(logs, { maxChars: opts?.maxChars })
+  return result
+})
+
+// ---------- 烧录历史 / 回滚 ----------
+ipcMain.handle('burn:list', (_e, limit?: number) => {
+  return listBurnHistory(limit).map(summarizeBurn)
+})
+
+ipcMain.handle('burn:record', (_e, opts: { projectRoot: string; fqbn?: string; port?: string; ok?: boolean; logTail?: string; durationMs?: number; note?: string }) => {
+  const rec = recordBurn({ ...opts, ok: opts.ok !== false })
+  const n = ensureSnapshot(rec)
+  return { ...summarizeBurn(rec), files: n }
+})
+
+ipcMain.handle('burn:get', (_e, id: string) => {
+  const rec = getBurn(String(id || ''))
+  if (!rec) throw new Error(`烧录记录不存在：${id}`)
+  return { ...summarizeBurn(rec), logTail: rec.logTail, files: rec.files }
+})
+
+ipcMain.handle('burn:rollback', (_e, opts: { id: string; targetRoot?: string }) => {
+  return rollbackBurn(String(opts?.id || ''), opts?.targetRoot)
+})
+
+ipcMain.handle('burn:remove', (_e, id: string) => ({ ok: removeBurn(String(id || '')) }))
+
+// ---------- 分享卡片 ----------
+ipcMain.handle('share:card', (_e, input: Parameters<typeof buildShareCard>[0]) => {
+  return buildShareCard(input)
+})
+
+ipcMain.handle('share:open', (_e, input: Parameters<typeof buildShareCard>[0]) =>
+  buildAndOpenShareCard(input)
+)
+
+ipcMain.handle('share:list', () => listShareCards())
+
+// ---------- 本地模型引擎（llama.cpp）管理 ----------
+ipcMain.handle('engine:status', () => getEngineStatus())
+ipcMain.handle('engine:models', () => listLocalModels())
+ipcMain.handle('engine:start', async (_e, opts?: { model?: string }) => {
+  const r = await startLlamaEngine(opts?.model)
+  if (!r.success) return { ok: false, error: r.error || '启动失败' }
+  return { ok: true, model: r.model || opts?.model || '' }
+})
+ipcMain.handle('engine:stop', () => {
+  stopLlamaEngine()
+  return { ok: true }
+})
+
+// ---------- 片上调试（openocd + telnet）----------
+// 同一块 ESP32 的「USB JTAG/serial debug unit」与 USB 串口可以共存，
+// 但烧录(esptool/arduino upload)会拉复位、重置调试会话，因此烧录前必须先停调试。
+ipcMain.handle('debug:info', () => ({
+  ...getOpenocdInfo(),
+  chips: listSupportedChips()
+}))
+
+ipcMain.handle('debug:install', async (event, opts?: { force?: boolean }) => {
+  const sender = event.sender
+  const r = await installOpenocd(
+    { force: !!opts?.force },
+    (p) => {
+      if (!sender.isDestroyed()) sender.send('debug:progress', p)
+    }
+  )
+  return r
+})
+
+ipcMain.handle('debug:chips', () => listSupportedChips())
+
+ipcMain.handle('debug:start', (_e, opts?: { chip?: string; boardCfg?: string; telnetPort?: number }) =>
+  startDebug(opts || {})
+)
+
+ipcMain.handle('debug:stop', () => stopDebug())
+
+ipcMain.handle('debug:state', () => getDebugState())
+
+ipcMain.handle('debug:registers', () => readRegisters())
+
+ipcMain.handle('debug:memory', (_e, opts: { addr: string | number; count?: number }) =>
+  readMemory(opts.addr, opts.count ?? 64)
+)
+
+ipcMain.handle('debug:threads', () => listThreads())
+
+ipcMain.handle('debug:halt', () => haltDebug())
+
+ipcMain.handle('debug:resume', () => resumeDebug())
+
+ipcMain.handle('debug:step', () => stepDebug())
+
+ipcMain.handle('debug:reset', () => resetTarget())
+
+ipcMain.handle('debug:poll', () => pollTarget())
+
+ipcMain.handle('debug:setBreakpoint', (_e, addr: string | number) => setBreakpoint(addr))
+
+ipcMain.handle('debug:removeBreakpoint', (_e, addr?: string | number) => removeBreakpoint(addr))
+
+ipcMain.handle('debug:exec', (_e, cmd: string) => debugExec(cmd))
+
+/** 调试会话被外部动作（如烧录）终止时通知渲染层刷新面板 */
+function broadcastDebugStopped(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('debug:stopped', getDebugState())
+  }
+}
 
 app.whenReady().then(() => {
   initPlugins()

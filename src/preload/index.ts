@@ -56,6 +56,30 @@ export interface ByokProfile {
   model: string
 }
 
+export interface PinReportLike {
+  chip: string
+  scannedFiles: number
+  issues: Array<{ level: string; pin: number; title: string; detail: string }>
+  summary: string
+}
+
+export interface SvdChipEntry {
+  chip: string
+  bytes: number
+  mtime: number
+}
+
+export interface SvdListResult {
+  dir: string
+  installed: SvdChipEntry[]
+  known: string[]
+}
+
+export interface SvdProgress {
+  phase: 'downloading' | 'saving'
+  percent: number
+}
+
 export interface UserInfo {
   email: string
   planCredits: number
@@ -82,6 +106,60 @@ export interface TaskExit {
 
 export interface TaskProgress {
   id: string
+  percent: number
+  message: string
+}
+
+// ---- 片上调试（openocd telnet）----
+export interface RegisterValue {
+  name: string
+  value: string
+  num?: number
+}
+
+export interface MemoryReadResult {
+  addr: number
+  bytes: number[]
+}
+
+export interface ThreadInfo {
+  id: string
+  name: string
+  pc?: number
+  state?: string
+}
+
+export type DebugStatus = 'idle' | 'starting' | 'running' | 'error'
+
+export interface DebugState {
+  status: DebugStatus
+  chip: string
+  boardCfg: string
+  telnetPort: number
+  openocdPath: string
+  scriptsDir: string
+  startedAt?: number
+  error?: string
+  adapterLog: string
+  target: 'running' | 'halted' | 'unknown'
+}
+
+export interface DebugChip {
+  chip: string
+  cfg: string
+}
+
+export interface OpenocdInfo {
+  installed: boolean
+  path: string
+  scripts: string
+}
+
+/** debug:info 的返回：openocd 安装状态 + 支持的板卡配置 */
+export type DebugInfo = OpenocdInfo & { chips: DebugChip[] }
+
+export interface InstallProgress {
+  phase: 'downloading' | 'extracting' | 'verifying' | 'done' | 'error'
   percent: number
   message: string
 }
@@ -184,6 +262,8 @@ const api = {
   // 应用路径
   app: {
     getExamplesDir: (): Promise<string> => ipcRenderer.invoke('app:getExamplesDir'),
+    /** 用系统默认程序打开路径（文件 / 目录），由主进程 shell.openPath 兜底错误 */
+    openPath: (p: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('app:openPath', p),
   },
 
   // 命令执行（终端）
@@ -226,6 +306,9 @@ const api = {
     close: (id: string): Promise<boolean> => ipcRenderer.invoke('task:kill', id),
     write: (opts: { id: string; data: string }): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('serial:write', opts),
+    /** 用 AI 解读串口日志（走当前通道：BYOK / 本地引擎 / 内置） */
+    explain: (opts?: { id?: string; logs?: string; maxChars?: number }): Promise<{ text: string; findings: Array<{ kind: string; line: number; text: string }>; channel: string; modelHint: string }> =>
+      ipcRenderer.invoke('serial:explain', opts),
     // 热插拔：串口列表变化（插上/拔出开发板）
     onPortsChanged: (cb: (d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }): void => cb(d)
@@ -372,6 +455,107 @@ const api = {
   },
 
 
+
+  // 引脚冲突检测
+  pin: {
+    check: (opts?: { projectRoot?: string; fqbn?: string }): Promise<PinReportLike & { text: string }> =>
+      ipcRenderer.invoke('pin:check', opts)
+  },
+
+  // 模板 / 示例库
+  template: {
+    groups: (): Promise<Array<{ category: string; items: Array<{ id: string; name: string; desc: string; category: string }> }>> =>
+      ipcRenderer.invoke('template:groups'),
+    get: (id: string): Promise<{ id: string; name: string; desc: string; category: string; files: Array<{ path: string; content: string }> }> =>
+      ipcRenderer.invoke('template:get', id),
+    apply: (opts: { id: string; targetDir: string }): Promise<{ files: string[]; bytes: number }> =>
+      ipcRenderer.invoke('template:apply', opts)
+  },
+
+  // 烧录历史 / 回滚
+  burn: {
+    list: (limit?: number): Promise<Array<{ id: string; ts: number; projectName: string; fqbn: string; port: string; ok: boolean; fileCount: number; note?: string }>> =>
+      ipcRenderer.invoke('burn:list', limit),
+    record: (opts: { projectRoot: string; fqbn?: string; port?: string; ok?: boolean; logTail?: string; durationMs?: number; note?: string }): Promise<{ id: string; ts: number; fileCount: number }> =>
+      ipcRenderer.invoke('burn:record', opts),
+    get: (id: string): Promise<{ id: string; ts: number; projectName: string; fqbn: string; port: string; ok: boolean; fileCount: number; logTail: string }> =>
+      ipcRenderer.invoke('burn:get', id),
+    rollback: (opts: { id: string; targetRoot?: string }): Promise<{ id: string; written: string[]; changed: string[]; missing: string[] }> =>
+      ipcRenderer.invoke('burn:rollback', opts),
+    remove: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('burn:remove', id)
+  },
+
+  // 分享卡片（本地生成 HTML，不上传）
+  share: {
+    card: (input: { title: string; subtitle?: string; chip?: string; metrics?: Array<{ label: string; value: string; tone?: 'ok' | 'warn' | 'err'; hint?: string }>; code?: string; footer?: string }): Promise<{ path: string; bytes: number; opened: boolean }> =>
+      ipcRenderer.invoke('share:card', input),
+    open: (input: { title: string; subtitle?: string; chip?: string; metrics?: Array<{ label: string; value: string; tone?: 'ok' | 'warn' | 'err'; hint?: string }>; code?: string; footer?: string }): Promise<{ path: string; bytes: number; opened: boolean; error?: string }> =>
+      ipcRenderer.invoke('share:open', input),
+    list: (): Promise<Array<{ path: string; name: string; bytes: number; ts: number }>> => ipcRenderer.invoke('share:list')
+  },
+
+  // 本地模型引擎（llama.cpp）
+  engine: {
+    status: (): Promise<{ installed: boolean; running: boolean; version: string; engineDir: string }> => ipcRenderer.invoke('engine:status'),
+    models: (): Promise<Array<{ id: string; name: string; sizeGB: number; quantization: string; parameters: string }>> => ipcRenderer.invoke('engine:models'),
+    start: (opts?: { model?: string }): Promise<{ ok: boolean; model?: string; error?: string }> => ipcRenderer.invoke('engine:start', opts),
+    stop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('engine:stop')
+  },
+
+  // 寄存器数据（CMSIS-SVD，乐鑫官方）
+  svd: {
+    list: (): Promise<SvdListResult> => ipcRenderer.invoke('svd:list'),
+    /** 按板卡 FQBN 推断芯片名；推断不出返回 null */
+    suggest: (fqbn?: string): Promise<{ chip: string | null }> => ipcRenderer.invoke('svd:suggest', fqbn),
+    install: (opts: { chip: string; force?: boolean }): Promise<{ ok: boolean; chip: string; path: string; bytes: number }> =>
+      ipcRenderer.invoke('svd:install', opts),
+    /** 用系统对话框选一个本地 .svd 并导入（离线/内网场景） */
+    pickFile: (): Promise<string | null> => ipcRenderer.invoke('svd:pickFile'),
+    import: (opts: { chip: string; filePath: string }): Promise<{ ok: boolean; chip: string; path: string; bytes: number }> =>
+      ipcRenderer.invoke('svd:import', opts),
+    remove: (chip: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('svd:remove', chip),
+    onProgress: (cb: (p: SvdProgress) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, p: SvdProgress): void => cb(p)
+      ipcRenderer.on('svd:progress', listener)
+      return () => ipcRenderer.removeListener('svd:progress', listener)
+    }
+  },
+
+  // 片上调试（openocd telnet，寄存器 / 内存 / 断点 / 单步 / 线程）
+  debug: {
+    info: (): Promise<DebugInfo> => ipcRenderer.invoke('debug:info'),
+
+    install: (opts?: { force?: boolean }): Promise<{ success: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke('debug:install', opts),
+    chips: (): Promise<Array<{ chip: string; cfg: string }>> => ipcRenderer.invoke('debug:chips'),
+    start: (opts?: { chip?: string; boardCfg?: string; telnetPort?: number }): Promise<DebugState> =>
+      ipcRenderer.invoke('debug:start', opts),
+    stop: (): Promise<DebugState> => ipcRenderer.invoke('debug:stop'),
+    state: (): Promise<DebugState> => ipcRenderer.invoke('debug:state'),
+    registers: (): Promise<Array<RegisterValue>> => ipcRenderer.invoke('debug:registers'),
+    memory: (opts: { addr: string | number; count?: number }): Promise<{ addr: number; bytes: number[] }> =>
+      ipcRenderer.invoke('debug:memory', opts),
+    threads: (): Promise<{ raw: string; threads: ThreadInfo[] }> => ipcRenderer.invoke('debug:threads'),
+    halt: (): Promise<string> => ipcRenderer.invoke('debug:halt'),
+    resume: (): Promise<string> => ipcRenderer.invoke('debug:resume'),
+    step: (): Promise<string> => ipcRenderer.invoke('debug:step'),
+    reset: (): Promise<string> => ipcRenderer.invoke('debug:reset'),
+    poll: (): Promise<string> => ipcRenderer.invoke('debug:poll'),
+    setBreakpoint: (addr: string | number): Promise<string> => ipcRenderer.invoke('debug:setBreakpoint', addr),
+    removeBreakpoint: (addr?: string | number): Promise<string> => ipcRenderer.invoke('debug:removeBreakpoint', addr),
+    exec: (cmd: string): Promise<string> => ipcRenderer.invoke('debug:exec', cmd),
+    onProgress: (cb: (p: InstallProgress) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, p: InstallProgress): void => cb(p)
+      ipcRenderer.on('debug:progress', listener)
+      return () => ipcRenderer.removeListener('debug:progress', listener)
+    },
+    /** 烧录等外部动作把调试会话停掉时（面板需要自动回落到「未连接」） */
+    onStopped: (cb: (s: DebugState) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, s: DebugState): void => cb(s)
+      ipcRenderer.on('debug:stopped', listener)
+      return () => ipcRenderer.removeListener('debug:stopped', listener)
+    }
+  },
 
   // 更新（强制更新 / 自动更新）
   updater: {

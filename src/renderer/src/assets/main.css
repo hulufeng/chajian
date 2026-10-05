@@ -3276,3 +3276,314 @@ body.ai-resizing {
   max-width: 100%;
   height: auto;
 }
+
+/* ── 设置页：寄存器数据（SVD） ── */
+.svd-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.svd-block-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.svd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.svd-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+.svd-meta {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.svd-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.svd-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.svd-picker .settings-select,
+.svd-picker .settings-input {
+  flex: 1;
+}
+.svd-progress {
+  position: relative;
+  height: 14px;
+  margin-top: 6px;
+  background: var(--panel-hover);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.svd-progress-bar {
+  height: 100%;
+  background: var(--accent, #4f8cff);
+  transition: width 0.15s linear;
+}
+.svd-progress-text {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--text);
+}
+.svd-msg {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+.svd-msg.ok {
+  background: rgba(46, 160, 67, 0.12);
+  color: #1a7f37;
+}
+.svd-msg.err {
+  background: rgba(240, 60, 60, 0.12);
+  color: #c0392b;
+}
+.svd-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+/* ── 设置页：本地模型引擎（llama.cpp） ── */
+.engine-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.engine-model {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.engine-model:hover { background: var(--panel-2); }
+.engine-model.active { border-color: var(--accent); background: rgba(47, 124, 246, 0.08); }
+.engine-model-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.engine-model-name { font-size: 12.5px; color: var(--text); font-weight: 600; }
+.engine-model-meta { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+
+/* ── 设置通用：纵向排布行 / 多行输入 ── */
+.settings-row-col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.settings-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+/* ── 设备诊断面板：引脚冲突 ── */
+.pin-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pin-issue {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 5px;
+  padding: 7px 10px;
+  background: var(--panel-2);
+}
+.pin-issue-error { border-left-color: #d64545; }
+.pin-issue-warn  { border-left-color: #d69e2e; }
+.pin-issue-info  { border-left-color: #3b7dd8; }
+.pin-issue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.pin-issue-icon { font-size: 13px; }
+.pin-issue-pin {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.pin-issue-title { font-weight: 600; color: var(--text); }
+.pin-issue-detail { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
+.pin-issue-refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.pin-issue-ref {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.pin-issue-ref:hover { background: rgba(47, 124, 246, 0.12); }
+.pin-unresolved {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+.pin-unresolved-title { font-size: 11.5px; color: var(--text-dim); margin-bottom: 5px; }
+.pin-unresolved-row {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  padding: 2px 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.pin-unresolved-row code { color: var(--text); }
+.pin-unresolved-note { color: var(--text-dim); opacity: 0.8; }
+
+/* ── 设备诊断面板：烧录历史 ── */
+.burn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.burn-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+}
+.burn-row-main { display: flex; align-items: center; gap: 8px; }
+.burn-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.burn-dot.ok { background: #2e9e5b; }
+.burn-dot.bad { background: #d64545; }
+.burn-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.burn-badge {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.burn-badge.ok { color: #1a7f37; border-color: rgba(26, 127, 55, 0.4); }
+.burn-badge.bad { color: #c0392b; border-color: rgba(192, 57, 43, 0.4); }
+.burn-row-meta { font-size: 11px; color: var(--text-dim); margin-top: 3px; font-family: var(--mono); }
+.burn-row-fqbn { font-size: 10.5px; color: var(--text-dim); opacity: 0.8; font-family: var(--mono); }
+.burn-log {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  font-family: var(--mono);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.burn-row-actions { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+
+/* ── 设备诊断面板：分享卡片 ── */
+.share-history { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.share-history .svd-row { padding: 5px 0; }
+.share-history .svd-picker { margin: 0; }
+
+/* ── 片上调试器面板（openocd + telnet）── */
+.debug-panel {
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  min-height: 220px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.debug-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.debug-title { font-size: 12px; font-weight: 600; }
+.debug-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+.debug-dot.on { background: #16a34a; }
+.debug-dot.off { background: #dc2626; }
+.debug-meta { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+.debug-spacer { flex: 1; }
+.debug-chip { width: 110px; }
+.debug-count { width: 72px; }
+.debug-body { display: flex; gap: 14px; overflow: auto; padding: 8px 10px; }
+.debug-col { flex: 1 1 50%; min-width: 320px; display: flex; flex-direction: column; gap: 6px; }
+.debug-block-title { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.debug-hint { font-weight: 400; text-transform: none; color: var(--text-dim); font-family: var(--mono); }
+.debug-row { display: flex; gap: 6px; align-items: center; }
+.debug-row .toolbar-input { flex: 1; min-width: 0; }
+.debug-regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 10px; max-height: 150px; overflow: auto; }
+.debug-reg { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 11px; }
+.debug-reg-name { color: var(--text-dim); }
+.debug-reg-val { color: var(--accent, #3b82f6); }
+.debug-mem, .debug-out {
+  margin: 0;
+  max-height: 150px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  white-space: pre;
+}
+.debug-threads { display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; }
+.debug-thread { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; align-items: center; }
+.debug-thread-id { min-width: 56px; color: var(--text-dim); }
+.debug-thread-pc { min-width: 92px; color: var(--accent, #3b82f6); }
+.debug-thread-state { min-width: 60px; color: var(--text-dim); }
+.debug-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.debug-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.debug-tag {
+  font-family: var(--mono); font-size: 11px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px;
+}
+.debug-empty, .debug-note { font-size: 11px; color: var(--text-dim); }
+.debug-err {
+  margin: 0 10px 6px;
+  background: rgba(220, 38, 38, .08);
+  border: 1px solid rgba(220, 38, 38, .35);
+  color: #b91c1c;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.debug-log summary { cursor: pointer; font-size: 11px; color: var(--text-dim); }

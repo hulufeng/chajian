@@ -6,6 +6,7 @@ import EditorArea, { type EditorTab } from './components/EditorArea'
 import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
+import DebugPanel from './components/DebugPanel'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -233,6 +234,7 @@ function App(): React.JSX.Element {
   const [pluginTypes, setPluginTypes] = useState<ProjectTypeItem[]>([])
   const [activeSidebar, setActiveSidebar] = useState('files')
   const [terminalVisible, setTerminalVisible] = useState(true)
+  const [debugVisible, setDebugVisible] = useState(false)
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
@@ -240,6 +242,13 @@ function App(): React.JSX.Element {
   const [buildError, setBuildError] = useState<string | null>(null)
   const [wiringSvg, setWiringSvg] = useState<string | null>(null)
   const buildLogRef = useRef<string>('')
+  /** 单次烧录的输出累积（退出时用来取日志尾部写进烧录记录） */
+  const uploadLogRef = useRef<string>('')
+  // 烧录记录上下文：订阅回调是 [] deps，用 ref 取最新值避免闭包过期
+  const burnCtxRef = useRef<{ projectRoot: string; fqbn: string; port: string }>({ projectRoot: '', fqbn: '', port: '' })
+  useEffect(() => {
+    burnCtxRef.current = { projectRoot: projectRoot || '', fqbn, port: selectedPort }
+  }, [projectRoot, fqbn, selectedPort])
   const [examplesDir, setExamplesDir] = useState<string>('')
 
   // 更新（强制更新 / 自动更新）状态
@@ -340,6 +349,9 @@ function App(): React.JSX.Element {
         if (d.id.startsWith('grpc-compile-') || d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-upload-') || d.id.startsWith('cap-upload-')) {
           buildLogRef.current += d.chunk
         }
+        if (d.id.startsWith('grpc-upload-') || d.id.startsWith('cap-upload-')) {
+          uploadLogRef.current += d.chunk
+        }
         setOutputLog((prev) => prev + d.chunk)
       }
     })
@@ -361,6 +373,17 @@ function App(): React.JSX.Element {
         } else {
           setBuildError(null)
           buildLogRef.current = ''
+        }
+      }
+      // 烧录收尾：把这次的源码快照记进烧录历史（供诊断面板回滚）。失败也记，便于回退到上一个能跑的版本。
+      if (isUpload) {
+        const ctx = burnCtxRef.current
+        const tail = uploadLogRef.current
+        uploadLogRef.current = ''
+        if (ctx.projectRoot) {
+          window.api.burn
+            .record({ projectRoot: ctx.projectRoot, fqbn: ctx.fqbn, port: ctx.port, ok: d.code === 0, logTail: tail.slice(-2000) })
+            .catch(() => undefined)
         }
       }
       setActiveTaskId(null)
@@ -834,6 +857,8 @@ function App(): React.JSX.Element {
         onCompile={() => void runCompile()}
         onUpload={() => void runUpload()}
         onToggleTerminal={() => setTerminalVisible((v) => !v)}
+        onToggleDebug={() => setDebugVisible((v) => !v)}
+        debugVisible={debugVisible}
         leftPanelVisible={leftPanelVisible}
         editorVisible={editorVisible}
         onToggleLeftPanel={toggleLeftPanel}
@@ -898,6 +923,8 @@ function App(): React.JSX.Element {
               )}
               {activeSidebar === 'device' && (
                 <ToolchainSidebar
+                  projectRoot={projectRoot}
+                  onOpenFile={(p, n) => void openFile(p, n || p.split(/[\\/]/).pop() || 'file')}
                   onBoardChange={(f, name) => {
                     setFqbn(f)
                     if (name) setBoardName(name)
@@ -959,6 +986,9 @@ function App(): React.JSX.Element {
               onDiagnose={diagnoseBuildError}
               onDebugFix={debugFixBuildError}
             />
+          )}
+          {debugVisible && (
+            <DebugPanel fqbn={fqbn} onClose={() => setDebugVisible(false)} />
           )}
         </div>
         {aiPanelVisible && (
