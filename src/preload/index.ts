@@ -948,6 +948,14 @@ export interface ChannelHealth {
   localModel: string | null
   modelListOk: boolean | null
   lastError: string | null
+  /** 引擎本体（llama-server.exe）是否已安装 */
+  engineInstalled: boolean
+  /** 引擎进程是否在运行 */
+  engineRunning: boolean
+  /** 已下载的 gguf 模型数 */
+  localModelCount: number
+  /** 本地引擎可操作状态：running 已就绪 / idle 可一键启动 / not-installed 引擎缺失 / no-models 没模型 */
+  engineHint: 'running' | 'idle' | 'not-installed' | 'no-models'
 }
 
 export interface TaskSpecLite {

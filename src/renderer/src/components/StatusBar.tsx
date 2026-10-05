@@ -23,6 +23,9 @@ interface Props {
     localModel: string | null
     byokActive: string | null
     modelListOk: boolean | null
+    /** 本地引擎状态：idle = 已装且下载了模型但没启动（状态栏可直接提示一键启动） */
+    engineHint?: 'running' | 'idle' | 'not-installed' | 'no-models'
+    localModelCount?: number
   } | null
 }
 
@@ -86,7 +89,13 @@ function StatusBar({
         ? { color: '#4ade80', text: `自定义模型 ${aiHealth.byokActive}`, title: '正在使用自带 Key 的自定义模型通道' }
         : aiHealth.loggedIn && aiHealth.modelListOk !== false
           ? { color: '#4ade80', text: '内置模型已登录', title: '云端通道可用' }
-          : { color: '#ef9f27', text: 'AI 通道不可用', title: aiHealth.loggedIn ? '登录可能已过期，请重新登录' : '未登录，且没有本地/自定义模型可用' }
+          : aiHealth.engineHint === 'idle'
+            ? { color: '#f0a13a', text: `本地引擎未启动（${aiHealth.localModelCount ?? 0} 个模型）`, title: '本地引擎已就绪但没启动，AI 面板里点「一键启动」即可离线使用，不耗积分' }
+            : aiHealth.engineHint === 'no-models'
+              ? { color: '#f0a13a', text: '本地引擎无模型', title: '引擎已装但没下载 gguf 模型，到「设置 → 本地引擎」下载一个' }
+              : aiHealth.engineHint === 'not-installed'
+                ? { color: '#f0a13a', text: '本地引擎未安装', title: 'llama.cpp 引擎缺失，到「设置 → 本地引擎」重新安装' }
+                : { color: '#ef9f27', text: 'AI 通道不可用', title: aiHealth.loggedIn ? '登录可能已过期，请重新登录' : '未登录，且没有本地/自定义模型可用' }
 
   return (
     <footer className="statusbar">

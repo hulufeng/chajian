@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { chatWithLocalModel, chatWithLocalModelStream } from '../ai/modelRuntime'
+import { chatWithLocalModel, chatWithLocalModelStream, getEngineStatus, listLocalModels } from '../ai/modelRuntime'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -162,15 +162,44 @@ export interface ChannelHealth {
   modelListOk: boolean | null
   /** 最近一次错误（用于界面提示） */
   lastError: string | null
+  /** 引擎本体（llama-server.exe）是否已安装 */
+  engineInstalled: boolean
+  /** 引擎进程是否在运行 */
+  engineRunning: boolean
+  /** 已下载的 gguf 模型数 */
+  localModelCount: number
+  /**
+   * 本地引擎可操作状态（界面据此决定显示「一键启动」还是「就绪」）：
+   * running 已就绪 / idle 引擎已装且有模型但没启动（可一键启动）
+   * / not-installed 引擎本体缺失 / no-models 引擎在但没下载模型
+   */
+  engineHint: 'running' | 'idle' | 'not-installed' | 'no-models'
 }
 
 let lastModelListOk: boolean | null = null
 let lastError: string | null = null
 
-export function getChannelHealth(): ChannelHealth {
+export async function getChannelHealth(): Promise<ChannelHealth> {
   const state = getAiState()
   const local = getLocalModel()
   const byok = resolveActiveByok(state)
+  // 引擎信息拿不到不能影响主判断（用户可能根本没装本地引擎），分别容错
+  let engineInstalled = false
+  let engineRunning = false
+  let localModelCount = 0
+  try {
+    const [es, ms] = await Promise.all([getEngineStatus(), listLocalModels()])
+    engineInstalled = es.installed
+    engineRunning = es.running
+    localModelCount = ms.length
+  } catch { /* ignore */ }
+  const engineHint: ChannelHealth['engineHint'] = engineRunning
+    ? 'running'
+    : !engineInstalled
+      ? 'not-installed'
+      : localModelCount === 0
+        ? 'no-models'
+        : 'idle'
   return {
     loggedIn: !!state.token,
     tokenHealthy: state.token ? lastModelListOk : null,
@@ -178,7 +207,11 @@ export function getChannelHealth(): ChannelHealth {
     localReady: !!local,
     localModel: local,
     modelListOk: lastModelListOk,
-    lastError
+    lastError,
+    engineInstalled,
+    engineRunning,
+    localModelCount,
+    engineHint
   }
 }
 

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, type ChatMessage, type ByokProfile } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1123,10 +1123,15 @@ ipcMain.handle('engine:models', () => listLocalModels())
 ipcMain.handle('engine:start', async (_e, opts?: { model?: string }) => {
   const r = await startLlamaEngine(opts?.model)
   if (!r.success) return { ok: false, error: r.error || '启动失败' }
-  return { ok: true, model: r.model || opts?.model || '' }
+  const model = r.model || opts?.model || ''
+  // 关键：引擎起来了但通道没标记本地就绪，界面就仍显示「已登录」而不是「本地就绪」。
+  // 之前引擎能跑、状态栏却说云端，用户会以为走的是云端（上一轮静默降级的同源问题）。
+  setLocalModel(model)
+  return { ok: true, model }
 })
 ipcMain.handle('engine:stop', () => {
   stopLlamaEngine()
+  setLocalModel(null)
   return { ok: true }
 })
 

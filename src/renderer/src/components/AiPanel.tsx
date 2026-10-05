@@ -384,6 +384,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   // 通道健康 / 云端错误：让「能不能用」在界面上直接可见
   const [health, setHealth] = useState<ChannelHealth | null>(null)
   const [cloudError, setCloudError] = useState<string | null>(null)
+  // 本地引擎一键启动：ok=null 表示进行中（界面显示「启动中…」）
+  const [engineStarting, setEngineStarting] = useState(false)
+  const [engineMsg, setEngineMsg] = useState<{ text: string; ok: boolean | null } | null>(null)
   const [state, setState] = useState<AiState | null>(null)
   const [showByok, setShowByok] = useState(false)
   const [byokForm, setByokForm] = useState({ baseUrl: '', apiKey: '', model: '' })
@@ -664,6 +667,104 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
       .then(setHealth)
       .catch(() => undefined)
   }
+
+  /** 一键启动本地引擎：挑最优模型 → 后台拉起 → 边等边轮询状态灯 → 就绪后按需切到本地通道 */
+  const startLocalEngine = async (): Promise<void> => {
+    if (engineStarting) return
+    // 优先代码模型：3B > 1.5B > 列表第一个
+    const best =
+      localModels.find((m) => /coder-3b/i.test(m.id)) ||
+      localModels.find((m) => /coder/i.test(m.id)) ||
+      localModels[0]
+    if (!best) {
+      setEngineMsg({ text: '没有可启动的本地模型，请先到「设置 → 本地引擎 / 模型」下载', ok: false })
+      return
+    }
+    setEngineStarting(true)
+    setEngineMsg({ text: `正在启动本地引擎（${best.name}）…`, ok: null })
+    // 关键：不等 IPC 返回才刷状态。引擎加载模型要 10~30s，
+    // 期间轮询引擎状态，一旦 ready 就立刻把状态灯变绿，用户不会以为卡死。
+    const poll = window.setInterval(() => {
+      window.api.engine
+        .status()
+        .then((s) => {
+          if (s.running) setHealth((h) => (h ? { ...h, localReady: true, engineRunning: true, engineHint: 'running' } : h))
+        })
+        .catch(() => undefined)
+    }, 1500)
+    try {
+      const r = await window.api.engine.start({ model: best.id })
+      if (r.ok) {
+        const modelId = r.model || best.id
+        // 只在「当前没有可用的非本地通道」时才自动切到本地 ——
+        // 用户既然点了启动，意图就是离线跑；但若他明确在用 BYOK，不抢他的选择。
+        const fallback = !health?.localReady && !health?.byokActive
+        if (fallback) {
+          setUseLocalModel(true)
+          setSelectedLocalModel(modelId)
+          void window.api.ai.setModel(`local:${modelId}`)
+        }
+        setEngineMsg({ text: `本地引擎已就绪（${best.name}）${fallback ? '，已切换到本地通道（离线、不耗积分）' : '，可在模型下拉里选本地模型'}`, ok: true })
+      } else {
+        setEngineMsg({
+          text: `启动失败：${r.error || '未知错误'}${/超时|内存/.test(r.error || '') ? ' —— 可改选更小的 1.5B 模型，或关闭其他占内存的程序后重试' : ''}`,
+          ok: false
+        })
+      }
+    } catch (e) {
+      setEngineMsg({ text: `启动失败：${(e as Error).message}`, ok: false })
+    } finally {
+      window.clearInterval(poll)
+      setEngineStarting(false)
+      window.api.aiHealth.get().then(setHealth).catch(() => undefined)
+    }
+  }
+
+  // 通道健康条：把「现在能不能用」和「下一步该干什么」分开讲。
+  // 之前只有红/绿两态，本地引擎没启动时也显示成绿色「已登录」，用户以为能用。
+  const localIdle = health?.engineHint === 'idle'
+  const healthTone: string = engineStarting
+    ? 'busy'
+    : health?.localReady
+      ? 'ok'
+      : localIdle || health?.engineHint === 'not-installed' || health?.engineHint === 'no-models'
+        ? 'warn'
+        : cloudError
+          ? 'bad'
+          : 'ok'
+  // 主行只讲「当前用的是哪条通道」；引擎启动进度归到下面那一行，避免两行说同一件事
+  const healthText: string = health?.localReady
+    ? `本地引擎就绪（${health.localModel || '离线模型'}）· 不耗积分、代码不出本机`
+      // 引擎「已装+有模型但没启动」不占主行 —— 那部分归下面那行带按钮的，两行说一件事就啰嗦了
+      : health?.engineHint === 'not-installed'
+          ? '本地引擎未安装（llama.cpp 引擎缺失）'
+          : health?.engineHint === 'no-models'
+            ? '本地引擎已安装，但还没有模型文件'
+            : cloudError
+              ? `内置模型服务不可用（${cloudError}）`
+              : health?.byokActive
+                ? `自定义模型通道：${health.byokActive}`
+                : health?.loggedIn
+                  ? '已登录，使用内置模型'
+                  : '未登录：内置模型不可用，可在设置里登录或改用本地/自定义模型'
+  const healthAction: { label: string; text: string; onClick: () => void; disabled?: boolean; title?: string } | null =
+    engineStarting
+        ? {
+            label: '启动中…',
+            text: engineMsg?.ok === null ? engineMsg.text : '正在加载本地模型…',
+            onClick: startLocalEngine,
+          disabled: true,
+          title: '正在拉起 llama 引擎并加载 gguf 模型，就绪瞬间状态灯会变绿'
+        }
+      : localIdle
+        ? {
+            label: '一键启动',
+            text: `本地引擎未启动（已下载 ${health?.localModelCount ?? 0} 个模型）· 离线可用，不耗积分、代码不出本机`,
+            onClick: startLocalEngine,
+            disabled: false,
+            title: '一键拉起 llama 引擎并加载本地模型（默认选 qwen2.5-coder-3b）'
+          }
+        : null
 
   const buildUserText = (text: string, inject?: { name: string; content: string }): string => {
     const items = inject ? [inject, ...contextItems] : contextItems
@@ -986,26 +1087,33 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
       {/* 通道健康条：把「现在能不能用、用的是哪条通道」摆在最显眼处。
           之前的坑：云端 401 时界面照样显示一个模型名，用户以为能用，一发消息才报错。 */}
       {(cloudError || health) && (
-        <div className="ai-health">
-          <span className={`ai-health-dot ${cloudError ? 'bad' : 'ok'}`} />
-          {cloudError ? (
-            <span className="ai-health-text" title={cloudError}>
-              内置模型服务不可用（{cloudError}）
-              {localModels.length > 0 && '，已自动使用本地模型'}
-              {localModels.length === 0 && '；本地也没有可用模型，请到设置添加 API Key 或下载本地模型'}
-            </span>
-          ) : health?.localReady ? (
-            <span className="ai-health-text">本地引擎就绪（{health.localModel}）</span>
-          ) : health?.byokActive ? (
-            <span className="ai-health-text">自定义模型通道：{health.byokActive}</span>
-          ) : health?.loggedIn ? (
-            <span className="ai-health-text">已登录，使用内置模型</span>
-          ) : (
-            <span className="ai-health-text">未登录：内置模型不可用，可在设置里登录或改用本地/自定义模型</span>
-          )}
+        <div className={`ai-health ${engineStarting ? 'is-busy' : ''}`}>
+          <span className={`ai-health-dot ${healthTone}`} />
+          <span className="ai-health-text" title={healthText}>{healthText}</span>
           <button className="ai-health-fix" onClick={() => onOpenSettings?.()}>
             去设置
           </button>
+        </div>
+      )}
+      {/* 本地引擎一键启动：独立成行，云端可用时不该把它挤掉 ——
+          这就是「离线跑、不耗积分、代码不出本机」的入口，必须随时可达 */}
+      {healthAction && health && (
+        <div className="ai-health">
+          <span className={`ai-health-dot ${engineStarting ? 'busy' : 'warn'}`} />
+          <span className="ai-health-text" title={healthAction.title}>{healthAction.text}</span>
+          <button
+            className="ai-health-act"
+            onClick={healthAction.onClick}
+            disabled={healthAction.disabled}
+            title={healthAction.title}
+          >
+            {healthAction.label}
+          </button>
+        </div>
+      )}
+      {engineMsg && (
+        <div className={`ai-health-msg ${engineMsg.ok === true ? 'ok' : engineMsg.ok === false ? 'err' : 'busy'}`}>
+          {engineMsg.text}
         </div>
       )}
 
