@@ -4241,11 +4241,15 @@ body.ai-resizing {
   min-width: 34px;
   text-align: right;
 }
-/* 失败态：状态文字与阶段说明一起转危险色，别让红字配灰字（读起来像"只是提示"） */
+/* 失败态：只把「卡住的那一步」标红，已经走过的前几步仍然保持绿色。
+   之前把整排点都刷成红，读起来像是每一步都失败了，看不出到底停在哪。 */
 .bprog.is-failed .bprog-state,
-.bprog.is-failed .bprog-stage-label { color: var(--danger); }
-.bprog.is-failed .bprog-stage-dot,
-.bprog.is-failed .bprog-dot { background: var(--danger-soft); }
+.bprog.is-failed .bprog-stage-label.on { color: var(--danger); }
+.bprog.is-failed .bprog-dot.now {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.bprog.is-failed .bprog-dot.done { background: var(--accent-2); }
 .bprog-stages { display: inline-flex; align-items: center; flex-wrap: wrap; }
 .bprog-stage { display: inline-flex; align-items: center; gap: 5px; }
 .bprog-dot {

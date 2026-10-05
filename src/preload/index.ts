@@ -972,9 +972,18 @@ export interface McpOverview {
   projectPath: string | null
 }
 
+/**
+ * 烧录子阶段，由 esptool 真实输出解析而来（build-diagnostics.parseFlashProgress）。
+ * 与编译阶段分开：编译是「准备→草图→库→链接→生成二进制」，烧录是「连接→擦除→写入→校验→复位」，
+ * 两套动作不一样，阶段条自然也该是两套。
+ */
+export type FlashStage = 'connect' | 'erase' | 'write' | 'verify' | 'reset'
+
 export interface BuildStageInfo {
   stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'
   label: string
+  /** 烧录走到哪一步。仅烧录阶段（flashing / flashed）有值，编译阶段为 undefined。 */
+  flashStage?: FlashStage
 }
 
 export interface UsageSummary {

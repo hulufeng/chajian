@@ -3,7 +3,7 @@ import BuildProgress from './BuildProgress'
 import TerminalView, { type TerminalHandle } from './TerminalView'
 import SerialPlotter from './SerialPlotter'
 import type { Ref } from 'react'
-import type { SerialPortInfo } from '../../../preload'
+import type { BuildStageInfo, SerialPortInfo } from '../../../preload'
 
 type OutputKind = '输出' | '问题' | '串口监视器' | '终端'
 
@@ -32,7 +32,7 @@ interface Props {
   /** 编译过程：阶段条 / 结果卡（数据由 App 从主进程解析后传入） */
   buildVisible?: boolean
   buildActive?: boolean
-  buildStage?: { stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'; label: string }
+  buildStage?: BuildStageInfo
   buildElapsedMs?: number
   buildCancellable?: boolean
   buildFailed?: boolean
@@ -222,6 +222,7 @@ function OutputPanel({
               progressPercent={buildProgressPercent}
               onCancel={onCancelBuild}
               usage={buildUsage}
+              port={selectedPort}
             />
             {outputLog ? (
               <>

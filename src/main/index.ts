@@ -605,7 +605,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       sender.send('task:output', { id, chunk: line })
       // 写入过程可见化：把 esptool 的真实输出解析成「阶段 + 百分比」推给界面
       const fp = parseFlashProgress(line, opts.port)
-      if (fp) sender.send('task:progress', { id, percent: fp.percent ?? 0, message: fp.label })
+      if (fp) sender.send('task:progress', { id, percent: fp.percent ?? 0, message: fp.label, stage: fp.stage })
     }, (p) => {
       if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
     }).then((result) => {
@@ -642,7 +642,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       sender.send('task:output', { id, chunk })
       // CLI 直烧同样走 esptool 输出，用同一套解析给用户看写入进度
       const fp = parseFlashProgress(chunk, opts.port)
-      if (fp) sender.send('task:progress', { id, percent: fp.percent ?? 0, message: fp.label })
+      if (fp) sender.send('task:progress', { id, percent: fp.percent ?? 0, message: fp.label, stage: fp.stage })
     },
     (code) => {
       if (norm.cleanup) norm.cleanup()

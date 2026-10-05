@@ -122,17 +122,19 @@ export function parseFlashProgress(text: string, port?: string): FlashProgress |
   const tail = port ? ` · ${port}` : ''
 
   // 百分比：Writing at 0x0000e000... (62 %)
+  // label 里**不拼百分比**：界面上有专门的进度条 + 数字在显示它，
+  // 拼进来就是同一个数字在屏幕上出现两遍（"写入固件 62% · COM7" + "62%"），看着像渲染错乱。
   const writeMatch = t.match(/Writing at\s+0x[0-9a-f]+[^\n]*?\((\d+)\s*%\)/i)
   if (writeMatch) {
     const percent = Math.max(0, Math.min(100, Number(writeMatch[1])))
     return {
       stage: 'write',
-      label: `${FLASH_STAGE_TEXT.write} ${percent}%${tail}`,
+      label: `${FLASH_STAGE_TEXT.write}${tail}`,
       percent
     }
   }
   if (/Wrote\s+\d+\s+bytes/i.test(t)) {
-    return { stage: 'write', label: `${FLASH_STAGE_TEXT.write} 100%${tail}`, percent: 100 }
+    return { stage: 'write', label: `${FLASH_STAGE_TEXT.write}${tail}`, percent: 100 }
   }
   // 真实输出首行在不同版本里长得不一样（esptool.py v4.x / esptool v5.x / Serial port COM1），
   // 都归到"连接芯片"，让界面从第一帧就有反馈
