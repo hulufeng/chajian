@@ -6,6 +6,7 @@ import { PermissionPolicy } from './permission-policy'
 import { aiChatStream, getAiState, setLocalModel } from '../services/aiGateway'
 import { searchKnowledge, knowledgeCount } from '../ai/knowledgeBase'
 import { detectFirmwareProject, loadProjectConfigBlock, FIRMWARE_RULES_BLOCK, type FirmwareDetection } from './project-config'
+import { findToolchain, listConnectedBoardsWithSerial } from '../services/toolchain'
 import { listMemory } from '../services/memoryService'
 import { buildTodosSection as buildTodosSectionFor, loadTodos as loadTodosFor } from './tools/todo-tools'
 import { listSkills } from '../services/skillService'
@@ -239,7 +240,7 @@ export class AgentRunner {
     this.messages = [
       {
         role: 'system',
-        content: this.buildSystemPrompt(kbBlocks)
+        content: await this.buildSystemPrompt(kbBlocks)
       },
       ...options.messages.map((m) => ({ role: m.role, content: m.content }))
     ]
@@ -652,7 +653,7 @@ export class AgentRunner {
     return false
   }
 
-  private buildSystemPrompt(kbBlocks?: string[]): string {
+  private async buildSystemPrompt(kbBlocks?: string[]): Promise<string> {
     const toolSchemas = toolRegistry.toFunctionSchemas()
     // 本地小模型（Qwen 系列 ≤7B）：工具清单用极简格式，避免超长描述淹没指令遵循
     const activeModel = (getAiState().modelId || '').toLowerCase()
@@ -669,7 +670,7 @@ export class AgentRunner {
     const projectCfg = loadProjectConfigBlock(this.projectRoot)
     // 固件会话：整体替换为固件专用系统提示（身份即固件工程师）
     if (this.firmware?.firmware) {
-      return this.buildFirmwareSystemPrompt(toolList, projectCfg)
+      return await this.buildFirmwareSystemPrompt(toolList, projectCfg)
     }
     return `${projectCfg ? projectCfg + '\n\n' : ''}你是 LabCode，一个通用 AI 软件开发智能体。你可以通过工具真正动手写代码、执行命令、搜索网络。
 
@@ -739,17 +740,44 @@ ${kbBlocks && kbBlocks.length > 0 ? this.buildKnowledgeSection(kbBlocks) : ''}`
   }
 
   // 固件会话专用系统提示（整体替换通用提示）
-  private buildFirmwareSystemPrompt(toolList: string, projectCfg: string): string {
+  private async buildFirmwareSystemPrompt(toolList: string, projectCfg: string): Promise<string> {
     const det = this.firmware
     const hw = det
       ? `框架: ${det.framework || '未知'} ｜ 构建系统: ${det.buildSystem || '未知'} ｜ 目标/板卡: ${det.mcu || '未知'} ｜ 识别置信度: ${(det.confidence * 100).toFixed(0)}% ｜ 依据: ${det.indicators.join(', ')}`
       : ''
+    let boardAware = ''
+    try {
+      const bin = findToolchain()
+      if (bin) {
+        const boards = await listConnectedBoardsWithSerial(bin)
+        if (boards.length > 0) {
+          const lines = boards.slice(0, 4).map((b, i) =>
+            `- ${i === 0 ? '默认(第一块)' : `第${i + 1}块`}: ${b.name || '未知板'} ｜ FQBN: ${b.fqbn || '未知'} ｜ 端口: ${b.port || '未知'}`
+          )
+          boardAware = `## 当前连接板卡（board-aware，编写/烧录务必以这些为准）
+${lines.join('\n')}
+- 编译/烧录时**直接使用上面给出的 FQBN**，不要猜测或编造；多块板默认操作第一块。
+- 编写 GPIO/外设代码前确认引脚与该板兼容（如 ESP32-S3 的 USB 引脚、ADC 通道、I2C/SPI 默认 SDA/SCL），不确定以该板官方数据手册为准，**禁止臆造引脚号或外设地址**。`
+        } else {
+          boardAware = `## 当前连接板卡（board-aware）
+- 未检测到已连接串口设备。烧录前请连接 ESP32 开发板；连接后可用 board_detect / board_list 工具重新确认 FQBN 与端口。`
+        }
+      } else {
+        boardAware = `## 当前连接板卡（board-aware）
+- 未检测到 arduino-cli 工具链，无法自动识别连接板卡。请先在设置中安装工具链，或用 board_detect / board_list 工具手动确认。`
+      }
+    } catch {
+      boardAware = `## 当前连接板卡（board-aware）
+- 板卡自动识别暂时失败，可用 board_detect / board_list 工具重新确认 FQBN 与端口。`
+    }
     return `${projectCfg ? projectCfg + '\n\n' : ''}你是 LabCode 固件工作台中的 AI 固件工程师。
 
 ${FIRMWARE_RULES_BLOCK}
 
 ## 识别到的工程
 ${hw || '（未明确，可先询问用户或用工具扫描确认）'}
+
+${boardAware}
 
 ## 可用工具
 ${toolList}
