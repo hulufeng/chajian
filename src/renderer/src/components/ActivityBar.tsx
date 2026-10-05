@@ -1,6 +1,7 @@
 interface ActivityBarProps {
   active: string
   onChange: (id: string) => void
+  aiActive?: boolean
 }
 
 const FolderIcon = (): React.JSX.Element => (
@@ -22,24 +23,26 @@ const SparkIcon = (): React.JSX.Element => (
 )
 
 const ITEMS = [
+  { id: 'device', icon: ChipIcon, label: '烧录' },
+  { id: 'ai', icon: SparkIcon, label: '辅助编程' },
   { id: 'files', icon: FolderIcon, label: '文件' },
-  { id: 'device', icon: ChipIcon, label: '设备' },
-  { id: 'ai', icon: SparkIcon, label: 'AI 辅助' },
 ]
 
-function ActivityBar({ active, onChange }: ActivityBarProps): React.JSX.Element {
+function ActivityBar({ active, onChange, aiActive }: ActivityBarProps): React.JSX.Element {
   return (
     <div className="activitybar">
       {ITEMS.map((item) => {
         const Icon = item.icon
+        const isActive = item.id === 'ai' ? !!aiActive : active === item.id
         return (
           <div
             key={item.id}
-            className={`activity-item ${active === item.id ? 'active' : ''}`}
+            className={`activity-item ${isActive ? 'active' : ''}`}
             onClick={() => onChange(item.id)}
             title={item.label}
           >
             <Icon />
+            <span className="activity-label">{item.label}</span>
           </div>
         )
       })}

@@ -72,6 +72,15 @@ const SECURITY_MODES = [
   { value: 'plan', label: '计划（先计划后执行）' },
 ]
 
+/** 多模式：对话 / 计划 / 自动 / 调试，分别映射到 Agent 安全策略与 debug 标志 */
+type AgentMode = 'chat' | 'plan' | 'agent' | 'debug'
+const AGENT_MODES: Array<{ value: AgentMode; label: string; hint: string }> = [
+  { value: 'chat', label: '对话', hint: '只问答、不自动改文件；涉及操作先说明步骤' },
+  { value: 'plan', label: '计划', hint: '先给出执行方案，你批准后再动手' },
+  { value: 'agent', label: '自动', hint: '自主多步调用工具完成任务' },
+  { value: 'debug', label: '调试', hint: '自动定位并修复编译/烧录错误（Debug 模式）' }
+]
+
 const THINKING_LEVELS = [
   { value: 'light', label: '轻量思考' },
   { value: 'standard', label: '标准思考' },
@@ -348,15 +357,20 @@ interface AiPanelProps {
   onApplyCode?: (lang: string, content: string) => void
   onRunTerminal?: (cmd: string) => void
   onOpenSettings?: () => void
+  prefill?: { text: string; nonce: number; autoSend?: boolean } | null
 }
 
-function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, onOpenSettings }: AiPanelProps): React.JSX.Element {
+function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, onOpenSettings, prefill }: AiPanelProps): React.JSX.Element {
   const [messages, setMessages] = useState<AgentMessage[]>(INITIAL)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [agentStatus, setAgentStatus] = useState<string>('idle')
   const [stats, setStats] = useState<AgentStats>({ turns: 0, toolCalls: 0, elapsedMs: 0 })
-  const [securityMode, setSecurityMode] = useState<'auto' | 'default' | 'plan'>('default')
+  const [mode, setMode] = useState<AgentMode>('agent')
+  // 由模式派生：chat/debug → default（需确认/受控），plan → plan，agent → auto
+  const securityMode: 'auto' | 'default' | 'plan' =
+    mode === 'plan' ? 'plan' : mode === 'agent' ? 'auto' : 'default'
+  const debugMode = mode === 'debug'
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [askReq, setAskReq] = useState<{ questions: Array<{ question: string; type?: string; options?: string[] }>; decisionId: string } | null>(null)
   const [askAnswers, setAskAnswers] = useState<string[]>([])
@@ -399,6 +413,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const sendRef = useRef<() => Promise<void>>(() => Promise.resolve())
   // 语音输入（Web Speech 识别：桌面 Chromium 引擎为在线服务，network 错误即服务不可达）
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef<{ stop: () => void } | null>(null)
@@ -491,6 +506,17 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     rec.start()
     setListening(true)
   }
+
+  // 预填引导语（来自欢迎页「辅助编程 / 解决问题」或「一键 AI 诊断」入口）
+  useEffect(() => {
+    if (!prefill) return
+    if (prefill.text) setInput(prefill.text)
+    inputRef.current?.focus()
+    if (prefill.autoSend && prefill.text) {
+      const t = setTimeout(() => { void sendRef.current() }, 80)
+      return () => clearTimeout(t)
+    }
+  }, [prefill])
 
   // 加载模型和状态
   useEffect(() => {
@@ -658,6 +684,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     // 修改类请求：在用户文本后附加输出指令（引导模型输出完整代码块，绕过工具/批准链路）
     await doSend(modifyHint ? `${text}\n\n${modifyHint}` : text, undefined, autoInjected)
   }
+  sendRef.current = send
 
   // 统一发送入口（消息操作/正常发送共用）
   const doSend = async (text: string, historyOverride?: { role: 'user' | 'assistant'; content: string }[], injectFile?: { name: string; content: string }): Promise<void> => {
@@ -682,6 +709,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
         thinkingLevel,
         projectRoot,
         maxTurns: 20,
+        debugMode,
       })
     } catch (e) {
       setMessages((prev) => [...prev, { kind: 'assistant', text: `启动失败：${(e as Error).message}` }])
@@ -931,17 +959,22 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
 
       {showAdvanced && (
         <>
-      {/* 安全模式 + 思考强度 */}
+      {/* 模式切换 + 思考强度 */}
       <div className="ai-security-bar">
-        <span className="ai-security-label">安全模式</span>
-        <select
-          className="ai-security-select"
-          value={securityMode}
-          onChange={(e) => setSecurityMode(e.target.value as 'auto' | 'default' | 'plan')}
-          disabled={busy}
-        >
-          {SECURITY_MODES.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
-        </select>
+        <span className="ai-security-label">模式</span>
+        <div className="ai-mode-switch" title={AGENT_MODES.find((m) => m.value === mode)?.hint}>
+          {AGENT_MODES.map((m) => (
+            <button
+              key={m.value}
+              className={`ai-mode-btn${mode === m.value ? ' active' : ''}${m.value === 'debug' ? ' debug' : ''}`}
+              onClick={() => setMode(m.value)}
+              disabled={busy}
+              title={m.hint}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
         <span className="ai-security-label" style={{ marginLeft: 6 }}>思考</span>
         <select
           className="ai-security-select"

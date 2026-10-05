@@ -37,6 +37,7 @@ interface DevicePanelProps {
   onBoardChange?: (fqbn: string, name?: string) => void
   onPortChange?: (port: string) => void
   onOpenSerialWindow?: () => void
+  onGenerateWiring?: () => void
 }
 
 // 插件未声明设备面板时的内置兜底面板：保证「开发板 / 端口 / 烧录」始终可见可用，
@@ -63,11 +64,12 @@ const FALLBACK_PANEL: DevicePanelInfo = {
     }
   ],
   actions: [
-    { id: 'open-monitor', title: '串口监视器', kind: 'action', transport: 'internal', internal: { service: 'serialLog', method: 'open' } }
+    { id: 'open-monitor', title: '串口监视器', kind: 'action', transport: 'internal', internal: { service: 'serialLog', method: 'open' } },
+    { id: 'wiring', title: '生成接线图', kind: 'action', transport: 'internal', internal: { service: 'wiring', method: 'generate' } }
   ]
 }
 
-function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: DevicePanelProps): React.JSX.Element | null {
+function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring }: DevicePanelProps): React.JSX.Element | null {
   const [panels, setPanels] = useState<DevicePanelInfo[]>([])
   const [boards, setBoards] = useState<Array<{ fqbn: string; name: string; platform?: string }>>([])
   const [ports, setPorts] = useState<Array<{ path: string; manufacturer?: string }>>([])
@@ -246,6 +248,11 @@ function DevicePanel({ onBoardChange, onPortChange, onOpenSerialWindow }: Device
     // 串口监视器 → 打开独立窗口
     if (action.internal?.service === 'serialLog' && action.internal?.method === 'open') {
       onOpenSerialWindow?.()
+      return
+    }
+    // 生成接线图 → 调用主进程接线图服务并弹窗展示
+    if (action.internal?.service === 'wiring' && action.internal?.method === 'generate') {
+      onGenerateWiring?.()
       return
     }
     // 其他 action → 通过 capability 路由执行

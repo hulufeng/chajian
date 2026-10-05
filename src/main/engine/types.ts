@@ -75,4 +75,5 @@ export interface AgentRunOptions {
   thinkingLevel?: 'light' | 'standard' | 'deep'
   projectRoot?: string | null
   maxTurns?: number
+  debugMode?: boolean
 }

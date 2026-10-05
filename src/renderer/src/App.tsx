@@ -44,6 +44,84 @@ function isAbsPath(p: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/')
 }
 
+interface SketchResolution {
+  /** 命中的标签页（用于落盘最新编辑内容）；纯磁盘文件可能无对应 tab */
+  tab: EditorTab | null
+  /** sketch 路径：真实文件为绝对路径，虚拟文件为相对 id（后续暂存为真实路径） */
+  sketch: string
+  /** 是否虚拟文件（内置示例 / 未保存），需要暂存到临时目录再编译烧录 */
+  virtual: boolean
+  /** 来源说明，用于日志提示 */
+  reason: string
+}
+
+/**
+ * 解析要编译/烧录的 sketch —— 解决「打开项目后系统识别不到/识别错要烧录的文件」。
+ * 优先级（最贴合用户直觉）：
+ *  1) 当前正在编辑的「真实项目」.ino（绝对路径）—— 你看着/改着的就是要烧的
+ *  2) 已打开项目树里的第一个 .ino —— 项目已打开时不该去烧内置示例
+ *  3) 当前激活的虚拟 .ino（内置示例 / 未保存）
+ *  4) 任意已打开的 .ino 标签页
+ *  全部落空返回 null（由调用方给出可操作的报错）
+ */
+function resolveSketch(tabs: EditorTab[], activePath: string, tree: TreeNode | null): SketchResolution | null {
+  const isIno = (t: EditorTab): boolean => t.name.toLowerCase().endsWith('.ino')
+  const active = tabs.find((t) => t.id === activePath)
+  // 1) 正在编辑的真实项目 .ino
+  if (active && isIno(active) && isAbsPath(active.id)) {
+    return { tab: active, sketch: active.id, virtual: false, reason: '当前编辑的项目 .ino' }
+  }
+  // 2) 已打开项目树里的第一个 .ino（优先于虚拟示例）
+  const treeSketch = findSketch(tree)
+  if (treeSketch) {
+    return { tab: tabs.find((t) => t.id === treeSketch) ?? null, sketch: treeSketch, virtual: false, reason: '项目内的 .ino' }
+  }
+  // 3) 当前激活的虚拟 .ino（内置示例 / 未保存）
+  if (active && isIno(active)) {
+    return { tab: active, sketch: active.id, virtual: true, reason: '内置示例' }
+  }
+  // 4) 任意已打开的 .ino 标签页
+  const anyIno = tabs.find(isIno)
+  if (anyIno) {
+    return { tab: anyIno, sketch: anyIno.id, virtual: !isAbsPath(anyIno.id), reason: '已打开的 .ino' }
+  }
+  return null
+}
+
+/**
+ * 落盘 + 暂存：把命中标签页的最新内容写入磁盘（真实文件），或把虚拟文件暂存为真实临时工程。
+ * 返回最终交给 arduino-cli 的 sketch 绝对路径；失败时返回 null（已输出错误日志）。
+ */
+async function prepareSketchForBuild(
+  res: SketchResolution,
+  log: (s: string) => void,
+  markSaved: (id: string) => void
+): Promise<string | null> {
+  // 真实文件：先把最新编辑内容落盘（即使未手动保存，也以编辑器里的为准）
+  if (res.tab && isAbsPath(res.tab.id)) {
+    try {
+      await window.api.fs.write(res.tab.id, res.tab.content)
+      markSaved(res.tab.id)
+    } catch {
+      log('\n[错误] 保存失败，已中止：请检查磁盘空间或文件权限。\n')
+      return null
+    }
+  }
+  // 虚拟文件（内置示例 / 未保存）：暂存为真实临时工程再编译/烧录
+  if (res.virtual) {
+    try {
+      const name = res.sketch.replace(/\.ino$/i, '').split('/').pop() || 'sketch'
+      const staged = await window.api.fs.stageTemp(name, res.tab?.content ?? '')
+      log(`\nℹ ${res.reason}已暂存到临时目录编译/烧录（不影响原文件）：${staged}\n`)
+      return staged
+    } catch (e) {
+      log(`\n[错误] 示例暂存失败：${(e as Error).message}\n`)
+      return null
+    }
+  }
+  return res.sketch
+}
+
 // 从编译/烧录输出中提取错误上下文（供「一键 AI 诊断」使用）
 function extractBuildError(log: string): string | null {
   // 主进程已输出结构化诊断块（分类 + 文件行号 + 修复建议），优先整块送给 AI
@@ -160,6 +238,7 @@ function App(): React.JSX.Element {
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
   const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number; autoSend?: boolean } | null>(null)
   const [buildError, setBuildError] = useState<string | null>(null)
+  const [wiringSvg, setWiringSvg] = useState<string | null>(null)
   const buildLogRef = useRef<string>('')
   const [examplesDir, setExamplesDir] = useState<string>('')
 
@@ -202,6 +281,34 @@ function App(): React.JSX.Element {
       autoSend: true
     })
   }, [buildError])
+
+  // 一键 AI 自动修复：进入 Debug 模式，让 Agent 直接定位并修复编译/烧录错误
+  const debugFixBuildError = useCallback(() => {
+    if (!buildError) return
+    setAiPanelVisible(true)
+    setAiPrefill({
+      text:
+        '我刚执行编译/烧录失败，请进入 Debug 模式：①定位报错根因；②直接编辑出错的源码文件修复它；③再次调用 compile 验证通过。' +
+        '只改必要的代码，不要大改结构。报错信息如下：\n\n' +
+        buildError,
+      nonce: Date.now(),
+      autoSend: true
+    })
+  }, [buildError])
+
+  // 生成接线图：调用主进程 wiring 服务，弹窗展示 SVG
+  const generateWiring = useCallback(async () => {
+    try {
+      const res = await window.api.wiring.generate({ fqbn, projectRoot: projectRoot || undefined })
+      if (res && res.ok && res.svg) {
+        setWiringSvg(res.svg)
+      } else {
+        setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" fill="#c0392b" font-size="13">生成失败：${res?.error || '未知错误'}</text></svg>`)
+      }
+    } catch (e) {
+      setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" fill="#c0392b" font-size="13">生成异常：${(e as Error).message}</text></svg>`)
+    }
+  }, [fqbn, projectRoot])
 
   const cwd = projectRoot ?? (window.api.platform === 'win32' ? 'C:\\' : '/')
 
@@ -419,19 +526,13 @@ function App(): React.JSX.Element {
       setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       return
     }
-    // sketch 解析：优先工程树中的 .ino；未打开项目时用当前打开的 .ino 标签页（内置示例）
-    let sketch = findSketch(tree)
-    let virtualTab = tabs.find((t) => t.id === sketch)
-    if (!sketch) {
-      virtualTab = tabs.find((t) => t.name.endsWith('.ino'))
-      sketch = virtualTab?.id ?? null
-    }
-    if (!sketch) {
-      setOutputLog(
-        (prev) =>
-          prev +
-          '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再编译。\n'
-      )
+    // sketch 解析：优先识别你正在编辑的 .ino；其次项目树里的 .ino；再次任意已打开的 .ino
+    const resolved = resolveSketch(tabs, activePath, tree)
+    if (!resolved) {
+      const msg = tree
+        ? '\n[错误] 当前项目内未找到 .ino 工程文件。请在左侧「文件」面板点开项目里的 .ino 文件，或确认工程根目录/同名目录含 <工程名>.ino。\n'
+        : '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再编译。\n'
+      setOutputLog((prev) => prev + msg)
       setCompileState('error')
       return
     }
@@ -440,30 +541,15 @@ function App(): React.JSX.Element {
       return
     }
 
-    // 保存当前编辑的"真实文件"（虚拟文件的相对路径不落盘，避免写到进程 cwd）
-    const activeTab = tabs.find((t) => t.id === activePath)
-    if (activeTab && isAbsPath(activeTab.id)) {
-      try {
-        await window.api.fs.write(activeTab.id, activeTab.content)
-        setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, dirty: false } : t)))
-      } catch {
-        setOutputLog((prev) => prev + '\n[错误] 保存失败，已中止编译：请检查磁盘空间或文件权限。\n')
-        return
-      }
-    }
-
-    // 内置示例 / 未保存的 .ino：暂存为真实临时工程再编译（每次覆盖，烧的是编辑器最新内容）
-    if (!isAbsPath(sketch)) {
-      try {
-        const name = sketch.replace(/\.ino$/i, '').split('/').pop() || 'sketch'
-        const staged = await window.api.fs.stageTemp(name, virtualTab?.content ?? '')
-        setOutputLog((prev) => prev + `\nℹ 内置示例已暂存到临时目录编译（不影响原文件）：${staged}\n`)
-        sketch = staged
-      } catch (e) {
-        setOutputLog((prev) => prev + `\n[错误] 示例暂存失败：${(e as Error).message}\n`)
-        setCompileState('error')
-        return
-      }
+    // 落盘最新编辑内容 / 暂存虚拟文件，得到最终交给 arduino-cli 的 sketch 路径
+    const sketch = await prepareSketchForBuild(
+      resolved,
+      (s) => setOutputLog((p) => p + s),
+      (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
+    )
+    if (!sketch) {
+      setCompileState('error')
+      return
     }
 
     setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
@@ -510,19 +596,13 @@ function App(): React.JSX.Element {
       setOutputLog((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
       return
     }
-    // sketch 解析：优先工程树中的 .ino；未打开项目时用当前打开的 .ino 标签页（内置示例）
-    let sketch = findSketch(tree)
-    let virtualTab = tabs.find((t) => t.id === sketch)
-    if (!sketch) {
-      virtualTab = tabs.find((t) => t.name.endsWith('.ino'))
-      sketch = virtualTab?.id ?? null
-    }
-    if (!sketch) {
-      setOutputLog(
-        (prev) =>
-          prev +
-          '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再烧录。\n'
-      )
+    // sketch 解析：优先识别你正在编辑的 .ino；其次项目树里的 .ino；再次任意已打开的 .ino
+    const resolved = resolveSketch(tabs, activePath, tree)
+    if (!resolved) {
+      const msg = tree
+        ? '\n[错误] 当前项目内未找到 .ino 工程文件。请在左侧「文件」面板点开项目里的 .ino 文件，或确认工程根目录/同名目录含 <工程名>.ino。\n'
+        : '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再烧录。\n'
+      setOutputLog((prev) => prev + msg)
       setCompileState('error')
       return
     }
@@ -531,30 +611,15 @@ function App(): React.JSX.Element {
       return
     }
 
-    // 保存当前编辑的"真实文件"（虚拟文件不落盘，走下方临时暂存）
-    const activeTab = tabs.find((t) => t.id === activePath)
-    if (activeTab && isAbsPath(activeTab.id)) {
-      try {
-        await window.api.fs.write(activeTab.id, activeTab.content)
-        setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, dirty: false } : t)))
-      } catch {
-        setOutputLog((prev) => prev + '\n[错误] 保存失败，已中止烧录。\n')
-        return
-      }
-    }
-
-    // 内置示例 / 未保存的 .ino：暂存为真实临时工程再烧录
-    if (!isAbsPath(sketch)) {
-      try {
-        const name = sketch.replace(/\.ino$/i, '').split('/').pop() || 'sketch'
-        const staged = await window.api.fs.stageTemp(name, virtualTab?.content ?? '')
-        setOutputLog((prev) => prev + `\nℹ 内置示例已暂存到临时目录烧录（不影响原文件）：${staged}\n`)
-        sketch = staged
-      } catch (e) {
-        setOutputLog((prev) => prev + `\n[错误] 示例暂存失败：${(e as Error).message}\n`)
-        setCompileState('error')
-        return
-      }
+    // 落盘最新编辑内容 / 暂存虚拟文件，得到最终交给 arduino-cli 的 sketch 路径
+    const sketch = await prepareSketchForBuild(
+      resolved,
+      (s) => setOutputLog((p) => p + s),
+      (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
+    )
+    if (!sketch) {
+      setCompileState('error')
+      return
     }
 
     // 烧录前暂停串口监视器
@@ -843,6 +908,7 @@ function App(): React.JSX.Element {
                     setTerminalVisible(true)
                     setOutputKey((k) => k + 1)
                   }}
+                  onGenerateWiring={() => void generateWiring()}
                 />
               )}
             </aside>
@@ -891,6 +957,7 @@ function App(): React.JSX.Element {
               defaultTab="串口监视器"
               buildError={buildError}
               onDiagnose={diagnoseBuildError}
+              onDebugFix={debugFixBuildError}
             />
           )}
         </div>
@@ -929,6 +996,17 @@ function App(): React.JSX.Element {
           }}
           defaultTab={settingsTab}
         />
+      )}
+      {wiringSvg && (
+        <div className="wiring-overlay" onClick={() => setWiringSvg(null)}>
+          <div className="wiring-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wiring-modal-head">
+              <span>📐 引脚接线图</span>
+              <button className="wiring-close" onClick={() => setWiringSvg(null)} aria-label="关闭">✕</button>
+            </div>
+            <div className="wiring-modal-body" dangerouslySetInnerHTML={{ __html: wiringSvg }} />
+          </div>
+        </div>
       )}
     </div>
   )

@@ -8,7 +8,7 @@ export interface TreeNode {
   children?: TreeNode[]
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.cache', '.pio', '.vscode', '__pycache__', '.idea'])
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.cache', '.pio', '.labcode', '.vscode', '__pycache__', '.idea'])
 
 const TEXT_EXTS = new Set([
   '.ino', '.cpp', '.c', '.h', '.hpp', '.js', '.jsx', '.ts', '.tsx', '.json', '.md', '.txt',

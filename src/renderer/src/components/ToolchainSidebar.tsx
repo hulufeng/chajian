@@ -5,6 +5,7 @@ interface ToolchainSidebarProps {
   onBoardChange?: (fqbn: string, name?: string) => void
   onPortChange?: (port: string) => void
   onOpenSerialWindow?: () => void
+  onGenerateWiring?: () => void
 }
 
 type TabId = 'device' | 'platforms' | 'libraries' | 'settings'
@@ -16,7 +17,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'settings', label: '设置', icon: '⚙️' }
 ]
 
-function ToolchainSidebar({ onBoardChange, onPortChange, onOpenSerialWindow }: ToolchainSidebarProps): React.JSX.Element {
+function ToolchainSidebar({ onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring }: ToolchainSidebarProps): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>('device')
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -103,6 +104,7 @@ function ToolchainSidebar({ onBoardChange, onPortChange, onOpenSerialWindow }: T
             onBoardChange={onBoardChange}
             onPortChange={onPortChange}
             onOpenSerialWindow={onOpenSerialWindow}
+            onGenerateWiring={onGenerateWiring}
           />
         )}
         {activeTab === 'platforms' && (

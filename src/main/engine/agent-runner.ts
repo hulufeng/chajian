@@ -91,6 +91,7 @@ export class AgentRunner {
   private projectRoot: string | null = null
   private firmware: FirmwareDetection | null = null
   private thinkingLevel: 'light' | 'standard' | 'deep' = 'standard'
+  private debugMode = false
   private pendingConfirm: ConfirmRequest | null = null
   private confirmResolve: ((action: string) => void) | null = null
   private stopped = false
@@ -202,6 +203,7 @@ export class AgentRunner {
     this.projectRoot = options.projectRoot || null
     this.firmware = detectFirmwareProject(this.projectRoot)
     if (options.securityMode) this.policy.setMode(options.securityMode)
+    this.debugMode = options.debugMode ?? false
     this.thinkingLevel = options.thinkingLevel || 'standard'
 
     // 本地模型（Ollama）：设置到 aiGateway，aiChatStream 会走本地分支
@@ -667,6 +669,9 @@ export class AgentRunner {
         : this.thinkingLevel === 'light'
           ? '\n## 思考强度\n当前为轻量思考模式：请直接给出结论并执行，减少不必要的分析过程。\n'
           : ''
+    const debugGuide = this.debugMode
+      ? '\n## Debug 模式\n当前为调试模式：若编译/烧录失败，你必须直接用 compile 工具读取错误，**定位源码问题后用 edit_file/write_file 修复，再调用 compile 验证**，如此循环直到退出码为 0（最多 3 轮）；不要只给建议，必须真正动手改代码并复验。烧录失败（如端口占用、板卡未连）也先用 upload 工具拿报错再排查，不要空谈。\n'
+      : ''
     const projectCfg = loadProjectConfigBlock(this.projectRoot)
     // 固件会话：整体替换为固件专用系统提示（身份即固件工程师）
     if (this.firmware?.firmware) {
@@ -695,6 +700,7 @@ export class AgentRunner {
 - 每次工具调用前后可以用简短文字说明进度（可选，不强制）
 - **完成任务时，必须用自然语言输出最终回答（不少于 30 字）**：先一句话说明做了什么，然后直接给出结论或回应提问，需要时简短说明关键过程与产物位置。回答要自然、直接，像正常 AI 对话一样——**禁止使用"总结：/结果：/产物：/下一步建议：/注意事项："这类小标题模板，也不要机械地逐条列项**。禁止以空回复或纯工具调用结束任务——最后一步一定是文字回答。
 ${thinkGuide}
+${debugGuide}
 ## 嵌入式 / PlatformIO 项目规范（ESP32/Arduino 场景）
 - 项目结构：主程序 .ino 放 src/ 目录，类声明 .h 与实现 .cpp 配对放 src/
 - .ino 文件不要放项目根目录（PlatformIO 默认只编译 src/）
@@ -741,6 +747,9 @@ ${kbBlocks && kbBlocks.length > 0 ? this.buildKnowledgeSection(kbBlocks) : ''}`
 
   // 固件会话专用系统提示（整体替换通用提示）
   private async buildFirmwareSystemPrompt(toolList: string, projectCfg: string): Promise<string> {
+    const debugGuide = this.debugMode
+      ? '\n## Debug 模式\n当前为调试模式：若编译/烧录失败，你必须直接用 compile 工具读取错误，**定位源码问题后用 edit_file/write_file 修复，再调用 compile 验证**，如此循环直到退出码为 0（最多 3 轮）；不要只给建议，必须真正动手改代码并复验。烧录失败（如端口占用、板卡未连）也先用 upload 工具拿报错再排查，不要空谈。\n'
+      : ''
     const det = this.firmware
     const hw = det
       ? `框架: ${det.framework || '未知'} ｜ 构建系统: ${det.buildSystem || '未知'} ｜ 目标/板卡: ${det.mcu || '未知'} ｜ 识别置信度: ${(det.confidence * 100).toFixed(0)}% ｜ 依据: ${det.indicators.join(', ')}`
@@ -792,7 +801,7 @@ ${this.buildMemorySection()}
 ${this.buildSkillsSection()}
 ${this.buildTodosSection()}
 
-工具结果会返回给你，然后继续思考；达成目标并经构建/烧录/观察验证后，用自然语言汇报结果与产物位置。`
+工具结果会返回给你，然后继续思考；达成目标并经构建/烧录/观察验证后，用自然语言汇报结果与产物位置。${debugGuide}`
   }
 
   // 教学知识库注入：用户问题命中内置 ESP32 基础教学条目时，附上真实可编译的讲解/代码，避免小模型编造

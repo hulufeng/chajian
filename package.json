@@ -20,7 +20,7 @@
     "productName": "LabCode",
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "pkgout9",
+      "output": "pkgout11",
       "buildResources": "build"
     },
     "files": [

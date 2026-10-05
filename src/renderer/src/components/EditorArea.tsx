@@ -29,6 +29,17 @@ function MonacoEditor({
     }
   }
 
+  // 本地文件是「先建空 tab、再异步 fs.read 回填内容」：initialValue 仅在挂载时生效，
+  // 异步回填后需再同步一次，否则打开本地文件编辑器一直空白（不显示）。
+  // 用户正常输入时 model 已等于 initialValue，下面不会触发 setValue，无光标跳动。
+  useEffect(() => {
+    const editor = editorRef.current
+    const model = editor?.getModel?.()
+    if (editor && model && model.getValue() !== initialValue) {
+      model.setValue(initialValue)
+    }
+  }, [initialValue])
+
   return (
     <Editor
       height="100%"

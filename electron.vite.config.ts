@@ -7,7 +7,11 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        external: ['playwright']
+        external: ['playwright'],
+        input: {
+          index: 'src/main/index.ts',
+          'mcp-stdio': 'src/main/mcp/stdio.ts'
+        }
       }
     }
   },

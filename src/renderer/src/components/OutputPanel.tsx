@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import TerminalView, { type TerminalHandle } from './TerminalView'
+import SerialPlotter from './SerialPlotter'
 import type { Ref } from 'react'
 import type { SerialPortInfo } from '../../../preload'
 
@@ -26,6 +27,7 @@ interface Props {
   defaultTab?: OutputKind
   buildError?: string | null
   onDiagnose?: () => void
+  onDebugFix?: () => void
 }
 
 function OutputPanel({
@@ -46,9 +48,11 @@ function OutputPanel({
   onClose,
   defaultTab,
   buildError,
-  onDiagnose
+  onDiagnose,
+  onDebugFix
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<OutputKind>(defaultTab ?? '输出')
+  const [serialView, setSerialView] = useState<'文本' | '波形'>('文本')
   const outputRef = useRef<HTMLDivElement>(null)
   const serialRef = useRef<HTMLDivElement>(null)
 
@@ -85,11 +89,18 @@ function OutputPanel({
         )}
       </div>
       <div className="output-body">
-        {buildError && onDiagnose && (
+        {buildError && (onDiagnose || onDebugFix) && (
           <div className="build-error-banner">
             <div className="build-error-head">
               <span className="build-error-title">⚠ 编译 / 烧录失败</span>
-              <button className="build-error-diagnose" onClick={onDiagnose}>🤖 一键 AI 诊断</button>
+              <div className="build-error-actions">
+                {onDiagnose && (
+                  <button className="build-error-diagnose" onClick={onDiagnose}>🤖 一键 AI 诊断</button>
+                )}
+                {onDebugFix && (
+                  <button className="build-error-fix" onClick={onDebugFix}>🛠 AI 自动修复</button>
+                )}
+              </div>
             </div>
             <pre className="build-error-text">{buildError.slice(0, 500)}</pre>
           </div>
@@ -148,14 +159,32 @@ function OutputPanel({
               >
                 {serialOpen ? '■ 关闭' : '● 打开'}
               </button>
+              <div className="serial-subtabs">
+                <button
+                  className={`subtab${serialView === '文本' ? ' active' : ''}`}
+                  onClick={() => setSerialView('文本')}
+                >
+                  文本
+                </button>
+                <button
+                  className={`subtab${serialView === '波形' ? ' active' : ''}`}
+                  onClick={() => setSerialView('波形')}
+                >
+                  波形
+                </button>
+              </div>
             </div>
-            <div className="mono-log" ref={serialRef}>
-              {serialLog ? (
-                serialLog
-              ) : (
-                <span className="dim">打开串口后，设备输出的数据将实时显示在这里。</span>
-              )}
-            </div>
+            {serialView === '文本' ? (
+              <div className="mono-log" ref={serialRef}>
+                {serialLog ? (
+                  serialLog
+                ) : (
+                  <span className="dim">打开串口后，设备输出的数据将实时显示在这里。</span>
+                )}
+              </div>
+            ) : (
+              <SerialPlotter serialLog={serialLog} serialOpen={serialOpen} theme={theme} />
+            )}
           </div>
         )}
         {tab === '终端' && (

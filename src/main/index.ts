@@ -18,6 +18,7 @@ import type { TreeNode } from './services/fsService'
 import * as nodePty from 'node-pty'
 import { arduinoGrpc } from './services/grpc-client'
 import { parseBuildOutput, formatBuildReport } from './services/build-diagnostics'
+import { generateWiringDiagram, readSketchCode } from './services/wiringService'
 import { listLocalModels } from './ai/modelRuntime'
 
 /** 编译/烧录失败时补发的结构化诊断块（供输出面板与「一键 AI 诊断」使用）。 */
@@ -595,6 +596,26 @@ ipcMain.handle('library:uninstall', (event, opts: { name: string }) => {
   return { id }
 })
 
+// 接线图：根据工程主 sketch 自动生成 SVG 接线示意
+ipcMain.handle('wiring:generate', async (_e, opts: { fqbn?: string; projectRoot?: string }) => {
+  const Root = opts?.projectRoot || ''
+  let fqbn = opts?.fqbn || ''
+  if (!fqbn) {
+    const bin = findToolchain()
+    if (bin) {
+      const boards = await listConnectedBoardsWithSerial(bin)
+      if (boards[0]?.fqbn) fqbn = boards[0].fqbn
+    }
+  }
+  if (!fqbn) fqbn = 'esp32:esp32:esp32'
+  const code = readSketchCode(Root)
+  if (!code) {
+    return { ok: false, error: `在 ${Root || '(未提供工程路径)'} 下未找到主 sketch（.ino/.cpp），无法生成接线图。` }
+  }
+  const result = generateWiringDiagram(fqbn, code)
+  return { ok: true, fqbn, svg: result.svg, components: result.components, pins: result.pins }
+})
+
 // 工具链设置：开发板管理器附加地址
 ipcMain.handle('settings:getBoardUrls', () => {
   const s = readSettings()
@@ -781,6 +802,7 @@ ipcMain.handle('agent:start', (event, opts: {
   thinkingLevel?: 'light' | 'standard' | 'deep'
   projectRoot?: string | null
   maxTurns?: number
+  debugMode?: boolean
 }) => {
   const sender = event.sender
   // 停止上一个 agent
@@ -792,7 +814,7 @@ ipcMain.handle('agent:start', (event, opts: {
     if (!sender.isDestroyed()) sender.send('agent:event', ev)
   })
   // 异步运行，不阻塞 IPC 返回
-  void agentRunner.run(opts).catch((e) => {
+  void agentRunner.run({ ...opts, debugMode: opts.debugMode ?? false }).catch((e) => {
     if (!sender.isDestroyed()) sender.send('agent:event', { type: 'error', data: { message: (e as Error).message } })
   })
   return { ok: true }

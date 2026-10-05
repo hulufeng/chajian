@@ -272,6 +272,7 @@ const api = {
       thinkingLevel?: 'light' | 'standard' | 'deep'
       projectRoot?: string | null
       maxTurns?: number
+      debugMode?: boolean
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke('agent:start', opts),
     stop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('agent:stop'),
     respond: (action: 'allow_once' | 'allow_session' | 'reject'): Promise<{ ok: boolean }> =>
@@ -318,6 +319,12 @@ const api = {
   board: {
     list: (keyword?: string): Promise<Array<{ fqbn: string; name: string; platform?: string }>> => ipcRenderer.invoke('board:list', keyword),
     details: (fqbn: string): Promise<{ fqbn: string; name: string; options: Array<{ option: string; label: string; values: Array<{ value: string; label: string }> }> }> => ipcRenderer.invoke('board:details', fqbn)
+  },
+
+  // 接线图自动生成
+  wiring: {
+    generate: (opts: { fqbn?: string; projectRoot?: string }): Promise<{ ok: boolean; fqbn?: string; svg?: string; components?: unknown[]; pins?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke('wiring:generate', opts)
   },
 
   // 平台管理（Arduino core）

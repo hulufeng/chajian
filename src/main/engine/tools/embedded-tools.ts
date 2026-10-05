@@ -5,6 +5,7 @@
 import { findToolchain, compileSketch, uploadSketch, listConnectedBoardsWithSerial } from '../../services/toolchain'
 import { parseBuildOutput, formatBuildReport } from '../../services/build-diagnostics'
 import { listPorts, openSerialMonitor, writeSerial, closeSerial, readSerialBuffer, listSerialSessions, readSerialLog, clearSerialLog } from '../../services/serialService'
+import { generateWiringDiagram, readSketchCode } from '../../services/wiringService'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
 const COMPILE_TIMEOUT_MS = 180_000
@@ -513,4 +514,54 @@ const analyzeCrash: ToolDefinition = {
   }
 }
 
-export const embeddedTools: ToolDefinition[] = [compile, upload, serialMonitor, serialSend, serialRead, serialStop, serialLogTail, serialLogGrep, analyzeCrash]
+// ---------- 工具10: wiring_diagram（自动接线图）----------
+const wiringDiagram: ToolDefinition = {
+  name: 'wiring_diagram',
+  description:
+    '根据当前 sketch 源码自动生成 ESP32 接线示意图（SVG）。解析用到的引脚与外设（LED/按键/I2C/SPI/UART 等），结合板卡引脚定义生成一张可视图，降低接线门槛。' +
+    '返回 SVG 代码片段（可直接预览）与组件/引脚清单。适合在写硬件代码后、焊接/接线前调用，确认引脚分配。',
+  parameters: {
+    type: 'object',
+    properties: {
+      fqbn: { type: 'string', description: '板卡 FQBN，如 esp32:esp32:esp32s3。留空自动用已连接板子' },
+      projectRoot: { type: 'string', description: '项目目录，默认使用当前项目根目录' }
+    },
+    required: []
+  },
+  category: 'query',
+  execute: async (args, ctx): Promise<ToolResult> => {
+    const root = args.projectRoot ? String(args.projectRoot) : (ctx.projectRoot || ctx.cwd)
+    let fqbn = args.fqbn ? String(args.fqbn) : ''
+    if (!fqbn) {
+      const bin = findToolchain()
+      if (bin) {
+        const boards = await listConnectedBoardsWithSerial(bin)
+        if (boards[0]?.fqbn) fqbn = boards[0].fqbn
+      }
+    }
+    if (!fqbn) fqbn = 'esp32:esp32:esp32'
+    const code = readSketchCode(root)
+    if (!code) {
+      return { ok: false, content: '', error: `在 ${root} 下未找到主 sketch（.ino/.cpp），无法生成接线图。` }
+    }
+    const { svg, components, pins } = generateWiringDiagram(fqbn, code)
+    const summary =
+      `已为 ${fqbn} 生成接线图：检测到 ${pins.length} 个引脚、${components.length} 个外设组件。` +
+      `\n组件清单：${components.map((c) => `${c.name}（${c.pins.map((p) => `${p.label}=${p.pin}`).join(', ')}）`).join('；') || '（仅板载引脚参考）'}` +
+      `\n\n<svg>\n${svg.length > 4000 ? svg.slice(0, 4000) + '\n...(已截断，完整图请在界面"生成接线图"中查看)' : svg}\n</svg>`
+    return { ok: true, content: summary, data: { fqbn, componentCount: components.length, pinCount: pins.length } }
+  }
+}
+
+export const embeddedTools: ToolDefinition[] = [
+  compile,
+  upload,
+  serialMonitor,
+  serialSend,
+  serialRead,
+  serialStop,
+  serialLogTail,
+  serialLogGrep,
+  analyzeCrash,
+  wiringDiagram
+]
