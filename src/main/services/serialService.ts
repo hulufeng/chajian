@@ -14,6 +14,10 @@ export interface SerialPortInfo {
   path: string
   manufacturer?: string
   friendlyName?: string
+  /** USB 厂商/产品 ID：用于自动认板卡（0x303a=Espressif，0x0483=ST，0x1a86=CH340…） */
+  vid?: number
+  pid?: number
+  pnpId?: string
 }
 
 export async function listPorts(): Promise<SerialPortInfo[]> {
@@ -23,7 +27,10 @@ export async function listPorts(): Promise<SerialPortInfo[]> {
       return ports.map((p) => ({
         path: p.path,
         manufacturer: p.manufacturer,
-        friendlyName: (p as { friendlyName?: string }).friendlyName
+        friendlyName: (p as { friendlyName?: string }).friendlyName,
+        vid: (p as { vid?: number }).vid,
+        pid: (p as { pid?: number }).pid,
+        pnpId: (p as { pnpId?: string }).pnpId
       }))
     } catch {
       /* 回退 mode */

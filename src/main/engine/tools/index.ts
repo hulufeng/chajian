@@ -23,6 +23,7 @@ import { verifyTools } from './verify-tool'
 import { closedLoopTools } from './closed-loop-tool'
 import { svdTools } from './svd-tools'
 import { platformioTools } from './platformio-tools'
+import { targetTools } from './target-tools'
 import { isWriteBlocked } from '../project-config'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
@@ -571,5 +572,6 @@ export const coreTools: ToolDefinition[] = [
   ...verifyTools,
   ...closedLoopTools,
   ...svdTools,
-  ...platformioTools
+  ...platformioTools,
+  ...targetTools
 ]

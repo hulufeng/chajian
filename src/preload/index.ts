@@ -562,6 +562,16 @@ const api = {
     }
   },
 
+  // 硬件目标（板卡注册表：ESP32 / STM32）
+  target: {
+    list: (opts?: { family?: 'esp32' | 'stm32' }): Promise<BoardTargetInfo[]> =>
+      ipcRenderer.invoke('target:list', opts),
+    get: (id: string): Promise<BoardTargetInfo | null> => ipcRenderer.invoke('target:get', id),
+    detect: (): Promise<DetectedPort[]> => ipcRenderer.invoke('target:detect'),
+    writeIni: (opts: { projectRoot: string; boardId: string; env?: string; uploadPort?: string }): Promise<{ ok: boolean; path: string }> =>
+      ipcRenderer.invoke('target:write-ini', opts)
+  },
+
   // PlatformIO（pio CLI 集成：多 env 解析 / 构建 / 烧录 / 串口监视）
   platformio: {
     info: (projectRoot?: string | null): Promise<PioInfo> => ipcRenderer.invoke('platformio:info', { projectRoot }),
@@ -701,6 +711,38 @@ export interface NvsEntry {
   key: string
   type: string
   value: string | number | null
+}
+
+export interface DetectedPort {
+  path: string
+  manufacturer?: string
+  friendlyName?: string
+  vid?: number
+  pid?: number
+  pnpId?: string
+  usbId: string
+  targetId: string | null
+  targetName: string | null
+}
+
+export interface BoardTargetInfo {
+  id: string
+  name: string
+  family: 'esp32' | 'stm32'
+  chip: string
+  mcu: string
+  flash: string
+  build: Array<{ path: 'arduino-cli' | 'platformio' | 'esp-idf' | 'stm32cube'; detail: string }>
+  fqbn?: string
+  pioBoard?: string
+  pioPlatform?: string
+  upload: { kind: 'serial' | 'usb-jtag' | 'stlink' | 'dfu'; baud: number; note: string }
+  debug: { link: 'builtin-usb-jtag' | 'onboard-stlink' | 'external-stlink' | 'cmsis-dap'; cfg: string[]; chip: string; note: string }
+  svdChip?: string | null
+  usbIds?: string[]
+  notes: string
+  /** 本机 openocd 是否备齐该板调试 cfg */
+  debugCfgExists: boolean
 }
 
 export type Api = typeof api

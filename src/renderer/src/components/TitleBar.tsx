@@ -58,6 +58,8 @@ interface TitleBarProps {
   debugVisible: boolean
   onTogglePio: () => void
   pioVisible: boolean
+  onToggleTarget: () => void
+  targetVisible: boolean
   leftPanelVisible: boolean
   editorVisible: boolean
   onToggleLeftPanel: () => void
@@ -69,7 +71,7 @@ interface TitleBarProps {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible,
+  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible, onToggleTarget, targetVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme
 }: TitleBarProps): React.JSX.Element {
@@ -223,6 +225,13 @@ function TitleBar({
           onClick={onToggleDebug}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+        </button>
+        <button
+          className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
+          title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
+          onClick={onToggleTarget}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
         </button>
         <button
           className={`tb-btn ${pioVisible ? 'tb-success' : ''}`}

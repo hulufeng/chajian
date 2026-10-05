@@ -4,6 +4,8 @@ import type { DebugChip, DebugState, MemoryReadResult, NvsEntry, PartitionEntry,
 interface Props {
   /** 当前板卡 FQBN（用于推断调试芯片，如 esp32:esp32:esp32s3 → esp32s3） */
   fqbn?: string
+  /** 显式指定调试芯片（硬件目标面板选中 STM32 时传 stm32f7 之类，优先于 fqbn 推断） */
+  chipOverride?: string
   onClose: () => void
 }
 
@@ -20,7 +22,7 @@ function formatHex(bytes: number[]): string {
   return rows.join('\n')
 }
 
-export default function DebugPanel({ fqbn, onClose }: Props): React.JSX.Element {
+export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): React.JSX.Element {
   const [info, setInfo] = useState<{ installed: boolean; path: string; scripts: string; chips: DebugChip[] } | null>(null)
   const [ installing, setInstalling ] = useState(false)
   const [ installErr, setInstallErr ] = useState('')
@@ -53,13 +55,17 @@ export default function DebugPanel({ fqbn, onClose }: Props): React.JSX.Element 
     return () => off()
   }, [loadInfo])
 
-  /** 用当前板卡 FQBN 推断默认芯片（只做一次） */
+  /** 用当前板卡 FQBN 推断默认芯片（只做一次）。chipOverride 优先：硬件目标面板可指定 STM32 等非 FQBN 目标 */
   useEffect(() => {
+    if (chipOverride) {
+      setChip(chipOverride)
+      return
+    }
     if (!fqbn || !info || info.chips.length === 0) return
     const seg = fqbn.split(':').pop() || ''
     const hit = info.chips.find((c) => seg.toLowerCase().startsWith(c.chip))
     if (hit) setChip(hit.chip)
-  }, [fqbn, info])
+  }, [fqbn, info, chipOverride])
 
   const refresh = useCallback((): void => {
     window.api.debug.state().then(setState).catch(() => undefined)

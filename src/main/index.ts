@@ -1,5 +1,5 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, session } from 'electron'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
@@ -58,6 +58,12 @@ import {
 } from './services/platformio'
 import { readPartitionTable, readNvsEntries } from './services/partitionTable'
 import { createDeviceFs, createSerialFsTransport } from './services/deviceFs'
+import {
+  listTargets,
+  findTarget,
+  targetForUsbId,
+  buildPlatformioIni
+} from './services/boardRegistry'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
   listInstalledChips as listSvdChips,
@@ -1103,6 +1109,44 @@ ipcMain.handle('debug:install', async (event, opts?: { force?: boolean }) => {
 })
 
 ipcMain.handle('debug:chips', () => listSupportedChips())
+
+// ── 硬件目标（板卡注册表：ESP32 / STM32 统一视图）──
+ipcMain.handle('target:list', (_e, opts?: { family?: 'esp32' | 'stm32' }) =>
+  listTargets(opts?.family).map((t) => ({
+    ...t,
+    // 调试 cfg 落到本机 openocd 是否存在，UI 直接标可用/缺失
+    debugCfgExists: t.debug.cfg.every((c) => existsSync(join(getOpenocdInfo().scripts, c)))
+  }))
+)
+
+ipcMain.handle('target:get', (_e, id: string) => findTarget(id) || null)
+
+ipcMain.handle('target:detect', async () => {
+  const ports = await listPorts()
+  return ports.map((p) => {
+    const usbId = p.vid != null && p.pid != null ? `0x${p.vid.toString(16)}:0x${p.pid.toString(16)}` : ''
+    const hit = usbId ? targetForUsbId(usbId) : undefined
+    return { ...p, usbId, targetId: hit?.id ?? null, targetName: hit?.name ?? null }
+  })
+})
+
+ipcMain.handle(
+  'target:write-ini',
+  async (_e, opts: { projectRoot: string; boardId: string; env?: string; uploadPort?: string }) => {
+    const t = findTarget(opts.boardId)
+    if (!t) throw new Error(`未知板卡：${opts.boardId}`)
+    const root = resolve(opts.projectRoot)
+    if (!existsSync(root)) throw new Error(`工程目录不存在：${root}`)
+    const iniPath = join(root, 'platformio.ini')
+    if (existsSync(iniPath)) throw new Error('工程里已有 platformio.ini，请手工合并（面板不覆盖已有文件）')
+    const body = buildPlatformioIni(t, { env: opts.env }).replace(
+      '; upload_port 需要按实际端口改（面板可自动探测后回填）',
+      opts.uploadPort ? `upload_port = ${opts.uploadPort}` : '; upload_port 待填'
+    )
+    writeFileSync(iniPath, body, 'utf-8')
+    return { ok: true, path: iniPath }
+  }
+)
 
 ipcMain.handle('debug:start', (_e, opts?: { chip?: string; boardCfg?: string; telnetPort?: number }) =>
   startDebug(opts || {})

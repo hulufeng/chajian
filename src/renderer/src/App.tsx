@@ -8,6 +8,8 @@ import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
 import DebugPanel from './components/DebugPanel'
 import PlatformIOPanel from './components/PlatformIOPanel'
+import TargetPanel from './components/TargetPanel'
+import type { BoardTargetInfo } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -237,6 +239,8 @@ function App(): React.JSX.Element {
   const [terminalVisible, setTerminalVisible] = useState(true)
   const [debugVisible, setDebugVisible] = useState(false)
   const [pioVisible, setPioVisible] = useState(false)
+  const [targetVisible, setTargetVisible] = useState(false)
+  const [debugChip, setDebugChip] = useState<string | undefined>(undefined)
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
   const [aiPanelVisible, setAiPanelVisible] = useState(true)
@@ -863,6 +867,8 @@ function App(): React.JSX.Element {
         debugVisible={debugVisible}
         onTogglePio={() => setPioVisible((v) => !v)}
         pioVisible={pioVisible}
+        onToggleTarget={() => setTargetVisible((v) => !v)}
+        targetVisible={targetVisible}
         leftPanelVisible={leftPanelVisible}
         editorVisible={editorVisible}
         onToggleLeftPanel={toggleLeftPanel}
@@ -993,10 +999,31 @@ function App(): React.JSX.Element {
             />
           )}
           {debugVisible && (
-            <DebugPanel fqbn={fqbn} onClose={() => setDebugVisible(false)} />
+            <DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setDebugVisible(false)} />
           )}
           {pioVisible && (
             <PlatformIOPanel projectRoot={projectRoot} onClose={() => setPioVisible(false)} />
+          )}
+          {targetVisible && (
+            <TargetPanel
+              projectRoot={projectRoot}
+              fqbn={fqbn}
+              port={selectedPort}
+              onApply={(t: BoardTargetInfo, o) => {
+                if (o.port) setSelectedPort(o.port)
+                if (o.buildPath === 'arduino-cli' && t.fqbn) {
+                  setFqbn(t.fqbn)
+                  setBoardName(t.name)
+                }
+                if (o.buildPath === 'platformio') setPioVisible(true)
+                setDebugChip(t.debug.chip)
+              }}
+              onOpenDebug={(t: BoardTargetInfo) => {
+                setDebugChip(t.debug.chip)
+                setDebugVisible(true)
+              }}
+              onClose={() => setTargetVisible(false)}
+            />
           )}
         </div>
         {aiPanelVisible && (

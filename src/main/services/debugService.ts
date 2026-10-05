@@ -20,7 +20,11 @@ import net, { type Socket } from 'node:net'
 const OPENOCD_DOWNLOAD_URL =
   'https://github.com/espressif/openocd-esp32/releases/download/v0.12.0-esp32-20260831/openocd-esp32-win64-0.12.0-esp32-20260831.zip'
 
-/** 支持的芯片 → openocd board cfg（ESP32 全系内置 USB-JTAG 都有对应配置） */
+/** 支持的芯片 → openocd board cfg
+ *  ESP32 全系：板载 USB-JTAG，board/espXX-builtin.cfg 自带 interface+target
+ *  STM32：走板载 ST-Link，board/st_nucleo_*.cfg 自带 interface/stlink + target/stm32XX
+ *  （本机 openocd-esp32 包实测含 16 个 nucleo cfg + target/stm32f1x|f4x|f7x|h7x）
+ */
 const CHIP_CFGS: Record<string, string> = {
   esp32s3: 'board/esp32s3-builtin.cfg',
   esp32s31: 'board/esp32s31-builtin.cfg',
@@ -31,10 +35,26 @@ const CHIP_CFGS: Record<string, string> = {
   esp32h2: 'board/esp32h2-builtin.cfg',
   esp32h21: 'board/esp32h21-builtin.cfg',
   esp32h4: 'board/esp32h4-builtin.cfg',
-  esp32p4: 'board/esp32p4-builtin.cfg'
+  esp32p4: 'board/esp32p4-builtin.cfg',
+  // ── STM32（Nucleo 板载 ST-Link）──
+  stm32f103rb: 'board/st_nucleo_f103rb.cfg',
+  stm32f4: 'board/st_nucleo_f4.cfg',
+  stm32f7: 'board/st_nucleo_f7.cfg',
+  stm32h7: 'board/st_nucleo_h743zi.cfg',
+  stm32g4: 'board/st_nucleo_g4.cfg',
+  stm32l4: 'board/st_nucleo_l4.cfg',
+  stm32wb55: 'board/st_nucleo_wb55.cfg'
 }
 
-/** 从 FQBN（esp32:esp32:esp32s3）或芯片名里摘出芯片标识 */
+/** 芯片 → 家族（UI 分组用） */
+export function familyOf(chip: string): 'esp32' | 'stm32' | 'unknown' {
+  const s = String(chip || '').toLowerCase()
+  if (s.startsWith('esp32')) return 'esp32'
+  if (s.startsWith('stm32')) return 'stm32'
+  return 'unknown'
+}
+
+/** 从 FQBN（esp32:esp32:esp32s3 / stm32:stm32:nucleo_f103rb）或芯片名里摘出芯片标识 */
 export function chipOf(fqbnOrChip?: string): string {
   const s = String(fqbnOrChip || '').trim().toLowerCase()
   if (!s) return ''
@@ -44,11 +64,51 @@ export function chipOf(fqbnOrChip?: string): string {
   for (const key of Object.keys(CHIP_CFGS)) {
     if (norm === key.replace(/-/g, '') || norm.startsWith(key.replace(/-/g, ''))) return key
   }
+  // Nucleo / Blue Pill 这类 PlatformIO board id → 家族芯片映射
+  // 注意：查询用的 norm 已去掉所有非字母数字，所以键也要用同样规则规范化后再比
+  const PIO_BOARD_CHIP: Record<string, string> = {
+    bluepillf103c8: 'stm32f103rb',
+    nucleof103rb: 'stm32f103rb',
+    nucleof767zi: 'stm32f7',
+    nucleoh743zi2: 'stm32h7',
+    nucleog474re: 'stm32g4',
+    nucleol476rg: 'stm32l4',
+    nucleowb55rg: 'stm32wb55',
+    esp32s3devkitc1: 'esp32s3',
+    esp32c3devkitm1: 'esp32c3',
+    esp32s2saola1: 'esp32s2',
+    esp32p4functionevboard: 'esp32p4',
+    esp32devkitcv4: 'esp32'
+  }
+  const direct = PIO_BOARD_CHIP[norm]
+  if (direct) return direct
+  // Nucleo 板卡 id（pio board）→ 家族兜底：nucleo_f103rb / nucleo_f767zi ...
+  if (norm.includes('nucleo')) {
+    if (norm.includes('f103')) return 'stm32f103rb'
+    if (norm.includes('f4')) return 'stm32f4'
+    if (norm.includes('f7')) return 'stm32f7'
+    if (norm.includes('h7')) return 'stm32h7'
+    if (norm.includes('g4')) return 'stm32g4'
+    if (norm.includes('l4')) return 'stm32l4'
+    if (norm.includes('wb55')) return 'stm32wb55'
+  }
+  // 常见 STM32 芯片名兜底
+  if (norm.startsWith('stm32f1')) return 'stm32f103rb'
+  if (norm.startsWith('stm32f4')) return 'stm32f4'
+  if (norm.startsWith('stm32f7')) return 'stm32f7'
+  if (norm.startsWith('stm32h7')) return 'stm32h7'
+  if (norm.startsWith('stm32g4')) return 'stm32g4'
+  if (norm.startsWith('stm32l4')) return 'stm32l4'
+  if (norm.startsWith('stm32wb')) return 'stm32wb55'
   return ''
 }
 
-export function listSupportedChips(): Array<{ chip: string; cfg: string }> {
-  return Object.entries(CHIP_CFGS).map(([chip, cfg]) => ({ chip, cfg }))
+export function listSupportedChips(): Array<{ chip: string; cfg: string; family: 'esp32' | 'stm32' }> {
+  return Object.entries(CHIP_CFGS).map(([chip, cfg]) => ({
+    chip,
+    cfg,
+    family: chip.startsWith('esp32') ? 'esp32' : 'stm32'
+  }))
 }
 
 function userToolDir(): string {
@@ -367,6 +427,8 @@ export interface StartDebugOptions {
   chip?: string
   /** 显式指定 openocd 配置（相对 board/ 或绝对路径） */
   boardCfg?: string
+  /** 多个配置文件（-f a -f b）。非 Nucleo 板（如 Blue Pill）需要 interface/stlink + target/stm32f1x 两段 */
+  cfgList?: string[]
   /** 指定 telnet 端口，默认找一个 4444 起的空闲口 */
   telnetPort?: number
   /** 自定义 openocd 可执行文件（高级用户 / 自编译版本） */
@@ -392,6 +454,13 @@ export async function startDebug(opts: StartDebugOptions = {}): Promise<DebugSta
   } catch (e) {
     throw e
   }
+  // 多 cfg（如 Blue Pill：interface/stlink + target/stm32f1x），逐个 -f
+  const extraCfg = (opts.cfgList || [])
+    .map((c) => {
+      const abs = c.includes('/') || c.includes('\\') ? resolveBoardCfg(chip, info.scripts, c) : c
+      return abs
+    })
+    .flatMap((c) => ['-f', c])
   const ocdBin = opts.openocdPath || info.path
   const port = opts.telnetPort || nextFreePort()
 
@@ -429,7 +498,7 @@ export async function startDebug(opts: StartDebugOptions = {}): Promise<DebugSta
   // 必须写成 `-d1` / `-d0`；`telnet_port` / `tcl_port` 也已废弃，改用 `telnet port` / `tcl port`。
   const args = opts.openocdArgs && opts.openocdArgs.length
     ? opts.openocdArgs
-    : ['-s', info.scripts, '-f', cfgPath, '-c', `telnet port ${port}`, '-c', 'tcl port 0', '-d1']
+    : ['-s', info.scripts, '-f', cfgPath, ...extraCfg, '-c', `telnet port ${port}`, '-c', 'tcl port 0', '-d1']
 
   return new Promise<DebugState>((resolve, reject) => {
     const cp = spawn(ocdBin, args)
