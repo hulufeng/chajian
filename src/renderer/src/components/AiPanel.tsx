@@ -386,6 +386,8 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   const [cloudError, setCloudError] = useState<string | null>(null)
   // 本地引擎一键启动：ok=null 表示进行中（界面显示「启动中…」）
   const [engineStarting, setEngineStarting] = useState(false)
+  // 后台自动接上上次用的本地模型（不等用户点按钮）
+  const [engineAuto, setEngineAuto] = useState(false)
   const [engineMsg, setEngineMsg] = useState<{ text: string; ok: boolean | null } | null>(null)
   const [state, setState] = useState<AiState | null>(null)
   const [showByok, setShowByok] = useState(false)
@@ -613,6 +615,20 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText, streamingThinking])
 
+  // 通道健康度低频刷新。
+  // 之前只在面板打开时拉一次：主进程在后台自动接上本地引擎（十几秒）之后，
+  // 界面还停在「本地引擎未启动」，用户会以为没接上、又点一次「一键启动」。
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (engineStarting || engineAuto) return // 启动过程中不打扰，交给那边的轮询
+      window.api.aiHealth
+        .get()
+        .then(setHealth)
+        .catch(() => undefined)
+    }, 8000)
+    return () => window.clearInterval(t)
+  }, [engineStarting, engineAuto])
+
   // 实时工作计时器：busy 时每秒 tick，驱动"已工作 Ns"实时跳动（对齐 TrieCode）
   useEffect(() => {
     if (!busy) return
@@ -647,6 +663,17 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
       if (s.modelId.startsWith('local:')) {
         setUseLocalModel(true)
         setSelectedLocalModel(s.modelId.replace('local:', ''))
+        // 上次就在用本地模型 → 确保引擎真在跑。
+        // 只看界面显示是不够的：主进程的本地通道没同步的话，发消息会静默降级回云端。
+        const file = s.modelId.replace('local:', '')
+        setEngineAuto(true)
+        window.api.engine
+          .ensure({ model: file })
+          .then((r) => {
+            if (!r.ready) setEngineMsg({ text: `本地引擎没能接上：${r.error || r.reason || '未启动'}；发消息前可以先点「一键启动」`, ok: false })
+          })
+          .catch(() => undefined)
+          .finally(() => setEngineAuto(false))
       }
     }
 
@@ -748,14 +775,14 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
                   ? '已登录，使用内置模型'
                   : '未登录：内置模型不可用，可在设置里登录或改用本地/自定义模型'
   const healthAction: { label: string; text: string; onClick: () => void; disabled?: boolean; title?: string } | null =
-    engineStarting
+    engineStarting || engineAuto
         ? {
             label: '启动中…',
-            text: engineMsg?.ok === null ? engineMsg.text : '正在加载本地模型…',
+            text: engineMsg?.ok === null ? engineMsg.text : '正在后台接上本地引擎…（就绪时状态灯自动变绿）',
             onClick: startLocalEngine,
-          disabled: true,
-          title: '正在拉起 llama 引擎并加载 gguf 模型，就绪瞬间状态灯会变绿'
-        }
+            disabled: true,
+            title: '正在拉起 llama 引擎并加载 gguf 模型，就绪瞬间状态灯会变绿'
+          }
       : localIdle
         ? {
             label: '一键启动',

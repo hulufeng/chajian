@@ -1134,6 +1134,24 @@ ipcMain.handle('engine:stop', () => {
   setLocalModel(null)
   return { ok: true }
 })
+/**
+ * 确保本地通道就绪：只有「上次就在用本地模型」或显式指定时才拉起引擎，
+ * 平时（用云端/BYOK）不会无谓占内存。
+ * 存在的理由：state.modelId 记的是 local:xxx，但主进程的 activeLocalModel 没同步 →
+ * aiChat/aiChatStream 取不到本地模型就静默降级回云端（上次选了本地、重启后照样吃云端 401 或耗积分）。
+ */
+ipcMain.handle('engine:ensure', async (_e, opts?: { model?: string; force?: boolean }) => {
+  const st = getAiState()
+  const preferred = opts?.model || (st.modelId?.startsWith('local:') ? st.modelId.slice('local:'.length) : '')
+  if (!preferred && !opts?.force) {
+    return { ready: false, model: null, error: null, reason: '当前用的是云端/自定义模型，未拉起本地引擎' as string }
+  }
+  const r = await startLlamaEngine(preferred || undefined)
+  if (!r.success) return { ready: false, model: null, error: r.error || '启动失败', reason: null as string | null }
+  const model = r.model || preferred
+  setLocalModel(model)
+  return { ready: true, model, error: null, reason: null as string | null }
+})
 
 // ---------- 片上调试（openocd + telnet）----------
 // 同一块 ESP32 的「USB JTAG/serial debug unit」与 USB 串口可以共存，
@@ -1503,6 +1521,23 @@ function broadcastDebugStopped(): void {
 app.whenReady().then(() => {
   initPlugins()
   createWindow()
+
+  // ── 记住上次用的本地模型，开机后台接上 ──
+  // 不这么做的话：下拉框里明明选着「Qwen2.5 Coder 3B」，重启发消息却走云端
+  // （state.modelId 是 local:，但主进程的 activeLocalModel 没同步，aiChat 取不到就降级）。
+  // 不 await：引擎起得十几秒，等它只会拖慢窗口；失败就打日志，界面照常显示「一键启动」入口。
+  {
+    const modelId = getAiState().modelId ?? ''
+    if (modelId.startsWith('local:')) {
+      const file = modelId.slice('local:'.length)
+      startLlamaEngine(file)
+        .then((r) => {
+          if (r.success) setLocalModel(r.model || file)
+          else console.warn('[ai] 上次用的本地模型启动失败：', r.error)
+        })
+        .catch((e) => console.warn('[ai] 本地引擎自动接上失败：', e))
+    }
+  }
 
   // ── 串口热插拔检测：插上开发板自动刷新端口 + 自动识别板卡并选中 ──
   startPortWatcher(({ ports, added, removed }) => {

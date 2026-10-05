@@ -499,7 +499,12 @@ const api = {
     status: (): Promise<{ installed: boolean; running: boolean; version: string; engineDir: string }> => ipcRenderer.invoke('engine:status'),
     models: (): Promise<Array<{ id: string; name: string; sizeGB: number; quantization: string; parameters: string }>> => ipcRenderer.invoke('engine:models'),
     start: (opts?: { model?: string }): Promise<{ ok: boolean; model?: string; error?: string }> => ipcRenderer.invoke('engine:start', opts),
-    stop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('engine:stop')
+    stop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('engine:stop'),
+    /** 确保本地通道就绪：按偏好（上次用的模型）或指定模型；云端用户调用它不会拉引擎 */
+    ensure: (
+      opts?: { model?: string; force?: boolean }
+    ): Promise<{ ready: boolean; model: string | null; error: string | null; reason: string | null }> =>
+      ipcRenderer.invoke('engine:ensure', opts)
   },
 
   // 寄存器数据（CMSIS-SVD，乐鑫官方）

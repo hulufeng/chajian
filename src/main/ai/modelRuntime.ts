@@ -210,8 +210,14 @@ function killEngine(): void {
 
 /** 启动 llama-server 引擎，加载指定模型文件 */
 export async function startLlamaEngine(modelFile?: string): Promise<{ success: boolean; error?: string; model?: string }> {
-  if (await isEngineRunning() && currentEngineModel) {
-    return { success: true, model: currentEngineModel }
+  // 引擎已在跑就复用：不能一调就 killEngine 重启 ——
+  // 「自动接上上次用的模型」会让这个函数被调两次，第二次会把用户正在跑的实例杀掉重开。
+  if (await isEngineRunning()) {
+    const running = getRunningModel()
+    if (!modelFile || !running || running === modelFile) {
+      if (modelFile) currentEngineModel = modelFile
+      return { success: true, model: currentEngineModel || modelFile }
+    }
   }
 
   killEngine()
