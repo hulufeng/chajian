@@ -10,6 +10,7 @@ import {
   LABIGNORE_NAME,
   LABCODE_MD_NAME
 } from '../project-config'
+import { buildProjectContext } from '../project-context'
 
 function requireRoot(ctx: ToolContext): string | ToolResult {
   if (!ctx.projectRoot) {
@@ -216,8 +217,36 @@ const checkpointFork: ToolDefinition = {
   }
 }
 
+// 项目上下文（确定性扫描，P1-6）：手动刷新/查看
+const projectOverview: ToolDefinition = {
+  name: 'project_overview',
+  description:
+    '用确定性扫描（文件树 + 源码正则，零模型推理）输出项目总览：目录结构、关键源码文件、头文件/库依赖、引脚与外设使用、构建/工程配置。' +
+    '会话启动时已自动注入该上下文；**当项目结构发生较大变化（新增文件/换框架/加库）需要刷新时再调用**，平时不要重复调用（避免浪费上下文）。',
+  parameters: {
+    type: 'object',
+    properties: {
+      depth: { type: 'number', description: '目录树深度，默认 3' }
+    },
+    required: []
+  },
+  category: 'read',
+  execute: async (args, ctx) => {
+    const root = requireRoot(ctx)
+    if (typeof root !== 'string') return root
+    try {
+      const text = buildProjectContext(root, { depth: Number(args.depth) || 3, maxChars: 6000 })
+      if (!text) return { ok: false, content: '', error: '项目根不可读或为空目录，无法生成上下文。' }
+      return { ok: true, content: text }
+    } catch (e) {
+      return { ok: false, content: '', error: `扫描项目失败: ${(e as Error).message}` }
+    }
+  }
+}
+
 export const projectTools: ToolDefinition[] = [
   projectInit,
+  projectOverview,
   labignoreCheck,
   checkpointCreate,
   checkpointList,

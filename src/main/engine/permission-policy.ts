@@ -8,6 +8,16 @@ export class PermissionPolicy {
   // todo/ask_user 属内部协议工具；烧录 upload 保留确认——真写硬件需用户点头）
   private static NO_CONFIRM_TOOLS = new Set(['todo_write', 'todo_done', 'ask_user', 'compile', 'serial_monitor', 'serial_send', 'serial_stop', 'serial_log_tail', 'serial_log_grep', 'analyze_crash'])
 
+  /**
+   * 按参数决定是否危险（同一工具不同参数风险不同）。
+   * 典型：verify 子智能体默认只编译（无副作用 → 免确认），但 scope:"hardware" 会真的烧录板子 → 必须确认。
+   */
+  private static isDangerousByArgs(toolName: string, args?: Record<string, unknown>): boolean {
+    if (!args) return false
+    if (toolName === 'verify') return String(args.scope || '') === 'hardware'
+    return false
+  }
+
   setMode(mode: SecurityMode): void {
     this.mode = mode
   }
@@ -17,14 +27,15 @@ export class PermissionPolicy {
   }
 
   // 判断工具是否需要用户确认
-  needsConfirm(tool: ToolDefinition): boolean {
+  needsConfirm(tool: ToolDefinition, args?: Record<string, unknown>): boolean {
     if (PermissionPolicy.NO_CONFIRM_TOOLS.has(tool.name)) return false
     switch (this.mode) {
       case 'auto':
         // 自动模式：所有工具直接执行，无需确认
         return false
       case 'default':
-        // 默认模式：只读工具自动执行，写入/执行工具需确认
+        // 默认模式：只读工具自动执行；写入/执行工具需确认；个别工具按参数升级为需确认
+        if (PermissionPolicy.isDangerousByArgs(tool.name, args)) return true
         return tool.category === 'write' || tool.category === 'execute'
       case 'plan':
         // 计划模式：所有工具都需要确认（先探索后执行）

@@ -19,6 +19,9 @@ import { skillTools } from './skill-tools'
 import { todoTools } from './todo-tools'
 import { askUserTools } from './ask-user-tool'
 import { projectTools } from './project-tools'
+import { verifyTools } from './verify-tool'
+import { closedLoopTools } from './closed-loop-tool'
+import { svdTools } from './svd-tools'
 import { isWriteBlocked } from '../project-config'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
@@ -563,5 +566,8 @@ export const coreTools: ToolDefinition[] = [
   ...skillTools,
   ...todoTools,
   ...askUserTools,
-  ...projectTools
+  ...projectTools,
+  ...verifyTools,
+  ...closedLoopTools,
+  ...svdTools
 ]

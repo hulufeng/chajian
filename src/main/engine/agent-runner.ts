@@ -6,6 +6,7 @@ import { PermissionPolicy } from './permission-policy'
 import { aiChatStream, getAiState, setLocalModel } from '../services/aiGateway'
 import { searchKnowledge, knowledgeCount } from '../ai/knowledgeBase'
 import { detectFirmwareProject, loadProjectConfigBlock, FIRMWARE_RULES_BLOCK, type FirmwareDetection } from './project-config'
+import { buildProjectContext } from './project-context'
 import { findToolchain, listConnectedBoardsWithSerial } from '../services/toolchain'
 import { listMemory } from '../services/memoryService'
 import { buildTodosSection as buildTodosSectionFor, loadTodos as loadTodosFor } from './tools/todo-tools'
@@ -28,7 +29,9 @@ const MAX_CONSECUTIVE_FAILURES = 3
 const RETRY_BACKOFF_MS = 1200
 
 // ── 验证证据闸门 ──────────────────────────────────────────
-const VERIFICATION_TOOLS = new Set(['run_command', 'execute_command', 'terminal', 'run_tests', 'compile', 'upload', 'build', 'test'])
+// verify（Verifier 子智能体）与 closed_loop（编译→烧录→观察→修复闭环）内部都真跑了编译/测试/烧录，
+// 因此同样算"验证动作"——否则主 agent 用 verify 验证后仍会被闸门反复催促。
+const VERIFICATION_TOOLS = new Set(['run_command', 'execute_command', 'terminal', 'run_tests', 'compile', 'upload', 'build', 'test', 'verify', 'closed_loop'])
 const VERIFICATION_COMMANDS = /\b(test|build|compile|run|npm\s+(test|run|build)|pytest|go\s+test|cargo\s+test|python\s+-m\s+pytest|arduino-cli\s+(compile|upload))\b/i
 
 // ── 教学问答模式（知识库命中 + 纯疑问句）───────────────────
@@ -90,6 +93,8 @@ export class AgentRunner {
   private maxTurns = 20
   private projectRoot: string | null = null
   private firmware: FirmwareDetection | null = null
+  /** 项目上下文（启动时确定性扫描一次，注入系统提示，减少探索性工具调用） */
+  private projectContext = ''
   private thinkingLevel: 'light' | 'standard' | 'deep' = 'standard'
   private debugMode = false
   private pendingConfirm: ConfirmRequest | null = null
@@ -202,6 +207,8 @@ export class AgentRunner {
     this.maxTurns = options.maxTurns || 20
     this.projectRoot = options.projectRoot || null
     this.firmware = detectFirmwareProject(this.projectRoot)
+    // 项目上下文（P1-6）：零 token 的确定性扫描，首轮即给模型项目全貌
+    this.projectContext = buildProjectContext(this.projectRoot)
     if (options.securityMode) this.policy.setMode(options.securityMode)
     this.debugMode = options.debugMode ?? false
     this.thinkingLevel = options.thinkingLevel || 'standard'
@@ -411,7 +418,7 @@ export class AgentRunner {
             this.messages.push({ role: 'assistant', content: result.content })
             this.messages.push({
               role: 'user',
-              content: '[系统提示] 你修改了文件但尚未验证结果。请运行测试/编译/执行命令验证修改是否正确，验证通过后再给出最终结论。'
+              content: '[系统提示] 你修改了文件但尚未验证结果。请用 verify 工具（无写权限的验证子智能体）或 compile/run_tests/closed_loop 做一次真实验证，拿到证据后再给出最终结论；不要凭"看起来没问题"就收尾。'
             })
             this.emit('thinking', { content: '（验证证据闸门：要求验证修改）', full: '' })
             continue
@@ -570,9 +577,9 @@ export class AgentRunner {
   //                  ② 声称"已写入/已创建/已修改"时 write_file/edit_file/create_project 亦算证据
   private checkHallucination(text: string): string | null {
     const claims: Array<{ re: RegExp; evidence: string[] }> = [
-      { re: /已(成功)?(编译|烧录|上传|部署|刷写)[^。\n]*成功|已成功(编译|烧录|上传|部署|刷写)|编译[^。\n]*通过|烧录[^。\n]*成功/i, evidence: ['compile', 'upload', 'run_tests'] },
+      { re: /已(成功)?(编译|烧录|上传|部署|刷写)[^。\n]*成功|已成功(编译|烧录|上传|部署|刷写)|编译[^。\n]*通过|烧录[^。\n]*成功/i, evidence: ['compile', 'upload', 'run_tests', 'verify', 'closed_loop'] },
       { re: /已(成功)?写入|已成功(写入|创建|修改|删除)|写入[^。\n]*成功|创建[^。\n]*成功/i, evidence: ['write_file', 'edit_file', 'create_project', 'terminal'] },
-      { re: /(测试|验证)[^。\n]*(通过|成功|全绿)|全部通过/i, evidence: ['run_tests', 'compile', 'terminal'] },
+      { re: /(测试|验证)[^。\n]*(通过|成功|全绿)|全部通过/i, evidence: ['run_tests', 'compile', 'terminal', 'verify', 'closed_loop'] },
       { re: /已(运行|执行)[^。\n]*成功|运行[^。\n]*无报错|没有任何错误/i, evidence: ['terminal', 'run_tests'] },
     ]
     for (const { re, evidence } of claims) {
@@ -672,7 +679,7 @@ export class AgentRunner {
     const debugGuide = this.debugMode
       ? '\n## Debug 模式\n当前为调试模式：若编译/烧录失败，你必须直接用 compile 工具读取错误，**定位源码问题后用 edit_file/write_file 修复，再调用 compile 验证**，如此循环直到退出码为 0（最多 3 轮）；不要只给建议，必须真正动手改代码并复验。烧录失败（如端口占用、板卡未连）也先用 upload 工具拿报错再排查，不要空谈。\n'
       : ''
-    const projectCfg = loadProjectConfigBlock(this.projectRoot)
+    const projectCfg = [loadProjectConfigBlock(this.projectRoot), this.projectContext].filter(Boolean).join('\n\n')
     // 固件会话：整体替换为固件专用系统提示（身份即固件工程师）
     if (this.firmware?.firmware) {
       return await this.buildFirmwareSystemPrompt(toolList, projectCfg)
@@ -695,6 +702,9 @@ export class AgentRunner {
 13. **用户明确给出绝对路径时，直接用 list_files/read_file/write_file 的 path 参数操作该路径，不要调用 open_project**（open_project 只用于创建新项目脚手架或切换工作目录）。
 14. **open_project 的 action=create 时，如果用户指定了存放路径，必须在 path 参数中传入该绝对路径**，否则项目会创建到默认目录。创建后直接用 write_file 写业务代码，不要停留在脚手架。
 15. **学习循环（沉淀可复用技能）**：完成一个多步骤任务后，如果本轮沉淀了一个"未来遇到相似任务能直接照做"的完整流程——例如排查某类编译/烧录/接线错误的诊断步骤、搭建某类外设的接线+初始化+示例代码、某类配置/操作手册——就在最终总结前调用 **create_skill** 把它写成技能（含触发场景、操作步骤、示例代码/命令、常见坑），让学员和后续会话直接复用。**不要**为一次性琐事创建技能；不确定是否有复用价值时宁可不创建；已有同名技能但流程更优时用同名覆盖更新。
+16. **验证用 verify（Verifier 分工）**：改完代码优先调用 **verify** 工具做独立验证——它是没有写权限的验证子智能体，只用编译/测试/串口观察，返回「通过 | 不通过 + 失败分类 + 文件:行 + 修复建议」。拿到"不通过"就按建议修，再调一次 verify，直到通过。不要自己"估计应该没问题"就收尾。
+17. **真机多轮试错用 closed_loop**：目标是"让代码在板子上真跑起来"时，用 **closed_loop**（给 goal + 通过标准，如 success:"compile" 或 success:"/OK/"）；它自动 编译→烧录→串口观察→诊断→改代码 循环，默认 3 轮，达标即停、超限如实报未通过。
+18. **项目上下文已在系统提示中**：下面「项目上下文」段是确定性扫描结果（目录树/依赖/引脚/构建配置），可直接采信，**不要再用 list_files 把整个项目遍历一遍**；只在需要某文件具体内容时 read_file。项目结构有大变动后再调 project_overview 刷新。
 
 ## 输出规范
 - 每次工具调用前后可以用简短文字说明进度（可选，不强制）
@@ -1171,7 +1181,7 @@ ${blocks.join('\n\n')}`
     }
 
     // 安全检查
-    if (this.policy.needsConfirm(tool)) {
+    if (this.policy.needsConfirm(tool, args)) {
       this.pendingConfirm = {
         toolCallId: tc.id,
         toolName,
