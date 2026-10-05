@@ -562,6 +562,20 @@ const api = {
     }
   },
 
+  // MCP 服务器（配置 / 信任 / 运行时）
+  mcp: {
+    overview: (projectRoot?: string | null): Promise<McpOverview> => ipcRenderer.invoke('mcp:overview', { projectRoot }),
+    start: (projectRoot?: string | null): Promise<McpOverview> => ipcRenderer.invoke('mcp:start', { projectRoot }),
+    stop: (name: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('mcp:stop', { name }),
+    add: (opts: { name: string; command: string; args?: string[]; env?: Record<string, string>; note?: string }): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke('mcp:add', opts),
+    remove: (name: string): Promise<{ ok: boolean; path: string }> => ipcRenderer.invoke('mcp:remove', { name }),
+    trust: (opts: { name: string; trusted: boolean; projectRoot?: string | null }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('mcp:trust', opts),
+    enable: (opts: { name: string; enabled: boolean; projectRoot?: string | null }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('mcp:enable', opts)
+  },
+
   // Git（状态 / 暂存 / 提交 / 分支 / 远端）
   git: {
     status: (root: string): Promise<GitStatusInfo> => ipcRenderer.invoke('git:status', { root }),
@@ -854,6 +868,25 @@ export interface GitLogEntry {
   author: string
   date: string
   subject: string
+}
+
+export interface McpRuntimeState {
+  name: string
+  source: 'global' | 'project'
+  command: string
+  args: string[]
+  enabled: boolean
+  trusted: boolean
+  status: 'running' | 'stopped' | 'failed' | 'starting' | 'not-trusted' | 'disabled'
+  error?: string
+  tools: Array<{ name: string; description?: string }>
+}
+
+export interface McpOverview {
+  servers: McpRuntimeState[]
+  totalTools: number
+  globalPath: string
+  projectPath: string | null
 }
 
 export type Api = typeof api

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import type { McpRuntimeState } from '../../../preload'
 
 type ShellType = 'powershell' | 'cmd' | 'pwsh' | 'bash'
 
@@ -11,6 +12,8 @@ interface SettingsProps {
   language: 'zh' | 'en'
   onLanguageChange: (l: 'zh' | 'en') => void
   defaultTab?: string
+  /** 当前工程根目录：MCP 需要读项目级 .labcode/mcp.json */
+  projectRoot?: string | null
 }
 
 const SHELL_OPTIONS: Array<{ value: ShellType; label: string }> = [
@@ -39,6 +42,7 @@ const CATEGORIES = [
   { id: 'svd', label: '寄存器数据', icon: '🧾' },
   { id: 'general', label: '常规', icon: '⚙️' },
   { id: 'skills', label: '技能', icon: '✨' },
+  { id: 'mcp', label: 'MCP', icon: '🔌' },
   { id: 'plugins', label: '插件', icon: '🧩' },
   { id: 'hooks', label: '钩子', icon: '🪝' },
 ]
@@ -49,9 +53,17 @@ interface PluginItem {
   error?: string
 }
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
   const [plugins, setPlugins] = useState<PluginItem[]>([])
+  // MCP 服务器
+  const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
+  const [mcpGlobalPath, setMcpGlobalPath] = useState('')
+  const [mcpProjectPath, setMcpProjectPath] = useState<string | null>(null)
+  const [mcpTrustPath, setMcpTrustPath] = useState('')
+  const [mcpBusy, setMcpBusy] = useState(false)
+  const [mcpMsg, setMcpMsg] = useState('')
+  const [mcpDraft, setMcpDraft] = useState({ name: '', command: '' })
   const [fontSize, setFontSize] = useState<number>(() => Number(localStorage.getItem('codelab-fontsize')) || 14)
   // BYOK 自定义模型（多 profile）
   interface ByokProfile { id: string; name: string; baseUrl: string; apiKey: string; model: string }
@@ -109,6 +121,99 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   useEffect(() => {
     refreshEngine()
   }, [])
+
+  // MCP：进入设置页就拉一次概览；工程切换时重拉（项目级配置会变）
+  const refreshMcp = useCallback(async (): Promise<void> => {
+    try {
+      const ov = await window.api.mcp.overview(projectRoot ?? null)
+      setMcpServers(ov.servers)
+      setMcpGlobalPath(ov.globalPath)
+      setMcpProjectPath(ov.projectPath)
+    } catch (e) {
+      setMcpMsg(`读取失败：${(e as Error).message}`)
+    }
+  }, [projectRoot])
+
+  useEffect(() => {
+    if (active === 'mcp') void refreshMcp()
+  }, [active, refreshMcp])
+
+  const mcpAdd = async (): Promise<void> => {
+    const name = mcpDraft.name.trim()
+    const cmdline = mcpDraft.command.trim()
+    if (!name || !cmdline) {
+      setMcpMsg('名称与启动命令都要填')
+      return
+    }
+    setMcpBusy(true)
+    setMcpMsg('')
+    try {
+      // 命令串按空白拆成 command + args（用户习惯直接粘 npx -y 包名）
+      const parts = cmdline.split(/\s+/).filter(Boolean)
+      const r = await window.api.mcp.add({ name, command: parts[0], args: parts.slice(1) })
+      if (!r.ok) {
+        setMcpMsg(r.error || '添加失败')
+      } else {
+        setMcpDraft({ name: '', command: '' })
+        setMcpMsg(`已添加到 ${r.path}。出于安全考虑，新服务器默认「未信任」，确认命令无误后再点「信任」。`)
+        await refreshMcp()
+      }
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpSetTrust = async (name: string, trusted: boolean): Promise<void> => {
+    setMcpBusy(true)
+    setMcpMsg('')
+    try {
+      const r = await window.api.mcp.trust({ name, trusted, projectRoot: projectRoot ?? null })
+      if (!r.ok) setMcpMsg(r.error || '操作失败')
+      else if (trusted) {
+        // 信任后立刻连上，用户能马上看到工具列表
+        const ov = await window.api.mcp.start(projectRoot ?? null)
+        setMcpServers(ov.servers)
+      }
+      await refreshMcp()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpSetEnabled = async (name: string, enabled: boolean): Promise<void> => {
+    setMcpBusy(true)
+    try {
+      await window.api.mcp.enable({ name, enabled, projectRoot: projectRoot ?? null })
+      if (!enabled) await window.api.mcp.stop(name)
+      await refreshMcp()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpRemove = async (name: string): Promise<void> => {
+    setMcpBusy(true)
+    try {
+      await window.api.mcp.stop(name)
+      await window.api.mcp.remove(name)
+      setMcpMsg(`已删除 ${name}`)
+      await refreshMcp()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpConnectAll = async (): Promise<void> => {
+    setMcpBusy(true)
+    setMcpMsg('')
+    try {
+      const ov = await window.api.mcp.start(projectRoot ?? null)
+      setMcpServers(ov.servers)
+      setMcpMsg(`已连接 ${ov.servers.filter((s) => s.status === 'running').length} 个，共 ${ov.totalTools} 个工具`)
+    } finally {
+      setMcpBusy(false)
+    }
+  }
 
   useEffect(() => {
     window.api.ai.state().then((s) => {
@@ -567,6 +672,87 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     <span className={`settings-tag ${p.loaded ? 'ok' : ''}`}>{p.loaded ? '已启用' : '已禁用'}</span>
                   </div>
                 ))}
+              </div>
+            )}
+            {active === 'mcp' && (
+              <div className="settings-section">
+                <h3>外部 MCP 服务器</h3>
+                <p className="settings-desc">
+                  MCP 服务器是在本机执行命令的外部进程，因此默认<strong>不被信任、不会被拉起</strong>。
+                  信任状态只记录在本机（{mcpTrustPath || 'mcp-trust.json'}），工程仓库里的配置无法替你做决定。
+                </p>
+
+                <div className="settings-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <input
+                    className="toolbar-input"
+                    style={{ width: 130 }}
+                    placeholder="名称（如 files）"
+                    value={mcpDraft.name}
+                    onChange={(e) => setMcpDraft((d) => ({ ...d, name: e.target.value }))}
+                    spellCheck={false}
+                  />
+                  <input
+                    className="toolbar-input"
+                    style={{ flex: 1, minWidth: 220 }}
+                    placeholder="启动命令，如 npx -y @modelcontextprotocol/server-filesystem D:/work"
+                    value={mcpDraft.command}
+                    onChange={(e) => setMcpDraft((d) => ({ ...d, command: e.target.value }))}
+                    spellCheck={false}
+                  />
+                  <button className="btn" disabled={mcpBusy} onClick={() => void mcpAdd()}>添加</button>
+                  <button className="btn" disabled={mcpBusy || mcpServers.length === 0} onClick={() => void mcpConnectAll()}>
+                    连接已信任的
+                  </button>
+                </div>
+                {mcpMsg && <p className="settings-desc" style={{ color: mcpMsg.startsWith('已') ? 'var(--accent-2)' : '#e24b4a' }}>{mcpMsg}</p>}
+
+                {mcpServers.length === 0 && <p className="settings-desc">还没有配置任何 MCP 服务器。</p>}
+                {mcpServers.map((s) => (
+                  <div key={s.name} className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className={`settings-tag ${s.status === 'running' ? 'ok' : ''}`}>
+                        {s.status === 'running' ? `运行中 · ${s.tools.length} 工具`
+                          : s.status === 'failed' ? '启动失败'
+                          : s.status === 'not-trusted' ? '未信任'
+                          : s.status === 'disabled' ? '已停用'
+                          : '已停止'}
+                      </span>
+                      <strong>{s.name}</strong>
+                      <span className="settings-desc" style={{ margin: 0 }}>
+                        {s.source === 'project' ? '工程配置' : '全局配置'}
+                      </span>
+                      <span className="settings-desc mono" style={{ margin: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.command} {s.args.join(' ')}
+                      </span>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={s.enabled} onChange={(e) => void mcpSetEnabled(s.name, e.target.checked)} />
+                        启用
+                      </label>
+                      <button
+                        className="btn"
+                        disabled={mcpBusy}
+                        title={s.trusted ? '取消信任后不会再被自动拉起' : '信任后才会被拉起；等于允许它在你的机器上执行命令'}
+                        onClick={() => void mcpSetTrust(s.name, !s.trusted)}
+                      >
+                        {s.trusted ? '取消信任' : '信任'}
+                      </button>
+                      {s.source === 'global' && (
+                        <button className="btn" disabled={mcpBusy} onClick={() => void mcpRemove(s.name)}>删除</button>
+                      )}
+                    </div>
+                    {s.error && <p className="settings-desc" style={{ color: '#e24b4a', margin: 0 }}>{s.error}</p>}
+                    {s.tools.length > 0 && (
+                      <p className="settings-desc" style={{ margin: 0 }}>
+                        工具：{s.tools.map((t) => t.name).join('、')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                <p className="settings-desc">
+                  配置文件：<span className="mono">{mcpGlobalPath || 'mcp.json'}</span>
+                  {mcpProjectPath && <>（工程级：<span className="mono">{mcpProjectPath}</span>，同名以工程级为准）</>}
+                </p>
               </div>
             )}
             {active === 'hooks' && (

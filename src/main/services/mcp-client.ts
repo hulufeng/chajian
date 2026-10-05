@@ -18,9 +18,15 @@ export interface McpCallResult {
 export class McpClient {
   private proc: ChildProcessWithoutNullStreams | null = null
   private reqId = 0
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
   private buffer = ''
   private initialized = false
+  /** 最近一次 tools/list 的结果：UI 与 Agent 都要展示「这个 server 提供了哪些工具」 */
+  toolCache: McpTool[] = []
+  /** 最近一次启动/运行错误，供 UI 展示 */
+  lastError: string | null = null
+  /** 单次请求超时：外部进程不响应时不能永久挂住（否则 IDE 侧调用方全被拖死） */
+  requestTimeoutMs = 20000
   readonly serverName: string
   readonly command: string
   readonly args: string[]
@@ -36,6 +42,19 @@ export class McpClient {
     if (this.proc) return
     this.proc = spawn(this.command, this.args, { stdio: ['pipe', 'pipe', 'pipe'] })
 
+    // 必须监听 error：命令不存在 / 无权限时 ChildProcess 会发 error 事件，
+    // 没有监听器会变成未捕获异常直接把整个 IDE 带崩（这是实测踩到的）。
+    this.proc.on('error', (err: Error) => {
+      this.lastError = err.message
+      this.proc = null
+      this.initialized = false
+      for (const [, p] of this.pending) {
+        clearTimeout(p.timer)
+        p.reject(new Error(`MCP server ${this.serverName} 启动失败：${err.message}`))
+      }
+      this.pending.clear()
+    })
+
     this.proc.stdout.on('data', (chunk: Buffer) => {
       this.buffer += chunk.toString('utf-8')
       this.processBuffer()
@@ -47,8 +66,10 @@ export class McpClient {
     this.proc.on('exit', (code) => {
       this.proc = null
       this.initialized = false
+      this.toolCache = []
       // 拒绝所有 pending 请求
       for (const [, p] of this.pending) {
+        clearTimeout(p.timer)
         p.reject(new Error(`MCP server exited with code ${code}`))
       }
       this.pending.clear()
@@ -65,11 +86,12 @@ export class McpClient {
     this.initialized = true
   }
 
-  /** 列出 MCP server 提供的工具 */
+  /** 列出 MCP server 提供的工具（结果进 toolCache 供 UI 展示） */
   async listTools(): Promise<McpTool[]> {
     if (!this.initialized) await this.start()
-    const result = await this.request('tools/list', {}) as { tools: McpTool[] }
-    return result.tools || []
+    const result = (await this.request('tools/list', {})) as { tools?: McpTool[] }
+    this.toolCache = result.tools || []
+    return this.toolCache
   }
 
   /** 调用 MCP 工具 */
@@ -80,6 +102,11 @@ export class McpClient {
 
   /** 停止 MCP server */
   stop(): void {
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer)
+    }
+    this.pending.clear()
+    this.toolCache = []
     if (this.proc) {
       try { this.proc.kill() } catch { /* 忽略 */ }
       this.proc = null
@@ -95,10 +122,18 @@ export class McpClient {
 
   private request(method: string, params: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
+      if (!this.proc) {
+        reject(new Error('MCP server 未启动'))
+        return
+      }
       const id = ++this.reqId
-      this.pending.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`${this.serverName} 的 ${method} 请求超时（${this.requestTimeoutMs}ms 无响应）`))
+      }, this.requestTimeoutMs)
+      this.pending.set(id, { resolve, reject, timer })
       const msg = JSON.stringify({ jsonrpc: '2.0', id, method, params })
-      this.proc?.stdin.write(msg + '\n')
+      this.proc.stdin.write(msg + '\n')
     })
   }
 

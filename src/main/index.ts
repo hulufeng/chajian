@@ -85,6 +85,18 @@ import {
   deleteBranch as gitDeleteBranch,
   mergeBranch as gitMergeBranch
 } from './services/gitService'
+import {
+  validateServerEntry as validateMcpServer,
+  saveGlobalServer as saveGlobalMcpServer,
+  removeGlobalServer as removeGlobalMcpServer,
+  setServerTrusted as setMcpServerTrusted,
+  setServerEnabled as setMcpServerEnabled
+} from './services/mcpConfig'
+import {
+  getOverview as getMcpOverview,
+  startTrustedServers as startTrustedMcpServers,
+  stopServer as stopMcpServer
+} from './services/mcpManager'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
   listInstalledChips as listSvdChips,
@@ -1144,6 +1156,48 @@ ipcMain.handle('target:get', (_e, id: string) => findTarget(id) || null)
 
 // 一键硬件自检：插板后点一下就知道缺什么（工具链 / 调试器 / 驱动 / 占用）
 ipcMain.handle('selfcheck:run', () => runSelfCheck())
+
+// ── MCP 服务器（第四批④）：配置 + 信任 + 运行时 ──
+ipcMain.handle('mcp:overview', (_e, opts?: { projectRoot?: string | null }) => getMcpOverview(opts?.projectRoot ?? null))
+
+ipcMain.handle('mcp:start', (_e, opts?: { projectRoot?: string | null }) =>
+  startTrustedMcpServers(opts?.projectRoot ?? null)
+)
+
+ipcMain.handle('mcp:stop', (_e, opts: { name: string }) => {
+  stopMcpServer(opts.name)
+  return { ok: true }
+})
+
+ipcMain.handle(
+  'mcp:add',
+  async (
+    _e,
+    opts: { name: string; command: string; args?: string[]; env?: Record<string, string>; note?: string }
+  ) => {
+    const err = validateMcpServer(opts)
+    if (err) return { ok: false, error: err }
+    const r = saveGlobalMcpServer(opts.name, {
+      command: opts.command,
+      args: opts.args ?? [],
+      env: opts.env,
+      enabled: true,
+      // 信任不写进配置：新增后默认「未信任」，用户要在设置里点一次
+      note: opts.note
+    })
+    return { ok: true, path: r.path }
+  }
+)
+
+ipcMain.handle('mcp:remove', (_e, opts: { name: string }) => removeGlobalMcpServer(opts.name))
+
+ipcMain.handle('mcp:trust', (_e, opts: { name: string; trusted: boolean; projectRoot?: string | null }) =>
+  setMcpServerTrusted(opts.name, opts.trusted, opts.projectRoot ?? null)
+)
+
+ipcMain.handle('mcp:enable', (_e, opts: { name: string; enabled: boolean; projectRoot?: string | null }) =>
+  setMcpServerEnabled(opts.name, opts.enabled, opts.projectRoot ?? null)
+)
 
 // ── Git 面板（第四批③）：状态 / 暂存 / 提交 / 分支 / 远端 ──
 ipcMain.handle('git:status', (_e, opts: { root: string }) => getGitStatus(opts.root))

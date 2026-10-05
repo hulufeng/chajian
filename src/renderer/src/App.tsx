@@ -1122,6 +1122,7 @@ function App(): React.JSX.Element {
             localStorage.setItem('codelab-lang', l)
           }}
           defaultTab={settingsTab}
+        projectRoot={projectRoot}
         />
       )}
       {wiringSvg && (
