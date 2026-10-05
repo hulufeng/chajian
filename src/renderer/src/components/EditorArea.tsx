@@ -150,7 +150,7 @@ function EditorArea({ tabs, activeId, onSelect, onClose, onChange, onSave, theme
       </div>
       <div className="editor-host">
         {activeIsImage ? (
-          <div style={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.15)' }}>
+          <div style={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink-2)' }}>
             {imgErr ? (
               <div style={{ opacity: 0.7 }}>图片预览失败：{imgErr}</div>
             ) : imgSrc ? (

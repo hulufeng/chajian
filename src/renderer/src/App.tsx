@@ -498,10 +498,10 @@ function App(): React.JSX.Element {
       if (res && res.ok && res.svg) {
         setWiringSvg(res.svg)
       } else {
-        setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" fill="#c0392b" font-size="13">生成失败：${res?.error || '未知错误'}</text></svg>`)
+        setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--danger)" font-size="13">生成失败：${res?.error || '未知错误'}</text></svg>`)
       }
     } catch (e) {
-      setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" fill="#c0392b" font-size="13">生成异常：${(e as Error).message}</text></svg>`)
+      setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--danger)" font-size="13">生成异常：${(e as Error).message}</text></svg>`)
     }
   }, [fqbn, projectRoot])
 

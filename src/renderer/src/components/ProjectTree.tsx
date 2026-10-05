@@ -17,7 +17,7 @@ interface Props {
 
 function FolderIcon({ open }: { open: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f0b429" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: 'var(--warning)', flexShrink: 0 }}>
       <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
       {open && <path d="M2 10h20"/>}
     </svg>
@@ -26,11 +26,11 @@ function FolderIcon({ open }: { open: boolean }) {
 
 function FileIcon({ name }: { name: string }) {
   const ext = name.split('.').pop()?.toLowerCase() || ''
-  let color = '#8b949e'
-  if (ext === 'ino' || ext === 'cpp' || ext === 'c') color = '#3b82f6'
-  else if (ext === 'md' || ext === 'txt') color = '#6a9955'
-  else if (ext === 'json' || ext === 'xml') color = '#ce9178'
-  else if (ext === 'py') color = '#dcdcaa'
+  let color = 'var(--file-default)'
+  if (ext === 'ino' || ext === 'cpp' || ext === 'c') color = 'var(--file-ts)'
+  else if (ext === 'md' || ext === 'txt') color = 'var(--file-code)'
+  else if (ext === 'json' || ext === 'xml') color = 'var(--file-string)'
+  else if (ext === 'py') color = 'var(--file-func)'
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
       <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>

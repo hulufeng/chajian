@@ -34,8 +34,8 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView({ c
     if (!host) return
 
     const termTheme = theme === 'dark'
-      ? { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#2f7cf6' }
-      : { background: '#ffffff', foreground: '#1e1e1e', cursor: '#2f7cf6' }
+      ? { background: 'var(--terminal-bg)', foreground: 'var(--terminal-text)', cursor: 'var(--accent)' }
+      : { background: 'var(--panel)', foreground: 'var(--terminal-bg)', cursor: 'var(--accent)' }
 
     const term = new Terminal({
       fontSize: 12,

@@ -10,12 +10,12 @@ type Draft = TaskSpecLite
 
 const STATUS_META: Record<string, { icon: string; label: string; color: string }> = {
   pending: { icon: '·', label: '待执行', color: 'var(--text-dim)' },
-  'awaiting-approval': { icon: '⏸', label: '待放行', color: '#ef9f27' },
+  'awaiting-approval': { icon: '⏸', label: '待放行', color: 'var(--warning)' },
   running: { icon: '⟳', label: '执行中', color: 'var(--accent)' },
   done: { icon: '✓', label: '完成', color: 'var(--accent-2)' },
-  failed: { icon: '✗', label: '失败', color: '#e24b4a' },
+  failed: { icon: '✗', label: '失败', color: 'var(--danger)' },
   skipped: { icon: '→', label: '已跳过', color: 'var(--text-dim)' },
-  blocked: { icon: '⊘', label: '阻塞', color: '#e24b4a' }
+  blocked: { icon: '⊘', label: '阻塞', color: 'var(--danger)' }
 }
 
 const ROLE_LABEL: Record<string, string> = {

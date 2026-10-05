@@ -21,11 +21,11 @@ const STATUS_MARK: Record<GitFileChange['status'], string> = {
 
 const STATUS_COLOR: Record<GitFileChange['status'], string> = {
   added: 'var(--accent-2)',
-  modified: '#ef9f27',
-  deleted: '#e24b4a',
+  modified: 'var(--warning)',
+  deleted: 'var(--danger)',
   renamed: 'var(--accent)',
   copied: 'var(--accent)',
-  untracked: '#8a93a6'
+  untracked: 'var(--text-dim)'
 }
 
 /**

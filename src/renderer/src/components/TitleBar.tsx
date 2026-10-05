@@ -316,8 +316,8 @@ function TitleBar({
           title="烧录到开发板"
           onClick={onUpload}
           style={{
-            background: 'var(--accent, #3b82f6)',
-            color: '#fff',
+            background: 'var(--accent)',
+            color: 'var(--on-dark)',
             borderRadius: 6,
           }}
         >

@@ -62,40 +62,40 @@ function StatusBar({
   const ready = toolchain?.available ? '1/1 后端就绪' : '0/1 后端就绪'
 
   const serial: Dot | null = serialOpen
-    ? { color: '#4ade80', text: `串口 ${port || '已打开'}`, title: `串口已打开 ${port} @ ${baud}` }
+    ? { color: 'var(--success)', text: `串口 ${port || '已打开'}`, title: `串口已打开 ${port} @ ${baud}` }
     : port
-      ? { color: '#888780', text: `串口 ${port}`, title: '串口已识别但未打开' }
+      ? { color: 'var(--text-muted)', text: `串口 ${port}`, title: '串口已识别但未打开' }
       : null
 
   const debug: Dot | null =
     debugStatus === 'running'
-      ? { color: '#4ade80', text: '调试已连接', title: 'openocd 会话运行中（telnet）' }
+      ? { color: 'var(--success)', text: '调试已连接', title: 'openocd 会话运行中（telnet）' }
       : debugStatus === 'starting'
-        ? { color: '#ef9f27', text: '调试连接中', title: '正在连接 openocd' }
+        ? { color: 'var(--warning)', text: '调试连接中', title: '正在连接 openocd' }
         : debugStatus === 'error'
-          ? { color: '#e24b4a', text: '调试失败', title: '上次连接调试器失败' }
+          ? { color: 'var(--danger)', text: '调试失败', title: '上次连接调试器失败' }
           : null
 
   const running: Dot | null = busy
-    ? { color: '#2f7cf6', text: '编译/烧录中', title: '正在执行编译或烧录' }
+    ? { color: 'var(--accent)', text: '编译/烧录中', title: '正在执行编译或烧录' }
     : null
 
   // AI 通道：能不能用，在状态栏就能看到，不必等发消息才报 401
   const ai: Dot | null = !aiHealth
     ? null
     : aiHealth.localReady
-      ? { color: '#4ade80', text: `本地模型 ${aiHealth.localModel || '就绪'}`, title: '本地引擎就绪，不消耗云端积分' }
+      ? { color: 'var(--success)', text: `本地模型 ${aiHealth.localModel || '就绪'}`, title: '本地引擎就绪，不消耗云端积分' }
       : aiHealth.byokActive
-        ? { color: '#4ade80', text: `自定义模型 ${aiHealth.byokActive}`, title: '正在使用自带 Key 的自定义模型通道' }
+        ? { color: 'var(--success)', text: `自定义模型 ${aiHealth.byokActive}`, title: '正在使用自带 Key 的自定义模型通道' }
         : aiHealth.loggedIn && aiHealth.modelListOk !== false
-          ? { color: '#4ade80', text: '内置模型已登录', title: '云端通道可用' }
+          ? { color: 'var(--success)', text: '内置模型已登录', title: '云端通道可用' }
           : aiHealth.engineHint === 'idle'
-            ? { color: '#f0a13a', text: `本地引擎未启动（${aiHealth.localModelCount ?? 0} 个模型）`, title: '本地引擎已就绪但没启动，AI 面板里点「一键启动」即可离线使用，不耗积分' }
+            ? { color: 'var(--warning)', text: `本地引擎未启动（${aiHealth.localModelCount ?? 0} 个模型）`, title: '本地引擎已就绪但没启动，AI 面板里点「一键启动」即可离线使用，不耗积分' }
             : aiHealth.engineHint === 'no-models'
-              ? { color: '#f0a13a', text: '本地引擎无模型', title: '引擎已装但没下载 gguf 模型，到「设置 → 本地引擎」下载一个' }
+              ? { color: 'var(--warning)', text: '本地引擎无模型', title: '引擎已装但没下载 gguf 模型，到「设置 → 本地引擎」下载一个' }
               : aiHealth.engineHint === 'not-installed'
-                ? { color: '#f0a13a', text: '本地引擎未安装', title: 'llama.cpp 引擎缺失，到「设置 → 本地引擎」重新安装' }
-                : { color: '#ef9f27', text: 'AI 通道不可用', title: aiHealth.loggedIn ? '登录可能已过期，请重新登录' : '未登录，且没有本地/自定义模型可用' }
+                ? { color: 'var(--warning)', text: '本地引擎未安装', title: 'llama.cpp 引擎缺失，到「设置 → 本地引擎」重新安装' }
+                : { color: 'var(--warning)', text: 'AI 通道不可用', title: aiHealth.loggedIn ? '登录可能已过期，请重新登录' : '未登录，且没有本地/自定义模型可用' }
 
   return (
     <footer className="statusbar">

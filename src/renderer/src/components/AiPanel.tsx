@@ -168,11 +168,11 @@ function parseBlocks(text: string): Block[] {
 
 function categoryColor(cat: string): string {
   switch (cat) {
-    case 'read': return '#52c41a'
-    case 'write': return '#faad14'
-    case 'execute': return '#1890ff'
-    case 'query': return '#722ed1'
-    default: return '#888'
+    case 'read': return 'var(--success)'
+    case 'write': return 'var(--warning)'
+    case 'execute': return 'var(--accent)'
+    case 'query': return 'var(--violet)'
+    default: return 'var(--text-muted)'
   }
 }
 
@@ -259,9 +259,9 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
   const [expanded, setExpanded] = useState(false)
   const ok = msg.result.ok && !msg.rejected
   return (
-    <div className="agent-tool-result" style={{ borderLeft: `3px solid ${ok ? '#52c41a' : '#ff4d4f'}` }}>
+    <div className="agent-tool-result" style={{ borderLeft: `3px solid ${ok ? 'var(--success)' : 'var(--danger)'}` }}>
       <div className="agent-tool-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="agent-tool-icon" style={{ color: ok ? '#52c41a' : '#ff4d4f' }}>
+        <span className="agent-tool-icon" style={{ color: ok ? 'var(--success)' : 'var(--danger)' }}>
           {ok ? (
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
           ) : (
@@ -269,7 +269,7 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
           )}
         </span>
         <span className="agent-tool-name">{toolCnName(msg.name)}<span className="agent-tool-en">({msg.name})</span></span>
-        <span className="agent-tool-status" style={{ color: ok ? '#52c41a' : '#ff4d4f' }}>
+        <span className="agent-tool-status" style={{ color: ok ? 'var(--success)' : 'var(--danger)' }}>
           {msg.rejected ? '已拒绝' : ok ? '成功' : '失败'}
         </span>
         <span className="agent-tool-toggle">{expanded ? '▲' : '▼'}</span>
@@ -1026,8 +1026,8 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
                   onClick={() => onOpenSettings?.()}
                   style={{
                     fontSize: 11, padding: '4px 12px', borderRadius: 6,
-                    border: 'none', background: 'var(--accent, #4f8cff)',
-                    color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500
+                    border: 'none', background: 'var(--accent)',
+                    color: 'var(--on-dark)', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500
                   }}
                 >＋ 添加 API Key</button>
               )
@@ -1104,7 +1104,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
                 return nv
               })
             }}
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: showAdvanced ? 'var(--accent, #4f8cff)' : 'inherit', padding: 3, display: 'flex' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: showAdvanced ? 'var(--accent)' : 'inherit', padding: 3, display: 'flex' }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
           </button>
