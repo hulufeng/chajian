@@ -5,3 +5,11 @@ dist/
 .DS_Store
 # 大型运行时二进制（本地资源，不入库；构建时由 extraResources 从磁盘拷贝）
 resources/llama/
+
+# 历史打包产物（electron-builder 每次换新输出目录，旧产物不入版本库）
+pkgout*/
+pkg113/
+release/
+dist-kb/
+dist-kb-repo/
+dist-plugin/
