@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git'
 
+/** label 用短名（工具栏空间有限），全名放 hint 走 tooltip */
 export const PANEL_META: Array<{ id: PanelId; label: string; hint: string }> = [
-  { id: 'output', label: '输出', hint: '编译输出 / 串口 / 终端 / 问题' },
-  { id: 'debug', label: '调试', hint: '寄存器 / 内存 / 断点 / 分区表' },
-  { id: 'target', label: '硬件目标', hint: '板卡 / 构建路径 / 烧录 / 自检' },
-  { id: 'platformio', label: 'PlatformIO', hint: 'pio 构建 / 烧录 / 串口监视' },
-  { id: 'git', label: 'Git', hint: '变更 / 分支 / 提交历史' }
+  { id: 'output', label: '输出', hint: '输出 · 编译日志 / 串口监视 / 波形 / 终端 / 问题' },
+  { id: 'debug', label: '调试', hint: '调试 · 寄存器 / 内存 / 断点 / 片内存储' },
+  { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检' },
+  { id: 'platformio', label: 'Pio', hint: 'PlatformIO · pio run 构建 / 烧录 / 串口监视（从硬件目标面板进入）' },
+  { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史' }
 ]
 
 interface Props {

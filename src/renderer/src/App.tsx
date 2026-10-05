@@ -247,6 +247,30 @@ function App(): React.JSX.Element {
   const [panelHeight, setPanelHeight] = useState(280)
   /** Git 面板角标：变更文件数 */
   const [gitBadge, setGitBadge] = useState(0)
+  /** 状态栏用：调试会话状态 + 当前目标摘要（只读，改动去硬件目标面板） */
+  const [debugStatus, setDebugStatus] = useState<'idle' | 'starting' | 'running' | 'error'>('idle')
+  const [targetLabel, setTargetLabel] = useState('')
+
+  // 调试状态变化时更新状态栏（面板也会自己收，这里只取一份给状态栏用）
+  useEffect(() => {
+    let alive = true
+    const read = (): void => {
+      window.api.debug
+        .state()
+        .then((s) => {
+          if (alive) setDebugStatus(s.status)
+        })
+        .catch(() => undefined)
+    }
+    read()
+    const t = setInterval(read, 4000)
+    const off = window.api.debug.onStopped(() => read())
+    return () => {
+      alive = false
+      clearInterval(t)
+      off()
+    }
+  }, [])
 
   /** 统一的面板开关：再点一次收起 */
   const openPanel = (id: PanelId): void => {
@@ -907,11 +931,10 @@ function App(): React.JSX.Element {
         onUpload={() => void runUpload()}
         onToggleTerminal={() => openPanel('output')}
         onToggleDebug={() => openPanel('debug')}
-        debugVisible={debugVisible}
-        onTogglePio={() => openPanel('platformio')}
-        pioVisible={pioVisible}
+        debugVisible={bottomPanel === 'debug'}
+        terminalVisible={bottomPanel === 'output'}
         onToggleTarget={() => openPanel('target')}
-        targetVisible={targetVisible}
+        targetVisible={bottomPanel === 'target'}
         onToggleGit={() => openPanel('git')}
         gitVisible={bottomPanel === 'git'}
         leftPanelVisible={leftPanelVisible}
@@ -1067,15 +1090,17 @@ function App(): React.JSX.Element {
                     projectRoot={projectRoot}
                     fqbn={fqbn}
                     port={selectedPort}
-                    onApply={(t: BoardTargetInfo, o) => {
-                      if (o.port) setSelectedPort(o.port)
-                      if (o.buildPath === 'arduino-cli' && t.fqbn) {
-                        setFqbn(t.fqbn)
-                        setBoardName(t.name)
-                      }
-                      if (o.buildPath === 'platformio') setBottomPanel('platformio')
-                      setDebugChip(t.debug.chip)
-                    }}
+              onApply={(t: BoardTargetInfo, o) => {
+                if (o.port) setSelectedPort(o.port)
+                if (o.buildPath === 'arduino-cli' && t.fqbn) {
+                  setFqbn(t.fqbn)
+                  setBoardName(t.name)
+                }
+                if (o.buildPath === 'platformio') setBottomPanel('platformio')
+                setDebugChip(t.debug.chip)
+                // 状态栏只读展示当前目标：谁被应用了，就显示谁
+                setTargetLabel(`${t.chip} · ${o.buildPath === 'platformio' ? 'PlatformIO' : 'arduino-cli'}`)
+              }}
                     onOpenDebug={(t: BoardTargetInfo) => {
                       setDebugChip(t.debug.chip)
                       setBottomPanel('debug')
@@ -1098,6 +1123,11 @@ function App(): React.JSX.Element {
         port={selectedPort}
         baud={baud}
         board={boardName}
+        serialOpen={serialOpen}
+        busy={busy}
+        debugStatus={debugStatus}
+        gitChanges={gitBadge}
+        targetLabel={targetLabel}
       />
       {showNewProject && (
         <NewProjectDialog

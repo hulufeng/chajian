@@ -56,8 +56,8 @@ interface TitleBarProps {
   onToggleTerminal: () => void
   onToggleDebug: () => void
   debugVisible: boolean
-  onTogglePio: () => void
-  pioVisible: boolean
+  /** 底部「输出」面板是否打开（终端/串口/问题都在它里面） */
+  terminalVisible: boolean
   onToggleTarget: () => void
   targetVisible: boolean
   onToggleGit: () => void
@@ -73,7 +73,7 @@ interface TitleBarProps {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
+  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, terminalVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme
 }: TitleBarProps): React.JSX.Element {
@@ -221,6 +221,14 @@ function TitleBar({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
         </button>
         <div className="tb-sep" />
+        {/* 第二段：面板开关（都切底部面板组，顺序 = 日常工作流顺序） */}
+        <button
+          className={`tb-btn ${terminalVisible ? 'tb-success' : ''}`}
+          title="输出（编译输出 / 串口 / 终端 / 问题）"
+          onClick={onToggleTerminal}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+        </button>
         <button
           className={`tb-btn ${debugVisible ? 'tb-success' : ''}`}
           title="片上调试器（JTAG/DAP，openocd + telnet）"
@@ -229,29 +237,22 @@ function TitleBar({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
         </button>
         <button
-          className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
-          title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
-          onClick={onToggleTarget}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
-        </button>
-        <button
-          className={`tb-btn ${pioVisible ? 'tb-success' : ''}`}
-          title="PlatformIO（pio run 构建/烧录/串口监视，多 env）"
-          onClick={onTogglePio}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18.5" cy="17" r="2.5"/></svg>
-        </button>
-        <button
           className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
           title="Git（变更 / 分支 / 提交历史）"
           onClick={onToggleGit}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
         </button>
-        <button className="tb-btn" title="终端" onClick={onToggleTerminal}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+        <button
+          className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
+          title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
+          onClick={onToggleTarget}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
         </button>
+        <div className="tb-sep" />
+        {/* PlatformIO 面板不再占工具栏位置：它属于「构建路径 = PlatformIO」时的操作面板，
+            从硬件目标面板进入即可（选 PlatformIO 路径会自动切过去），避免两个入口含义重叠。 */}
         <button className="tb-btn" title="搜索">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
         </button>

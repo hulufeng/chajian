@@ -47,6 +47,16 @@ const CATEGORIES = [
   { id: 'hooks', label: '钩子', icon: '🪝' },
 ]
 
+/**
+ * 导航分组：按「用户为什么来这儿」把 8 个平铺分类收成 3 组。
+ * 分组依据——AI 与模型（调模型）、硬件与工具链（板子/寄存器/通用）、扩展能力（外部能力接入）。
+ */
+const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
+  { title: 'AI 与模型', items: CATEGORIES.filter((c) => c.id === 'models' || c.id === 'engine') },
+  { title: '硬件与工具链', items: CATEGORIES.filter((c) => c.id === 'svd' || c.id === 'general') },
+  { title: '扩展能力', items: CATEGORIES.filter((c) => ['mcp', 'plugins', 'skills', 'hooks'].includes(c.id)) }
+]
+
 interface PluginItem {
   manifest: { name: string; displayName: string; version: string }
   loaded: boolean
@@ -258,14 +268,19 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
         </div>
         <div className="settings-body">
           <aside className="settings-nav">
-            {CATEGORIES.map((c) => (
-              <div
-                key={c.id}
-                className={`settings-nav-item ${active === c.id ? 'active' : ''}`}
-                onClick={() => setActive(c.id)}
-              >
-                <span className="settings-nav-icon">{c.icon}</span>
-                <span>{c.label}</span>
+            {CATEGORY_GROUPS.map((g) => (
+              <div key={g.title} className="settings-nav-group">
+                <div className="settings-nav-group-title">{g.title}</div>
+                {g.items.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`settings-nav-item ${active === c.id ? 'active' : ''}`}
+                    onClick={() => setActive(c.id)}
+                  >
+                    <span className="settings-nav-icon">{c.icon}</span>
+                    <span>{c.label}</span>
+                  </div>
+                ))}
               </div>
             ))}
           </aside>

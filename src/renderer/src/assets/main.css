@@ -4044,3 +4044,29 @@ body.ai-resizing {
 .gitp-empty { padding: 18px 14px; display: flex; flex-direction: column; gap: 8px; }
 .gitp-hint { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
 .mono { font-family: var(--mono); }
+
+/* ============ 设置导航分组（8 平铺 → 3 组） ============ */
+.settings-nav-group { margin-bottom: 8px; }
+.settings-nav-group-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 4px 8px 3px;
+  opacity: 0.75;
+}
+
+/* ============ 状态栏右侧的运行状态 ============ */
+.sb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.sb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.statusbar .sb-item.warn { color: #ef9f27; }
+.statusbar .mono { font-family: var(--mono); font-size: 11px; }
