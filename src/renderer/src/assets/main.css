@@ -4213,6 +4213,12 @@ body.ai-resizing {
   .bprog-spin { animation: none; }
 }
 .bprog-ok { color: var(--accent-2); font-size: 12px; }
+.bprog-fail { color: var(--danger); font-size: 12px; }
+/* 失败态：状态文字与阶段说明一起转危险色，别让红字配灰字（读起来像"只是提示"） */
+.bprog.is-failed .bprog-state,
+.bprog.is-failed .bprog-stage-label { color: var(--danger); }
+.bprog.is-failed .bprog-stage-dot,
+.bprog.is-failed .bprog-dot { background: var(--danger-soft); }
 .bprog-stages { display: inline-flex; align-items: center; flex-wrap: wrap; }
 .bprog-stage { display: inline-flex; align-items: center; gap: 5px; }
 .bprog-dot {

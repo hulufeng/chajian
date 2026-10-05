@@ -270,6 +270,7 @@ function App(): React.JSX.Element {
     setOutputLog((prev) => prev + '\n[取消] 已请求中断当前任务。\n')
     setCompileState('error')
     setBusy(false)
+    buildStartedAtRef.current = null
     setBuildStartedAt(null)
     setActiveTaskId(null)
   }, [activeTaskId])
@@ -419,6 +420,12 @@ function App(): React.JSX.Element {
 
   const terminalRef = useRef<TerminalHandle>(null)
   const pendingTasksRef = useRef<Map<string, (code: number) => void>>(new Map())
+  /**
+   * 本次编译/烧录的真实起点。
+   * 必须用 ref 而不是直接读 state：onTaskExit 的监听器是挂载时注册的（依赖数组为 []），
+   * 读到的 buildStartedAt 永远是初始 null，耗时就永远算不出来。这里 ref 只进不出，退出时清空。
+   */
+  const buildStartedAtRef = useRef<number | null>(null)
 
   const toggleLeftPanel = useCallback(() => setLeftPanelVisible((v) => !v), [])
   const toggleEditor = useCallback(() => setEditorVisible((v) => !v), [])
@@ -555,13 +562,24 @@ function App(): React.JSX.Element {
         setCompileState(d.code === 0 ? 'success' : 'error')
         setCompileProgress(null)
         // 过程可见化：停表并冻结最终耗时（结果卡要显示真实耗时）
-        if (buildStartedAt !== null) {
-          setBuildElapsedMs(Date.now() - buildStartedAt)
+        const startedAt = buildStartedAtRef.current
+        if (startedAt !== null) {
+          const spent = Date.now() - startedAt
+          setBuildElapsedMs(spent)
+          buildStartedAtRef.current = null
           setBuildStartedAt(null)
+          // 收尾结论直接写进输出流：用户不用去猜「刚才那几秒到底成没成」
+          if (d.code === 0) {
+            setOutputLog((prev) =>
+              prev + (isUpload
+                ? `\n[完成] 烧录成功，用时 ${(spent / 1000).toFixed(1)}s\n`
+                : `\n[完成] 编译成功，用时 ${(spent / 1000).toFixed(1)}s\n`)
+            )
+          }
         }
         setBuildStage(isUpload
-          ? { stage: d.code === 0 ? 'flashed' : 'flashing', label: d.code === 0 ? '烧录完成' : '烧录中' }
-          : { stage: d.code === 0 ? 'done' : 'sketch', label: d.code === 0 ? '完成' : '编译中' })
+          ? { stage: d.code === 0 ? 'flashed' : 'flashing', label: d.code === 0 ? '烧录完成' : '烧录失败' }
+          : { stage: d.code === 0 ? 'done' : 'sketch', label: d.code === 0 ? '完成' : '编译失败' })
         if (d.code !== 0) {
           setBuildError(extractBuildError(buildLogRef.current))
         } else {
@@ -770,8 +788,14 @@ function App(): React.JSX.Element {
     }
 
     setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
+    // 首次编译要现下板卡支持包（ESP32 core 几百 MB），那段时间 arduino-cli 几乎不打印东西，
+    // 不提前说明就会以为卡死。已经在本会话编译过就不啰嗦了。
+    if (!everBuilt) {
+      setOutputLog((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
+    }
     setCompileState('compiling')
     // 过程可见化：记录开始时间并自动切到输出面板，否则用户看不到编译过程
+    buildStartedAtRef.current = Date.now()
     setBuildStartedAt(Date.now())
     setBuildElapsedMs(0)
     setBuildStage({ stage: 'prepare', label: '准备' })
@@ -803,7 +827,7 @@ function App(): React.JSX.Element {
       setCompileState('error')
       setBusy(false)
     }
-  }, [toolchain, tree, activePath, fqbn, compileState, tabs])
+  }, [toolchain, tree, activePath, fqbn, compileState, tabs, everBuilt])
 
   const runUpload = useCallback(async () => {
     // 门控最前：进行中再点击给明确反馈（避免静默吞掉像"卡死"）
@@ -854,7 +878,20 @@ function App(): React.JSX.Element {
 
     // 先编译
     setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
+    if (!everBuilt) {
+      setOutputLog((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
+    }
     setCompileState('compiling')
+    // 过程可见化：烧录是「编译 + 写入」两段，编译这段同样要让人看见——
+    // 之前这里漏了，表现为点烧录后长时间没动静（面板不切、阶段条不动），像卡死。
+    // 计时器不在下面 upload 段重置：烧录结束冻结的是「本次点烧录」的总耗时。
+    buildStartedAtRef.current = Date.now()
+    setBuildStartedAt(Date.now())
+    setBuildElapsedMs(0)
+    setBuildStage({ stage: 'prepare', label: '准备编译' })
+    setEverBuilt(true)
+    ensureOutputVisible()
+    setCompileProgress(null)
     setBusy(true)
 
     const restoreSerial = async (): Promise<void> => {
@@ -903,10 +940,10 @@ function App(): React.JSX.Element {
 
     // 编译成功，开始上传（grpc:upload；daemon 不可用时主进程自动降级 CLI，不会挂死）
     setOutputLog((prev) => prev + `\n▶ [烧录] arduino-cli upload --fqbn ${fqbn} --port ${selectedPort} ${sketch}\n`)
+    setOutputLog((prev) => prev + `   正在写入 ${selectedPort}，期间请勿拔线…\n`)
     setCompileState('uploading')
-    setBuildStartedAt(Date.now())
-    setBuildStage({ stage: 'flashing', label: '烧录中' })
-    setEverBuilt(true)
+    // 计时器保持连续（不重置），结束时冻结的是「编译 + 烧录」总耗时
+    setBuildStage({ stage: 'flashing', label: `写入 ${selectedPort}` })
     ensureOutputVisible()
     try {
       const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort })
@@ -938,7 +975,7 @@ function App(): React.JSX.Element {
       setBusy(false)
       await restoreSerial()
     }
-  }, [toolchain, tree, activePath, fqbn, selectedPort, compileState, tabs, serialOpen, baud])
+  }, [toolchain, tree, activePath, fqbn, selectedPort, compileState, tabs, serialOpen, baud, everBuilt])
 
   // 串口开关
   const toggleSerial = useCallback(async () => {
@@ -1231,6 +1268,7 @@ function App(): React.JSX.Element {
                     buildStage={buildStage}
                     buildElapsedMs={buildElapsedMs}
                     buildCancellable={!!activeTaskId}
+                    buildFailed={compileState === 'error'}
                     onCancelBuild={cancelBuild}
                     buildUsage={buildUsage}
                     onDiagnose={diagnoseBuildError}

@@ -35,6 +35,7 @@ interface Props {
   buildStage?: { stage: 'prepare' | 'sketch' | 'libs' | 'link' | 'image' | 'done' | 'flashing' | 'flashed'; label: string }
   buildElapsedMs?: number
   buildCancellable?: boolean
+  buildFailed?: boolean
   onCancelBuild?: () => void
   buildUsage?: { flashBytes: number; flashPercent: number; ramBytes: number; ramPercent: number; rawFlash: string; rawRam: string } | null
 }
@@ -122,6 +123,7 @@ function OutputPanel({
   buildStage = { stage: 'prepare' as const, label: '准备' },
   buildElapsedMs = 0,
   buildCancellable = false,
+  buildFailed = false,
   onCancelBuild = () => undefined,
   buildUsage = null
 }: Props): React.JSX.Element {
@@ -201,6 +203,7 @@ function OutputPanel({
               stage={buildStage}
               elapsedMs={buildElapsedMs}
               cancellable={buildCancellable}
+              failed={buildFailed}
               onCancel={onCancelBuild}
               usage={buildUsage}
             />

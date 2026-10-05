@@ -14,6 +14,8 @@ interface Props {
   usage: UsageSummary | null
   /** 阶段条与结果卡都隐藏（例如从未编译过） */
   visible: boolean
+  /** 本次编译/烧录是失败收尾（失败时不能还打 ✓ 显示"完成"） */
+  failed?: boolean
 }
 
 const ORDER: BuildStageInfo['stage'][] = ['prepare', 'sketch', 'libs', 'link', 'image', 'done']
@@ -52,21 +54,29 @@ export default function BuildProgress({
   cancellable,
   onCancel,
   usage,
-  visible
+  visible,
+  failed = false
 }: Props): React.JSX.Element | null {
   if (!visible) return null
 
   const isFlashing = stage.stage === 'flashing' || stage.stage === 'flashed'
   const activeIdx = ORDER.indexOf(stage.stage)
+  // 失败时不展示 Flash/RAM 用量：没链接成功就没有用量，显示 0 B 只会误导
+  const showUsage = !active && !failed && !!usage
 
   return (
-    <div className={active ? 'bprog is-active' : 'bprog is-done'}>
+    <div className={failed ? 'bprog is-failed' : active ? 'bprog is-active' : 'bprog is-done'}>
       <div className="bprog-bar">
         <span className="bprog-state">
-          {active ? (
+          {failed ? (
+            <>
+              <span className="bprog-fail">✘</span>
+              {isFlashing ? '烧录失败' : '编译失败'}
+            </>
+          ) : active ? (
             <>
               <span className="bprog-spin" />
-              {isFlashing ? '烧录中' : '编译中'}
+              {isFlashing ? stage.label || '烧录中' : '编译中'}
             </>
           ) : (
             <>
@@ -77,7 +87,8 @@ export default function BuildProgress({
         </span>
 
         {isFlashing ? (
-          <span className="bprog-stage-label">esptool 写入固件</span>
+          // 烧录阶段直接用真实阶段文案（写入哪个端口 / 失败原因），不编造进度
+          <span className="bprog-stage-label">{failed ? 'esptool 写入未完成' : stage.label || 'esptool 写入固件'}</span>
         ) : (
           <span className="bprog-stages">
             {ORDER.map((s, i) => (
@@ -98,7 +109,7 @@ export default function BuildProgress({
         )}
       </div>
 
-      {!active && usage && (
+      {showUsage && usage && (
         <div className="bprog-usage">
           <div className="bprog-usage-cell" title={usage.rawFlash}>
             <span className="bprog-usage-k">程序存储（Flash）</span>
