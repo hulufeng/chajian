@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { BoardTargetInfo, DetectedPort } from '../../../preload'
+import type { BoardTargetInfo, DetectedPort, SelfCheckReport } from '../../../preload'
 
 interface Props {
   /** 当前工程根目录（写 platformio.ini 用） */
@@ -63,6 +63,9 @@ export default function TargetPanel({
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(true)
+  /** 一键硬件自检结果（插板后先跑它，别盲试） */
+  const [sc, setSc] = useState<SelfCheckReport | null>(null)
+  const [scBusy, setScBusy] = useState(false)
   /** 改动过但还没应用 */
   const [dirty, setDirty] = useState(false)
 
@@ -97,6 +100,19 @@ export default function TargetPanel({
   const markDirty = (): void => {
     setDirty(true)
     setMsg('')
+  }
+
+  /** 硬件自检：把「缺什么」一次列清楚，而不是让用户盲试连接 */
+  const selfCheck = async (): Promise<void> => {
+    setScBusy(true)
+    setErr('')
+    try {
+      setSc(await window.api.target.selfCheck())
+    } catch (e) {
+      setErr(`自检失败：${(e as Error).message}`)
+    } finally {
+      setScBusy(false)
+    }
   }
 
   const apply = (): void => {
@@ -141,9 +157,34 @@ export default function TargetPanel({
         </span>
         <span className="tgt-spacer" />
         {dirty && <span className="tgt-dirty">未应用</span>}
+        <button className="btn" onClick={() => void selfCheck()} disabled={scBusy} title="检查工具链 / 调试器 / USB 驱动 / 串口占用">
+          {scBusy ? '自检中…' : '一键自检'}
+        </button>
         <button className="btn" onClick={() => void load()}>自动探测</button>
         <button className="btn" onClick={onClose} title="关闭硬件目标面板">✕</button>
       </div>
+
+      {sc && (
+        <div className="sc">
+          <div className="sc-head">
+            <span className="sc-summary">{sc.summary}</span>
+            <span className="sc-time">{new Date(sc.ts).toLocaleTimeString()}</span>
+          </div>
+          <div className="sc-list">
+            {sc.items.map((it) => (
+              <div key={it.id} className="sc-item">
+                <span className={`sc-dot ${it.status}`} />
+                <span className="sc-name">{it.name}</span>
+                <span className="sc-detail">{it.detail}</span>
+                {it.fix && <span className="sc-fix">→ {it.fix}</span>}
+              </div>
+            ))}
+          </div>
+          {sc.advice.length > 0 && (
+            <div className="sc-advice">{sc.advice.map((a, i) => <div key={i}>{a}</div>)}</div>
+          )}
+        </div>
+      )}
 
       {loading && <div className="tgt-hint">正在读取板卡库与串口…</div>}
       {err && <div className="debug-err">{err}</div>}

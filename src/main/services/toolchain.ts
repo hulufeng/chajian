@@ -42,6 +42,20 @@ function candidates(): string[] {
   return list
 }
 
+/**
+ * 只按「文件是否存在」定位 arduino-cli，不做 spawn 探测。
+ * 用途：硬件自检等场景需要区分「没装」与「装了但起不来」——
+ * findToolchain() 靠 spawn 判存在，受限环境（EBUSY/EPERM）会返回 null，
+ * 那样自检就会把「环境启动不了」误报成「未安装」，用户会去反复点安装。
+ */
+export function locateToolchain(): string | null {
+  for (const cand of candidates()) {
+    if (cand === EXE) continue // PATH 上的裸命令不猜，交给 findToolchain
+    if (existsSync(cand)) return cand
+  }
+  return null
+}
+
 export function findToolchain(): string | null {
   for (const cand of candidates()) {
     if (cand === EXE) {

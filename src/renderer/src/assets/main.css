@@ -3827,3 +3827,44 @@ body.ai-resizing {
 .tgt-actions { border-top: 1px solid var(--border); padding: 9px 0 2px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tgt-actions-hint { margin-top: 0; margin-left: auto; text-align: right; max-width: 46%; }
 .mono { font-family: var(--mono); font-size: 12px; }
+
+/* ============ 一键硬件自检结果 ============ */
+.sc {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  padding: 7px 10px;
+  max-height: 190px;
+  overflow: auto;
+}
+.sc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.sc-summary { font-size: 12px; font-weight: 500; }
+.sc-time { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+.sc-list { display: flex; flex-direction: column; gap: 3px; }
+.sc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.sc-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.sc-dot.ok { background: var(--accent-2); }
+.sc-dot.warn { background: #ef9f27; }
+.sc-dot.fail { background: #e24b4a; }
+.sc-dot.unknown { background: var(--text-dim); }
+.sc-name { flex: none; min-width: 116px; }
+.sc-detail { color: var(--text-dim); font-family: var(--mono); font-size: 11px; word-break: break-all; }
+.sc-fix { color: var(--accent); font-size: 11px; margin-left: auto; padding-left: 8px; }
+.sc-advice {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}

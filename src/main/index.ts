@@ -64,6 +64,7 @@ import {
   targetForUsbId,
   buildPlatformioIni
 } from './services/boardRegistry'
+import { runSelfCheck } from './services/hardwareSelfCheck'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
   listInstalledChips as listSvdChips,
@@ -1120,6 +1121,9 @@ ipcMain.handle('target:list', (_e, opts?: { family?: 'esp32' | 'stm32' }) =>
 )
 
 ipcMain.handle('target:get', (_e, id: string) => findTarget(id) || null)
+
+// 一键硬件自检：插板后点一下就知道缺什么（工具链 / 调试器 / 驱动 / 占用）
+ipcMain.handle('selfcheck:run', () => runSelfCheck())
 
 ipcMain.handle('target:detect', async () => {
   const ports = await listPorts()

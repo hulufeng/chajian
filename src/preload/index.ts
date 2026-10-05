@@ -569,7 +569,9 @@ const api = {
     get: (id: string): Promise<BoardTargetInfo | null> => ipcRenderer.invoke('target:get', id),
     detect: (): Promise<DetectedPort[]> => ipcRenderer.invoke('target:detect'),
     writeIni: (opts: { projectRoot: string; boardId: string; env?: string; uploadPort?: string }): Promise<{ ok: boolean; path: string }> =>
-      ipcRenderer.invoke('target:write-ini', opts)
+      ipcRenderer.invoke('target:write-ini', opts),
+    /** 一键硬件自检：插板后先跑它，知道缺什么而不是盲试 */
+    selfCheck: (): Promise<SelfCheckReport> => ipcRenderer.invoke('selfcheck:run')
   },
 
   // PlatformIO（pio CLI 集成：多 env 解析 / 构建 / 烧录 / 串口监视）
@@ -743,6 +745,32 @@ export interface BoardTargetInfo {
   notes: string
   /** 本机 openocd 是否备齐该板调试 cfg */
   debugCfgExists: boolean
+}
+
+export interface SelfCheckItem {
+  id: string
+  name: string
+  status: 'ok' | 'warn' | 'fail' | 'unknown'
+  detail: string
+  fix?: string
+}
+
+export interface SelfCheckBoard {
+  path: string
+  vid: number
+  pid: number
+  usbId: string
+  kind: 'esp' | 'stlink' | 'ch340' | 'other'
+  label: string
+  viaSerial: boolean
+}
+
+export interface SelfCheckReport {
+  ts: number
+  items: SelfCheckItem[]
+  boards: SelfCheckBoard[]
+  summary: string
+  advice: string[]
 }
 
 export type Api = typeof api
