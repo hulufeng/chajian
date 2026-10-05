@@ -65,6 +65,26 @@ import {
   buildPlatformioIni
 } from './services/boardRegistry'
 import { runSelfCheck } from './services/hardwareSelfCheck'
+import {
+  getStatus as getGitStatus,
+  listBranches as listGitBranches,
+  getDiff as getGitDiff,
+  stage as gitStage,
+  stageOne as gitStageOne,
+  unstage as gitUnstage,
+  discardChanges as gitDiscard,
+  commit as gitCommit,
+  initRepo as gitInit,
+  getLog as getGitLog,
+  push as gitPush,
+  pull as gitPull,
+  fetchRemote as gitFetch,
+  addRemote as gitAddRemote,
+  createBranch as gitCreateBranch,
+  checkoutBranch as gitCheckoutBranch,
+  deleteBranch as gitDeleteBranch,
+  mergeBranch as gitMergeBranch
+} from './services/gitService'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
   listInstalledChips as listSvdChips,
@@ -1124,6 +1144,36 @@ ipcMain.handle('target:get', (_e, id: string) => findTarget(id) || null)
 
 // 一键硬件自检：插板后点一下就知道缺什么（工具链 / 调试器 / 驱动 / 占用）
 ipcMain.handle('selfcheck:run', () => runSelfCheck())
+
+// ── Git 面板（第四批③）：状态 / 暂存 / 提交 / 分支 / 远端 ──
+ipcMain.handle('git:status', (_e, opts: { root: string }) => getGitStatus(opts.root))
+ipcMain.handle('git:branches', (_e, opts: { root: string }) => listGitBranches(opts.root))
+ipcMain.handle('git:diff', (_e, opts: { root: string; path: string; staged: boolean }) =>
+  getGitDiff(opts.root, opts.path, opts.staged)
+)
+ipcMain.handle('git:stage', (_e, opts: { root: string; paths: string[] }) => gitStage(opts.root, opts.paths))
+ipcMain.handle('git:stageOne', (_e, opts: { root: string; path: string }) => gitStageOne(opts.root, opts.path))
+ipcMain.handle('git:unstage', (_e, opts: { root: string; paths: string[] }) => gitUnstage(opts.root, opts.paths))
+ipcMain.handle('git:discard', (_e, opts: { root: string; paths: string[] }) => gitDiscard(opts.root, opts.paths))
+ipcMain.handle('git:commit', (_e, opts: { root: string; message: string }) => gitCommit(opts.root, opts.message))
+ipcMain.handle('git:init', (_e, opts: { root: string; branch?: string }) => gitInit(opts.root, opts.branch || 'main'))
+ipcMain.handle('git:log', (_e, opts: { root: string; n?: number }) => getGitLog(opts.root, opts.n ?? 30))
+ipcMain.handle('git:push', (_e, opts: { root: string }) => gitPush(opts.root))
+ipcMain.handle('git:pull', (_e, opts: { root: string }) => gitPull(opts.root))
+ipcMain.handle('git:fetch', (_e, opts: { root: string }) => gitFetch(opts.root))
+ipcMain.handle('git:remoteAdd', (_e, opts: { root: string; name: string; url: string }) =>
+  gitAddRemote(opts.root, opts.name, opts.url)
+)
+ipcMain.handle('git:branchCreate', (_e, opts: { root: string; name: string; checkout?: boolean }) =>
+  gitCreateBranch(opts.root, opts.name, opts.checkout !== false)
+)
+ipcMain.handle('git:branchCheckout', (_e, opts: { root: string; name: string }) =>
+  gitCheckoutBranch(opts.root, opts.name)
+)
+ipcMain.handle('git:branchDelete', (_e, opts: { root: string; name: string; force?: boolean }) =>
+  gitDeleteBranch(opts.root, opts.name, !!opts.force)
+)
+ipcMain.handle('git:branchMerge', (_e, opts: { root: string; name: string }) => gitMergeBranch(opts.root, opts.name))
 
 ipcMain.handle('target:detect', async () => {
   const ports = await listPorts()

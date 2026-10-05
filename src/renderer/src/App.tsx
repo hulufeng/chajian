@@ -9,6 +9,8 @@ import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectD
 import DebugPanel from './components/DebugPanel'
 import PlatformIOPanel from './components/PlatformIOPanel'
 import TargetPanel from './components/TargetPanel'
+import GitPanel from './components/GitPanel'
+import PanelDock, { type PanelId } from './components/PanelDock'
 import type { BoardTargetInfo } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
@@ -240,6 +242,47 @@ function App(): React.JSX.Element {
   const [debugVisible, setDebugVisible] = useState(false)
   const [pioVisible, setPioVisible] = useState(false)
   const [targetVisible, setTargetVisible] = useState(false)
+  /** 底部统一面板组：一次只显示一个（UI 重设计核心，见 PanelDock 注释） */
+  const [bottomPanel, setBottomPanel] = useState<PanelId | null>('output')
+  const [panelHeight, setPanelHeight] = useState(280)
+  /** Git 面板角标：变更文件数 */
+  const [gitBadge, setGitBadge] = useState(0)
+
+  /** 统一的面板开关：再点一次收起 */
+  const openPanel = (id: PanelId): void => {
+    setBottomPanel((cur) => {
+      const next = cur === id ? null : id
+      setTerminalVisible(next === 'output')
+      setDebugVisible(next === 'debug')
+      setPioVisible(next === 'platformio')
+      setTargetVisible(next === 'target')
+      return next
+    })
+  }
+
+  // Git 变更数角标：打开工程时拉一次，之后低频刷新（git status 很轻）
+  useEffect(() => {
+    if (!projectRoot) {
+      setGitBadge(0)
+      return
+    }
+    let alive = true
+    const pull = (): void => {
+      window.api.git
+        .status(projectRoot)
+        .then((s) => {
+          if (!alive) return
+          setGitBadge(s.isRepo ? s.staged.length + s.unstaged.length + s.untracked.length : 0)
+        })
+        .catch(() => undefined)
+    }
+    pull()
+    const timer = setInterval(pull, 30000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [projectRoot])
   const [debugChip, setDebugChip] = useState<string | undefined>(undefined)
   const [leftPanelVisible, setLeftPanelVisible] = useState(true)
   const [editorVisible, setEditorVisible] = useState(true)
@@ -862,13 +905,15 @@ function App(): React.JSX.Element {
         onOpenSettings={() => { setSettingsTab('general'); setShowSettings(true) }}
         onCompile={() => void runCompile()}
         onUpload={() => void runUpload()}
-        onToggleTerminal={() => setTerminalVisible((v) => !v)}
-        onToggleDebug={() => setDebugVisible((v) => !v)}
+        onToggleTerminal={() => openPanel('output')}
+        onToggleDebug={() => openPanel('debug')}
         debugVisible={debugVisible}
-        onTogglePio={() => setPioVisible((v) => !v)}
+        onTogglePio={() => openPanel('platformio')}
         pioVisible={pioVisible}
-        onToggleTarget={() => setTargetVisible((v) => !v)}
+        onToggleTarget={() => openPanel('target')}
         targetVisible={targetVisible}
+        onToggleGit={() => openPanel('git')}
+        gitVisible={bottomPanel === 'git'}
         leftPanelVisible={leftPanelVisible}
         editorVisible={editorVisible}
         onToggleLeftPanel={toggleLeftPanel}
@@ -974,57 +1019,74 @@ function App(): React.JSX.Element {
               theme={theme}
             />
           ))}
-          {terminalVisible && (
-            <OutputPanel
-              key={outputKey}
-              outputLog={outputLog}
-              serialLog={serialLog}
-              cwd={cwd}
-              ports={ports}
-              selectedPort={selectedPort}
-              setSelectedPort={setSelectedPort}
-              baud={baud}
-              setBaud={setBaud}
-              serialOpen={serialOpen}
-              onToggleSerial={() => void toggleSerial()}
-              onRunCommand={(cmd) => void runCommand(cmd)}
-              terminalRef={terminalRef}
-              theme={theme}
-              shell={shell}
-              onClose={() => setTerminalVisible(false)}
-              defaultTab="串口监视器"
-              buildError={buildError}
-              onDiagnose={diagnoseBuildError}
-              onDebugFix={debugFixBuildError}
-            />
-          )}
-          {debugVisible && (
-            <DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setDebugVisible(false)} />
-          )}
-          {pioVisible && (
-            <PlatformIOPanel projectRoot={projectRoot} onClose={() => setPioVisible(false)} />
-          )}
-          {targetVisible && (
-            <TargetPanel
-              projectRoot={projectRoot}
-              fqbn={fqbn}
-              port={selectedPort}
-              onApply={(t: BoardTargetInfo, o) => {
-                if (o.port) setSelectedPort(o.port)
-                if (o.buildPath === 'arduino-cli' && t.fqbn) {
-                  setFqbn(t.fqbn)
-                  setBoardName(t.name)
-                }
-                if (o.buildPath === 'platformio') setPioVisible(true)
-                setDebugChip(t.debug.chip)
-              }}
-              onOpenDebug={(t: BoardTargetInfo) => {
-                setDebugChip(t.debug.chip)
-                setDebugVisible(true)
-              }}
-              onClose={() => setTargetVisible(false)}
-            />
-          )}
+          <PanelDock
+            active={bottomPanel}
+            onChange={(id) => {
+              setBottomPanel(id)
+              // 旧 state 与面板组保持一致，避免两套开关互相打架
+              setTerminalVisible(id === 'output')
+              setDebugVisible(id === 'debug')
+              setPioVisible(id === 'platformio')
+              setTargetVisible(id === 'target')
+            }}
+            height={panelHeight}
+            onHeightChange={setPanelHeight}
+            badges={{ output: buildError ? '!' : 0, git: gitBadge }}
+            render={(id) => {
+              if (id === 'output') {
+                return (
+                  <OutputPanel
+                    key={outputKey}
+                    outputLog={outputLog}
+                    serialLog={serialLog}
+                    cwd={cwd}
+                    ports={ports}
+                    selectedPort={selectedPort}
+                    setSelectedPort={setSelectedPort}
+                    baud={baud}
+                    setBaud={setBaud}
+                    serialOpen={serialOpen}
+                    onToggleSerial={() => void toggleSerial()}
+                    onRunCommand={(cmd) => void runCommand(cmd)}
+                    terminalRef={terminalRef}
+                    theme={theme}
+                    shell={shell}
+                    onClose={() => setBottomPanel(null)}
+                    defaultTab="串口监视器"
+                    buildError={buildError}
+                    onDiagnose={diagnoseBuildError}
+                    onDebugFix={debugFixBuildError}
+                  />
+                )
+              }
+              if (id === 'debug') return <DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setBottomPanel(null)} />
+              if (id === 'platformio') return <PlatformIOPanel projectRoot={projectRoot} onClose={() => setBottomPanel(null)} />
+              if (id === 'target') {
+                return (
+                  <TargetPanel
+                    projectRoot={projectRoot}
+                    fqbn={fqbn}
+                    port={selectedPort}
+                    onApply={(t: BoardTargetInfo, o) => {
+                      if (o.port) setSelectedPort(o.port)
+                      if (o.buildPath === 'arduino-cli' && t.fqbn) {
+                        setFqbn(t.fqbn)
+                        setBoardName(t.name)
+                      }
+                      if (o.buildPath === 'platformio') setBottomPanel('platformio')
+                      setDebugChip(t.debug.chip)
+                    }}
+                    onOpenDebug={(t: BoardTargetInfo) => {
+                      setDebugChip(t.debug.chip)
+                      setBottomPanel('debug')
+                    }}
+                    onClose={() => setBottomPanel(null)}
+                  />
+                )
+              }
+              return <GitPanel projectRoot={projectRoot} onOpenFile={(p) => void openFile(p, p.split(/[\\/]/).pop() || 'file')} onClose={() => setBottomPanel(null)} />
+            }}
+          />
         </div>
         {aiPanelVisible && (
           <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} prefill={aiPrefill} />

@@ -60,6 +60,8 @@ interface TitleBarProps {
   pioVisible: boolean
   onToggleTarget: () => void
   targetVisible: boolean
+  onToggleGit: () => void
+  gitVisible: boolean
   leftPanelVisible: boolean
   editorVisible: boolean
   onToggleLeftPanel: () => void
@@ -71,7 +73,7 @@ interface TitleBarProps {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible, onToggleTarget, targetVisible,
+  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, onTogglePio, pioVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme
 }: TitleBarProps): React.JSX.Element {
@@ -239,6 +241,13 @@ function TitleBar({
           onClick={onTogglePio}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18.5" cy="17" r="2.5"/></svg>
+        </button>
+        <button
+          className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
+          title="Git（变更 / 分支 / 提交历史）"
+          onClick={onToggleGit}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
         </button>
         <button className="tb-btn" title="终端" onClick={onToggleTerminal}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>

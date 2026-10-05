@@ -562,6 +562,35 @@ const api = {
     }
   },
 
+  // Git（状态 / 暂存 / 提交 / 分支 / 远端）
+  git: {
+    status: (root: string): Promise<GitStatusInfo> => ipcRenderer.invoke('git:status', { root }),
+    branches: (root: string): Promise<GitBranchView> => ipcRenderer.invoke('git:branches', { root }),
+    diff: (root: string, path: string, staged: boolean): Promise<string> =>
+      ipcRenderer.invoke('git:diff', { root, path, staged }),
+    stage: (root: string, paths: string[]): Promise<GitOpResult> => ipcRenderer.invoke('git:stage', { root, paths }),
+    stageOne: (root: string, path: string): Promise<GitOpResult> => ipcRenderer.invoke('git:stageOne', { root, path }),
+    unstage: (root: string, paths: string[]): Promise<GitOpResult> => ipcRenderer.invoke('git:unstage', { root, paths }),
+    discard: (root: string, paths: string[]): Promise<GitOpResult> => ipcRenderer.invoke('git:discard', { root, paths }),
+    commit: (root: string, message: string): Promise<GitOpResult & { sha?: string }> =>
+      ipcRenderer.invoke('git:commit', { root, message }),
+    init: (root: string, branch?: string): Promise<GitOpResult> => ipcRenderer.invoke('git:init', { root, branch }),
+    log: (root: string, n?: number): Promise<GitLogEntry[]> => ipcRenderer.invoke('git:log', { root, n }),
+    push: (root: string): Promise<{ ok: boolean; text: string; error?: string }> => ipcRenderer.invoke('git:push', { root }),
+    pull: (root: string): Promise<{ ok: boolean; text: string; error?: string }> => ipcRenderer.invoke('git:pull', { root }),
+    fetch: (root: string): Promise<{ ok: boolean; text: string; error?: string }> => ipcRenderer.invoke('git:fetch', { root }),
+    remoteAdd: (root: string, name: string, url: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke('git:remoteAdd', { root, name, url }),
+    branchCreate: (root: string, name: string, checkout = true): Promise<GitOpResult> =>
+      ipcRenderer.invoke('git:branchCreate', { root, name, checkout }),
+    branchCheckout: (root: string, name: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke('git:branchCheckout', { root, name }),
+    branchDelete: (root: string, name: string, force = false): Promise<GitOpResult> =>
+      ipcRenderer.invoke('git:branchDelete', { root, name, force }),
+    branchMerge: (root: string, name: string): Promise<{ ok: boolean; text: string; error?: string }> =>
+      ipcRenderer.invoke('git:branchMerge', { root, name })
+  },
+
   // 硬件目标（板卡注册表：ESP32 / STM32）
   target: {
     list: (opts?: { family?: 'esp32' | 'stm32' }): Promise<BoardTargetInfo[]> =>
@@ -771,6 +800,60 @@ export interface SelfCheckReport {
   boards: SelfCheckBoard[]
   summary: string
   advice: string[]
+}
+
+export interface GitOpResult {
+  ok: boolean
+  error?: string
+  skipped?: string[]
+}
+
+export interface GitFileChange {
+  path: string
+  originalPath?: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied'
+  staged: boolean
+  unstaged: boolean
+}
+
+export interface GitStatusInfo {
+  isRepo: boolean
+  branch: string
+  upstream: string | null
+  ahead: number
+  behind: number
+  staged: GitFileChange[]
+  unstaged: GitFileChange[]
+  untracked: GitFileChange[]
+  /** git 可执行文件没找到（与「不是仓库」不同，UI 要分开提示） */
+  unavailable?: boolean
+  gitPath?: string | null
+}
+
+export interface GitBranchInfo {
+  name: string
+  current: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  lastCommit: string
+  lastTime: string
+  lastSubject: string
+}
+
+export interface GitBranchView {
+  current: string
+  detached: boolean
+  branches: GitBranchInfo[]
+  remotes: Array<{ name: string; url: string; fetchUrl: string }>
+}
+
+export interface GitLogEntry {
+  sha: string
+  short: string
+  author: string
+  date: string
+  subject: string
 }
 
 export type Api = typeof api

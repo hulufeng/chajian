@@ -3868,3 +3868,179 @@ body.ai-resizing {
   color: var(--text-dim);
   line-height: 1.6;
 }
+
+/* ============ 底部统一面板组（PanelDock） ============ */
+.dock {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 120px;
+  position: relative;
+}
+.dock-resize {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 3;
+}
+.dock-resize:hover { background: var(--accent); opacity: 0.4; }
+.dock-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px 0;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.dock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
+  cursor: pointer;
+  user-select: none;
+}
+.dock-tab:hover { color: var(--text); background: var(--panel-2); }
+.dock-tab.on {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+.dock-badge {
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+.dock-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: var(--border-radius-md);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 7px;
+}
+.dock-btn:hover { color: var(--text); }
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.dock-slot {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.dock-slot > * { flex: 1; min-height: 0; }
+
+/* ============ Git 面板 ============ */
+.gitp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+}
+.gitp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.gitp-title { font-size: 13px; font-weight: 500; }
+.gitp-sub { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gitp-ahead { color: var(--accent-2); }
+.gitp-behind { color: #ef9f27; }
+.gitp-tabs { display: flex; gap: 4px; padding: 5px 10px 0; border-bottom: 1px solid var(--border); flex: none; }
+.gitp-tab {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
+  cursor: pointer;
+}
+.gitp-tab.on { color: var(--text); background: var(--panel-2); border-color: var(--border); }
+.gitp-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 9px; }
+.gitp-commit { display: flex; flex-direction: column; gap: 6px; }
+.gitp-text {
+  min-height: 46px;
+  padding: 6px 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  resize: vertical;
+  user-select: text;
+}
+.gitp-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gitp-sec { display: flex; flex-direction: column; gap: 2px; }
+.gitp-sec-title { font-size: 11px; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 2px; }
+.gitp-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+}
+.gitp-file:hover { background: var(--panel-2); }
+.gitp-file.on { background: var(--panel-2); }
+.gitp-mark { width: 14px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--text-dim); flex: none; }
+.gitp-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gitp-path:hover { text-decoration: underline; }
+.gitp-dim { color: var(--text-dim); font-size: 11px; }
+.gitp-ops { display: flex; gap: 4px; flex: none; }
+.gitp-mini {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.gitp-mini:hover { color: var(--text); border-color: var(--accent); }
+.gitp-mini.danger:hover { color: #e24b4a; border-color: #e24b4a; }
+.gitp-err {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #e24b4a;
+  border-bottom: 1px solid var(--border);
+}
+.gitp-msg {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--accent-2);
+  border-bottom: 1px solid var(--border);
+}
+.gitp-empty { padding: 18px 14px; display: flex; flex-direction: column; gap: 8px; }
+.gitp-hint { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+.mono { font-family: var(--mono); }
