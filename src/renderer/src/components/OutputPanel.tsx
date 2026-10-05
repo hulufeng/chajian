@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import TerminalView, { type TerminalHandle } from './TerminalView'
 import SerialPlotter from './SerialPlotter'
 import type { Ref } from 'react'
@@ -28,6 +28,64 @@ interface Props {
   buildError?: string | null
   onDiagnose?: () => void
   onDebugFix?: () => void
+}
+
+/**
+ * 渲染层用的行分类（与主进程 build-diagnostics 的 classifyOutputLine 规则一致）。
+ * 为什么要着色：编译器把错误、警告、提示、上下文行全打进同一个纯文本框，
+ * 用户看到一堆 `In file included from ...` 会以为编译失败（其实只是提示）。
+ */
+export function lineKind(line: string): 'error' | 'warning' | 'note' | 'context' | 'success' | 'plain' {
+  const s = (line || '').trim()
+  if (!s) return 'plain'
+  if (/:\s*(fatal error|error)\s*:/i.test(s) || /^error(\s|:)/i.test(s) || /^Error during build/i.test(s)) return 'error'
+  if (/:\s*warning\s*:/i.test(s) || /^warning(\s|:)/i.test(s)) return 'warning'
+  if (/^In file included from\b/i.test(s)) return 'context'
+  if (/:\s*note\s*:/i.test(s) || /#pragma\s+message/i.test(s) || /^note\s*:/i.test(s)) return 'note'
+  if (/^(✓|✔|Success|成功)/i.test(s)) return 'success'
+  return 'plain'
+}
+
+/** 已知无害的平台提示（用户常来问「这是不是错误」） */
+const KNOWN_NOTE_RES: Array<{ re: RegExp; label: string }> = [
+  { re: /BT: forcing BR\/EDR max sync conn eff to 1/i, label: 'ESP32 经典蓝牙栈提示' },
+  { re: /#pragma message\(".*Skipping.*"\)/i, label: 'ESP32 平台提示' },
+  { re: /this use of \w+ is deprecated/i, label: 'API 弃用提示（仍可编译）' }
+]
+
+/** 逐行着色的编译输出 */
+function OutputLogView({ text }: { text: string }): React.JSX.Element {
+  const lines = text.split('\n')
+  return (
+    <>
+      {lines.map((line, i) => {
+        const kind = lineKind(line)
+        const known = kind === 'note' ? KNOWN_NOTE_RES.find((k) => k.re.test(line)) : undefined
+        return (
+          <div
+            key={i}
+            className={`olog ${kind}${known ? ' olog-known' : ''}`}
+            title={known ? `${known.label}：不影响编译结果` : undefined}
+          >
+            {known && <span className="olog-tag">{known.label}</span>}
+            {line || ' '}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+/** 输出底部计数条：一眼看出「有没有真错误」 */
+function OutputLegend({ counts }: { counts: { error: number; warning: number; note: number } }): React.JSX.Element | null {
+  if (counts.error === 0 && counts.warning === 0 && counts.note === 0) return null
+  return (
+    <div className="olog-legend">
+      {counts.error > 0 && <span className="olog-chip err">{counts.error} 错误</span>}
+      {counts.warning > 0 && <span className="olog-chip warn">{counts.warning} 警告</span>}
+      {counts.note > 0 && <span className="olog-chip note" title="提示级输出（note / #pragma message），不影响编译成功">ⓘ {counts.note} 平台提示（不影响编译）</span>}
+    </div>
+  )
 }
 
 function OutputPanel({
@@ -70,6 +128,20 @@ function OutputPanel({
     .filter((l) => /error|错误|undefined reference|fatal/i.test(l))
     .slice(0, 50)
 
+  // 输出计数（用于底部计数条）：错误 / 警告 / 平台提示
+  const outputCounts = useMemo(() => {
+    let error = 0
+    let warning = 0
+    let note = 0
+    for (const l of outputLog.split('\n')) {
+      const k = lineKind(l)
+      if (k === 'error') error++
+      else if (k === 'warning') warning++
+      else if (k === 'note' || k === 'context') note++
+    }
+    return { error, warning, note }
+  }, [outputLog])
+
   return (
     <section className="output-panel">
       <div className="output-tabs">
@@ -108,7 +180,10 @@ function OutputPanel({
         {tab === '输出' && (
           <div className="mono-log" ref={outputRef}>
             {outputLog ? (
-              outputLog
+              <>
+                <OutputLogView text={outputLog} />
+                <OutputLegend counts={outputCounts} />
+              </>
             ) : (
               <span className="dim">尚未执行编译/命令，输出将显示在这里。</span>
             )}

@@ -4070,3 +4070,44 @@ body.ai-resizing {
 }
 .statusbar .sb-item.warn { color: #ef9f27; }
 .statusbar .mono { font-family: var(--mono); font-size: 11px; }
+
+/* ============ 编译输出逐行着色（区分 错误/警告/平台提示/上下文） ============ */
+.olog {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.olog-error { color: #e24b4a; }
+.olog-warning { color: #ef9f27; }
+.olog-note { color: var(--text-dim); }
+.olog-context { color: var(--text-dim); opacity: 0.75; }
+.olog-success { color: var(--accent-2); }
+.olog-known { color: var(--text-dim); }
+.olog-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+  vertical-align: 1px;
+}
+.olog-legend {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 5px 0 1px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.olog-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.olog-chip.err { color: #e24b4a; border-color: #e24b4a; }
+.olog-chip.warn { color: #ef9f27; border-color: #ef9f27; }

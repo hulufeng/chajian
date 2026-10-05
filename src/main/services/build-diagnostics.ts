@@ -41,10 +41,52 @@ export interface BuildReport {
   warningCount: number
   errors: BuildDiagnostic[]
   warnings: BuildDiagnostic[]
+  /** 编译器的提示级输出（note / #pragma message / 上下文行）——不是错误，但会让人误判 */
+  noteCount: number
+  /** 已知无害的平台提示（命中已知库），UI 可折叠 */
+  knownNotes: BuildNote[]
   /** 去重后的可执行修复动作（如 arduino-cli lib install "xxx"） */
   suggestions: string[]
   summary: string
 }
+
+export interface BuildNote {
+  file?: string
+  line?: number
+  text: string
+  /** 命中已知提示库 → UI 标「已知平台提示，可忽略」 */
+  known: boolean
+  label?: string
+}
+
+/** 单行输出分类：给 UI 着色用。error 才是真正需要处理的问题。 */
+export type OutputLineKind = 'error' | 'warning' | 'note' | 'context' | 'success' | 'plain'
+
+/**
+ * 给原始输出行分类，供输出窗口逐行着色。
+ * 为什么需要：编译器把「错误」「警告」「提示」「上下文」全打在同一个纯文本框里，
+ * 用户看到一堆 `In file included from ...` 会以为编译失败（实际只是提示）。
+ */
+export function classifyOutputLine(raw: string): OutputLineKind {
+  const s = (raw || '').trim()
+  if (!s) return 'plain'
+  if (/:\s*(fatal error|error)\s*:/i.test(s) || /^error(\s|:)/i.test(s) || /^Error during build/i.test(s)) {
+    return 'error'
+  }
+  if (/:\s*warning\s*:/i.test(s) || /^warning(\s|:)/i.test(s)) return 'warning'
+  if (/^In file included from\b/i.test(s) || /^\s*(from|.*\d+\s*\|)/.test(s) && /\^/.test(s)) return 'context'
+  if (/:\s*note\s*:/i.test(s) || /#pragma\s+message/i.test(s) || /^note\s*:/i.test(s)) return 'note'
+  if (/^(✓|✔|Success|成功)/i.test(s)) return 'success'
+  return 'plain'
+}
+
+/** 已知无害的平台提示（用户常来问「这是不是错误」） */
+const KNOWN_NOTES: Array<{ re: RegExp; label: string }> = [
+  { re: /BT: forcing BR\/EDR max sync conn eff to 1/i, label: 'ESP32 经典蓝牙栈提示' },
+  { re: /#pragma message\(".*Skipping.*"\)/i, label: 'ESP32 平台提示' },
+  { re: /this use of \w+ is deprecated/i, label: 'API 弃用提示（仍可编译）' },
+  { re: /multiple definition of .*select\(\)/i, label: '新 IDF 头文件与旧宏重复（无害）' }
+]
 
 const CATEGORY_LABEL: Record<DiagnosticCategory, string> = {
   missing_include: '缺少头文件',
@@ -213,6 +255,8 @@ const RULES: Rule[] = [
 // 单行匹配：`file:line:col: error: msg` / `file:line: error: msg`
 // 兼容 Windows 绝对路径（C:\xxx\main.ino:5:10: error: …）
 const LOC_RE = /^(.*?):(\d+):(?:\s*(\d+):)?\s*(fatal error|error|warning):\s*(.+)$/
+// 宽松版：连 note / info 行一起匹配（只用于给提示定位，不参与 error/warning 判定）
+const LOC_ANY_RE = /^(.*?):(\d+):(?:\s*(\d+):)?\s*(fatal error|error|warning|note|info):\s*(.+)$/i
 
 function classifyLine(raw: string): { file?: string; line?: number; column?: number; severity: 'error' | 'warning' | null; body: string } {
   const m = raw.match(LOC_RE)
@@ -254,6 +298,7 @@ const NOISE_RE = /^(Error:\s*exit status|exit status \d+|compilation terminated\
 export function parseBuildOutput(text: string): BuildReport {
   const errors: BuildDiagnostic[] = []
   const warnings: BuildDiagnostic[] = []
+  const notes: BuildNote[] = []
   const lines = (text || '').split(/\r?\n/)
 
   for (const raw0 of lines) {
@@ -307,6 +352,22 @@ export function parseBuildOutput(text: string): BuildReport {
         hint: hit.hint,
         raw
       })
+      continue
+    }
+
+    // 到这里说明这行不是错误。提示级输出（note / #pragma message / 编译上下文）
+    // 单独收集：它们不会阻断编译，但混在纯文本输出里最容易被误判成「编译失败」。
+    const kind = classifyOutputLine(raw)
+    if (kind === 'note' || kind === 'context') {
+      const known = KNOWN_NOTES.find((k) => k.re.test(raw))
+      const m2 = raw.match(LOC_ANY_RE)
+      notes.push({
+        file: m2?.[1]?.trim(),
+        line: m2?.[2] ? Number(m2[2]) : undefined,
+        text: raw.length > 240 ? raw.slice(0, 240) + '…' : raw,
+        known: !!known,
+        label: known?.label
+      })
     }
   }
 
@@ -345,7 +406,9 @@ export function parseBuildOutput(text: string): BuildReport {
 
   const summary = errs.length === 0
     ? warns.length === 0
-      ? '无错误与警告'
+      ? notes.length
+        ? `无错误与警告（${notes.length} 条平台提示可忽略）`
+        : '无错误与警告'
       : `无错误，${warns.length} 条警告`
     : `${errs.length} 条错误${warns.length ? `，${warns.length} 条警告` : ''}`
 
@@ -355,6 +418,8 @@ export function parseBuildOutput(text: string): BuildReport {
     warningCount: warns.length,
     errors: errs,
     warnings: warns,
+    noteCount: notes.length,
+    knownNotes: notes.filter((n) => n.known),
     suggestions,
     summary
   }
