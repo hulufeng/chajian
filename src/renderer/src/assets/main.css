@@ -4214,6 +4214,33 @@ body.ai-resizing {
 }
 .bprog-ok { color: var(--accent-2); font-size: 12px; }
 .bprog-fail { color: var(--danger); font-size: 12px; }
+/* 写入百分比：只有 esptool 真的给了数字才渲染（编译阶段不画，避免编造进度） */
+.bprog-pct { display: inline-flex; align-items: center; gap: 6px; }
+.bprog-pct-bar {
+  width: 120px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ink-1);
+  display: inline-block;
+  overflow: hidden;
+  flex: none;
+}
+[data-theme='dark'] .bprog-pct-bar { background: var(--white-1); }
+.bprog-pct-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bprog-pct-fill { transition: none; }
+}
+.bprog-pct-num {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 34px;
+  text-align: right;
+}
 /* 失败态：状态文字与阶段说明一起转危险色，别让红字配灰字（读起来像"只是提示"） */
 .bprog.is-failed .bprog-state,
 .bprog.is-failed .bprog-stage-label { color: var(--danger); }

@@ -16,6 +16,11 @@ interface Props {
   visible: boolean
   /** 本次编译/烧录是失败收尾（失败时不能还打 ✓ 显示"完成"） */
   failed?: boolean
+  /**
+   * 真实写入百分比（0-100），只来自 esptool 自己打印的 Writing at ... (nn %)。
+   * 编译场景工具不给百分比，传 null，这里就不画进度条——不编数字。
+   */
+  progressPercent?: number | null
 }
 
 const ORDER: BuildStageInfo['stage'][] = ['prepare', 'sketch', 'libs', 'link', 'image', 'done']
@@ -55,7 +60,8 @@ export default function BuildProgress({
   onCancel,
   usage,
   visible,
-  failed = false
+  failed = false,
+  progressPercent = null
 }: Props): React.JSX.Element | null {
   if (!visible) return null
 
@@ -63,6 +69,13 @@ export default function BuildProgress({
   const activeIdx = ORDER.indexOf(stage.stage)
   // 失败时不展示 Flash/RAM 用量：没链接成功就没有用量，显示 0 B 只会误导
   const showUsage = !active && !failed && !!usage
+  const showPercent =
+    !!isFlashing &&
+    active &&
+    !failed &&
+    typeof progressPercent === 'number' &&
+    Number.isFinite(progressPercent) &&
+    progressPercent > 0
 
   return (
     <div className={failed ? 'bprog is-failed' : active ? 'bprog is-active' : 'bprog is-done'}>
@@ -98,6 +111,15 @@ export default function BuildProgress({
                 {i < ORDER.length - 1 && <span className={'bprog-link' + (i < activeIdx ? ' done' : '')} />}
               </span>
             ))}
+          </span>
+        )}
+
+        {showPercent && (
+          <span className="bprog-pct" title="esptool 打印的写入百分比">
+            <span className="bprog-pct-bar">
+              <span className="bprog-pct-fill" style={{ width: `${Math.round(progressPercent * 10) / 10}%` }} />
+            </span>
+            <span className="bprog-pct-num mono">{Math.round(progressPercent)}%</span>
           </span>
         )}
 

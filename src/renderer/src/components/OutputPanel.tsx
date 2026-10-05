@@ -36,6 +36,8 @@ interface Props {
   buildElapsedMs?: number
   buildCancellable?: boolean
   buildFailed?: boolean
+  /** 真实写入百分比（esptool 给的数字才有值） */
+  buildProgressPercent?: number | null
   onCancelBuild?: () => void
   buildUsage?: { flashBytes: number; flashPercent: number; ramBytes: number; ramPercent: number; rawFlash: string; rawRam: string } | null
 }
@@ -124,6 +126,7 @@ function OutputPanel({
   buildElapsedMs = 0,
   buildCancellable = false,
   buildFailed = false,
+  buildProgressPercent = null,
   onCancelBuild = () => undefined,
   buildUsage = null
 }: Props): React.JSX.Element {
@@ -131,6 +134,18 @@ function OutputPanel({
   const [serialView, setSerialView] = useState<'文本' | '波形'>('文本')
   const outputRef = useRef<HTMLDivElement>(null)
   const serialRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * 编译/烧录一开跑就把页签拽到「输出」。
+   * 本来这里的默认页签是「串口监视器」，输出其实在另一个页签里，
+   * 于是点烧录后界面确实动了，但动的那一页没有过程——这是"看不到烧录过程"的主因。
+   * 只在任务**刚刚开始**时拽一次（false→true 的那一帧），之后用户想回去看串口不会被抢。
+   */
+  const wasBuildActiveRef = useRef(false)
+  useEffect(() => {
+    if (buildActive && !wasBuildActiveRef.current) setTab('输出')
+    wasBuildActiveRef.current = !!buildActive
+  }, [buildActive])
 
   // 输出自动滚动到底部
   useEffect(() => {
@@ -204,6 +219,7 @@ function OutputPanel({
               elapsedMs={buildElapsedMs}
               cancellable={buildCancellable}
               failed={buildFailed}
+              progressPercent={buildProgressPercent}
               onCancel={onCancelBuild}
               usage={buildUsage}
             />

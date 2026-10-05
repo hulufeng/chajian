@@ -83,6 +83,72 @@ export const STAGE_LABEL: Record<BuildStage, string> = {
 /** 阶段推进顺序（用于阶段条渲染；flashing 之后不再顺序推进） */
 export const STAGE_ORDER: BuildStage[] = ['prepare', 'sketch', 'libs', 'link', 'image', 'done']
 
+// ============================================================
+//  烧录阶段进度（让「写入过程」可见）
+// ============================================================
+
+export interface FlashProgress {
+  /** 短阶段名：连接 / 擦除 / 写入 / 校验 / 复位 */
+  stage: 'connect' | 'erase' | 'write' | 'verify' | 'reset' | 'done'
+  /** 给用户看的阶段文案（含端口等上下文） */
+  label: string
+  /**
+   * esptool 自己打印的写入百分比（0-100）。
+   * 与编译阶段不同：烧录这里 **工具真的给了数字**（Writing at 0x... (62 %)），
+   * 直接用它，既不编造也不假装没有。没给就是 null。
+   */
+  percent: number | null
+}
+
+const FLASH_STAGE_TEXT: Record<FlashProgress['stage'], string> = {
+  connect: '连接芯片',
+  erase: '擦除 Flash',
+  write: '写入固件',
+  verify: '校验',
+  reset: '复位运行',
+  done: '烧录完成'
+}
+
+/**
+ * 从 esptool 流式输出里解析出「正在干什么 + 写到百分之几」。
+ *
+ * 只对 esptool 的真实输出做匹配（Connecting… / Chip erase / Writing at 0x.. (nn %) /
+ * Hash of data verified / Hard resetting via RTS pin），命中不到就返回 null，
+ * 由调用方保持上一帧的阶段，不做猜测推进。
+ */
+export function parseFlashProgress(text: string, port?: string): FlashProgress | null {
+  const t = text || ''
+  if (!t.trim()) return null
+  const tail = port ? ` · ${port}` : ''
+
+  // 百分比：Writing at 0x0000e000... (62 %)
+  const writeMatch = t.match(/Writing at\s+0x[0-9a-f]+[^\n]*?\((\d+)\s*%\)/i)
+  if (writeMatch) {
+    const percent = Math.max(0, Math.min(100, Number(writeMatch[1])))
+    return {
+      stage: 'write',
+      label: `${FLASH_STAGE_TEXT.write} ${percent}%${tail}`,
+      percent
+    }
+  }
+  if (/Wrote\s+\d+\s+bytes/i.test(t)) {
+    return { stage: 'write', label: `${FLASH_STAGE_TEXT.write} 100%${tail}`, percent: 100 }
+  }
+  if (/connecting|Connecting\.\.\.|esptool\.py|Serial port/i.test(t) && !/Hard resetting/i.test(t)) {
+    return { stage: 'connect', label: `${FLASH_STAGE_TEXT.connect}${tail}`, percent: null }
+  }
+  if (/Chip erase|Erasing flash|erase/i.test(t)) {
+    return { stage: 'erase', label: `${FLASH_STAGE_TEXT.erase}${tail}`, percent: null }
+  }
+  if (/Hash of data verified|Verifying/i.test(t)) {
+    return { stage: 'verify', label: `${FLASH_STAGE_TEXT.verify}${tail}`, percent: null }
+  }
+  if (/Hard resetting via RTS pin|Leaving\.\.\.|Staying in bootloader/i.test(t)) {
+    return { stage: 'reset', label: `${FLASH_STAGE_TEXT.reset}${tail}`, percent: null }
+  }
+  return null
+}
+
 /**
  * 从输出文本推断当前阶段（取最后命中的那一条）。
  * 只认 arduino-cli / esptool 的真实输出，不做猜测式推进。

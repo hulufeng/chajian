@@ -610,6 +610,10 @@ function App(): React.JSX.Element {
       if (d.id.startsWith('grpc-compile-') || d.id.startsWith('grpc-upload-')) {
         setCompileProgress({ percent: d.percent, message: d.message })
       }
+      // 烧录写入进度：主进程解析的是 esptool 真输出，直接铺到过程条上给用户看
+      if (d.id.startsWith('grpc-upload-') && d.message) {
+        setBuildStage({ stage: 'flashing', label: d.message })
+      }
     })
     const offSerial = window.api.onSerialData((d) => setSerialLog((prev) => prev + d.data))
     const offClose = window.api.onSerialClose((d) => {
@@ -1269,6 +1273,7 @@ function App(): React.JSX.Element {
                     buildElapsedMs={buildElapsedMs}
                     buildCancellable={!!activeTaskId}
                     buildFailed={compileState === 'error'}
+                    buildProgressPercent={compileProgress?.percent ?? null}
                     onCancelBuild={cancelBuild}
                     buildUsage={buildUsage}
                     onDiagnose={diagnoseBuildError}
