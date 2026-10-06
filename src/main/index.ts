@@ -78,6 +78,7 @@ import {
   listTargets,
   findTarget,
   targetsForUsbId,
+  targetForFqbn,
   buildPlatformioIni
 } from './services/boardRegistry'
 import { runSelfCheck } from './services/hardwareSelfCheck'
@@ -1188,6 +1189,30 @@ ipcMain.handle('pin:check', (_e, opts: { projectRoot?: string; fqbn?: string }) 
   const report = checkPinConflicts(root, { fqbn: opts.fqbn })
   // 带上可读文本，便于 UI 直接展示 / Agent 直接吃
   return { ...report, text: formatPinReport(report) }
+})
+
+// ---------- 保存即预检（层1 即时静态校验）----------
+// 纯分析、零 spawn：板卡合法性（boardRegistry 反查 FQBN）+ 引脚冲突（pinConflict 纯函数）。
+// 与手动「引脚检查」的区别：支持 overlay（编辑器实时内容，未必落盘），给「停输 1s / 保存即预检」用。
+ipcMain.handle('sketch:precheck', (_e, opts: { projectRoot?: string; fqbn?: string; overlay?: Record<string, string> }) => {
+  const root = String(opts.projectRoot || lastProjectRoot || '')
+  const fqbn = String(opts.fqbn || '')
+  const boardValid = !!targetForFqbn(fqbn)
+  if (!root || !existsSync(root)) {
+    return { ok: false, boardValid, chip: '', issues: [], summary: '未打开项目，无法预检。', text: '未打开项目，无法预检。' }
+  }
+  if (!fqbn) {
+    return { ok: false, boardValid, chip: '', issues: [], summary: '未选择开发板，无法预检。', text: '未选择开发板，无法预检。' }
+  }
+  const report = checkPinConflicts(root, { fqbn, overlay: opts.overlay })
+  return {
+    ok: boardValid && report.issues.filter((i) => i.level === 'error').length === 0,
+    boardValid,
+    chip: report.chip,
+    issues: report.issues,
+    summary: report.summary,
+    text: formatPinReport(report)
+  }
 })
 
 // ---------- 模板 / 示例库 ----------

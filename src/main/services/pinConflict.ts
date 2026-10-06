@@ -112,7 +112,7 @@ export function detectChipModel(fqbn?: string): ChipModel {
 }
 
 // ── 源码扫描 ────────────────────────────────────────────────
-interface ParsedFile {
+export interface ParsedFile {
   rel: string
   lines: string[]
 }
@@ -293,10 +293,33 @@ const FN_PATTERNS: FnRule[] = FN_RULE_DEFS.map((r) => ({
 }))
 
 // ── 主检查 ──────────────────────────────────────────────────
-export function checkPinConflicts(root: string, opts: { fqbn?: string } = {}): PinReport {
+/**
+ * 引脚冲突检测（差异点见文件头）。
+ *
+ * `overlay` 是「保存即预检」专用的覆盖层：渲染层把当前编辑器里**未必落盘**的最新内容
+ * 传进来（key 是绝对路径），这里用内存内容覆盖同名磁盘文件、并补进尚未落盘的新文件，
+ * 其余磁盘文件仍照常扫描。这样「停输 1s 预检」看到的是用户真正在改的代码，
+ * 而不是上一份已保存的快照 —— 否则预检会给出误导性的「通过」。
+ * 未打开的磁盘文件（项目里但没在标签页里）继续来自磁盘，不会漏掉它们。
+ */
+export function checkPinConflicts(
+  root: string,
+  opts: { fqbn?: string; overlay?: Record<string, string> } = {}
+): PinReport {
   const chip = detectChipModel(opts.fqbn)
   const model = CHIP_MODELS[chip]
-  const files = walkSources(root)
+  let files = walkSources(root)
+  if (opts.overlay && Object.keys(opts.overlay).length > 0) {
+    const byRel = new Map<string, ParsedFile>()
+    for (const f of files) byRel.set(f.rel, f)
+    for (const [abs, content] of Object.entries(opts.overlay)) {
+      // 只把项目内的文件纳入覆盖层；跑到项目外的绝对路径一律忽略（避免误把无关文件当源码）
+      const rel = path.relative(root, abs).replace(/\\/g, '/')
+      if (rel.startsWith('..')) continue
+      byRel.set(rel, { rel, lines: content.split(/\r?\n/) })
+    }
+    files = [...byRel.values()]
+  }
   // 扫之前先剥注释：注释里的引脚调用不能当真代码（详见 stripComments 的说明）
   const sources = files.map((f) => ({ ...f, lines: stripComments(f.lines) }))
   const macros = collectMacros(sources)

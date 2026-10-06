@@ -63,6 +63,18 @@ export interface PinReportLike {
   summary: string
 }
 
+/** 保存即预检（层1 即时静态校验）的结果快照：App 侧状态 + 主进程分析结果。 */
+export interface PrecheckSnapshot {
+  /** 预检 UI 状态：idle=未跑 / pending=跑中 / ok=通过 / conflict=有冲突或板卡无效 */
+  status: 'idle' | 'pending' | 'ok' | 'conflict'
+  /** 当前 FQBN 是否在板卡注册表里（无效板不参与引脚校验，但 UI 要单独提示） */
+  boardValid: boolean
+  issues: Array<{ level: string; pin: number; title: string; detail: string; refs?: Array<{ file: string; line: number; api: string }> }>
+  summary: string
+  /** 可读报告全文（点击状态栏圆点 / 输出面板查看用） */
+  text: string
+}
+
 export interface SvdChipEntry {
   chip: string
   bytes: number
@@ -543,6 +555,18 @@ const api = {
   pin: {
     check: (opts?: { projectRoot?: string; fqbn?: string }): Promise<PinReportLike & { text: string }> =>
       ipcRenderer.invoke('pin:check', opts)
+  },
+
+  // 保存即预检（层1 即时静态校验：板卡合法性 + 引脚冲突，纯前端触发、主进程纯分析无 spawn）
+  sketch: {
+    precheck: (opts: { projectRoot?: string; fqbn?: string; overlay?: Record<string, string> }): Promise<{
+      ok: boolean
+      boardValid: boolean
+      chip: string
+      issues: PrecheckSnapshot['issues']
+      summary: string
+      text: string
+    }> => ipcRenderer.invoke('sketch:precheck', opts)
   },
 
   // 模板 / 示例库

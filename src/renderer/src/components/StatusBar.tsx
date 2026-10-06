@@ -1,4 +1,4 @@
-import type { ToolchainStatus } from '../../../preload'
+import type { ToolchainStatus, PrecheckSnapshot } from '../../../preload'
 
 interface Props {
   toolchain: ToolchainStatus | null
@@ -27,14 +27,23 @@ interface Props {
     engineHint?: 'running' | 'idle' | 'not-installed' | 'no-models'
     localModelCount?: number
   } | null
+  /** 保存即预检（层1 即时静态校验）的快照；未跑过则为 undefined */
+  precheck?: PrecheckSnapshot
+  /** 点击预检圆点：展开完整报告（App 负责打进输出面板） */
+  onPrecheckClick?: () => void
 }
 
-type Dot = { color: string; text: string; title: string }
+type Dot = { color: string; text: string; title: string; onClick?: () => void }
 
 function dot(d: Dot | null): React.JSX.Element | null {
   if (!d) return null
   return (
-    <span className="sb-item" title={d.title}>
+    <span
+      className="sb-item"
+      title={d.title}
+      onClick={d.onClick}
+      style={d.onClick ? { cursor: 'pointer' } : undefined}
+    >
       <span className="sb-dot" style={{ background: d.color }} />
       {d.text}
     </span>
@@ -57,9 +66,51 @@ function StatusBar({
   debugStatus,
   gitChanges,
   targetLabel,
-  aiHealth
+  aiHealth,
+  precheck,
+  onPrecheckClick
 }: Props): React.JSX.Element {
   const ready = toolchain?.available ? '1/1 后端就绪' : '0/1 后端就绪'
+
+  // 保存即预检圆点：把「板卡合法 + 引脚冲突」这件事直接晒在状态栏，不必等编译才报错。
+  // 错误级冲突=红、仅有警告=黄、通过=绿；板卡无效单独提示（不参与引脚校验）。
+  const precheckDot: Dot | null = !precheck || precheck.status === 'idle'
+    ? null
+    : precheck.status === 'pending'
+      ? { color: 'var(--accent)', text: '预检中', title: '正在静态校验引脚冲突…', onClick: onPrecheckClick }
+      : !precheck.boardValid
+        ? {
+            color: 'var(--warning)',
+            text: '未选有效板',
+            title: '当前开发板不在硬件目标注册表中，无法校验引脚冲突。请到硬件目标面板选一个已收录的板。',
+            onClick: onPrecheckClick
+          }
+        : (() => {
+            const errs = precheck.issues.filter((i) => i.level === 'error').length
+            const warns = precheck.issues.filter((i) => i.level === 'warning').length
+            if (errs > 0) {
+              return {
+                color: 'var(--danger)',
+                text: `引脚冲突×${errs}`,
+                title: `检测到 ${errs} 处引脚冲突（错误级）。点击查看详情。`,
+                onClick: onPrecheckClick
+              }
+            }
+            if (warns > 0) {
+              return {
+                color: 'var(--warning)',
+                text: `引脚警告×${warns}`,
+                title: `检测到 ${warns} 处引脚警告。点击查看详情。`,
+                onClick: onPrecheckClick
+              }
+            }
+            return {
+              color: 'var(--success)',
+              text: '预检通过',
+              title: `板卡合法，未发现引脚冲突。`,
+              onClick: onPrecheckClick
+            }
+          })()
 
   const serial: Dot | null = serialOpen
     ? { color: 'var(--success)', text: `串口 ${port || '已打开'}`, title: `串口已打开 ${port} @ ${baud}` }
@@ -109,6 +160,7 @@ function StatusBar({
 
       {running ? dot(running) : null}
       {ai ? dot(ai) : null}
+      {precheckDot ? dot(precheckDot) : null}
       {serial ? dot(serial) : null}
       {debug ? dot(debug) : null}
       {gitChanges !== undefined && (

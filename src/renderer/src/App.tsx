@@ -13,7 +13,7 @@ import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
 import AgentBoard from './components/AgentBoard'
 import ErrorBoundary from './components/ErrorBoundary'
-import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage } from '../../preload'
+import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage, PrecheckSnapshot } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
 import CommandPalette from './components/CommandPalette'
@@ -406,6 +406,14 @@ function App(): React.JSX.Element {
   const [debugStatus, setDebugStatus] = useState<'idle' | 'starting' | 'running' | 'error'>('idle')
   const [aiHealth, setAiHealth] = useState<ChannelHealth | null>(null)
   const [targetLabel, setTargetLabel] = useState('')
+  /**
+   * 保存即预检（层1 即时静态校验）的 UI 状态。
+   * 故意与 compileState 完全解耦：预检发现引脚冲突 / 板卡无效，绝不污染编译结果卡，
+   * 否则「预检报了冲突、但编译其实是上一次的 success」会自相矛盾。
+   */
+  const [precheck, setPrecheck] = useState<PrecheckSnapshot>({ status: 'idle', boardValid: true, issues: [], summary: '', text: '' })
+  /** 预检防抖的引用持有（onChange 早于 schedulePrecheck 定义，用 ref 破除 TDZ） */
+  const schedulePrecheckRef = useRef<() => void>(() => {})
 
   // 调试状态变化时更新状态栏（面板也会自己收，这里只取一份给状态栏用）
   useEffect(() => {
@@ -809,6 +817,8 @@ function App(): React.JSX.Element {
   // 编辑器变更
   const onChange = useCallback((id: string, content: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, content, dirty: true } : t)))
+    // 停输 1s 防抖预check：用户改完代码静默 1s 后自动扫引脚冲突，不用手动点
+    schedulePrecheckRef.current()
   }, [])
 
   /**
@@ -821,6 +831,8 @@ function App(): React.JSX.Element {
       await window.api.fs.write(tab.id, tab.content)
       setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, dirty: false } : t)))
       pushOut((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
+      // 保存即预检：落盘后立刻用最新内容扫引脚冲突（保存是「检什么」的明确锚点）
+      void runPrecheckRef.current()
       return true
     } catch (e) {
       pushOut((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
@@ -870,6 +882,71 @@ function App(): React.JSX.Element {
   /** 关窗前的最新 tabs（用 ref 存，避免每次击键都重新注册监听器） */
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+
+  /**
+   * 保存即预检（层1 即时静态校验）。
+   * 触发来源有三：① 打开/切换项目（projectRoot 变化）② 选/换开发板（fqbn 变化）③ 停输 1s 防抖 / Ctrl+S。
+   * 纯前端触发、主进程纯分析零 spawn；与 compileState 解耦，结果不污染编译卡。
+   * 护栏：未打开项目 / 未选板卡 / 编译烧录进行中都不跑（避免抢资源、也避免对着临时工程误报）。
+   */
+  const runPrecheck = useCallback(async (): Promise<void> => {
+    const root = projectRoot
+    const fb = fqbn
+    if (!root || !fb || busy) return
+    // 只把「项目内、且当前打开」的源码文件作为覆盖层（未必落盘），其余走磁盘扫描
+    const overlay: Record<string, string> = {}
+    for (const t of tabsRef.current) {
+      if (!isAbsPath(t.id)) continue
+      if (!t.id.startsWith(root)) continue
+      if (!/\.(ino|cpp|cc|c|h|hpp)$/i.test(t.id)) continue
+      overlay[t.id] = t.content
+    }
+    setPrecheck((p) => ({ ...p, status: 'pending' }))
+    try {
+      const r = await window.api.sketch.precheck({ projectRoot: root, fqbn: fb, overlay })
+      const errs = r.issues.filter((i) => i.level === 'error').length
+      const warns = r.issues.filter((i) => i.level === 'warning').length
+      setPrecheck({
+        status: !r.boardValid ? 'conflict' : errs > 0 ? 'conflict' : warns > 0 ? 'conflict' : 'ok',
+        boardValid: r.boardValid,
+        issues: r.issues,
+        summary: r.summary,
+        text: r.text
+      })
+    } catch {
+      // 预检失败不应打断用户：复位成 idle 静默重试，下次触发再来
+      setPrecheck((p) => ({ ...p, status: 'idle' }))
+    }
+  }, [projectRoot, fqbn, busy])
+
+  /** runPrecheck 用 ref 持有最新实现，让 saveTab 等在依赖不变时也能调到最新版 */
+  const runPrecheckRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  runPrecheckRef.current = runPrecheck
+
+  // 停输 1s 防抖：每次击键清掉上一个定时器，静默 1s 后才跑预检（避免每个字符都扫一遍）
+  const precheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const schedulePrecheck = useCallback((): void => {
+    if (precheckTimerRef.current) clearTimeout(precheckTimerRef.current)
+    precheckTimerRef.current = setTimeout(() => {
+      precheckTimerRef.current = null
+      void runPrecheckRef.current()
+    }, 1000)
+  }, [])
+  schedulePrecheckRef.current = schedulePrecheck
+
+  // 项目打开 / 切换、或换开发板后，立即重新预检（这两个动作改的是「检什么」，必须立刻反映）
+  useEffect(() => {
+    if (projectRoot && fqbn) void runPrecheck()
+    // 只在这两个依赖上跑：保存/编辑走各自的显式触发，避免重复跑
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectRoot, fqbn])
+
+  // 点击状态栏预检圆点：把完整报告打进输出面板并展开，方便用户逐条定位
+  const onPrecheckClick = useCallback((): void => {
+    if (!precheck.text) return
+    ensureOutputVisible()
+    pushOut((prev) => prev + `\n── 保存即预检报告 ──\n${precheck.text}\n`)
+  }, [precheck, ensureOutputVisible])
 
   // 关窗：主进程会把 close 事件拦住先问这里，直接点窗口 × 也不能把改动带走
   useEffect(() => {
@@ -1515,6 +1592,8 @@ function App(): React.JSX.Element {
         gitChanges={gitBadge}
         aiHealth={aiHealth}
         targetLabel={targetLabel}
+        precheck={precheck}
+        onPrecheckClick={onPrecheckClick}
       />
       {showNewProject && (
         <NewProjectDialog

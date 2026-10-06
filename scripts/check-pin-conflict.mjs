@@ -164,6 +164,38 @@ check('  ↳ PlatformIO board id 也认得', detectChipModel('esp32-s3-devkitc-1
   rmSync(dir, { recursive: true, force: true })
 }
 
+// ── ⑥ overlay 覆盖层（保存即预检专用：编辑器实时内容未必落盘） ──────────────
+{
+  // 磁盘文件干净，但 overlay（编辑器里的最新内容）改出了越界脚 → 预检必须看到 overlay
+  const dir = fixture({ 'x.ino': 'void setup() { pinMode(5, OUTPUT); }' })
+  const abs = join(dir, 'x.ino')
+  const overlay = { [abs]: 'void setup() { pinMode(30, OUTPUT); }' } // GPIO 30 在 C3 上越界
+  const r = checkPinConflicts(dir, { fqbn: 'esp32:esp32:esp32c3', overlay })
+  check('⑥ overlay 覆盖磁盘：越界 GPIO 30 报 error', r.issues.some((i) => i.level === 'error' && i.pin === 30 && /不存在/.test(i.title)),
+    JSON.stringify(r.issues.map((i) => `${i.level}:${i.pin}:${i.title}`)))
+  rmSync(dir, { recursive: true, force: true })
+}
+{
+  // 反向：磁盘冲突、overlay 改干净 → 冲突应消失（overlay 真覆盖了磁盘，不是两种一起算）
+  const dir = fixture({ 'x.ino': 'void setup() { pinMode(30, OUTPUT); }' })
+  const abs = join(dir, 'x.ino')
+  const overlay = { [abs]: 'void setup() { pinMode(5, OUTPUT); }' }
+  const r = checkPinConflicts(dir, { fqbn: 'esp32:esp32:esp32c3', overlay })
+  check('⑥ overlay 覆盖磁盘：原冲突消失', !r.issues.some((i) => i.pin === 30),
+    JSON.stringify(r.issues.map((i) => `${i.level}:${i.pin}:${i.title}`)))
+  rmSync(dir, { recursive: true, force: true })
+}
+{
+  // 未落盘的新文件（标签页里新建还没保存）也能被 overlay 纳入
+  const dir = fixture({ 'clean.ino': 'void setup() { }' })
+  const newAbs = join(dir, 'unsaved.ino')
+  const overlay = { [newAbs]: 'void setup() { pinMode(31, OUTPUT); }' } // GPIO 31 越界
+  const r = checkPinConflicts(dir, { fqbn: 'esp32:esp32:esp32c3', overlay })
+  check('⑥ overlay 纳入未落盘新文件：越界 GPIO 31 报 error', r.issues.some((i) => i.level === 'error' && i.pin === 31),
+    JSON.stringify(r.issues.map((i) => `${i.level}:${i.pin}:${i.title}`)))
+  rmSync(dir, { recursive: true, force: true })
+}
+
 rmSync(tmp, { recursive: true, force: true })
 
 console.log(`[pin] 通过 ${pass} 项`)
