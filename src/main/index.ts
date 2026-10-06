@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1009,6 +1009,19 @@ ipcMain.handle('ai:models', async () => {
 })
 
 ipcMain.handle('ai:state', () => getAiState())
+
+// 渲染层 AiPanel 切换模型 / 保存 BYOK 时直接 invoke，主进程此前漏注册 handler，
+// 导致 changeModel / saveByok 的 await 必然 reject（功能静默失败）。补上。
+ipcMain.handle('ai:setModel', (_e, modelId: string): AiState => {
+  const s = { ...getAiState(), modelId }
+  setAiState(s)
+  return s
+})
+ipcMain.handle('ai:setByok', (_e, byok: { baseUrl: string; apiKey: string; model: string } | null): AiState => {
+  const s = { ...getAiState(), byok }
+  setAiState(s)
+  return s
+})
 
 // ---------- 多 BYOK profile ----------
 ipcMain.handle('ai:byokProfiles', () => listByokProfiles())
