@@ -85,6 +85,9 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
   const [optionValues, setOptionValues] = useState<Record<string, Record<string, string>>>(() => {
     try { return JSON.parse(localStorage.getItem('codelab-board-options') || '{}') } catch { return {} }
   })
+  // 与 optionValues 同步的最新值，供写盘路径读（避免用到渲染期快照）
+  const optionValuesRef = useRef(optionValues)
+  optionValuesRef.current = optionValues
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [toolchain, setToolchain] = useState<ToolchainState>({
     checking: true,
@@ -251,11 +254,14 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
   const changeOption = (opt: string, value: string): void => {
     const base = deviceCtx.board
     if (!base) return
-    const newOpts = { ...(optionValues[base] || {}), [opt]: value }
-    setOptionValues((prev) => ({ ...prev, [base]: newOpts }))
-    localStorage.setItem('codelab-board-options', JSON.stringify({ ...optionValues, [base]: newOpts }))
+    // 从 ref 读最新值再写盘：写的是渲染期 optionValues 快照，
+    // 同一个 tick 里连改两项时第二项会把第一项从 localStorage 里抹掉。
+    const nextAll = { ...optionValuesRef.current, [base]: { ...optionValuesRef.current[base], [opt]: value } }
+    optionValuesRef.current = nextAll
+    setOptionValues(nextAll)
+    localStorage.setItem('codelab-board-options', JSON.stringify(nextAll))
     // 拼完整 fqbn 回调
-    onBoardChange?.(buildFullFqbn(base, newOpts))
+    onBoardChange?.(buildFullFqbn(base, nextAll[base]))
   }
 
   const selectPort = (port: string): void => {

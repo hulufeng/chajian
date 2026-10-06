@@ -596,7 +596,10 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                       className="settings-btn"
                       disabled={!!svdBusy}
                       onClick={() => {
-                        const chip = svdImportChip || 'esp32s3'
+                        // 必须取 svdPick（下拉当前显示的那块）而不是 svdImportChip state：
+                        // 后者可能不在 knownChips 里，svdPick 会回落到 knownChips[0]，
+                        // 界面显示 A、实际下载 B —— 同一个坑只修一半等于没修。
+                        const chip = svdPick || 'esp32s3'
                         setSvdBusy(chip)
                         setSvdProgress(0)
                         setSvdMsg(null)

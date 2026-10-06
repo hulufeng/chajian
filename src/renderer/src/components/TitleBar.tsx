@@ -210,18 +210,24 @@ function TitleBar({
         <span className="titlebar-logo">
           <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
             <defs>
+              {/*
+                颜色一律走 var(--token)：这里曾经写死 #111111 / #ffffff / #e8e8e8，
+                深色主题下黑描边压在深底上等于消失，logo 直接糊掉。
+                注意 SVG 表现属性（fill= / stroke= / stop-color= / flood-color=）
+                不认 var()，必须写进 style 对象才生效 —— 这是踩过的坑。
+              */}
               <filter id="lc-emboss" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2.5" stdDeviation="2" floodColor="#000" floodOpacity="0.45"/>
+                <feDropShadow dx="0" dy="2.5" stdDeviation="2" floodOpacity="0.45" style={{ floodColor: 'var(--text)' }}/>
               </filter>
               <linearGradient id="lc-bevel" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#ffffff"/>
-                <stop offset="1" stopColor="#e8e8e8"/>
+                <stop offset="0" style={{ stopColor: 'var(--bg)' }}/>
+                <stop offset="1" style={{ stopColor: 'var(--border)' }}/>
               </linearGradient>
             </defs>
             <rect width="64" height="64" rx="14" fill="url(#lc-bevel)"/>
-            <rect x="2.5" y="2.5" width="59" height="59" rx="11.5" stroke="#111111" strokeWidth="2.5"/>
-            <text x="32" y="45" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" fill="#111111" filter="url(#lc-emboss)" letter-spacing="-1">LC</text>
-            <text x="32" y="43" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" fill="#ffffff" letter-spacing="-1" opacity="0.18">LC</text>
+            <rect x="2.5" y="2.5" width="59" height="59" rx="11.5" strokeWidth="2.5" style={{ stroke: 'var(--text)' }}/>
+            <text x="32" y="45" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" filter="url(#lc-emboss)" letter-spacing="-1" style={{ fill: 'var(--text)' }}>LC</text>
+            <text x="32" y="43" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" letter-spacing="-1" opacity="0.18" style={{ fill: 'var(--text)' }}>LC</text>
           </svg>
         </span>
 

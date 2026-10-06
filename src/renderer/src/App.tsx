@@ -151,6 +151,21 @@ function extractBuildError(log: string): string | null {
   return block
 }
 
+/**
+ * 输出面板 / 串口监视器两条流式日志的护栏（配套 App 内的 outLogRef / serLogRef）。
+ * LOG_LIMIT：日志只增不截，编译一次几 MB、串口挂十分钟就是几百 MB —— 必须有上限。
+ * LOG_FLUSH_MS：流式数据攒够一批再合并 setState，别让每个 chunk 都触发一次全树重算。
+ */
+const LOG_LIMIT = 200_000 // ≈20 万字符，够翻近期历史又不吃掉内存
+const LOG_FLUSH_MS = 120
+/** 追加一段并把总长度压回上限（超了丢最旧的，尾部留一段提示） */
+const appendCapped = (cur: string, add: string): string => {
+  const next = cur + add
+  return next.length > LOG_LIMIT
+    ? `…\n[日志过长，已只保留最近 ${Math.round(LOG_LIMIT / 1000)}k 字符]\n` + next.slice(-LOG_LIMIT)
+    : next
+}
+
 const DEFAULT_TABS: EditorTab[] = [
   {
     id: 'welcome/welcome.ino',
@@ -270,10 +285,19 @@ function App(): React.JSX.Element {
     setBottomPanel('output')
   }, [])
 
+  /** 编译/烧录的兜底超时定时器（编译 180s / 烧录 120s），取消时必须一起清掉 */
+  const guardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const cancelBuild = useCallback((): void => {
     if (!activeTaskId) return
     void window.api.cmd.kill(activeTaskId)
-    setOutputLog((prev) => prev + '\n[取消] 已请求中断当前任务。\n')
+    // 兜底超时定时器不跟着取消，它到点还是会往日志里追加「超过 180s 无响应」：
+    // 用户明明点的是「取消」，180 秒后凭空冒出一条假错误，看着像 IDE 自己抽风。
+    if (guardTimerRef.current) {
+      clearTimeout(guardTimerRef.current)
+      guardTimerRef.current = null
+    }
+    pushOut((prev) => prev + '\n[取消] 已请求中断当前任务。\n')
     setCompileState('error')
     setBusy(false)
     buildStartedAtRef.current = null
@@ -336,6 +360,44 @@ function App(): React.JSX.Element {
   /** 底部统一面板组：一次只显示一个（UI 重设计核心，见 PanelDock 注释） */
   // 极简模式默认收起底部面板（编译/烧录/报错时会自动弹开输出，用户不用去找）
   const [bottomPanel, setBottomPanel] = useState<PanelId | null>(simple ? null : 'output')
+  /**
+   * 输出 / 串口日志护栏。
+   * 这两条是「只增不减」的流式日志：编译 gRPC 每几十毫秒吐一个 chunk，串口 115200 baud 更密。
+   * 原来每个 chunk 都 setState —— App 顶层 state 一动，整棵子树（Monaco / xterm）都要重算，
+   * OutputPanel 全量重渲染、SerialPlotter canvas 全量重画，长会话直接掉帧，跑久了还会 OOM。
+   * 三道护栏：
+   *   ① ref 是唯一事实源，state 只是展示副本，并且永远有长度上限（超了丢头部）；
+   *   ② 输出面板没挂载时完全不碰 state —— 省下整树重算这一项最大开销；
+   *   ③ 流式 chunk 走 120ms 节流合并，把每秒上百次 setState 压到个位数。
+   */
+  const outLogRef = useRef('')
+  const serLogRef = useRef('')
+  const bottomPanelRef = useRef(bottomPanel)
+  bottomPanelRef.current = bottomPanel
+  const logFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pushOut = (updater: (prev: string) => string): void => {
+    outLogRef.current = appendCapped(outLogRef.current, updater(''))
+    setOutputLog((prev) => (prev === outLogRef.current ? prev : outLogRef.current))
+  }
+  const pushSer = (updater: (prev: string) => string): void => {
+    serLogRef.current = appendCapped(serLogRef.current, updater(''))
+    setSerialLog((prev) => (prev === serLogRef.current ? prev : serLogRef.current))
+  }
+  /** 流式堆进来的数据先攒着，面板可见时再合并（节流用） */
+  const scheduleLogFlush = (): void => {
+    if (logFlushRef.current) return
+    logFlushRef.current = setTimeout(() => {
+      logFlushRef.current = null
+      if (bottomPanelRef.current !== 'output') return
+      setOutputLog((prev) => (prev === outLogRef.current ? prev : outLogRef.current))
+      setSerialLog((prev) => (prev === serLogRef.current ? prev : serLogRef.current))
+    }, LOG_FLUSH_MS)
+  }
+  /** 手动清掉待合并的节流（组件卸载 / 面板切换时别留下悬挂定时器） */
+  const cancelLogFlush = (): void => {
+    if (logFlushRef.current) clearTimeout(logFlushRef.current)
+    logFlushRef.current = null
+  }
   const [panelHeight, setPanelHeight] = useState(280)
   /** Git 面板角标：变更文件数 */
   const [gitBadge, setGitBadge] = useState(0)
@@ -464,7 +526,7 @@ function App(): React.JSX.Element {
   const handleFlash = useCallback(() => {
     setLeftPanelVisible(true)
     setActiveSidebar('device')
-    setOutputLog((prev) => prev + '\n💡 请在左侧「设备」面板选择开发板和串口，然后点顶栏的「烧录」按钮一键烧录。\n')
+    pushOut((prev) => prev + '\n💡 请在左侧「设备」面板选择开发板和串口，然后点顶栏的「烧录」按钮一键烧录。\n')
   }, [])
   const focusAi = useCallback((text: string) => {
     setAiPanelVisible(true)
@@ -543,7 +605,9 @@ function App(): React.JSX.Element {
         if (d.id.startsWith('grpc-upload-') || d.id.startsWith('cap-upload-')) {
           uploadLogRef.current += d.chunk
         }
-        setOutputLog((prev) => prev + d.chunk)
+        // 编译/烧录的流式输出：攒批再合并，不要每个 chunk 都 setState
+        outLogRef.current = appendCapped(outLogRef.current, d.chunk)
+        scheduleLogFlush()
       }
     })
     const offExit = window.api.onTaskExit((d) => {
@@ -551,7 +615,7 @@ function App(): React.JSX.Element {
         ? `\x1b[90m[进程结束 code=${d.code}]\x1b[0m\r\n`
         : `\n[任务结束，退出码 ${d.code}]\n`
       if (d.id.startsWith('cmd-')) terminalRef.current?.append(line)
-      else setOutputLog((prev) => prev + line)
+      else pushOut((prev) => prev + line)
       setBusy(false)
       // 编译 / 烧录任务：更新状态并捕获错误（供「一键 AI 诊断」）
       const isCompile = d.id.startsWith('cap-compile-') || d.id.startsWith('grpc-compile-')
@@ -568,7 +632,7 @@ function App(): React.JSX.Element {
           setBuildStartedAt(null)
           // 收尾结论直接写进输出流：用户不用去猜「刚才那几秒到底成没成」
           if (d.code === 0) {
-            setOutputLog((prev) =>
+            pushOut((prev) =>
               prev + (isUpload
                 ? `\n[完成] 烧录成功，用时 ${(spent / 1000).toFixed(1)}s\n`
                 : `\n[完成] 编译成功，用时 ${(spent / 1000).toFixed(1)}s\n`)
@@ -625,9 +689,13 @@ function App(): React.JSX.Element {
         setBuildStage({ stage: st ?? 'prepare', label: d.message })
       }
     })
-    const offSerial = window.api.onSerialData((d) => setSerialLog((prev) => prev + d.data))
+    // 串口数据是最密的一条流（115200  baud 每秒上百 chunk），必须走节流合并
+    const offSerial = window.api.onSerialData((d) => {
+      serLogRef.current = appendCapped(serLogRef.current, d.data)
+      scheduleLogFlush()
+    })
     const offClose = window.api.onSerialClose((d) => {
-      setSerialLog((prev) => prev + `\n${d.msg}\n`)
+      pushSer((prev) => prev + `\n${d.msg}\n`)
       setSerialOpen(false)
     })
     // 串口热插拔：端口列表变化自动刷新（插上/拔出开发板）
@@ -646,14 +714,14 @@ function App(): React.JSX.Element {
           window.api.device.set({ port: d.port }).catch(() => undefined)
         }
         if (d.name) setBoardName(d.name)
-        setOutputLog(
+        pushOut(
           (prev) =>
             prev +
             `\n🔌 检测到开发板：${d.port}${d.fqbn ? ` · ${d.name || d.fqbn}` : '（未识别到板卡型号，仅选中端口）'}，已自动选中。\n`
         )
       } else if (d.action === 'removed') {
         setSelectedPort((prev) => (d.removed?.includes(prev) ? '' : prev))
-        setOutputLog((prev) => prev + `\n🔌 串口已拔出：${(d.removed || []).join('、')}\n`)
+        pushOut((prev) => prev + `\n🔌 串口已拔出：${(d.removed || []).join('、')}\n`)
       }
     })
     return () => {
@@ -664,6 +732,8 @@ function App(): React.JSX.Element {
       offClose()
       offPorts?.()
       offAuto?.()
+      // 订阅卸载时把待合并的节流定时器清掉，别留下悬挂定时器
+      cancelLogFlush()
     }
   }, [])
 
@@ -730,7 +800,7 @@ function App(): React.JSX.Element {
         prev.map((t) => (t.id === path ? { ...t, content } : t))
       )
     } catch (e) {
-      setOutputLog((prev) => prev + `\n[错误] 无法打开 ${path}：${(e as Error).message}\n`)
+      pushOut((prev) => prev + `\n[错误] 无法打开 ${path}：${(e as Error).message}\n`)
       setTabs((prev) => prev.filter((t) => t.id !== path))
     }
   }, [])
@@ -749,10 +819,10 @@ function App(): React.JSX.Element {
     try {
       await window.api.fs.write(tab.id, tab.content)
       setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, dirty: false } : t)))
-      setOutputLog((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
+      pushOut((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
       return true
     } catch (e) {
-      setOutputLog((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
+      pushOut((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
       return false
     }
   }, [])
@@ -817,14 +887,14 @@ function App(): React.JSX.Element {
     async (id: string) => {
       const tab = tabs.find((t) => t.id === id)
       if (tab?.dirty && !(await guardUnsaved([tab]))) return
-      setTabs((prev) => {
-        const idx = prev.findIndex((t) => t.id === id)
-        const next = prev.filter((t) => t.id !== id)
-        if (id === activePath && next.length > 0) {
-          setActivePath(next[Math.min(idx, next.length - 1)].id)
-        }
-        return next
-      })
+      // 先算再提交：setState 的 updater 必须是纯函数，
+      // 之前在里面调 setActivePath，StrictMode 双调用会切到错误的 tab。
+      const idx = tabs.findIndex((t) => t.id === id)
+      const next = tabs.filter((t) => t.id !== id)
+      setTabs(next)
+      if (id === activePath && next.length > 0) {
+        setActivePath(next[Math.min(idx, next.length - 1)].id)
+      }
     },
     [tabs, activePath, guardUnsaved]
   )
@@ -834,11 +904,11 @@ function App(): React.JSX.Element {
   const runCompile = useCallback(async () => {
     // 门控最前：进行中再点击给明确反馈（而不是静默吞掉，避免"点了没反应像卡死"）
     if (compileState === 'compiling' || compileState === 'uploading') {
-      setOutputLog((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
+      pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
       return
     }
     if (!toolchain?.available || !toolchain.path) {
-      setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
+      pushOut((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       return
     }
     // sketch 解析：优先识别你正在编辑的 .ino；其次项目树里的 .ino；再次任意已打开的 .ino
@@ -847,12 +917,12 @@ function App(): React.JSX.Element {
       const msg = tree
         ? '\n[错误] 当前项目内未找到 .ino 工程文件。请在左侧「文件」面板点开项目里的 .ino 文件，或确认工程根目录/同名目录含 <工程名>.ino。\n'
         : '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再编译。\n'
-      setOutputLog((prev) => prev + msg)
+      pushOut((prev) => prev + msg)
       setCompileState('error')
       return
     }
     if (!fqbn) {
-      setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
+      pushOut((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
       // 早退路径必须复位 compileState：不改的话上一次的 'success' 会留着，
       // 状态栏继续显示「编译完成」+ 上一版的 Flash/RAM 用量卡，
       // 而这一趟其实一次都没跑 —— 比直接报错更容易骗到人。
@@ -866,7 +936,7 @@ function App(): React.JSX.Element {
     // 落盘最新编辑内容 / 暂存虚拟文件，得到最终交给 arduino-cli 的 sketch 路径
     const sketch = await prepareSketchForBuild(
       resolved,
-      (s) => setOutputLog((p) => p + s),
+      (s) => pushOut((p) => p + s),
       (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
     )
     if (!sketch) {
@@ -874,11 +944,11 @@ function App(): React.JSX.Element {
       return
     }
 
-    setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
+    pushOut((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
     // 首次编译要现下板卡支持包（ESP32 core 几百 MB），那段时间 arduino-cli 几乎不打印东西，
     // 不提前说明就会以为卡死。已经在本会话编译过就不啰嗦了。
     if (!everBuilt) {
-      setOutputLog((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
+      pushOut((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
     }
     setCompileState('compiling')
     // 过程可见化：记录开始时间并自动切到输出面板，否则用户看不到编译过程
@@ -896,21 +966,21 @@ function App(): React.JSX.Element {
         setActiveTaskId(result.id)
         // 180s 兜底：task:exit 事件万一丢失时复位状态，避免"永久编译中"假死
         pendingTasksRef.current.set(result.id, () => undefined)
-        setTimeout(() => {
+        guardTimerRef.current = setTimeout(() => {
           if (pendingTasksRef.current.has(result.id)) {
             pendingTasksRef.current.delete(result.id)
-            setOutputLog((prev) => prev + '\n[错误] 编译超过 180s 无响应，已复位状态。请重试；若反复出现请检查工具链。\n')
+            pushOut((prev) => prev + '\n[错误] 编译超过 180s 无响应，已复位状态。请重试；若反复出现请检查工具链。\n')
             setCompileState('error')
             setBusy(false)
           }
         }, 180000)
       } else {
-        setOutputLog((prev) => prev + '[错误] 编译启动失败（gRPC）\n')
+        pushOut((prev) => prev + '[错误] 编译启动失败（gRPC）\n')
         setCompileState('error')
         setBusy(false)
       }
     } catch (e) {
-      setOutputLog((prev) => prev + `[错误] 编译异常：${(e as Error).message}\n`)
+      pushOut((prev) => prev + `[错误] 编译异常：${(e as Error).message}\n`)
       setCompileState('error')
       setBusy(false)
     }
@@ -919,11 +989,11 @@ function App(): React.JSX.Element {
   const runUpload = useCallback(async () => {
     // 门控最前：进行中再点击给明确反馈（避免静默吞掉像"卡死"）
     if (compileState === 'compiling' || compileState === 'uploading') {
-      setOutputLog((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
+      pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
       return
     }
     if (!toolchain?.available || !toolchain.path) {
-      setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
+      pushOut((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       // 同上：早退也要把上一次的 success 结果卡清掉，别让用户以为烧录成功了
       setCompileState('error')
       setBuildError(null)
@@ -932,7 +1002,7 @@ function App(): React.JSX.Element {
       return
     }
     if (!selectedPort) {
-      setOutputLog((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
+      pushOut((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
       setCompileState('error')
       setBuildError(null)
       setBuildStartedAt(null)
@@ -945,12 +1015,12 @@ function App(): React.JSX.Element {
       const msg = tree
         ? '\n[错误] 当前项目内未找到 .ino 工程文件。请在左侧「文件」面板点开项目里的 .ino 文件，或确认工程根目录/同名目录含 <工程名>.ino。\n'
         : '\n[错误] 未找到 .ino 工程文件。请打开一个项目，或在编辑器中打开/新建一个 .ino 文件后再烧录。\n'
-      setOutputLog((prev) => prev + msg)
+      pushOut((prev) => prev + msg)
       setCompileState('error')
       return
     }
     if (!fqbn) {
-      setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
+      pushOut((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
       // 早退路径必须复位 compileState：不改的话上一次的 'success' 会留着，
       // 状态栏继续显示「编译完成」+ 上一版的 Flash/RAM 用量卡，
       // 而这一趟其实一次都没跑 —— 比直接报错更容易骗到人。
@@ -964,7 +1034,7 @@ function App(): React.JSX.Element {
     // 落盘最新编辑内容 / 暂存虚拟文件，得到最终交给 arduino-cli 的 sketch 路径
     const sketch = await prepareSketchForBuild(
       resolved,
-      (s) => setOutputLog((p) => p + s),
+      (s) => pushOut((p) => p + s),
       (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
     )
     if (!sketch) {
@@ -980,9 +1050,9 @@ function App(): React.JSX.Element {
     }
 
     // 先编译
-    setOutputLog((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
+    pushOut((prev) => prev + `\n▶ [编译] arduino-cli compile --fqbn ${fqbn} ${sketch}\n`)
     if (!everBuilt) {
-      setOutputLog((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
+      pushOut((prev) => prev + '  首次编译需下载板卡支持包（ESP32 core 约 300MB），可能要 1–3 分钟才有新输出，属正常。\n')
     }
     setCompileState('compiling')
     // 过程可见化：烧录是「编译 + 写入」两段，编译这段同样要让人看见——
@@ -1009,7 +1079,7 @@ function App(): React.JSX.Element {
     try {
       const compileResult = await window.api.grpc.compile({ sketch, fqbn })
       if (!compileResult.id) {
-        setOutputLog((prev) => prev + '[错误] 编译启动失败（gRPC）\n')
+        pushOut((prev) => prev + '[错误] 编译启动失败（gRPC）\n')
         setCompileState('error')
         setBusy(false)
         await restoreSerial()
@@ -1027,14 +1097,14 @@ function App(): React.JSX.Element {
         }, 180000)
       })
       if (compileCode !== 0) {
-        setOutputLog((prev) => prev + `[错误] 编译失败（退出码 ${compileCode}），已中止烧录。\n`)
+        pushOut((prev) => prev + `[错误] 编译失败（退出码 ${compileCode}），已中止烧录。\n`)
         setCompileState('error')
         setBusy(false)
         await restoreSerial()
         return
       }
     } catch (e) {
-      setOutputLog((prev) => prev + `[错误] 编译异常：${(e as Error).message}\n`)
+      pushOut((prev) => prev + `[错误] 编译异常：${(e as Error).message}\n`)
       setCompileState('error')
       setBusy(false)
       await restoreSerial()
@@ -1042,8 +1112,8 @@ function App(): React.JSX.Element {
     }
 
     // 编译成功，开始上传（grpc:upload；daemon 不可用时主进程自动降级 CLI，不会挂死）
-    setOutputLog((prev) => prev + `\n▶ [烧录] arduino-cli upload --fqbn ${fqbn} --port ${selectedPort} ${sketch}\n`)
-    setOutputLog((prev) => prev + `   正在写入 ${selectedPort}，期间请勿拔线…\n`)
+    pushOut((prev) => prev + `\n▶ [烧录] arduino-cli upload --fqbn ${fqbn} --port ${selectedPort} ${sketch}\n`)
+    pushOut((prev) => prev + `   正在写入 ${selectedPort}，期间请勿拔线…\n`)
     setCompileState('uploading')
     // 计时器保持连续（不重置），结束时冻结的是「编译 + 烧录」总耗时
     setBuildStage({ stage: 'flashing', label: `写入 ${selectedPort}` })
@@ -1057,23 +1127,23 @@ function App(): React.JSX.Element {
           await restoreSerial()
         })
         // 120s 兜底：烧录事件丢失时复位状态，避免"永久烧录中"假死
-        setTimeout(() => {
+        guardTimerRef.current = setTimeout(() => {
           if (pendingTasksRef.current.has(uploadResult.id)) {
             pendingTasksRef.current.delete(uploadResult.id)
-            setOutputLog((prev) => prev + '\n[错误] 烧录超过 120s 无响应，已复位状态。请检查端口是否被占用/板子是否进入下载模式，再重试。\n')
+            pushOut((prev) => prev + '\n[错误] 烧录超过 120s 无响应，已复位状态。请检查端口是否被占用/板子是否进入下载模式，再重试。\n')
             setCompileState('error')
             setBusy(false)
             void restoreSerial()
           }
         }, 120000)
       } else {
-        setOutputLog((prev) => prev + '[错误] 烧录启动失败\n')
+        pushOut((prev) => prev + '[错误] 烧录启动失败\n')
         setCompileState('error')
         setBusy(false)
         await restoreSerial()
       }
     } catch (e) {
-      setOutputLog((prev) => prev + `[错误] 烧录异常：${(e as Error).message}\n`)
+      pushOut((prev) => prev + `[错误] 烧录异常：${(e as Error).message}\n`)
       setCompileState('error')
       setBusy(false)
       await restoreSerial()
@@ -1089,7 +1159,7 @@ function App(): React.JSX.Element {
     }
     if (!selectedPort) return
     await window.api.serial.open({ port: selectedPort, baud })
-    setSerialLog((prev) => prev + `\n—— 打开 ${selectedPort} @ ${baud} ——\n`)
+    pushSer((prev) => prev + `\n—— 打开 ${selectedPort} @ ${baud} ——\n`)
     setSerialOpen(true)
   }, [serialOpen, selectedPort, baud])
 
@@ -1100,20 +1170,20 @@ function App(): React.JSX.Element {
 
   // 命令面板执行
   const handleExecuteCommand = useCallback(async (cmd: { id: string; title: string; kind: string; plugin: string; view?: string; transport?: string }) => {
-    setOutputLog((prev) => prev + `\n[命令面板] 执行: ${cmd.title} (${cmd.id})\n`)
+    pushOut((prev) => prev + `\n[命令面板] 执行: ${cmd.title} (${cmd.id})\n`)
     if (cmd.kind === 'action') {
       // 尝试通过 capability 路由执行（命令 id 去掉插件前缀）
       const capId = cmd.id.replace(`${cmd.plugin}.`, '')
       try {
         const result = await window.api.capability.run(capId, {})
         if (!result.ok) {
-          setOutputLog((prev) => prev + `[命令面板] ${result.error || '执行失败'}\n`)
+          pushOut((prev) => prev + `[命令面板] ${result.error || '执行失败'}\n`)
         }
       } catch {
-        setOutputLog((prev) => prev + `[命令面板] 命令 ${capId} 暂无绑定执行器\n`)
+        pushOut((prev) => prev + `[命令面板] 命令 ${capId} 暂无绑定执行器\n`)
       }
     } else if (cmd.kind === 'open-view') {
-      setOutputLog((prev) => prev + `[命令面板] 视图系统待实现: ${cmd.view || cmd.id}\n`)
+      pushOut((prev) => prev + `[命令面板] 视图系统待实现: ${cmd.view || cmd.id}\n`)
     }
   }, [])
 
@@ -1151,7 +1221,7 @@ function App(): React.JSX.Element {
     const id = `ai-${Date.now()}.${info.ext}`
     setTabs((prev) => [...prev, { id, name: `ai-generated.${info.ext}`, language: info.language, content }])
     setActivePath(id)
-    setOutputLog((prev) => prev + `\n✓ AI 代码已应用到新文件：ai-generated.${info.ext}\n`)
+    pushOut((prev) => prev + `\n✓ AI 代码已应用到新文件：ai-generated.${info.ext}\n`)
   }, [])
 
   // 新建工程
@@ -1160,7 +1230,7 @@ function App(): React.JSX.Element {
     if (!res.ok || !res.root) throw new Error(res.error ?? '创建失败')
     setProjectRoot(res.root)
     setTree(res.tree ?? null)
-    setOutputLog((prev) => prev + `\n✓ 已创建工程：${res.root}\n`)
+    pushOut((prev) => prev + `\n✓ 已创建工程：${res.root}\n`)
   }, [projectRoot])
 
   // 新建空白文件
@@ -1208,7 +1278,12 @@ function App(): React.JSX.Element {
             setActivePath('')
             setProjectRoot(null)
             setTree(null)
-            setOutputLog((prev) => prev + '\n📁 项目已关闭\n')
+            // 烧录上下文和串口状态必须一起收干净：
+            // burnCtxRef 留着，下次烧录收尾会把上个项目的日志尾巴记到新项目上；
+            // serialOpen 留 true，「烧完自动恢复串口」会对着一个已关掉的路径去 open。
+            burnCtxRef.current = { projectRoot: '', fqbn: '', port: '' }
+            setSerialOpen(false)
+            pushOut((prev) => prev + '\n📁 项目已关闭\n')
           })()
         }}
         onExit={() => window.api?.window?.close?.()}

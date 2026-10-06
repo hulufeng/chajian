@@ -901,6 +901,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     setContextItems([])
     setStreamingText('')
     setStreamingThinking('')
+    // busy/agentStatus 必须一起复位：agent 正在跑时点「新建对话」，
+    // 旧会话的流式回调还会往新会话里灌字，发送按钮会永久 disabled（面板假死）。
+    setBusy(false)
     setAgentStatus('idle')
     setShowTokenPanel(false)
   }
@@ -1112,8 +1115,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           })()}
           <button
             className="ai-head-icon"
-            title="新建对话"
+            title={busy ? '新建对话（会中断当前回复）' : '新建对话'}
             onClick={newChat}
+            disabled={busy}
             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: 3, display: 'flex' }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
