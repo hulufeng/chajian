@@ -97,6 +97,22 @@ export default function TargetPanel({
     if (sel) setBuildPath(sel.build[0]?.path || '')
   }, [selId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * 热插拔：端口下拉必须跟着真实串口走。
+   * selPort 只在首次「为空」时赋值（load 里 `prev || port || p[0]?.path`），
+   * 之前没有订阅 onPortsChanged —— 板子拔掉后下拉还留着那个已经消失的端口，
+   * 点烧录就是对着一个不存在的 COM 口发命令；插上新板也不会自动补上。
+   * 而且同一块信息 DevicePanel 那边会清成空，两个面板一个留一个清，直接自相矛盾。
+   */
+  useEffect(() => {
+    const off = window.api.serial.onPortsChanged?.((d) => {
+      const next: DetectedPort[] = (d?.ports as DetectedPort[]) || []
+      setPorts(next)
+      setSelPort((prev) => (prev && !next.some((p) => p.path === prev) ? '' : prev))
+    })
+    return () => { off?.() }
+  }, [])
+
   const markDirty = (): void => {
     setDirty(true)
     setMsg('')

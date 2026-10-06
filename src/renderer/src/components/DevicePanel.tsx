@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import DeviceDiagnosticsModal from './DeviceDiagnosticsModal'
 
 interface DevicePanelInfo {
@@ -187,17 +187,39 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
     return () => {
       offPorts?.()
       offAuto?.()
+      // 卸载时把待触发的防抖查询也清掉，否则会对着已卸载的组件再发一次 IPC
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * board.list 背后是 spawnSync(arduino-cli board listall)，**同步阻塞主进程最多 20s**，
+   * 而且输出有 1MB+。所以：
+   *   1) 搜索框必须防抖 —— 之前每个击键都发一次 IPC，敲 "esp32" 就起 5 次子进程，
+   *      主线程被卡住 → 整个 IDE 输入都掉帧，这是用户能直接感觉到的卡顿。
+   *   2) 必须带请求序号 —— 并发请求谁先回来谁就 setBoards，会拿旧结果覆盖新结果
+   *      （输入 "esp" 的慢请求后于 "esp32" 的快请求回来 → 列表变回少一条）。
+   *      只认最后一次发出的请求，中间被淘汰的一律不落 state。
+   */
+  const boardSeqRef = useRef(0)
   const loadBoards = (keyword?: string): void => {
+    const seq = ++boardSeqRef.current
     setLoadingBoards(true)
     window.api.board.list(keyword || '')
-      .then((b) => setBoards(b))
-      .catch(() => setBoards([]))
-      .finally(() => setLoadingBoards(false))
+      .then((b) => { if (seq === boardSeqRef.current) setBoards(b) })
+      .catch(() => { if (seq === boardSeqRef.current) setBoards([]) })
+      .finally(() => { if (seq === boardSeqRef.current) setLoadingBoards(false) })
   }
+
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadBoardsDebounced = useCallback((kw: string): void => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      searchTimerRef.current = null
+      loadBoards(kw)
+    }, 300)
+  }, [])
 
   const selectBoard = (fqbn: string, name?: string): void => {
     setDeviceCtx((prev) => ({ ...prev, board: fqbn }))
@@ -334,8 +356,10 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
             if (isBoard) {
               const selectedName = boards.find((b) => b.fqbn === deviceCtx.board)?.name || deviceCtx.board || ''
               return (
-                <>
-                  <div key={sel.id} className="device-field">
+                // key 必须挂在外层 Fragment 上：React 列表的 key 校验看的是 map 的直接返回值，
+                // 之前挂在里面那层 div 上，每次渲染都刷一条「Each child in a list should have a unique key」
+                <Fragment key={sel.id}>
+                  <div className="device-field">
                     <label>{sel.title}</label>
                     <div className="device-search-wrap">
                       {/* TrieCode 风格：点击展开可搜索板卡列表 */}
@@ -360,7 +384,8 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
                             value={boardSearch}
                             onChange={(e) => {
                               setBoardSearch(e.target.value)
-                              loadBoards(e.target.value)
+                              // 防抖：见 loadBoards 注释，关键字查询不能每击键一次
+                              loadBoardsDebounced(e.target.value)
                             }}
                             autoFocus
                           />
@@ -412,7 +437,7 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
                       )}
                     </div>
                   )}
-                </>
+                </Fragment>
               )
             }
 

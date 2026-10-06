@@ -853,6 +853,13 @@ function App(): React.JSX.Element {
     }
     if (!fqbn) {
       setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
+      // 早退路径必须复位 compileState：不改的话上一次的 'success' 会留着，
+      // 状态栏继续显示「编译完成」+ 上一版的 Flash/RAM 用量卡，
+      // 而这一趟其实一次都没跑 —— 比直接报错更容易骗到人。
+      setCompileState('error')
+      setBuildError(null)
+      setBuildStartedAt(null)
+      setBuildElapsedMs(0)
       return
     }
 
@@ -917,10 +924,19 @@ function App(): React.JSX.Element {
     }
     if (!toolchain?.available || !toolchain.path) {
       setOutputLog((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
+      // 同上：早退也要把上一次的 success 结果卡清掉，别让用户以为烧录成功了
+      setCompileState('error')
+      setBuildError(null)
+      setBuildStartedAt(null)
+      setBuildElapsedMs(0)
       return
     }
     if (!selectedPort) {
       setOutputLog((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
+      setCompileState('error')
+      setBuildError(null)
+      setBuildStartedAt(null)
+      setBuildElapsedMs(0)
       return
     }
     // sketch 解析：优先识别你正在编辑的 .ino；其次项目树里的 .ino；再次任意已打开的 .ino
@@ -935,6 +951,13 @@ function App(): React.JSX.Element {
     }
     if (!fqbn) {
       setOutputLog((prev) => prev + '\n[错误] 请先选择一个开发板。\n')
+      // 早退路径必须复位 compileState：不改的话上一次的 'success' 会留着，
+      // 状态栏继续显示「编译完成」+ 上一版的 Flash/RAM 用量卡，
+      // 而这一趟其实一次都没跑 —— 比直接报错更容易骗到人。
+      setCompileState('error')
+      setBuildError(null)
+      setBuildStartedAt(null)
+      setBuildElapsedMs(0)
       return
     }
 
