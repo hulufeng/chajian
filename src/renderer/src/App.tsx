@@ -1053,6 +1053,27 @@ function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectRoot, fqbn])
 
+  /**
+   * 编译数据库（#30）：同样挂在这两个锚点上（开项目 / 换板）。
+   * 没有 compile_commands.json，clangd 打开 .ino 就是满屏 Arduino.h not found，
+   * 补全/跳转/悬停全废——这一步比任何补全优化都关键。
+   * - force=true：换板后 variant 与 -D 宏都变了，复用旧文件会解析到上一个板子的头文件。
+   * - 失败一律静默：clangd 没装 / core 没装只是少个补全，不该弹错误打扰用户。
+   * - 1.2s 防抖：连续换板 / 快速切换项目时不反复生成（每次重建都会让 clangd 重新索引）。
+   */
+  const ensureDbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!projectRoot || !fqbn) return
+    if (ensureDbTimerRef.current) clearTimeout(ensureDbTimerRef.current)
+    ensureDbTimerRef.current = setTimeout(() => {
+      ensureDbTimerRef.current = null
+      void window.api.lsp.ensureDb({ projectRoot, fqbn, force: true }).catch(() => undefined)
+    }, 1200)
+    return () => {
+      if (ensureDbTimerRef.current) clearTimeout(ensureDbTimerRef.current)
+    }
+  }, [projectRoot, fqbn])
+
   // 点击状态栏预检圆点：把完整报告打进输出面板并展开，方便用户逐条定位
   const onPrecheckClick = useCallback((): void => {
     if (!precheck.text) return

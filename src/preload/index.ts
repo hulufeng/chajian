@@ -322,8 +322,8 @@ const api = {
     definition: (p: { file: string; text: string; line: number; character: number; languageId?: string }): Promise<LspResult<LspLocation[]>> =>
       ipcRenderer.invoke('lsp:definition', p),
     ensureDb: (p: {
-      projectRoot: string; fqbn?: string; files: string[]
-      coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]
+      projectRoot: string; fqbn?: string; files?: string[]
+      coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]; force?: boolean
     }): Promise<LspResult<string>> => ipcRenderer.invoke('lsp:ensure-db', p),
     status: (): Promise<Array<{ key: string; ready: boolean }>> => ipcRenderer.invoke('lsp:status'),
     dispose: (): Promise<void> => ipcRenderer.invoke('lsp:dispose')

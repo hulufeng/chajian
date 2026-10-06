@@ -9,12 +9,12 @@
  * 两个消费方共用同一份语言/服务器映射，避免两处配置漂移。
  */
 import { dirname, extname, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { LspClient } from './lsp-client'
 import {
   candidateIncludePaths, libraryIncludePaths, arduinoDefines, makeCppEntry,
-  existingPaths, writeCompileCommands, parseFqbn,
+  existingPaths, writeCompileCommands, parseFqbn, discoverCoreRoot, collectSourceFiles,
 } from './lsp-compile-db'
 
 /** 扩展名 -> 语言 id（单一数据源，Agent 工具与编辑器共用） */
@@ -282,34 +282,53 @@ export async function definition(p: {
 /**
  * 保障编译数据库存在（#30）。
  * clangd 没这份文件就找不到 Arduino.h —— 所以这条比任何补全优化都关键。
- * coreRoot 由调用方从实际安装位置给（arduino-cli data dir / PlatformIO packages），缺失时跳过而不是编造路径。
+ *
+ * coreRoot 缺省时自动从常见 Arduino 数据目录发现（见 lsp-compile-db.discoverCoreRoot）；
+ * 发现不到（core 还没装）**不算错误**：仍写一份没有 -I 的条目，
+ * 至少让 clangd 知道 .ino 是 C++ 方言，比完全不写强。
+ *
+ * force=true 时重建（换板后 variant 与 -D 宏都变了，复用旧文件会解析到错误的板级头文件）。
  */
 export function ensureCompileDb(p: {
   projectRoot: string
   fqbn?: string
-  files: string[]
+  files?: string[]
   coreRoot?: string
   variant?: string
   cpuFreqMHz?: number
   extraIncludes?: string[]
+  force?: boolean
 }): LspResult<string> {
   try {
     const root = p.projectRoot
     const existing = join(root, 'compile_commands.json')
-    if (existsSync(existing)) return { ok: true, data: existing }
+    if (!p.force && existsSync(existing)) return { ok: true, data: existing }
+    // 重建前先删：writeCompileCommands 对「内容相同」是幂等跳过，
+    // 但换板后内容本来就该变，留着旧文件会读到上一个板子的头文件。
+    if (p.force) {
+      try {
+        if (existsSync(existing)) rmSync(existing, { force: true })
+      } catch {
+        // 删不掉就继续往下写，至少不留脏数据
+      }
+    }
 
     const parts = p.fqbn ? parseFqbn(p.fqbn) : null
     const includes: string[] = []
     const defines: string[] = []
 
-    if (parts && p.coreRoot && existsSync(p.coreRoot)) {
+    // coreRoot 没传就自己去找（常见 Arduino15/packages 下按 packager/arch 取最新版）。
+    // 找不到就只写「没有 include」的条目——也比不写强：至少 clangd 知道了方言是 C++。
+    const coreRoot = p.coreRoot && existsSync(p.coreRoot) ? p.coreRoot : parts ? discoverCoreRoot(parts) : null
+
+    if (parts && coreRoot) {
       includes.push(...candidateIncludePaths({
-        coreRoot: p.coreRoot,
+        coreRoot,
         arch: parts.arch,
         variant: p.variant ?? parts.board,
         sdk: parts.arch === 'esp32'
       }))
-      includes.push(...libraryIncludePaths(p.coreRoot, ['WiFi', 'Wire', 'SPI', 'EEPROM', 'Preferences']))
+      includes.push(...libraryIncludePaths(coreRoot, ['WiFi', 'Wire', 'SPI', 'EEPROM', 'Preferences']))
       defines.push(...arduinoDefines(parts, {
         fqbn: p.fqbn!,
         cpuFreqMHz: p.cpuFreqMHz ?? 240,
@@ -319,9 +338,11 @@ export function ensureCompileDb(p: {
     if (p.extraIncludes) includes.push(...p.extraIncludes)
 
     const inc = existingPaths(includes)
-    const entries = (p.files.length > 0 ? p.files : ['main.ino']).map((f) =>
-      makeCppEntry({ file: f, directory: root, includes: inc, defines })
-    )
+    // 没给文件就自己扫工程目录；一个源文件都没有时不写库（空条目毫无意义）
+    const files = p.files && p.files.length > 0 ? p.files : collectSourceFiles(root)
+    if (files.length === 0) return { ok: false, error: '工程里没有 C/C++ 源文件，暂不生成编译数据库' }
+
+    const entries = files.map((f) => makeCppEntry({ file: f, directory: root, includes: inc, defines }))
     const file = writeCompileCommands(root, entries)
     return { ok: true, data: file }
   } catch (e) {

@@ -436,8 +436,8 @@ ipcMain.handle('lsp:completion', (_e, p: {
 ipcMain.handle('lsp:hover', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspHover(p))
 ipcMain.handle('lsp:definition', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspDefinition(p))
 ipcMain.handle('lsp:ensure-db', (_e, p: {
-  projectRoot: string; fqbn?: string; files: string[]
-  coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]
+  projectRoot: string; fqbn?: string; files?: string[]
+  coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]; force?: boolean
 }) => ensureCompileDb(p))
 ipcMain.handle('lsp:status', () => lspStatus())
 ipcMain.handle('lsp:dispose', () => disposeLsp())

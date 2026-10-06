@@ -4,7 +4,7 @@
  * 用法：node scripts/check-lsp-compiledb.mjs
  */
 import { buildSync } from 'esbuild'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -20,7 +20,14 @@ const mod = await import('file://' + outfile.replace(/\\/g, '/'))
 const {
   parseFqbn, candidateIncludePaths, libraryIncludePaths, arduinoDefines,
   makeCppEntry, existingPaths, writeCompileCommands,
+  compareVersions, pickLatestVersion, buildCoreRoot, collectSourceFiles, defaultPackagesRoots,
 } = mod
+
+// lspService 会话层（含 ensureCompileDb 的 force 语义）。它只依赖 lsp-client/lsp-compile-db，
+// 不碰 electron，所以可以直接 bundle 真跑。
+const svcOut = join(tmp, 'lspService.mjs')
+buildSync({ entryPoints: [join(root, 'src/main/services/lspService.ts')], bundle: true, format: 'esm', platform: 'node', outfile: svcOut })
+const svc = await import('file://' + svcOut.replace(/\\/g, '/'))
 
 let pass = 0
 const fails = []
@@ -106,6 +113,67 @@ check('条目保留 arguments', Array.isArray(parsed[0].arguments))
 const before = readFileSync(out1, 'utf8')
 writeCompileCommands(proj, entries)
 check('重复写内容一致（幂等）', readFileSync(out1, 'utf8') === before)
+
+// --- 版本比较 / 版本挑选（换板后要挑「最新已装 core」）---
+check('compareVersions 1.10 > 1.9（不按字符串比）', compareVersions('1.10.0', '1.9.0') > 0)
+check('compareVersions 3.3.11 > 3.3.9', compareVersions('3.3.11', '3.3.9') > 0)
+check('compareVersions 相等为 0', compareVersions('2.0.0', '2.0.0') === 0)
+check('compareVersions 缺失段当 0', compareVersions('3.3', '3.3.0') === 0)
+check('pickLatestVersion 取最高', pickLatestVersion(['3.3.9', '3.3.11', '3.2.0']) === '3.3.11')
+check('pickLatestVersion 过滤非数字开头目录', pickLatestVersion(['devel', 'src', '1.0.0']) === '1.0.0')
+check('pickLatestVersion 空表返回 null', pickLatestVersion([]) === null)
+
+// --- core 根目录拼装 ---
+const cr = buildCoreRoot('C:/data/packages', 'esp32', 'esp32', '3.3.11')
+check('buildCoreRoot 拼出 packages/packager/hardware/arch/version', cr.endsWith(['packages', 'esp32', 'hardware', 'esp32', '3.3.11'].join('/')) || cr.endsWith(['packages', 'esp32', 'hardware', 'esp32', '3.3.11'].join('\\')))
+check('defaultPackagesRoots 非空且都是 packages 结尾', defaultPackagesRoots().length > 0 && defaultPackagesRoots().every((p) => p.endsWith('packages')))
+
+// --- collectSourceFiles（真实目录夹具）---
+const fsProj = mkdtempSync(join(tmpdir(), 'fsproj-'))
+mkdirSync(join(fsProj, 'src'))
+mkdirSync(join(fsProj, 'build'))
+mkdirSync(join(fsProj, 'node_modules'))
+mkdirSync(join(fsProj, '.pio'))
+mkdirSync(join(fsProj, '.hidden'))
+writeFileSync(join(fsProj, 'main.cpp'), '')
+writeFileSync(join(fsProj, 'notes.txt'), '')
+writeFileSync(join(fsProj, 'sketch.ino'), '')
+writeFileSync(join(fsProj, 'src', 'util.cpp'), '')
+writeFileSync(join(fsProj, 'src', 'api.h'), '')
+writeFileSync(join(fsProj, 'build', 'gen.cpp'), '')
+writeFileSync(join(fsProj, 'node_modules', 'dep.cpp'), '')
+writeFileSync(join(fsProj, '.pio', 'p.cpp'), '')
+writeFileSync(join(fsProj, '.hidden', 'h.cpp'), '')
+const found = collectSourceFiles(fsProj)
+check('收集到工程内源文件', found.some((f) => f.endsWith('main.cpp')) && found.some((f) => f.endsWith('util.cpp')))
+check('收集 .ino / .h', found.some((f) => f.endsWith('sketch.ino')) && found.some((f) => f.endsWith('api.h')))
+check('跳过 build 产物', !found.some((f) => f.includes('gen.cpp')))
+check('跳过 node_modules', !found.some((f) => f.includes('dep.cpp')))
+check('跳过 .pio', !found.some((f) => f.includes('p.cpp')))
+check('跳过点开头的隐藏目录', !found.some((f) => f.includes('h.cpp')))
+check('不收非源文件', !found.some((f) => f.endsWith('notes.txt')))
+
+// --- ensureCompileDb：core 没装也要能落地，且 force 语义正确 ---
+// 用一个肯定找不到 core 的 fqbn -> discoverCoreRoot 返回 null -> 走「无 -I 也要写」的降级分支
+const dbProj = mkdtempSync(join(tmpdir(), 'dbproj-'))
+writeFileSync(join(dbProj, 'main.ino'), 'void setup(){}\n')
+const r1 = svc.ensureCompileDb({ projectRoot: dbProj, fqbn: 'nosuchvendor:nosucharch:nosuchboard', files: [join(dbProj, 'main.ino')] })
+check('ensureCompileDb 落地成功', r1.ok === true)
+const dbPath = join(dbProj, 'compile_commands.json')
+check('生成 compile_commands.json', existsSync(dbPath))
+const dbJson = JSON.parse(readFileSync(dbPath, 'utf8'))
+check('条目含目标文件', dbJson.length === 1 && dbJson[0].file.endsWith('main.ino'))
+check('无 core 时仍声明 C++ 方言（关键）', dbJson[0].arguments.includes('--driver-mode=g++'))
+check('无 core 时没有 -I（不编造路径）', !dbJson[0].arguments.some((a) => a.startsWith('-I')))
+
+// 篡改后：不带 force 应原样保留（复用），带 force 应重建覆盖
+writeFileSync(dbPath, '[{"tampered":true}]', 'utf8')
+const r2 = svc.ensureCompileDb({ projectRoot: dbProj, fqbn: 'nosuchvendor:nosucharch:nosuchboard', files: [join(dbProj, 'main.ino')] })
+check('已有文件时不 force 则复用不重写', readFileSync(dbPath, 'utf8') === '[{"tampered":true}]' && r2.ok === true)
+const r3 = svc.ensureCompileDb({ projectRoot: dbProj, fqbn: 'nosuchvendor:nosucharch:nosuchboard', files: [join(dbProj, 'main.ino')], force: true })
+const dbJson2 = JSON.parse(readFileSync(dbPath, 'utf8'))
+check('force=true 重建并覆盖旧内容', r3.ok === true && Array.isArray(dbJson2) && dbJson2[0].file.endsWith('main.ino'))
+check('force 后内容不再是篡改版', readFileSync(dbPath, 'utf8') !== '[{"tampered":true}]')
 
 rmSync(tmp, { recursive: true, force: true })
 
