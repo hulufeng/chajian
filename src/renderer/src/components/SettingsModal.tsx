@@ -15,6 +15,8 @@ interface SettingsProps {
   defaultTab?: string
   /** 当前工程根目录：MCP 需要读项目级 .labcode/mcp.json */
   projectRoot?: string | null
+  /** 宿主真实版本。由 App 从主进程取来 —— 之前这里写死 v0.1.9，跟实际发出的包对不上 */
+  version?: string
 }
 
 const SHELL_OPTIONS: Array<{ value: ShellType; label: string }> = [
@@ -60,7 +62,7 @@ const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
@@ -82,6 +84,8 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [byokApiKey, setByokApiKey] = useState('')
   const [byokModel, setByokModel] = useState('')
   const [byokSaved, setByokSaved] = useState(false)
+  /** 模型页自己的一处错误提示（删除/保存失败）。不复用 mcpMsg —— 那是 MCP 页的 */
+  const [byokErr, setByokErr] = useState('')
 
   // ── 寄存器数据（CMSIS-SVD）──
   interface SvdChip { chip: string; bytes: number; mtime: number }
@@ -254,6 +258,11 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
 
   const catLabel = (id: string): string => CATEGORIES.find((c) => c.id === id)?.label ?? id
 
+  /** 官方仓库可装的芯片；列表还没拉回来时给个空 —— 宁可不显示，也不让 UI 和真下载的对不上 */
+  const knownChips = svdList?.known ?? []
+  /** 受控下拉真正的高亮项：state 里的值若不在列表里（比如刚导入过别的芯片），退到列表首项 */
+  const svdPick = knownChips.includes(svdImportChip) ? svdImportChip : (knownChips[0] ?? '')
+
   return (
     <div className="settings-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="settings-modal">
@@ -314,10 +323,19 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                             setByokSaved(false)
                           }}>✎</button>
                           <button className="icon-btn" title="删除" onClick={() => {
-                            void window.api.ai.byokDelete(p.id).then(() => {
-                              void window.api.ai.byokProfiles().then(setByokProfiles)
-                              setByokSaved(true)
-                            })
+                            setByokErr('')
+                            void window.api.ai.byokDelete(p.id)
+                              .then(async () => {
+                                const ps = await window.api.ai.byokProfiles()
+                                setByokProfiles(ps)
+                                // 主进程的 deleteByokProfile 已经把 modelId 切回默认、
+                                // activeByokId 也挪到第一个了；这里唯一漏的是**渲染层这张卡的
+                                // activeByokId** —— 不复位它就永远顶着「使用中」，
+                                // 看着像在用、实际已经在跑内置模型。
+                                if (activeByokId === p.id) setActiveByokId(ps.length > 0 ? ps[0].id : null)
+                                setByokSaved(true)
+                              })
+                              .catch((e: Error) => setByokErr(`删除失败：${e.message}`))
                           }}>✕</button>
                         </div>
                       </div>
@@ -415,6 +433,8 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     </div>
                   </div>
                 )}
+
+                {byokErr && <div className="svd-msg err" style={{ marginTop: 8 }}>{byokErr}</div>}
 
                 {/* 支持提供商 chips */}
                 <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
@@ -553,13 +573,22 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
 
                 <div className="svd-block">
                   <div className="svd-block-title">从官方仓库安装</div>
+                  {knownChips.length === 0 && (
+                    <div className="svd-empty">正在读取可用的芯片列表…</div>
+                  )}
                   <div className="svd-picker">
+                    {/*
+                      必须受控。之前是 defaultValue（非受控）却和下面「导入本地文件」共用
+                      svdImportChip 这一个 state：用户在下拉里选了 esp32c3，DOM 变了、state 没变，
+                      点「下载安装」还是拿旧值去下 —— 界面显示的芯片和实际下载的芯片对不上。
+                    */}
                     <select
                       className="settings-select"
-                      defaultValue="esp32s3"
-                      onChange={(e) => { setSvdImportChip(e.target.value) }}
+                      value={svdPick || ''}
+                      disabled={knownChips.length === 0}
+                      onChange={(e) => { setSvdImportChip(e.target.value); setSvdMsg(null) }}
                     >
-                      {(svdList?.known ?? []).map((c) => (
+                      {knownChips.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
@@ -760,7 +789,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                 <p className="settings-desc">在 AI 工具执行前（PreToolUse）/ 后（PostToolUse）调用外部脚本（JSON stdin/stdout）。命令必须是可执行路径（防 shell 注入）。钩子故障默认放行，不中断 AI。当前无配置钩子。</p>
               </div>
             )}
-            <div className="settings-foot">{catLabel(active)} · LabCode v0.1.9</div>
+            <div className="settings-foot">{catLabel(active)} · LabCode v{version || '—'}</div>
           </section>
         </div>
       </div>

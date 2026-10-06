@@ -905,17 +905,33 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     setShowTokenPanel(false)
   }
 
+  /**
+   * 所有「点了就要把 UI 复位」的异步操作都必须带兜底。
+   * 踩过的坑：stopAgent 里 `await agent.stop()` 没有 catch，
+   * 一旦主进程那边没在运行中共（reject），后面的 setBusy(false) 根本不执行 ——
+   * 发送按钮永久 disabled，整个面板假死，用户只能杀进程。
+   * 凡是「发消息给主进程」的动作，统一这条形状：先复位 UI，再谈结果。
+   */
   const stopAgent = async (): Promise<void> => {
-    await window.api.agent.stop()
     setBusy(false)
-    setAgentStatus('stopped')
     setConfirmReq(null)
-    setMessages((prev) => [...prev, { kind: 'system', text: '（用户已停止）' }])
+    setAskReq(null)
+    setAgentStatus('stopped')
+    try {
+      await window.api.agent.stop()
+      setMessages((prev) => [...prev, { kind: 'system', text: '（用户已停止）' }])
+    } catch (e) {
+      setMessages((prev) => [...prev, { kind: 'system', text: `（停止未生效：${(e as Error).message}）` }])
+    }
   }
 
   const respondConfirm = async (action: 'allow_once' | 'allow_session' | 'reject'): Promise<void> => {
     setConfirmReq(null)
-    await window.api.agent.respond(action)
+    try {
+      await window.api.agent.respond(action)
+    } catch (e) {
+      setMessages((prev) => [...prev, { kind: 'assistant', text: `确认没能送达 Agent：${(e as Error).message}` }])
+    }
   }
 
   const submitAsk = async (): Promise<void> => {
@@ -926,13 +942,21 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
       return (a || '').trim() || '（未回答）'
     })
     setAskReq(null)
-    await window.api.agent.askRespond({ answers })
+    try {
+      await window.api.agent.askRespond({ answers })
+    } catch (e) {
+      setMessages((prev) => [...prev, { kind: 'assistant', text: `回答没能送达 Agent：${(e as Error).message}` }])
+    }
   }
 
   const skipAsk = async (): Promise<void> => {
     if (!askReq) return
     setAskReq(null)
-    await window.api.agent.askRespond({ answers: [] })
+    try {
+      await window.api.agent.askRespond({ answers: [] })
+    } catch (e) {
+      setMessages((prev) => [...prev, { kind: 'assistant', text: `跳过没能送达 Agent：${(e as Error).message}` }])
+    }
   }
 
   const handleSlash = (cmd: string): void => {
@@ -1175,12 +1199,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
         >
           {THINKING_LEVELS.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
         </select>
-        <button className="ai-head-icon" title="上下文使用统计" onClick={() => setShowTokenPanel((v) => !v)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: 3, display: 'flex', marginLeft: 'auto' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11.25 11.25l.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
-        </button>
-        {busy && (
-          <button className="ai-stop-btn" onClick={() => void stopAgent()}>⏹ 停止</button>
-        )}
+          <button className="ai-head-icon" title="上下文使用统计" onClick={() => setShowTokenPanel((v) => !v)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: 3, display: 'flex', marginLeft: 'auto' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11.25 11.25l.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+          </button>
       </div>
 
       {/* 上下文使用统计（动态估算） */}
@@ -1380,6 +1401,19 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
               输入 {fmtTokens(stats.inputTokens ?? 0)} · 输出 {fmtTokens(stats.outputTokens ?? 0)}
             </span>
           )}
+        </div>
+      )}
+
+      {/* 中断入口：必须常驻。
+          之前它挂在「高级选项（showAdvanced）」里，而默认就是精简模式 ——
+          结果 agent 跑飞时用户看不见停止按钮，发送按钮还 disabled，只能杀进程。
+          中断是「正在发生的事」的逃生口，不能被折叠收走。 */}
+      {busy && (
+        <div className="ai-stopbar">
+          <button className="ai-stop-btn" onClick={() => void stopAgent()} title="中断当前 Agent 运行">
+            ⏹ 停止{agentStatus === 'tool_calling' ? '（正在执行工具）' : agentStatus === 'thinking' ? '（正在思考）' : ''}
+          </button>
+          <span className="ai-stopbar-hint">中断后本轮对话保留，可改写后重新发送</span>
         </div>
       )}
 

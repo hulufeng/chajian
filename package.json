@@ -8,12 +8,13 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && powershell -NoProfile -Command \"if(Test-Path proto){Copy-Item -Path proto -Destination out/main/proto -Recurse -Force; Write-Host 'proto copied'}\"",
+    "build": "electron-vite build && node scripts/copy-runtime-assets.mjs",
     "start": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "dist": "electron-vite build && electron-builder --win nsis"
+    "dist": "electron-vite build && electron-builder --win nsis",
+    "build:assets": "node scripts/copy-runtime-assets.mjs"
   },
   "build": {
     "appId": "com.labcode.desktop",

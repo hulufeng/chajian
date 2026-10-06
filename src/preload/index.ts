@@ -280,6 +280,12 @@ const api = {
       ipcRenderer.invoke('toolchain:upload', opts),
     install: (): Promise<{ success: boolean; path: string | null; error?: string }> =>
       ipcRenderer.invoke('toolchain:install'),
+    /**
+     * 工具链内置 Web UI（平台管理 / 库管理 / 设置）的 file:// 地址。
+     * 由主进程判存后返回，文件不在就给空串让渲染层降级成一行说明 ——
+     * 一个 iframe 打不开，绝不该把整个侧栏带崩。
+     */
+    uiUrl: (tab: string): Promise<string> => ipcRenderer.invoke('toolchain:ui-url', tab),
     onInstallProgress: (cb: (p: { phase: string; percent: number; message: string }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, p: { phase: string; percent: number; message: string }): void => cb(p)
       ipcRenderer.on('toolchain:install-progress', listener)
@@ -287,11 +293,20 @@ const api = {
     }
   },
 
-  // 应用路径
+  // 应用路径与版本
   app: {
     getExamplesDir: (): Promise<string> => ipcRenderer.invoke('app:getExamplesDir'),
     /** 用系统默认程序打开路径（文件 / 目录），由主进程 shell.openPath 兜底错误 */
     openPath: (p: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('app:openPath', p),
+    /**
+     * 宿主资源路径。渲染层的 nodeIntegration 是关的，
+     * 不许在这里碰 process / __dirname —— 打包后那些变量根本不存在。
+     * 一律由主进程把「路径事实」走 IPC 送上来，渲染层只负责显示。
+     */
+    /** 宿主版本（package.json 里的那个，别再让 UI 写死一个数字） */
+    version: (): Promise<string> => ipcRenderer.invoke('app:version'),
+    /** 运行时目录（开发=app.getAppPath()，打包=resources 根） */
+    resourcesPath: (): Promise<string> => ipcRenderer.invoke('app:resourcesPath')
   },
 
   // 命令执行（终端）

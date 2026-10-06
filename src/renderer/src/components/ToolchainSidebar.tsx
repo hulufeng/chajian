@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import DevicePanel from './DevicePanel'
 import DeviceFilesPanel from './DeviceFilesPanel'
 
@@ -23,9 +23,37 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'settings', label: '设置', icon: '⚙️' }
 ]
 
+/** 走 iframe 的内置页面（device / files 是 React 组件，不在这列） */
+const WEB_TABS: TabId[] = ['platforms', 'libraries', 'settings']
+
 function ToolchainSidebar({ projectRoot, onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring, onOpenFile, serialSessionId }: ToolchainSidebarProps): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>('device')
   const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  /**
+   * Web UI 的 file:// 地址由主进程给出（见 `toolchain:ui-url`）。
+   * 不能在这里拼 process.resourcesPath —— 渲染层的 nodeIntegration 是关的，
+   * 那个变量在打包后根本不存在，拼了就是 render 阶段 ReferenceError、整个侧栏白屏。
+   */
+  const [uiUrl, setUiUrl] = useState('')
+  const [uiErr, setUiErr] = useState('')
+
+  const loadUiUrl = useCallback(async (tab: TabId): Promise<void> => {
+    setUiUrl('')
+    setUiErr('')
+    try {
+      const url = await window.api.toolchain.uiUrl(tab)
+      if (url) setUiUrl(url)
+      else setUiErr('该页面未随安装包分发（打包时漏了 plugins/arduino-toolchain/ui）。')
+    } catch (e) {
+      setUiErr((e as Error).message || '读取内置页面失败')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'device' || activeTab === 'files') return
+    void loadUiUrl(activeTab)
+  }, [activeTab, loadUiUrl])
 
   // 监听 webview 的 postMessage，转发到主进程 IPC
   useEffect(() => {
@@ -78,14 +106,6 @@ function ToolchainSidebar({ projectRoot, onBoardChange, onPortChange, onOpenSeri
     return () => offOutput()
   }, [activeTab])
 
-  const getWebviewUrl = (tab: TabId): string => {
-    // 开发模式：使用 file:// 协议加载本地 HTML
-    const base = import.meta.env.DEV
-      ? `file:///${window.location.pathname.replace(/\/[^/]*$/, '').replace('/renderer/src', '/main/plugins/arduino-toolchain/ui')}`
-      : `file:///${process.resourcesPath}/plugins/arduino-cli-toolchain/ui`
-    return `${base}/${tab}.html`
-  }
-
   return (
     <div className="toolchain-sidebar">
       {/* 顶部选项卡 */}
@@ -118,30 +138,27 @@ function ToolchainSidebar({ projectRoot, onBoardChange, onPortChange, onOpenSeri
         {activeTab === 'files' && (
           <DeviceFilesPanel sessionId={serialSessionId} projectRoot={projectRoot} />
         )}
-        {activeTab === 'platforms' && (
-          <iframe
-            ref={iframeRef}
-            src={getWebviewUrl('platforms')}
-            className="toolchain-webview"
-            sandbox="allow-scripts allow-same-origin"
-          />
-        )}
-        {activeTab === 'libraries' && (
-          <iframe
-            ref={iframeRef}
-            src={getWebviewUrl('libraries')}
-            className="toolchain-webview"
-            sandbox="allow-scripts allow-same-origin"
-          />
-        )}
-        {activeTab === 'settings' && (
-          <iframe
-            ref={iframeRef}
-            src={getWebviewUrl('settings')}
-            className="toolchain-webview"
-            sandbox="allow-scripts allow-same-origin"
-          />
-        )}
+        {WEB_TABS.map((tab) => {
+          if (activeTab !== tab) return null
+          // 缺资源时给一行说明，而不是留个空面板让人以为页面是白的
+          if (!uiUrl) {
+            return (
+              <div key={tab} className="toolchain-missing">
+                <div className="toolchain-missing-title">{TABS.find((t) => t.id === tab)?.label ?? tab}</div>
+                <div className="toolchain-missing-desc">{uiErr || '页面加载中…'}</div>
+              </div>
+            )
+          }
+          return (
+            <iframe
+              key={tab}
+              ref={iframeRef}
+              src={uiUrl}
+              className="toolchain-webview"
+              sandbox="allow-scripts allow-same-origin"
+            />
+          )
+        })}
       </div>
     </div>
   )

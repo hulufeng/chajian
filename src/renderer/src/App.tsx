@@ -328,10 +328,11 @@ function App(): React.JSX.Element {
   }, [])
   const [pluginTypes, setPluginTypes] = useState<ProjectTypeItem[]>([])
   const [activeSidebar, setActiveSidebar] = useState('files')
-  const [terminalVisible, setTerminalVisible] = useState(true)
-  const [debugVisible, setDebugVisible] = useState(false)
-  const [pioVisible, setPioVisible] = useState(false)
-  const [targetVisible, setTargetVisible] = useState(false)
+  // 面板可见性只有 bottomPanel 一个真相源（TitleBar 的按钮高亮由它派生传入）。
+  // 这里曾经并排维护 terminalVisible / debugVisible / pioVisible / targetVisible 四个平行 state，
+  // 但它们的 setter 只在少数几条路径上被调用 —— 凡是从 ensureOutputVisible() 之类
+  // 直接改 bottomPanel 进来的，标题栏按钮高亮就跟实际面板状态对不上。
+  // 删掉平行 state，改成派生，这类不同步从此不可能再发生。
   /** 底部统一面板组：一次只显示一个（UI 重设计核心，见 PanelDock 注释） */
   // 极简模式默认收起底部面板（编译/烧录/报错时会自动弹开输出，用户不用去找）
   const [bottomPanel, setBottomPanel] = useState<PanelId | null>(simple ? null : 'output')
@@ -366,14 +367,7 @@ function App(): React.JSX.Element {
 
   /** 统一的面板开关：再点一次收起 */
   const openPanel = (id: PanelId): void => {
-    setBottomPanel((cur) => {
-      const next = cur === id ? null : id
-      setTerminalVisible(next === 'output')
-      setDebugVisible(next === 'debug')
-      setPioVisible(next === 'platformio')
-      setTargetVisible(next === 'target')
-      return next
-    })
+    setBottomPanel((cur) => (cur === id ? null : id))
   }
 
   // Git 变更数角标：打开工程时拉一次，之后低频刷新（git status 很轻）
@@ -418,6 +412,8 @@ function App(): React.JSX.Element {
 
   // 更新（强制更新 / 自动更新）状态
   const [updater, setUpdater] = useState<UpdaterStatus | null>(null)
+  /** 宿主真实版本（主进程 app.getVersion()）。设置页的「关于」不能写死版本号 */
+  const [appVersion, setAppVersion] = useState('')
 
   const ex = useCallback((fileName: string) => {
     const base = examplesDir || `D:\\工作\\代码实验室\\codelab-desktop\\examples`
@@ -451,10 +447,6 @@ function App(): React.JSX.Element {
     const onPanel = (e: Event): void => {
       const id = (e as CustomEvent<string>).detail
       setBottomPanel(id as PanelId)
-      setTerminalVisible(id === 'output')
-      setDebugVisible(id === 'debug')
-      setPioVisible(id === 'platformio')
-      setTargetVisible(id === 'target')
     }
     const onSettings = (): void => {
       setSettingsTab('general')
@@ -678,6 +670,8 @@ function App(): React.JSX.Element {
   // 订阅主进程更新状态（检查中 / 可用 / 下载进度 / 已是最新 / 错误）
   useEffect(() => {
     const off = window.api.updater.onStatus(setUpdater)
+    // 设置页底部要显示真实版本号，别让 UI 自己写一个数字
+    window.api.app.version().then(setAppVersion).catch(() => setAppVersion(''))
     return off
   }, [])
 
@@ -1286,9 +1280,8 @@ function App(): React.JSX.Element {
                   serialSessionId={serialOpen && selectedPort ? `serial-${selectedPort}` : null}
                   onOpenSerialWindow={() => {
                     // 串口监视器统一走底部面板（不再弹浮窗，避免遮挡编辑器/仿真面板）。
-                    // 之前这里只 setTerminalVisible(true) —— 那是个已被 PanelDock 取代的遗留 state
-                    // （现在读的是 bottomPanel === 'output'），改它等于什么都没做：
-                    // 面板折叠着或停在别的页签时，点了毫无反应。
+                    // 面板可见性读的是 bottomPanel，所以这里必须真的展开面板，
+                    // 只翻一个孤立 state 的话，折叠着或停在别的页签时点了毫无反应。
                     ensureOutputVisible()
                     // 重建 OutputPanel → 页签回到 defaultTab「串口监视器」
                     setOutputKey((k) => k + 1)
@@ -1327,14 +1320,7 @@ function App(): React.JSX.Element {
               用户只能靠菜单命令把它唤回来，等于功能被藏死了。 */}
           <PanelDock
             active={bottomPanel}
-            onChange={(id) => {
-              setBottomPanel(id)
-              // 旧 state 与面板组保持一致，避免两套开关互相打架
-              setTerminalVisible(id === 'output')
-              setDebugVisible(id === 'debug')
-              setPioVisible(id === 'platformio')
-              setTargetVisible(id === 'target')
-            }}
+            onChange={setBottomPanel}
             height={panelHeight}
             onHeightChange={setPanelHeight}
             badges={{ output: buildError ? '!' : 0, git: gitBadge }}
@@ -1448,7 +1434,8 @@ function App(): React.JSX.Element {
             localStorage.setItem('codelab-lang', l)
           }}
           defaultTab={settingsTab}
-        projectRoot={projectRoot}
+          projectRoot={projectRoot}
+          version={appVersion}
         />
       )}
       {wiringSvg && (

@@ -1433,6 +1433,39 @@ ipcMain.handle('target:detect', async () => {
   })
 })
 
+/**
+ * 宿主版本：UI 的「设置 · 关于」处必须显示真实版本号。
+ * 之前 SettingsModal 写死了 v0.1.9，跟实际发出的包（1.1.3）对不上。
+ */
+ipcMain.handle('app:version', () => app.getVersion())
+
+/** 运行时目录：开发是 app.getAppPath()，打包是 resources 根（process.resourcesPath）。给渲染层当"路径事实"用。 */
+ipcMain.handle('app:resourcesPath', () => {
+  if (app.isPackaged) return process.resourcesPath
+  return app.getAppPath()
+})
+
+/**
+ * 工具链内置 Web UI 的 file:// 地址。
+ *
+ * 踩过的坑（一次打包必崩-site）：
+ *   1. 渲染层拿不到 `process`（nodeIntegration:false + contextIsolation:true），
+ *      ToolchainSidebar 里写 `process.resourcesPath` 会在 render 阶段 ReferenceError，
+ *      左侧栏整体白屏 —— 所以路径一律由主进程算好送上来；
+ *   2. 开发期目录是 `arduino-toolchain`，打包路径被写成了 `arduino-cli-toolchain`（不存在）；
+ *   3. dev / prod 的 resources 根也不一样，必须让 app.isPackaged 决定。
+ * 因此这里**判存**：文件不存在就返回空串，渲染层降级成一行说明，
+ * 一个页面缺失不该把整个侧栏带崩。
+ */
+ipcMain.handle('toolchain:ui-url', (_e, tab: string): string => {
+  const root = app.isPackaged ? process.resourcesPath : app.getAppPath()
+  const safe = /^[a-z0-9-]+$/i.test(tab || '') ? tab : ''
+  if (!safe) return ''
+  const file = join(root, 'plugins', 'arduino-toolchain', 'ui', `${safe}.html`)
+  if (!existsSync(file)) return ''
+  return `file:///${file.replace(/\\/g, '/')}`
+})
+
 ipcMain.handle(
   'target:write-ini',
   async (_e, opts: { projectRoot: string; boardId: string; env?: string; uploadPort?: string }) => {
