@@ -14,3 +14,6 @@ release/
 dist-kb/
 dist-kb-repo/
 dist-plugin/
+
+# 自检脚本的临时转译产物（esbuild bundle 落盘）
+scripts/.tmp/

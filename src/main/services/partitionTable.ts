@@ -70,8 +70,9 @@ const NVS_TYPES: Record<number, string> = {
   11: 'blob'
 }
 
-/** 解析一整块分区表字节流 */
-export function parsePartitionTable(buf: Buffer): PartitionEntry[] {
+/** 解析一整块分区表字节流。
+ * @param baseAddr 本缓冲首字节对应的片上地址（魔数不在缓冲开头时要用，调试字段 tablePos 才准） */
+export function parsePartitionTable(buf: Buffer, baseAddr: number = PARTITION_TABLE_ADDR): PartitionEntry[] {
   const out: PartitionEntry[] = []
   for (let off = 0; off + 32 <= buf.length; off += 32) {
     const e = buf.slice(off, off + 32)
@@ -87,7 +88,7 @@ export function parsePartitionTable(buf: Buffer): PartitionEntry[] {
     out.push({
       // 注意：分区在 flash 里的地址是表项的 offset 字段，不是它在表里的位置
       address: offset,
-      tablePos: PARTITION_TABLE_ADDR + off,
+      tablePos: baseAddr + off,
       name: label || `type${type}_${subtype}`,
       type,
       subtype,
@@ -122,7 +123,8 @@ export async function readPartitionTable(read: RawReader, tableAddr = PARTITION_
   const rel = locatePartitionTable(buf)
   if (rel < 0) return []
   const slice = rel === 0 ? buf : buf.slice(rel)
-  return parsePartitionTable(slice)
+  // 缓冲首字节对应的真实片上地址 = 读取起点 + 魔数偏移，tablePos 才准
+  return parsePartitionTable(slice, tableAddr + rel)
 }
 
 /** 读单个标量值（值域在条目头偏移 10 起的 8 字节内，小端） */
