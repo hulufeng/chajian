@@ -7,7 +7,7 @@ import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from
 // 编辑器语言服务：补全 / 悬停 / 跳转 / 实时诊断（#29 #31）+ 编译数据库保障（#30）
 import {
   syncDocument, completion, hover as lspHover, definition as lspDefinition,
-  ensureCompileDb, disposeAll as disposeLsp, status as lspStatus
+  ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
 } from './services/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
 import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
@@ -1771,6 +1771,13 @@ function broadcastDebugStopped(): void {
 app.whenReady().then(() => {
   initPlugins()
   createWindow()
+  // 语言服务器可执行探测：告诉 lspService 用户数据目录，
+  // 这样「装了 LLVM 但没加 PATH」的机器也能找到 clangd（与 arduino-cli 同惯例的目录）。
+  try {
+    configureServerSearch({ userDataDir: app.getPath('userData') })
+  } catch {
+    // 取不到路径就只用 PATH / 环境变量，功能降级但不报错
+  }
 
   // ── 记住上次用的本地模型，开机后台接上 ──
   // 不这么做的话：下拉框里明明选着「Qwen2.5 Coder 3B」，重启发消息却走云端

@@ -190,8 +190,13 @@ export interface CompileEntry {
 
 /**
  * 生成一条 clangd 可吃的编译命令。
- * `--driver-mode=g++` 让 clangd 按 C++ 处理 .ino（Arduino 本质是 C++），
- * 否则 .ino 会被当成未知方言、Arduino 语法全报错。
+ *
+ * `-x c++` 是关键（实测得出，别想当然）：
+ * .ino 不是 clang 认识的扩展名，不显式声明方言的话 clangd 会解析失败，
+ * 症状是 hover/definition 全部返回 `invalid AST`（补全也只剩零星几项）。
+ * 之前这里写的是 `--driver-mode=g++`，那是 clang **driver** 的参数，
+ * 在 compile_commands.json 场景下不生效——参数看起来对、实际没做功。
+ * 对照实验：同一份代码 .cpp 正常、.ino 加 -x c++ 正常、.ino 只带 driver-mode 则 invalid AST。
  */
 export function makeCppEntry(opts: {
   file: string
@@ -205,7 +210,8 @@ export function makeCppEntry(opts: {
   const compiler = opts.compiler || 'clang++'
   const std = opts.std || 'c++17'
   const args: string[] = [compiler]
-  args.push(`--driver-mode=g++`)
+  args.push(`-x`)
+  args.push(`c++`)
   args.push(`-std=${std}`)
   for (const inc of opts.includes) args.push(`-I${inc}`)
   for (const def of opts.defines) args.push(`-D${def}`)

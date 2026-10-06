@@ -84,7 +84,7 @@ const e = makeCppEntry({
   extraArgs: ['-DESP32=ESP32']
 })
 check('默认编译器 clang++', e.arguments[0] === 'clang++')
-check('.ino 走 C++ 方言解析（关键）', e.arguments.includes('--driver-mode=g++'))
+check('.ino 走 C++ 方言解析（关键）', e.arguments.includes(`-x`))
 check('含 -std=c++17', e.arguments.includes('-std=c++17'))
 check('include 拼 -I', e.arguments.includes('-I/core/cores/esp32'))
 check('define 拼 -D', e.arguments.includes('-DARDUINO=10812'))
@@ -163,7 +163,7 @@ const dbPath = join(dbProj, 'compile_commands.json')
 check('生成 compile_commands.json', existsSync(dbPath))
 const dbJson = JSON.parse(readFileSync(dbPath, 'utf8'))
 check('条目含目标文件', dbJson.length === 1 && dbJson[0].file.endsWith('main.ino'))
-check('无 core 时仍声明 C++ 方言（关键）', dbJson[0].arguments.includes('--driver-mode=g++'))
+check('无 core 时仍声明 C++ 方言（关键）', dbJson[0].arguments.includes(`-x`))
 check('无 core 时没有 -I（不编造路径）', !dbJson[0].arguments.some((a) => a.startsWith('-I')))
 
 // 篡改后：不带 force 应原样保留（复用），带 force 应重建覆盖

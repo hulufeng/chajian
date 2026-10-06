@@ -12,6 +12,7 @@ import { dirname, extname, join } from 'node:path'
 import { existsSync, rmSync } from 'node:fs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { LspClient } from './lsp-client'
+import { locateServerCommand } from './lsp-server-path'
 import {
   candidateIncludePaths, libraryIncludePaths, arduinoDefines, makeCppEntry,
   existingPaths, writeCompileCommands, parseFqbn, discoverCoreRoot, collectSourceFiles,
@@ -92,6 +93,17 @@ const clients = new Map<string, LspClient>()
 /** 启动失败的 key -> 错误原因。避免 clangd 没装时每次都重试 spawn（慢且刷日志） */
 const failed = new Map<string, string>()
 
+/**
+ * 应用数据目录（探测用户级工具目录用）。
+ * 由主进程启动时通过 configureServerSearch 注入 —— 这样本模块不必 import electron，
+ * 纯函数部分就能在 node 里直接单测。
+ */
+let userDataDir = ''
+
+export function configureServerSearch(opts: { userDataDir: string }): void {
+  userDataDir = opts.userDataDir
+}
+
 function fileToUri(file: string): string {
   return pathToFileURL(file).href
 }
@@ -106,7 +118,9 @@ async function getClient(languageId: string, file: string): Promise<LspClient> {
 
   const srv = LANG_SERVERS[languageId]
   if (!srv) throw new Error(`该语言没有配置语言服务器：${languageId}`)
-  const client = new LspClient(srv.command, srv.args || [], pathToFileURL(root).href)
+  // 定位可执行：PATH 上没有时按常见安装位置找（用户装了 LLVM 但没加 PATH 是常态）
+  const bin = locateServerCommand(srv.command, userDataDir)
+  const client = new LspClient(bin, srv.args || [], pathToFileURL(root).href)
   try {
     await client.start()
   } catch (e) {
