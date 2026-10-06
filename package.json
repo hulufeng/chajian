@@ -51,7 +51,8 @@
       "**/node_modules/node-pty/**",
       "**/node_modules/@serialport/**",
       "**/node_modules/serialport/**",
-      "**/*.node"
+      "**/*.node",
+      "**/plugins/**"
     ],
     "npmRebuild": false,
     "win": {

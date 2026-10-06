@@ -1458,12 +1458,29 @@ ipcMain.handle('app:resourcesPath', () => {
  * 一个页面缺失不该把整个侧栏带崩。
  */
 ipcMain.handle('toolchain:ui-url', (_e, tab: string): string => {
-  const root = app.isPackaged ? process.resourcesPath : app.getAppPath()
   const safe = /^[a-z0-9-]+$/i.test(tab || '') ? tab : ''
   if (!safe) return ''
-  const file = join(root, 'plugins', 'arduino-toolchain', 'ui', `${safe}.html`)
-  if (!existsSync(file)) return ''
-  return `file:///${file.replace(/\\/g, '/')}`
+  const rel = join('plugins', 'arduino-toolchain', 'ui', `${safe}.html`)
+  // 逐个判存，取第一个真的在磁盘上的。踩过的坑（顺序即真实情况）：
+  //   1) apps 里配了 asarUnpack('**/plugins/**')，plugins 根本不进 asar，
+  //      而是解到 resources/app.asar.unpacked/out/main/... 落盘 —— 打包后唯一判存成功的根，
+  //      file:// iframe 也只认磁盘真实文件，asr 内部路径一定加载不了。
+  //   2) asar 未解包时 UI 在 resources/app.asar/out/main/... 内，existsSync 看不见 asar 内部，
+  //      判存必然落空，保留只是为了让配置失效时报错信息能指出根因。
+  //   3) 直接拼 resources/plugins/... 是错的（UI 不在 resources 根下）。
+  //   开发态 app.getAppPath() 是项目根，真实文件在 out/main/plugins/... 下。
+  const roots = app.isPackaged
+    ? [
+        join(process.resourcesPath, 'app.asar.unpacked', 'out', 'main'),
+        join(process.resourcesPath, 'app.asar', 'out', 'main'),
+        join(process.resourcesPath, 'out', 'main'),
+      ]
+    : [join(app.getAppPath(), 'out', 'main')]
+  for (const root of roots) {
+    const file = join(root, rel)
+    if (existsSync(file)) return `file:///${file.replace(/\\/g, '/')}`
+  }
+  return ''
 })
 
 ipcMain.handle(
