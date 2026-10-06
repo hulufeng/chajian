@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { McpRuntimeState } from '../../../preload'
+import { type EditorSettings, EDITOR_FONT_FAMILIES } from './editor/editorSettings'
 import PluginMarket from './PluginMarket'
 
 type ShellType = 'powershell' | 'cmd' | 'pwsh' | 'bash'
@@ -17,6 +18,9 @@ interface SettingsProps {
   projectRoot?: string | null
   /** 宿主真实版本。由 App 从主进程取来 —— 之前这里写死 v0.1.9，跟实际发出的包对不上 */
   version?: string
+  /** 编辑器偏好（字号/缩进/换行/minimap/字体），来自 App，实时回写 */
+  editorSettings: EditorSettings
+  onEditorSettingsChange: (s: EditorSettings) => void
 }
 
 const SHELL_OPTIONS: Array<{ value: ShellType; label: string }> = [
@@ -43,6 +47,7 @@ const CATEGORIES = [
   { id: 'models', label: '模型', icon: '🧠' },
   { id: 'engine', label: '本地引擎', icon: '🖥️' },
   { id: 'svd', label: '寄存器数据', icon: '🧾' },
+  { id: 'editor', label: '编辑器', icon: '📝' },
   { id: 'general', label: '常规', icon: '⚙️' },
   { id: 'skills', label: '技能', icon: '✨' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
@@ -51,18 +56,18 @@ const CATEGORIES = [
 ]
 
 /**
- * 导航分组：按「用户为什么来这儿」把 8 个平铺分类收成 3 组。
- * 分组依据——AI 与模型（调模型）、硬件与工具链（板子/寄存器/通用）、扩展能力（外部能力接入）。
+ * 导航分组：按「用户为什么来这儿」把分类收成 3 组。
+ * 分组依据——AI 与模型（调模型）、硬件与工具链（板子/寄存器/编辑器/通用）、扩展能力（外部能力接入）。
  */
 const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
   { title: 'AI 与模型', items: CATEGORIES.filter((c) => c.id === 'models' || c.id === 'engine') },
-  { title: '硬件与工具链', items: CATEGORIES.filter((c) => c.id === 'svd' || c.id === 'general') },
+  { title: '硬件与工具链', items: CATEGORIES.filter((c) => ['svd', 'editor', 'general'].includes(c.id)) },
   { title: '扩展能力', items: CATEGORIES.filter((c) => ['mcp', 'plugins', 'skills', 'hooks'].includes(c.id)) }
 ]
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
@@ -72,7 +77,6 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [mcpBusy, setMcpBusy] = useState(false)
   const [mcpMsg, setMcpMsg] = useState('')
   const [mcpDraft, setMcpDraft] = useState({ name: '', command: '' })
-  const [fontSize, setFontSize] = useState<number>(() => Number(localStorage.getItem('codelab-fontsize')) || 14)
   // BYOK 自定义模型（多 profile）
   interface ByokProfile { id: string; name: string; baseUrl: string; apiKey: string; model: string }
   const [byokProfiles, setByokProfiles] = useState<ByokProfile[]>([])
@@ -250,10 +254,9 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const applyFontSize = (v: number): void => {
-    setFontSize(v)
-    localStorage.setItem('codelab-fontsize', String(v))
-    document.documentElement.style.setProperty('--editor-font-size', `${v}px`)
+  /** 编辑器设置局部更新：合并补丁回写 App（App 负责持久化 + 下发 Monaco） */
+  const patchEditor = (patch: Partial<EditorSettings>): void => {
+    onEditorSettingsChange({ ...editorSettings, ...patch })
   }
 
   const catLabel = (id: string): string => CATEGORIES.find((c) => c.id === id)?.label ?? id
@@ -686,12 +689,81 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     {SHELL_OPTIONS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
                   </select>
                 </div>
+              </div>
+            )}
+            {active === 'editor' && (
+              <div className="settings-section">
+                <h3>编辑器</h3>
+                <p className="settings-desc">调整代码编辑区的外观与缩进行为。改动即时生效，并保存到本机，重启后保留。</p>
+
                 <div className="settings-row">
-                  <span>编辑器字体大小</span>
+                  <span>字体大小</span>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <button className="settings-btn" onClick={() => applyFontSize(Math.max(10, fontSize - 1))}>−</button>
-                    <span className="settings-val">{fontSize}px</span>
-                    <button className="settings-btn" onClick={() => applyFontSize(Math.min(24, fontSize + 1))}>＋</button>
+                    <button className="settings-btn" onClick={() => patchEditor({ fontSize: Math.max(10, editorSettings.fontSize - 1) })}>−</button>
+                    <span className="settings-val">{editorSettings.fontSize}px</span>
+                    <button className="settings-btn" onClick={() => patchEditor({ fontSize: Math.min(24, editorSettings.fontSize + 1) })}>＋</button>
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <span>字体</span>
+                  <select
+                    className="settings-select"
+                    value={editorSettings.fontFamily}
+                    onChange={(e) => patchEditor({ fontFamily: e.target.value })}
+                  >
+                    {EDITOR_FONT_FAMILIES.map((f) => (<option key={f.value} value={f.value}>{f.label}</option>))}
+                  </select>
+                </div>
+
+                <div className="settings-row">
+                  <span>Tab 宽度</span>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button className="settings-btn" onClick={() => patchEditor({ tabSize: Math.max(1, editorSettings.tabSize - 1) })}>−</button>
+                    <span className="settings-val">{editorSettings.tabSize} 列</span>
+                    <button className="settings-btn" onClick={() => patchEditor({ tabSize: Math.min(8, editorSettings.tabSize + 1) })}>＋</button>
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <span>缩进方式</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`settings-btn ${editorSettings.insertSpaces ? 'active' : ''}`}
+                      onClick={() => patchEditor({ insertSpaces: true })}
+                    >空格</button>
+                    <button
+                      className={`settings-btn ${!editorSettings.insertSpaces ? 'active' : ''}`}
+                      onClick={() => patchEditor({ insertSpaces: false })}
+                    >Tab</button>
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <span>自动换行</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`settings-btn ${editorSettings.wordWrap === 'on' ? 'active' : ''}`}
+                      onClick={() => patchEditor({ wordWrap: 'on' })}
+                    >开启</button>
+                    <button
+                      className={`settings-btn ${editorSettings.wordWrap === 'off' ? 'active' : ''}`}
+                      onClick={() => patchEditor({ wordWrap: 'off' })}
+                    >关闭</button>
+                  </div>
+                </div>
+
+                <div className="settings-row">
+                  <span>缩略图 (minimap)</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`settings-btn ${editorSettings.minimap ? 'active' : ''}`}
+                      onClick={() => patchEditor({ minimap: true })}
+                    >显示</button>
+                    <button
+                      className={`settings-btn ${!editorSettings.minimap ? 'active' : ''}`}
+                      onClick={() => patchEditor({ minimap: false })}
+                    >隐藏</button>
                   </div>
                 </div>
               </div>

@@ -3027,6 +3027,12 @@ body.ai-resizing {
   border-color: var(--accent);
 }
 .settings-btn.primary:hover { background: var(--accent-hover); }
+/* 分段切换「选中态」：用令牌着色，明暗自适应，不写死 hex */
+.settings-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .settings-actions { padding-top: 12px; }
 .settings-desc {
   font-size: 12px;

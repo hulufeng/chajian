@@ -276,6 +276,9 @@ const api = {
     read: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
     write: (path: string, content: string): Promise<boolean> => ipcRenderer.invoke('fs:writeFile', path, content),
     readImage: (path: string): Promise<string> => ipcRenderer.invoke('fs:readImage', path),
+    /** 文件元信息（大小 + mtime），用于大文件保护和外部改动刷新 */
+    stat: (path: string): Promise<{ size: number; mtimeMs: number }> =>
+      ipcRenderer.invoke('fs:stat', path),
     /** 内置示例/未保存的 .ino 暂存为真实临时工程，返回绝对路径（供编译/烧录） */
     stageTemp: (name: string, content: string): Promise<string> => ipcRenderer.invoke('fs:stageTempSketch', name, content)
   },

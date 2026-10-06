@@ -413,6 +413,13 @@ ipcMain.handle('fs:readImage', async (_e, path: string) => {
   return readImageAsDataUrl(path)
 })
 
+// 文件元信息（大小 + mtime），供编辑器大文件保护与外部改动刷新使用
+ipcMain.handle('fs:stat', (_e, path: string) => {
+  if (typeof path !== 'string') throw new Error('invalid path')
+  const st = statSync(path)
+  return { size: st.size, mtimeMs: st.mtimeMs }
+})
+
 // 内置示例 / 未保存文件 → 暂存为真实临时工程（Arduino IDE 同款思路）：
 // 把当前编辑的 .ino 内容写到 <临时目录>/codelab-sketch-run/<名称>/<名称>.ino，
 // 返回绝对路径供 compile/upload 使用。每次覆盖写入，保证烧的是编辑器里的最新内容。

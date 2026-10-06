@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import Editor, { type OnMount } from '@monaco-editor/react'
+import { useState } from 'react'
+import type { EditorTab } from './editor/types'
+import type { EditorSettings } from './editor/editorSettings'
+import TabBar from './editor/TabBar'
+import MonacoWrapper from './editor/MonacoWrapper'
+import ImagePreview from './editor/ImagePreview'
 
 const IMG_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg']
 function isImagePath(p: string): boolean {
@@ -7,75 +11,6 @@ function isImagePath(p: string): boolean {
   return IMG_EXT.some((e) => lower.endsWith(e))
 }
 
-function MonacoEditor({
-  path, language, initialValue, theme, onChange,
-}: {
-  path: string
-  language: string
-  initialValue: string
-  theme: string
-  onChange: (v: string) => void
-}) {
-  const editorRef = useRef<any>(null)
-  const mounted = useRef(false)
-
-  const handleMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor
-    mounted.current = true
-    // 同步内容到 model
-    const model = editor.getModel()
-    if (model && model.getValue() !== initialValue) {
-      model.setValue(initialValue)
-    }
-  }
-
-  // 本地文件是「先建空 tab、再异步 fs.read 回填内容」：initialValue 仅在挂载时生效，
-  // 异步回填后需再同步一次，否则打开本地文件编辑器一直空白（不显示）。
-  // 用户正常输入时 model 已等于 initialValue，下面不会触发 setValue，无光标跳动。
-  useEffect(() => {
-    const editor = editorRef.current
-    const model = editor?.getModel?.()
-    if (editor && model && model.getValue() !== initialValue) {
-      model.setValue(initialValue)
-    }
-  }, [initialValue])
-
-  return (
-    <Editor
-      height="100%"
-      path={path}
-      language={language}
-      theme={theme}
-      onMount={handleMount}
-      onChange={(v) => { if (mounted.current) onChange(v ?? '') }}
-      options={{
-        fontSize: 14,
-        fontFamily: "'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace",
-        minimap: { enabled: true, scale: 1 },
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        padding: { top: 12, bottom: 12 },
-        tabSize: 2,
-        lineNumbers: 'on',
-        renderLineHighlight: 'line',
-        smoothScrolling: true,
-        cursorBlinking: 'smooth',
-        cursorSmoothCaretAnimation: 'on',
-        folding: true,
-        bracketPairColorization: { enabled: true },
-        readOnly: false,
-      }}
-    />
-  )
-}
-
-export interface EditorTab {
-  id: string
-  name: string
-  language: string
-  content: string
-  dirty?: boolean
-}
 interface Props {
   tabs: EditorTab[]
   activeId: string
@@ -84,88 +19,80 @@ interface Props {
   onChange: (id: string, content: string) => void
   onSave: (id: string) => void
   theme: 'light' | 'dark'
+  /** 编辑器偏好（字号/缩进/换行/minimap/字体），来自设置面板，实时下发 */
+  settings: EditorSettings
 }
 
-function EditorArea({ tabs, activeId, onSelect, onClose, onChange, onSave, theme }: Props): React.JSX.Element {
+/**
+ * 编辑器区域编排器：标签栏 + 编辑宿主（Monaco 或图片预览）。
+ * 子组件拆分到 ./editor/ 便于单测（Phase 1 #21 解耦）。
+ * 保留 `EditorTab` 导出，App.tsx / AiPanel.tsx 的导入路径不变。
+ */
+export type { EditorTab } from './editor/types'
+
+export default function EditorArea({
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  onChange,
+  onSave,
+  theme,
+  settings,
+}: Props): React.JSX.Element {
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
-  const [imgSrc, setImgSrc] = useState('')
-  const [imgErr, setImgErr] = useState('')
   const activeIsImage = !!active && isImagePath(active.id)
-
-  useEffect(() => {
-    if (!active || !isImagePath(active.id)) {
-      setImgSrc('')
-      setImgErr('')
-      return
-    }
-    let alive = true
-    setImgErr('')
-    window.api.fs
-      .readImage(active.id)
-      .then((u) => { if (alive) setImgSrc(u) })
-      .catch((e) => { if (alive) { setImgSrc(''); setImgErr((e as Error).message) } })
-    return () => { alive = false }
-  }, [active?.id])
-
-  const closeTab = (id: string): void => {
-    const idx = tabs.findIndex((t) => t.id === id)
-    const next = tabs.filter((t) => t.id !== id)
-    if (next.length === 0) return
-    onClose(id)
-    // 若关闭的是当前激活 tab，父组件负责切换；此处仅触发关闭
-    void idx
-    void next
-  }
 
   return (
     <section className="editor-area">
-      <div className="tabbar">
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            className={`editor-tab${t.id === activeId ? ' active' : ''}`}
-            onClick={() => onSelect(t.id)}
-            title={t.id}
-          >
-            {t.name}
-            {t.dirty ? <span className="dirty-dot">●</span> : null}
-            <span
-              className="close"
-              onClick={(e) => {
-                e.stopPropagation()
-                closeTab(t.id)
-              }}
-            >
-              ×
-            </span>
-          </div>
-        ))}
-        <div className="tabbar-actions">
-          {active?.dirty && (
-            <button className="btn small" onClick={() => onSave(active.id)}>
-              保存
-            </button>
-          )}
-        </div>
-      </div>
+      <TabBar tabs={tabs} activeId={activeId} onSelect={onSelect} onClose={onClose} onSave={onSave} />
       <div className="editor-host">
         {activeIsImage ? (
-          <div style={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink-2)' }}>
-            {imgErr ? (
-              <div style={{ opacity: 0.7 }}>图片预览失败：{imgErr}</div>
-            ) : imgSrc ? (
-              <img src={imgSrc} alt={active!.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-            ) : (
-              <div style={{ opacity: 0.6 }}>加载图片…</div>
-            )}
+          <ImagePreview id={active!.id} name={active!.name} />
+        ) : active?.notice ? (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              overflow: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--bg)',
+              padding: 24,
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 520,
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--border-radius-md)',
+                background: 'var(--warning-soft)',
+                padding: '20px 24px',
+                color: 'var(--text)',
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--warning)' }}>只读文件</div>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  margin: 0,
+                  fontFamily: 'inherit',
+                  color: 'var(--text-dim)',
+                  lineHeight: 1.6,
+                }}
+              >
+                {active.notice}
+              </pre>
+            </div>
           </div>
         ) : active ? (
-          <MonacoEditor
-            key={active.id}
+          <MonacoWrapper
             path={active.id}
             language={active.language}
-            initialValue={active.content}
-            theme={theme === 'dark' ? 'vs-dark' : 'vs'}
+            value={active.content}
+            theme={theme}
+            settings={settings}
             onChange={(v) => onChange(active.id, v ?? '')}
           />
         ) : (
@@ -180,5 +107,3 @@ function EditorArea({ tabs, activeId, onSelect, onClose, onChange, onSave, theme
     </section>
   )
 }
-
-export default EditorArea

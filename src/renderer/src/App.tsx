@@ -3,6 +3,8 @@ import TitleBar from './components/TitleBar'
 import ActivityBar from './components/ActivityBar'
 import ProjectTree, { type TreeNode } from './components/ProjectTree'
 import EditorArea, { type EditorTab } from './components/EditorArea'
+import { decideOpen, classifyFile } from './components/editor/editorLogic'
+import { loadEditorSettings, saveEditorSettings, type EditorSettings } from './components/editor/editorSettings'
 import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
@@ -336,6 +338,12 @@ function App(): React.JSX.Element {
   const [settingsTab, setSettingsTab] = useState('general')
   const [language, setLanguage] = useState<'zh' | 'en'>(() => (localStorage.getItem('codelab-lang') as 'zh' | 'en') || 'zh')
   const [shell, setShell] = useState<ShellType>(() => (localStorage.getItem('codelab-shell') as ShellType) || 'powershell')
+  // 编辑器偏好（字号/缩进/换行/minimap/字体）：单一 state，实时下发给 EditorArea + 设置面板
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>(() => loadEditorSettings())
+  const updateEditorSettings = useCallback((s: EditorSettings) => {
+    setEditorSettings(s)
+    saveEditorSettings(s)
+  }, [])
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   /**
    * 极简 / 专业界面。
@@ -796,21 +804,58 @@ function App(): React.JSX.Element {
     /* cwd 由 projectRoot 派生，无需额外状态 */
   }, [])
 
-  // 打开文件
+  // 打开文件（含大文件/二进制保护 + 外部改动刷新，判定逻辑见 editorLogic）
   const openFile = useCallback(async (path: string, name: string) => {
     setActivePath(path)
-    setTabs((prev) => {
-      if (prev.some((t) => t.id === path)) return prev
-      return [...prev, { id: path, name, language: langOf(name), content: '' }]
-    })
+
+    let meta: { size: number; mtimeMs: number }
     try {
-      const content = await window.api.fs.read(path)
-      setTabs((prev) =>
-        prev.map((t) => (t.id === path ? { ...t, content } : t))
-      )
+      meta = await window.api.fs.stat(path)
     } catch (e) {
-      pushOut((prev) => prev + `\n[错误] 无法打开 ${path}：${(e as Error).message}\n`)
-      setTabs((prev) => prev.filter((t) => t.id !== path))
+      pushOut((p) => p + `\n[错误] 无法访问 ${path}：${(e as Error).message}\n`)
+      return
+    }
+
+    let content = ''
+    const cls = classifyFile(name, meta)
+    if (!cls.readOnly) {
+      try {
+        content = await window.api.fs.read(path)
+      } catch (e) {
+        pushOut((p) => p + `\n[错误] 无法打开 ${path}：${(e as Error).message}\n`)
+        setTabs((prev) => prev.filter((t) => t.id !== path))
+        return
+      }
+    }
+
+    const ex = tabsRef.current.find((t) => t.id === path)
+    const d = decideOpen(ex, name, meta, content)
+    switch (d.kind) {
+      case 'add':
+        setTabs((prev) => [...prev, { id: path, name, language: langOf(name), content, mtimeMs: d.mtimeMs }])
+        break
+      case 'protect':
+        setTabs((prev) => {
+          if (prev.some((t) => t.id === path)) {
+            return prev.map((t) => (t.id === path ? { ...t, readOnly: true, notice: d.notice } : t))
+          }
+          return [
+            ...prev,
+            { id: path, name, language: langOf(name), content: '', readOnly: true, notice: d.notice, mtimeMs: d.mtimeMs }
+          ]
+        })
+        break
+      case 'reload':
+        setTabs((prev) =>
+          prev.map((t) => (t.id === path ? { ...t, content: d.content, mtimeMs: d.mtimeMs, dirty: false } : t))
+        )
+        break
+      case 'keep-dirty':
+        pushOut((p) => p + '\n' + d.warn + '\n')
+        setTabs((prev) => prev.map((t) => (t.id === path ? { ...t, mtimeMs: d.mtimeMs } : t)))
+        break
+      case 'noop':
+        break
     }
   }, [])
 
@@ -1489,6 +1534,7 @@ function App(): React.JSX.Element {
               onChange={onChange}
               onSave={(id) => void onSave(id)}
               theme={theme}
+              settings={editorSettings}
             />
           ))}
           {/* 折叠条（showMinibar）不能只在极简模式给：专业模式下把面板收起后，
@@ -1620,6 +1666,8 @@ function App(): React.JSX.Element {
           defaultTab={settingsTab}
           projectRoot={projectRoot}
           version={appVersion}
+          editorSettings={editorSettings}
+          onEditorSettingsChange={updateEditorSettings}
         />
       )}
       {wiringSvg && (
