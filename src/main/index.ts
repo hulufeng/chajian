@@ -199,6 +199,72 @@ function createWindow(): void {
   })
   ipcMain.handle('window:close', () => mainWindow.close())
   ipcMain.handle('window:isMaximized', () => mainWindow.isMaximized())
+
+  /**
+   * 原生确认框（三选）。渲染层不能自己造模态，统一走这里。
+   * 主要用在一处：任何会**丢弃用户改动**的动作（关标签页 / 关项目 / 关窗口）前，
+   * 必须先问一句「保存 / 不保存 / 取消」，不能静默丢掉。
+   */
+  ipcMain.handle(
+    'dialog:confirm',
+    async (
+      _e,
+      opts: {
+        title: string
+        message: string
+        detail?: string
+        buttons: string[]
+        defaultId?: number
+        cancelId?: number
+      }
+    ) => {
+      const res = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: opts.title,
+        message: opts.message,
+        detail: opts.detail,
+        buttons: opts.buttons,
+        defaultId: opts.defaultId ?? 0,
+        // 没给 cancelId 就默认最后一项是"取消"，这样 ESC / 点 × 都等于取消，不会误丢
+        cancelId: opts.cancelId ?? opts.buttons.length - 1,
+        noLink: true
+      })
+      // 新版返回对象、旧版直接返回数字，两种都兼容
+      return typeof res === 'number' ? res : res.response
+    }
+  )
+
+  /**
+   * 关窗前先问渲染层有没有未保存的改动。
+   * close 事件里不能 await 渲染层，所以先把窗口拦住、发消息，等它回结果再定。
+   */
+  let closeConfirmed = false
+  let closeTimer: ReturnType<typeof setTimeout> | null = null
+  mainWindow.on('close', (e) => {
+    if (closeConfirmed) return
+    e.preventDefault()
+    // 已经在等结果了就别重复发（用户连点两次 ×）
+    if (closeTimer) return
+    mainWindow.webContents.send('app:confirm-close')
+    // 兜底：渲染层万一不回应（崩溃 / 卡死 / 未加载），8 秒后强制关，
+    // 免得窗口永远关不掉、用户只能杀进程
+    closeTimer = setTimeout(() => {
+      closeTimer = null
+      closeConfirmed = true
+      mainWindow.close()
+    }, 8000)
+  })
+  ipcMain.handle('app:close-result', (_e, r: { action: 'close' | 'cancel' }) => {
+    if (closeTimer) {
+      clearTimeout(closeTimer)
+      closeTimer = null
+    }
+    if (r?.action === 'close') {
+      closeConfirmed = true
+      mainWindow.close()
+    }
+  })
+
   mainWindow.on('maximize', () => mainWindow.webContents.send('window:state-changed', { maximized: true }))
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:state-changed', { maximized: false }))
 }

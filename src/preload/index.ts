@@ -227,6 +227,32 @@ const api = {
     }
   },
 
+  /** 原生确认框（主进程 dialog.showMessageBox）：渲染层不自己造模态。 */
+  dialog: {
+    /**
+     * 三选确认。返回被点按钮的**索引**；ESC / 点 × 等于 cancelId（默认最后一项）。
+     * 凡是会丢弃用户改动的动作（关标签页 / 关项目 / 关窗口）都必须先过它。
+     */
+    confirm: (opts: {
+      title: string
+      message: string
+      detail?: string
+      buttons: string[]
+      defaultId?: number
+      cancelId?: number
+    }): Promise<number> => ipcRenderer.invoke('dialog:confirm', opts)
+  },
+
+  /** 关窗前主进程发来的询问：有没有未保存的改动？ */
+  onConfirmClose: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('app:confirm-close', listener)
+    return () => ipcRenderer.removeListener('app:confirm-close', listener)
+  },
+  /** 回应关窗询问：'close' 真关，'cancel' 取消关闭 */
+  closeResult: (action: 'close' | 'cancel'): Promise<void> =>
+    ipcRenderer.invoke('app:close-result', { action }),
+
   // 项目 / 文件
   project: {
     open: (): Promise<{ root: string; tree: TreeNode } | null> => ipcRenderer.invoke('project:open'),

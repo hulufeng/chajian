@@ -746,30 +746,94 @@ function App(): React.JSX.Element {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, content, dirty: true } : t)))
   }, [])
 
-  // 关闭 tab
-  const onClose = useCallback((id: string) => {
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === id)
-      const next = prev.filter((t) => t.id !== id)
-      if (id === activePath && next.length > 0) {
-        setActivePath(next[Math.min(idx, next.length - 1)].id)
-      }
-      return next
-    })
-  }, [activePath])
+  /**
+   * 落盘一个 tab 的内容。
+   * 刻意**不读 `tabs` 闭包**：批量保存时闭包里的 tabs 是旧的，靠外面把最新的 tab 对象
+   * 传进来，才不会把过期内容写回磁盘（陈旧闭包这个坑在本文件里已经踩过两次）。
+   */
+  const saveTab = useCallback(async (tab: EditorTab): Promise<boolean> => {
+    try {
+      await window.api.fs.write(tab.id, tab.content)
+      setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, dirty: false } : t)))
+      setOutputLog((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
+      return true
+    } catch (e) {
+      setOutputLog((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
+      return false
+    }
+  }, [])
 
   // 保存
   const onSave = useCallback(async (id: string) => {
     const tab = tabs.find((t) => t.id === id)
-    if (!tab) return
-    try {
-      await window.api.fs.write(tab.id, tab.content)
-      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
-      setOutputLog((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
-    } catch (e) {
-      setOutputLog((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
-    }
-  }, [tabs])
+    if (tab) await saveTab(tab)
+  }, [tabs, saveTab])
+
+  /**
+   * 未保存改动闸门（三选：保存 / 不保存 / 取消）。
+   * 返回 true = 调用方可以继续执行那个动作；false = 用户选了取消、或保存失败。
+   *
+   * 凡是会**丢弃用户内容**的动作都必须先过这里：关标签页、关项目、关窗口。
+   * 之前这三条路径都直接丢，dirty 标记明明算出来了却没人看 —— 属于静默数据丢失。
+   */
+  const guardUnsaved = useCallback(
+    async (targets: EditorTab[]): Promise<boolean> => {
+      if (targets.length === 0) return true
+      const names = targets.map((t) => t.name || t.id.split(/[\\/]/).pop() || t.id)
+      const shown = names.slice(0, 5).join('、')
+      const more = names.length > 5 ? ` 等 ${names.length} 个文件` : ''
+      const idx = await window.api.dialog.confirm({
+        title: '有未保存的改动',
+        message: `${shown}${more} 有未保存的改动。`,
+        detail: '「保存」会先写入磁盘再关闭；「不保存」会直接丢弃这些改动。',
+        buttons: ['保存', '不保存', '取消'],
+        defaultId: 0,
+        cancelId: 2
+      })
+      if (idx === 2) return false // 取消：什么都别做
+      if (idx === 0) {
+        for (const t of targets) {
+          // 保存失败也当作"取消"：不然关掉之后内容照样没了
+          if (!(await saveTab(t))) return false
+        }
+      }
+      return true
+    },
+    [saveTab]
+  )
+
+  /** 关窗前的最新 tabs（用 ref 存，避免每次击键都重新注册监听器） */
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
+
+  // 关窗：主进程会把 close 事件拦住先问这里，直接点窗口 × 也不能把改动带走
+  useEffect(() => {
+    const off = window.api.onConfirmClose(() => {
+      void (async () => {
+        const dirty = tabsRef.current.filter((t) => t.dirty)
+        const go = await guardUnsaved(dirty)
+        await window.api.closeResult(go ? 'close' : 'cancel')
+      })()
+    })
+    return off
+  }, [guardUnsaved])
+
+  // 关闭 tab（有未保存改动时先过闸门，不再静默丢弃）
+  const onClose = useCallback(
+    async (id: string) => {
+      const tab = tabs.find((t) => t.id === id)
+      if (tab?.dirty && !(await guardUnsaved([tab]))) return
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.id === id)
+        const next = prev.filter((t) => t.id !== id)
+        if (id === activePath && next.length > 0) {
+          setActivePath(next[Math.min(idx, next.length - 1)].id)
+        }
+        return next
+      })
+    },
+    [tabs, activePath, guardUnsaved]
+  )
 
   // 编译 / 烧录（对齐 TrieCode：门控 + 保存检查 + 状态机 + 流式输出）
   // 内置示例 / 未保存的 .ino 会自动暂存到临时目录再编译烧录（Arduino IDE 同款做法），无需先建项目。
@@ -1117,12 +1181,18 @@ function App(): React.JSX.Element {
         onOpenProject={() => void openProject()}
         onSave={saveActive}
         onCloseProject={() => {
-          // 关闭项目：清空所有标签页 + 项目状态（对齐 TrieCode"关闭项目 Ctrl+W"）
-          setTabs([])
-          setActivePath('')
-          setProjectRoot(null)
-          setTree(null)
-          setOutputLog((prev) => prev + '\n📁 项目已关闭\n')
+          void (async () => {
+            // 关闭项目：清空所有标签页 + 项目状态（对齐 TrieCode"关闭项目 Ctrl+W"）。
+            // 这里会一次性丢掉所有 tab，所以必须先过未保存闸门 —— 原来直接 setTabs([])，
+            // 用户开了 5 个文件没保存，按一下 Ctrl+W 就全没了。
+            const dirty = tabs.filter((t) => t.dirty)
+            if (!(await guardUnsaved(dirty))) return
+            setTabs([])
+            setActivePath('')
+            setProjectRoot(null)
+            setTree(null)
+            setOutputLog((prev) => prev + '\n📁 项目已关闭\n')
+          })()
         }}
         onExit={() => window.api?.window?.close?.()}
         onToggleTheme={toggleTheme}

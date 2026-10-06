@@ -155,10 +155,16 @@ function OutputPanel({
     if (serialRef.current) serialRef.current.scrollTop = serialRef.current.scrollHeight
   }, [serialLog])
 
-  // 解析问题行
+  // 解析问题行：必须与「输出」页签用**同一套判定**（lineKind）。
+  // 原来这里用 /error|错误|undefined reference|fatal/i 宽匹配，会命中含 "error" 字样的
+  // 成功行/路径行，而「输出」页签用的是严格的 `:error:` 判定 —— 两个页签给出的错误集
+  // 对不上，用户会以为漏报或误报。另外它根本不看警告，空态却写着「无错误与警告」。
   const issues = outputLog
     .split('\n')
-    .filter((l) => /error|错误|undefined reference|fatal/i.test(l))
+    .filter((l) => {
+      const k = lineKind(l)
+      return k === 'error' || k === 'warning'
+    })
     .slice(0, 50)
 
   // 输出计数（用于底部计数条）：错误 / 警告 / 平台提示
@@ -240,7 +246,9 @@ function OutputPanel({
               <span className="dim">无错误与警告。</span>
             ) : (
               issues.map((l, i) => (
-                <div key={i} className="err-line">
+                // 与「输出」页签同一套着色（olog-error / olog-warning），
+                // 顺带让警告在这里显示成黄色而不是一律红色
+                <div key={i} className={lineKind(l) === 'warning' ? 'olog olog-warning' : 'olog olog-error'}>
                   {l}
                 </div>
               ))
