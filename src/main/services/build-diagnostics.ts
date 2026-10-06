@@ -234,6 +234,10 @@ export function classifyOutputLine(raw: string): OutputLineKind {
     return 'error'
   }
   if (/:\s*warning\s*:/i.test(s) || /^warning(\s|:)/i.test(s)) return 'warning'
+  // gcc 代码框里的纯光标行（`      |          ^~~~~~`）不含数字行前缀，
+  // 前面那条规则吃不到 → 会落成 plain（默认色）。它属于错误上下文，应该跟提示一样灰着。
+  // 放在 error/warning/note 判定之后，不可能抢走真正的诊断行。
+  if (/^[\s|~^.:+\-*]*\^[\s^~.:+\-*|]*$/.test(s)) return 'context'
   if (/^In file included from\b/i.test(s) || /^\s*(from|.*\d+\s*\|)/.test(s) && /\^/.test(s)) return 'context'
   if (/:\s*note\s*:/i.test(s) || /#pragma\s+message/i.test(s) || /^note\s*:/i.test(s)) return 'note'
   if (/^(✓|✔|Success|成功)/i.test(s)) return 'success'
@@ -400,13 +404,18 @@ const RULES: Rule[] = [
     hint: '链接阶段失败：编译通过但链接器无法拼出可执行文件。向上看同一段输出里的 "undefined reference to xxx"，那才是缺失的符号——通常是库没装或函数只声明未实现。'
   },
   {
-    re: /(Failed to connect to ESP32|Wrong boot mode detected|Timed out waiting for packet (header|content)|Invalid head of packet|A fatal error occurred|Failed to enter.*download mode)/i,
+    // "Failed to connect" 留成可选项：esptool 的规范行是 `Failed to connect to ESP32: Timed…`，
+    // 但不同版本/波特率失败时也会只打 `Failed to connect` 直接收尾。
+    re: /(Failed to connect(?: to [^:]+)?|Wrong boot mode detected|Timed out waiting for packet (header|content)|Invalid head of packet|A fatal error occurred|Failed to enter.*download mode)/i,
     category: 'flash_error',
     hint: '烧录握手失败（esptool）：①确认选对端口 ②下载模式下需按住 BOOT 键再点烧录，或手动进入下载模式 ③降低波特率（--upload-speed 115200）④检查 USB 线是否只充电不传数据 ⑤串口监视器占着端口会挡住烧录。'
   },
   // ── 工具链 ──
   {
-    re: /(arduino-cli|avr-gcc|xtensa-esp[0-9a-z-]*-elf-gcc)[^:\n]*(not found|is not recognized|command not found)/i,
+    // 注意 `:` 与空白都得可选：真实输出是 `xtensa-esp32-elf-gcc: command not found`
+    // （sh 那条链上还会先出来 `sh: 1: xtensa-esp32-elf-gcc: not found`）。
+    // 原来写成 `[^:\n]*(not found…)`，跨不过工具名后的那个冒号 → 这条规则永远匹配不到。
+    re: /(arduino-cli|avr-gcc|xtensa-esp[0-9a-z-]*-elf-gcc)\b\s*:?\s*(not found|is not recognized|command not found)/i,
     category: 'toolchain_missing',
     hint: '工具链缺失：在「设置 → 工具链」点一键安装 arduino-cli，或手动安装后配置路径。'
   }
@@ -511,6 +520,19 @@ export function parseBuildOutput(text: string): BuildReport {
         message: raw.length > 300 ? raw.slice(0, 300) + '…' : raw,
         hint: hit.hint,
         raw
+      })
+      continue
+    }
+
+    // 已知无害提示（ESP32 蓝牙栈那类）通常没有 `file:line: note:` 前缀，
+    // classifyOutputLine 会判成 plain —— 不在这里接住就直接丢了，KNOWN_NOTES 永远匹配不到，
+    // 「已知平台提示，可忽略」这个特性等于没做。命中就按提示收集（UI 可折叠）。
+    const knownOnly = KNOWN_NOTES.find((k) => k.re.test(raw))
+    if (knownOnly) {
+      notes.push({
+        text: raw.length > 240 ? raw.slice(0, 240) + '…' : raw,
+        known: true,
+        label: knownOnly.label
       })
       continue
     }
