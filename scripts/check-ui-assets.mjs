@@ -11,8 +11,22 @@
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import asar from '@electron/asar'
-const { getFilesystemSync } = asar
+import { listPackage } from '@electron/asar'
+
+/**
+ * 踩过的：@electron/asar 根本没导出 getFilesystemSync（Object.keys 里只有
+ * listPackage / extractFile / statFile 等），之前 destructuring 出来是 undefined，
+ * 兜底分支每次静默 catch 成 null，等于「只认磁盘文件、查不出 asar 内的文件」还以为自己查了。
+ * 正确入口是 listPackage，且它返回的路径**带前导斜杠**（/node_modules/...、/out/main/index.js），
+ * 用之前忘了前导斜杠会一个都匹配不上。
+ */
+function listAsarFiles(asarPath) {
+  try {
+    return new Set(listPackage(asarPath).map((f) => String(f).replaceAll('\\', '/')))
+  } catch {
+    return null
+  }
+}
 
 const pkgDir = process.argv[2]
 if (!pkgDir) {
@@ -40,18 +54,13 @@ const roots = process.argv[3] === 'dev'
 
 const TABS = ['platforms', 'libraries', 'settings']
 let fail = 0
-// asar 是单个文件，existsSync 看不见里面；判存时必须先问 asar 的文件系统表
-const asarRoot = process.argv[3] === 'dev' ? null : join(pkgDir, 'win-unpacked', 'resources')
-let asarFiles = null
-if (asarRoot) {
-  try { asarFiles = new Set(getFilesystemSync(asarPath).files.map((f) => f.replace(/\\/g, '/'))) }
-  catch { asarFiles = null }
-}
+// asar 是单个文件，existsSync 看不见里面；判存时先找磁盘，找不到再问 asar 的文件表
+const asarFiles = process.argv[3] === 'dev' ? null : listAsarFiles(asarPath)
 
-/** 包内某文件在不在：先找磁盘真实文件，找不到再问 asar 的文件系统表 */
+/** 包内某文件在不在：先找磁盘真实文件，找不到再问 asar 的文件表 */
 function inPackage(absPath, key) {
   if (existsSync(absPath)) return true
-  return !!(asarFiles && asarFiles.has(key))
+  return !!(asarFiles && asarFiles.has(`/${key}`))
 }
 
 for (const tab of TABS) {
