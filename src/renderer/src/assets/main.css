@@ -4594,3 +4594,32 @@ body.ai-resizing {
 }
 .welcome-example-chip:hover { border-color: var(--accent); color: var(--accent); }
 .welcome-example-chip.ghost { border-style: solid; }
+
+/* 渲染期崩溃隔离兜底（ErrorBoundary）：仅影响当前区域，不白屏整棵 IDE */
+.err-boundary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  background: var(--bg-panel);
+  color: var(--text);
+  overflow: auto;
+}
+.err-boundary-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.err-boundary-msg {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  font-family: var(--mono, monospace);
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

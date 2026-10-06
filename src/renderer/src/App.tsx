@@ -12,6 +12,7 @@ import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
 import AgentBoard from './components/AgentBoard'
+import ErrorBoundary from './components/ErrorBoundary'
 import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage } from '../../preload'
 import DevicePanel from './components/DevicePanel'
 import ToolchainSidebar from './components/ToolchainSidebar'
@@ -1427,6 +1428,7 @@ function App(): React.JSX.Element {
             render={(id) => {
               if (id === 'output') {
                 return (
+                  <ErrorBoundary name="输出 / 串口监视器" key="output">
                   <OutputPanel
                     key={outputKey}
                     outputLog={outputLog}
@@ -1458,12 +1460,14 @@ function App(): React.JSX.Element {
                     onDiagnose={diagnoseBuildError}
                     onDebugFix={debugFixBuildError}
                   />
+                  </ErrorBoundary>
                 )
               }
-              if (id === 'debug') return <DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setBottomPanel(null)} />
-              if (id === 'platformio') return <PlatformIOPanel projectRoot={projectRoot} onClose={() => setBottomPanel(null)} />
+              if (id === 'debug') return <ErrorBoundary name="调试" key="debug"><DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
+              if (id === 'platformio') return <ErrorBoundary name="PlatformIO" key="platformio"><PlatformIOPanel projectRoot={projectRoot} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
               if (id === 'target') {
                 return (
+                  <ErrorBoundary name="硬件目标" key="target">
                   <TargetPanel
                     projectRoot={projectRoot}
                     fqbn={fqbn}
@@ -1485,15 +1489,18 @@ function App(): React.JSX.Element {
                     }}
                     onClose={() => setBottomPanel(null)}
                   />
+                  </ErrorBoundary>
                 )
               }
-              if (id === 'agents') return <AgentBoard projectRoot={projectRoot} onClose={() => setBottomPanel(null)} />
-              return <GitPanel projectRoot={projectRoot} onOpenFile={(p) => void openFile(p, p.split(/[\\/]/).pop() || 'file')} onClose={() => setBottomPanel(null)} />
+              if (id === 'agents') return <ErrorBoundary name="多智能体" key="agents"><AgentBoard projectRoot={projectRoot} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
+              return <ErrorBoundary name="Git" key="git"><GitPanel projectRoot={projectRoot} onOpenFile={(p) => void openFile(p, p.split(/[\\/]/).pop() || 'file')} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
             }}
           />
         </div>
         {aiPanelVisible && (
-          <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} prefill={aiPrefill} />
+          <ErrorBoundary name="AI 助手" key="ai">
+            <AiPanel tabs={tabs} activePath={activePath} projectRoot={projectRoot} onApplyCode={applyCodeToFile} onRunTerminal={(cmd) => void runCommand(cmd)} onOpenSettings={() => { setSettingsTab('models'); setShowSettings(true); }} prefill={aiPrefill} />
+          </ErrorBoundary>
         )}
       </div>
       <StatusBar
