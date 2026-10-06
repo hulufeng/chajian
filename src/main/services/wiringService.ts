@@ -73,12 +73,56 @@ function toInt(v: string): number | null {
 }
 
 /**
+ * 剥注释（行尾 //、块注释、字符串内识别），与 pinConflict 同样严格，避免把注释里的
+ * pinMode/digitalWrite 误当成真实接线（误报比漏报更烦人）。
+ */
+function stripComments(code: string): string {
+  let out = ''
+  let i = 0
+  const n = code.length
+  let inLine = false
+  let inBlock = false
+  let inStr: string | null = null
+  while (i < n) {
+    const c = code[i]
+    const c2 = code[i + 1]
+    if (inStr) {
+      // 字符串内容对代码分析无意义，整体填空（保留长度以便下标对齐），避免把字符串里的
+      // "pinMode(13, OUTPUT)" 之类误判成真实接线
+      if (c === '\\') { out += '  '; i += 2; continue }
+      if (c === inStr) { out += c; inStr = null; i++; continue }
+      out += ' '
+      i++
+      continue
+    }
+    if (inLine) {
+      if (c === '\n') { inLine = false; out += c }
+      i++
+      continue
+    }
+    if (inBlock) {
+      if (c === '*' && c2 === '/') { inBlock = false; i += 2; continue }
+      if (c === '\n') out += '\n'
+      i++
+      continue
+    }
+    if (c === '/' && c2 === '/') { inLine = true; i += 2; continue }
+    if (c === '/' && c2 === '*') { inBlock = true; i += 2; continue }
+    if (c === '"' || c === "'") { inStr = c; out += c; i++; continue }
+    out += c
+    i++
+  }
+  return out
+}
+
+/**
  * 解析 sketch 源码，提取引脚用途与外设类型。
  */
 export function analyzeSketchPins(code: string): {
   pins: PinUsage[]
   components: ComponentInfo[]
 } {
+  const src = stripComments(code)
   const pinUsages = new Map<number, PinUsage>()
   const addPin = (pin: number, role: string, detail: string) => {
     if (!Number.isFinite(pin)) return
@@ -86,16 +130,16 @@ export function analyzeSketchPins(code: string): {
     else if (!pinUsages.get(pin)!.detail.includes(detail)) pinUsages.get(pin)!.detail += `；${detail}`
   }
 
-  const pinRe = /\b(?:pinMode|digitalRead|digitalWrite|analogRead|analogWrite|tone|pulseIn|attachInterrupt|digitalPinToInterrupt)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*|\d+)/g
+  const pinRe = /\b(?:pinMode|digitalRead|digitalWrite|analogRead|analogWrite|tone|pulseIn|attachInterrupt)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*|\d+)/g
   let m: RegExpExecArray | null
-  while ((m = pinRe.exec(code))) {
+  while ((m = pinRe.exec(src))) {
     const raw = m[1]
     const num = toInt(raw)
     const fn = m[0].replace(/\s*\([^]*$/, '')
     if (num !== null) {
       let role = 'GPIO'
       if (/pinMode/.test(fn)) {
-        const modeMatch = code.slice(m.index).match(/pinMode\s*\(\s*\d+\s*,\s*(INPUT_PULLUP|INPUT|OUTPUT)/)
+        const modeMatch = src.slice(m.index).match(/pinMode\s*\(\s*\d+\s*,\s*(INPUT_PULLUP|INPUT|OUTPUT)/)
         role = modeMatch ? (modeMatch[1] === 'OUTPUT' ? '输出(LED/继电器)' : '输入(按键/传感器)') : 'GPIO'
       } else if (/analogRead/.test(fn)) role = '模拟输入(传感器)'
       else if (/analogWrite|tone/.test(fn)) role = 'PWM/输出'
@@ -105,29 +149,38 @@ export function analyzeSketchPins(code: string): {
     }
   }
 
+  // digitalPinToInterrupt(N) 单独抽取：它常嵌在 attachInterrupt(digitalPinToInterrupt(5), …) 里，
+  // 主正则会把 digitalPinToInterrupt 当作 attachInterrupt 的参数吞掉，导致 N 检测不到。
+  const dpRe = /digitalPinToInterrupt\s*\(\s*(\d+)/g
+  let dm: RegExpExecArray | null
+  while ((dm = dpRe.exec(src))) {
+    const num = toInt(dm[1])
+    if (num !== null) addPin(num, '中断输入', 'digitalPinToInterrupt')
+  }
+
   // I2C：Wire.begin(SDA, SCL) 或常见 I2C 屏幕/液晶库
   let sda = pinoutFor('esp32:esp32:esp32').sda
   let scl = pinoutFor('esp32:esp32:esp32').scl
-  const wireBegin = code.match(/Wire\s*\.\s*begin\s*\(\s*(\d+)\s*,\s*(\d+)/)
+  const wireBegin = src.match(/Wire\s*\.\s*begin\s*\(\s*(\d+)\s*,\s*(\d+)/)
   if (wireBegin) {
     sda = Number(wireBegin[1])
     scl = Number(wireBegin[2])
   }
-  const hasI2cLib = /Adafruit_SSD1306|LiquidCrystal_I2C|Adafruit_SH1106|Wire\s*\.\s*begin/i.test(code)
+  const hasI2cLib = /Adafruit_SSD1306|LiquidCrystal_I2C|Adafruit_SH1106|Wire\s*\.\s*begin/i.test(src)
   const components: ComponentInfo[] = []
   if (hasI2cLib || wireBegin) {
     components.push({ name: 'I2C 设备（OLED/液晶/传感器）', kind: 'i2c', pins: [{ pin: sda, label: 'SDA' }, { pin: scl, label: 'SCL' }] })
   }
 
   // SPI
-  const hasSpi = /SPI\s*\.\s*begin|<SPI\.h>|Adafruit_ILI9341|Adafruit_ST7735/i.test(code)
+  const hasSpi = /SPI\s*\.\s*begin|<SPI\.h>|Adafruit_ILI9341|Adafruit_ST7735/i.test(src)
   if (hasSpi) {
     const po = pinoutFor('esp32:esp32:esp32').spi
     components.push({ name: 'SPI 设备（TFT/SD 卡）', kind: 'spi', pins: [{ pin: po.sck, label: 'SCK' }, { pin: po.mosi, label: 'MOSI' }, { pin: po.miso, label: 'MISO' }] })
   }
 
   // UART（Serial1/2）
-  const serialMatch = code.match(/Serial([12])\s*\.\s*begin/)
+  const serialMatch = src.match(/Serial([12])\s*\.\s*begin/)
   if (serialMatch) {
     const po = pinoutFor('esp32:esp32:esp32').uart
     components.push({ name: `额外串口设备（Serial${serialMatch[1]}）`, kind: 'uart', pins: [{ pin: po.tx, label: 'TX' }, { pin: po.rx, label: 'RX' }] })

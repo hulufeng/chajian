@@ -276,7 +276,8 @@ export function validateManifest(manifest: unknown): ValidateResult {
             if (/^[a-zA-Z]:[\\/]/.test(file) || file.startsWith('/') || file.startsWith('\\')) {
               errors.push({ field: `projectTypes[${i}].scaffold[${j}].file`, message: `scaffold 文件不允许绝对路径: ${file}` })
             }
-            if (file.includes('..')) {
+            // 按路径段判定 .. 穿越：拒绝 ../x、foo/../bar、独立 ..，但放行 main..js 这类正常文件名（避免误报）
+            if (file.split(/[\\/]/).includes('..')) {
               errors.push({ field: `projectTypes[${i}].scaffold[${j}].file`, message: `scaffold 文件不允许 .. 路径穿越: ${file}` })
             }
           }
@@ -310,7 +311,7 @@ export function validateManifest(manifest: unknown): ValidateResult {
   // 9. devicePanel
   if (m.devicePanel !== undefined) {
     const dp = m.devicePanel as Record<string, unknown>
-    if (!dp || typeof dp !== 'object') {
+    if (!dp || typeof dp !== 'object' || Array.isArray(dp)) {
       errors.push({ field: 'devicePanel', message: 'devicePanel 必须是对象' })
     } else {
       if (!dp.id || typeof dp.id !== 'string') {
