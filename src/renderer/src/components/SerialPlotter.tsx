@@ -64,6 +64,10 @@ export default function SerialPlotter({
   const [manualMin, setManualMin] = useState(0)
   const [manualMax, setManualMax] = useState(1024)
   const [stats, setStats] = useState<{ ch: number; points: number }>({ ch: 0, points: 0 })
+  // 阈值告警（#34）：留空 = 不告警。填了数值后，任一通道最新值超过阈值即提示。
+  const [threshold, setThreshold] = useState('')
+  const thresholdRef = useRef('')
+  const [alert, setAlert] = useState<string | null>(null)
   // AI 解读（差异化功能 #3：串口日志 → 当前 AI 通道解读，先给规则命中的证据再下结论）
   const [explainBusy, setExplainBusy] = useState(false)
   const [explainOut, setExplainOut] = useState<{ text: string; channel: string; findings: Array<{ kind: string; line: number; text: string }> } | null>(null)
@@ -90,6 +94,28 @@ export default function SerialPlotter({
   useEffect(() => {
     pausedRef.current = paused
   }, [paused])
+
+  // 阈值输入框也要同步到 ref：解析在 useEffect 里跑，闭包会读到旧值
+  useEffect(() => {
+    thresholdRef.current = threshold
+    // 改阈值时立刻按当前缓冲重算一次告警，否则要等下一条数据才刷新
+    setAlert(computeAlert(threshold))
+  }, [threshold])
+
+  /** 任一通道最新值超过阈值即告警；阈值留空或非法则不告警 */
+  function computeAlert(thr: string): string | null {
+    const limit = Number(thr)
+    if (thr.trim() === '' || !Number.isFinite(limit)) return null
+    const { channels, count } = buffersRef.current
+    for (let i = 0; i < count; i++) {
+      const arr = channels[i]
+      const last = arr?.[arr.length - 1]
+      if (last !== undefined && last > limit) {
+        return `通道 ${i + 1} 超阈值 ${limit}（当前 ${last}）`
+      }
+    }
+    return null
+  }
 
   const draw = () => {
     const canvas = canvasRef.current
@@ -230,6 +256,7 @@ export default function SerialPlotter({
       const newCount = buffersRef.current.count
       const newPoints = newCount > 0 ? buffersRef.current.channels[0].length : 0
       setStats({ ch: newCount, points: newPoints })
+      setAlert(computeAlert(thresholdRef.current))
     }
     draw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,7 +276,27 @@ export default function SerialPlotter({
     buffersRef.current = { channels: [], count: 0 }
     lastIndexRef.current = serialLog.length // 不清空文本日志，仅清空波形缓冲
     setStats({ ch: 0, points: 0 })
+    setAlert(null)
     draw()
+  }
+
+  /** 导出 CSV（#34）：给每一帧一行，列 = 通道，首列是帧序号 */
+  const exportCsv = (): void => {
+    const { channels, count } = buffersRef.current
+    if (count === 0) return
+    const header = ['frame', ...Array.from({ length: count }, (_, i) => `ch${i + 1}`)].join(',')
+    const len = channels[0]?.length ?? 0
+    const rows: string[] = [header]
+    for (let r = 0; r < len; r++) {
+      rows.push([r, ...channels.map((c) => (c[r] !== undefined ? String(c[r]) : ''))].join(','))
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `serial-plot-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const btnStyle = (active?: boolean): React.CSSProperties => ({
@@ -285,6 +332,19 @@ export default function SerialPlotter({
         <button style={btnStyle()} onClick={runExplain} disabled={explainBusy}>
           {explainBusy ? '🤖 解读中…' : '🤖 AI 解读日志'}
         </button>
+        <button style={btnStyle()} onClick={exportCsv} disabled={stats.points === 0} title="把当前波形缓冲导出为 CSV">
+          ⤓ 导出 CSV
+        </button>
+        <span style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--border-strong)', marginLeft: 6 }}>
+          阈值
+          <input
+            type="number"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            placeholder="不告警"
+            style={{ width: 68, marginLeft: 4 }}
+          />
+        </span>
         <label style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--border-strong)', marginLeft: 6 }}>
           <input
             type="checkbox"
@@ -311,7 +371,22 @@ export default function SerialPlotter({
             />
           </span>
         )}
-        <span style={{ fontSize: 11, color: theme === 'dark' ? 'var(--text-muted)' : 'var(--text-muted)', marginLeft: 'auto' }}>
+        {alert && (
+          <span
+            title="有通道最新值超过阈值"
+            style={{
+              fontSize: 11,
+              padding: '1px 7px',
+              borderRadius: 4,
+              color: 'var(--warning)',
+              background: 'var(--warning-soft)',
+              border: '1px solid var(--warning)'
+            }}
+          >
+            ⚠ {alert}
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
           {stats.ch} 通道 · {stats.points} 点/通道
         </span>
       </div>
