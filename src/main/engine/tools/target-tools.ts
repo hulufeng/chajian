@@ -8,7 +8,7 @@ import {
   findTarget,
   targetForFqbn,
   targetForPioBoard,
-  targetForUsbId,
+  targetsForUsbId,
   buildPlatformioIni,
   primaryBuild
 } from '../../services/boardRegistry'
@@ -101,8 +101,13 @@ const hardwareTarget: ToolDefinition = {
           return { ok: !!t, content: t ? `board ${args.pioBoard} → ${t.name}（${t.id}）` : `board ${args.pioBoard} 不在板卡库里` }
         }
         if (args.usbId) {
-          const t = targetForUsbId(String(args.usbId))
-          return { ok: !!t, content: t ? `USB ${args.usbId} → ${t.name}（${t.id}）` : `USB ${args.usbId} 未登记（可能是别的设备）` }
+          const hits = targetsForUsbId(String(args.usbId))
+          const t = hits[0]
+          if (!t) return { ok: false, content: `USB ${args.usbId} 未登记（可能是别的设备）` }
+          // 共用同一 VID:PID 的板（ESP32-S3/C3/P4 原生 USB 都是 303a:1001）要说清楚，
+          // 别让 Agent 拿着 targetForUsbId 的第一条结果当成定论去选板。
+          const extra = hits.length > 1 ? `（该 VID:PID 与 ${hits.length} 块板共用：${hits.map((x) => x.id).join(' / ')}，需再按端口/芯片确认）` : ''
+          return { ok: true, content: `USB ${args.usbId} → ${t.name}（${t.id}）${extra}` }
         }
         return { ok: false, content: 'detect 需要 fqbn / pioBoard / usbId 之一' }
       }

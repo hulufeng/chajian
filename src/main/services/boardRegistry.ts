@@ -298,11 +298,70 @@ export function targetForPioBoard(boardId?: string): BoardTarget | undefined {
   return BOARD_TARGETS.find((t) => t.pioBoard?.toLowerCase() === s)
 }
 
+/**
+ * USB VID:PID 归一化。
+ *
+ * 为什么要有这一步：表里写的是 '0x303a:0x1001'（带 0x），serialport 枚举出来
+ * 是数字 vid/pid，调用方拼字符串时有人带 '0x' 有人不带，还有人直接写 '303A:1001'。
+ * 之前 targetForUsbId 只做 trim + 大小写比较，传不带 0x 的必然查不到 —— 而写这段的
+ * 人（target:detect）恰好拼成带 0x 的形式才没炸，纯属巧合。统一压成 '303a:1001' 再比。
+ *
+ * 约定：无 0x 前缀的裸值按十六进制解释（即与 0x303a 同义），与 arduino-cli /
+ * serialport 的十六进制惯例一致。
+ */
+function normalizeUsbId(raw: unknown): string | null {
+  const s = String(raw ?? '').trim().toLowerCase()
+  if (!s) return null
+  // 同时吃 '303a:1001' 与 '0x303a:0x1001' 两种写法（冒号可省、0x 可省）
+  const m = s.match(/^(?:0x)?([0-9a-f]{1,4}):?(?:0x)?([0-9a-f]{1,4})$/)
+  if (!m) return null
+  const hex = (v: string): string | null => {
+    const n = Number.parseInt(v, 16)
+    return Number.isNaN(n) ? null : n.toString(16).padStart(4, '0')
+  }
+  const vid = hex(m[1])
+  const pid = hex(m[2])
+  if (!vid || !pid) return null
+  return `${vid}:${pid}`
+}
+
+/** USB VID:PID → 板卡列表（同一个 VID:PID 可能对应多块板） */
+let usbIndexCache: Map<string, BoardTarget[]> | null = null
+function usbIndexOf(): Map<string, BoardTarget[]> {
+  if (usbIndexCache) return usbIndexCache
+  const map = new Map<string, BoardTarget[]>()
+  for (const t of BOARD_TARGETS) {
+    for (const raw of t.usbIds || []) {
+      const key = normalizeUsbId(raw)
+      if (!key) continue
+      const hit = map.get(key)
+      if (hit) hit.push(t)
+      else map.set(key, [t])
+    }
+  }
+  usbIndexCache = map
+  return map
+}
+
+/**
+ * 按 USB VID:PID 反查**所有**候选板卡。
+ *
+ * 为什么返回数组而不是单条：ESP32-S3-DevKitC-1 / ESP32-C3-SuperMini /
+ * ESP32-P4-Function-EV 三块的原生 USB 都是 303a:1001（Espressif 的 USB JTAG/serial
+ * 共用一个 VID:PID，这是硬件事实），光靠 USB ID 物理上分不开。调用方（板卡探测、
+ * Agent 的 target detect）拿到候选再结合端口/芯片信息收窄，别假装认准了某一块。
+ */
+export function targetsForUsbId(usbId?: string): BoardTarget[] {
+  const key = normalizeUsbId(usbId)
+  if (!key) return []
+  return usbIndexOf().get(key) ?? []
+}
+
 /** 按 USB VID:PID 反查板卡（serialport 枚举到的端口信息里带 vid/pid 时用） */
 export function targetForUsbId(usbId?: string): BoardTarget | undefined {
-  const s = String(usbId || '').trim().toLowerCase()
-  if (!s) return undefined
-  return BOARD_TARGETS.find((t) => t.usbIds?.some((u) => u.toLowerCase() === s))
+  // 兼容旧调用方：取候选里的第一条。共用同一 VID:PID 时它只是"其中一块"，
+  // 真要区分请用 targetsForUsbId() 看候选。
+  return targetsForUsbId(usbId)[0]
 }
 
 /** 该板当前推荐的第一条构建路径 */

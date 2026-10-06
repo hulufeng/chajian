@@ -77,7 +77,7 @@ import { createDeviceFs, createSerialFsTransport } from './services/deviceFs'
 import {
   listTargets,
   findTarget,
-  targetForUsbId,
+  targetsForUsbId,
   buildPlatformioIni
 } from './services/boardRegistry'
 import { runSelfCheck } from './services/hardwareSelfCheck'
@@ -1428,8 +1428,17 @@ ipcMain.handle('target:detect', async () => {
   const ports = await listPorts()
   return ports.map((p) => {
     const usbId = p.vid != null && p.pid != null ? `0x${p.vid.toString(16)}:0x${p.pid.toString(16)}` : ''
-    const hit = usbId ? targetForUsbId(usbId) : undefined
-    return { ...p, usbId, targetId: hit?.id ?? null, targetName: hit?.name ?? null }
+    // 同一个 VID:PID 可能对应多块板（ESP32-S3/C3/P4 的原生 USB 都是 303a:1001），
+    // 光看 USB ID 分不出来 —— 候选摊给 UI，别把 targetName 撑成"已经认准了"的假象。
+    const hits = usbId ? targetsForUsbId(usbId) : []
+    const hit = hits[0]
+    return {
+      ...p,
+      usbId,
+      targetId: hit?.id ?? null,
+      targetName: hit?.name ?? null,
+      candidateIds: hits.map((t) => t.id)
+    }
   })
 })
 
