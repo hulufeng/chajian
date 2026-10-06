@@ -892,6 +892,11 @@ export interface DetectedPort {
   usbId: string
   targetId: string | null
   targetName: string | null
+  /**
+   * 同一个 VID:PID 可能对应多块板（ESP32-S3 / C3 / P4 原生 USB 都是 303a:1001）。
+   * 长度 > 1 表示"只靠 USB ID 认不准"，UI 要提示用户手动选板，别拿 targetName 当定论。
+   */
+  candidateIds?: string[]
 }
 
 export interface BoardTargetInfo {

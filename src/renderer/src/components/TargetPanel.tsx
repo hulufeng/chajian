@@ -285,9 +285,22 @@ export default function TargetPanel({
                         <option key={p.path} value={p.path}>
                           {p.path}
                           {p.targetName ? ` · ${p.targetName}` : p.usbId ? ` · ${p.usbId}` : ''}
+                          {/* ESP32-S3/C3/P4 原生 USB 共用 303a:1001，只看 VID:PID 分不开。
+                              这里把"没认准"说出来，别让列表把 C3 显示成 S3 就当定论。 */}
+                          {p.candidateIds && p.candidateIds.length > 1 ? ' · 同 VID:PID 多板，请选准板卡' : ''}
                         </option>
                       ))}
                     </select>
+                    {(() => {
+                      const ids = ports.find((x) => x.path === selPort)?.candidateIds || []
+                      if (ids.length <= 1) return null
+                      return (
+                        <div className="tgt-note tgt-warn">
+                          该 VID:PID 对应 {ids.length} 块板（{ids.join(' / ')}），硬件上区分不了，
+                          请在上方板卡里按型号选准。
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="tgt-kv">
                     方式 <span className="mono">{sel.upload.kind === 'serial' ? `serial @ ${sel.upload.baud}` : sel.upload.kind}</span>
