@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { EditorTab } from './editor/types'
 import type { EditorSettings } from './editor/editorSettings'
 import type { Groups, EditorGroup } from './editor/editorGroups'
+import type { BoardArch } from './editor/MonacoWrapper'
 import TabBar from './editor/TabBar'
 import MonacoWrapper from './editor/MonacoWrapper'
 import ImagePreview from './editor/ImagePreview'
@@ -32,6 +33,8 @@ interface Props {
   theme: 'light' | 'dark'
   /** 编辑器偏好（字号/缩进/换行/minimap/字体），来自设置面板，实时下发 */
   settings: EditorSettings
+  /** 板卡架构：影响内置硬件片段与悬停文档的取向（由 fqbn 推导） */
+  arch?: BoardArch
 }
 
 /**
@@ -62,11 +65,13 @@ function HostView({
   tab,
   theme,
   settings,
+  arch,
   onChange,
 }: {
   tab: EditorTab
   theme: 'light' | 'dark'
   settings: EditorSettings
+  arch: BoardArch
   onChange: (id: string, content: string) => void
 }): React.JSX.Element {
   if (isImagePath(tab.id)) return <ImagePreview id={tab.id} name={tab.name} />
@@ -78,6 +83,7 @@ function HostView({
       value={tab.content}
       theme={theme}
       settings={settings}
+      arch={arch}
       onChange={(v) => onChange(tab.id, v ?? '')}
     />
   )
@@ -98,6 +104,7 @@ interface PaneProps {
   onMoveTab?: (tabId: string, toGroupId: string) => void
   theme: 'light' | 'dark'
   settings: EditorSettings
+  arch?: BoardArch
   style?: CSSProperties
 }
 
@@ -117,6 +124,7 @@ function GroupPane({
   onMoveTab,
   theme,
   settings,
+  arch = 'any',
   style,
 }: PaneProps): React.JSX.Element {
   const active = group.tabs.find((t) => t.id === group.activeId) ?? group.tabs[0] ?? null
@@ -160,7 +168,7 @@ function GroupPane({
       />
       <div className="editor-host">
         {active ? (
-          <HostView tab={active} theme={theme} settings={settings} onChange={onChange} />
+          <HostView tab={active} theme={theme} settings={settings} arch={arch} onChange={onChange} />
         ) : isFirst ? (
           <div className="editor-empty">
             <div className="editor-empty-inner">
@@ -191,6 +199,7 @@ export default function EditorArea(props: Props): React.JSX.Element {
     onSave,
     theme,
     settings,
+    arch = 'any',
   } = props
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -264,6 +273,7 @@ export default function EditorArea(props: Props): React.JSX.Element {
               onMoveTab={onMoveTab}
               theme={theme}
               settings={settings}
+              arch={arch}
               style={{ flexGrow: sizes[i] ?? 1 }}
             />
             {i < groups.length - 1 && (

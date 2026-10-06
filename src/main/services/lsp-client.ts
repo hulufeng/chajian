@@ -16,6 +16,8 @@ export class LspClient {
   private buffer = ''
   private diagnostics = new Map<string, unknown[]>()
   private openDocs = new Set<string>()
+  /** 每个文档的当前版本号：didChange 必须递增，否则服务端会无视您的变更 */
+  private versions = new Map<string, number>()
   private ready = false
 
   constructor(
@@ -45,11 +47,20 @@ export class LspClient {
         rootUri: this.rootUri,
         capabilities: {
           textDocument: {
+            // synchronization 必须声明，否则 clangd 不接受 didChange/didSave
+            synchronization: { dynamicRegistration: false, willSave: false, didSave: true },
             definition: { linkSupport: false },
             references: true,
-            hover: {},
+            hover: { contentFormat: ['markdown', 'plaintext'] },
             documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-            publishDiagnostics: {}
+            completion: {
+              completionItem: {
+                snippetSupport: true,
+                resolveSupport: { properties: ['documentation', 'detail'] }
+              },
+              contextSupport: true
+            },
+            publishDiagnostics: { relatedInformation: true }
           },
           workspace: {}
         },
@@ -133,12 +144,62 @@ export class LspClient {
   /** 打开/同步文档（server 索引需要） */
   async openDocument(uri: string, languageId: string, text: string, delayMs = 600): Promise<void> {
     if (!this.openDocs.has(uri)) {
+      this.versions.set(uri, 1)
       this.notify('textDocument/didOpen', {
         textDocument: { uri, languageId, version: 1, text }
       })
       this.openDocs.add(uri)
+    } else {
+      // 已打开：内容可能已变（编辑器未落盘），走增量同步
+      await this.updateDocument(uri, text, 0)
     }
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
+  }
+
+  /**
+   * 文档内容变更同步（全量 didChange）。
+   * 这是「补全是当前内容而不是上次打开内容」的关键：编辑器里未保存的改动必须推给服务端，
+   * 只靠 didOpen 服务端拿到的永远是旧快照。
+   */
+  async updateDocument(uri: string, text: string, delayMs = 300): Promise<void> {
+    if (!this.openDocs.has(uri)) return
+    const v = (this.versions.get(uri) ?? 1) + 1
+    this.versions.set(uri, v)
+    this.notify('textDocument/didChange', {
+      textDocument: { uri, version: v },
+      contentChanges: [{ text }]
+    })
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
+  }
+
+  /** 关闭文档（释放服务端索引） */
+  async closeDocument(uri: string): Promise<void> {
+    if (!this.openDocs.has(uri)) return
+    this.notify('textDocument/didClose', { textDocument: { uri } })
+    this.openDocs.delete(uri)
+    this.versions.delete(uri)
+    this.diagnostics.delete(uri)
+  }
+
+  /**
+   * 自动补全。
+   * @param triggerKind 1=用户显式触发(Ctrl+Space) 2=输入触发字符触发 3=在补全列表中继续筛选
+   * @param triggerCharacter 触发字符（如 '.' '>' ':'），triggerKind=2 时给
+   */
+  async completion(
+    uri: string,
+    line: number,
+    character: number,
+    triggerKind: 1 | 2 | 3 = 1,
+    triggerCharacter?: string
+  ): Promise<unknown> {
+    const context: Record<string, unknown> = { triggerKind }
+    if (triggerKind === 2 && triggerCharacter) context.triggerCharacter = triggerCharacter
+    return this.request('textDocument/completion', {
+      textDocument: { uri },
+      position: { line, character },
+      context
+    })
   }
 
   async definition(uri: string, line: number, character: number): Promise<unknown> {

@@ -1,5 +1,30 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
+// ── LSP 结果类型 ──
+// 形状必须与 main/services/lspService.ts 保持一致；preload 刻意不引主进程模块（各 entry 独立打包）。
+export interface LspResult<T> { ok: boolean; data?: T; error?: string }
+export interface LspDiag {
+  startLine: number
+  startCharacter: number
+  endLine: number
+  endCharacter: number
+  message: string
+  severity: 1 | 2 | 3 | 4 // 与 monaco.MarkerSeverity 对齐
+  source?: string
+  code?: string | number
+}
+export interface CompletionItemOut {
+  label: string
+  kind?: number
+  detail?: string
+  documentation?: string
+  insertText?: string
+  insertTextFormat?: 1 | 2
+  sortText?: string
+  filterText?: string
+}
+export interface LspLocation { file: string; line: number; character: number }
+
 export interface TreeNode {
   name: string
   path: string
@@ -281,6 +306,27 @@ const api = {
       ipcRenderer.invoke('fs:stat', path),
     /** 内置示例/未保存的 .ino 暂存为真实临时工程，返回绝对路径（供编译/烧录） */
     stageTemp: (name: string, content: string): Promise<string> => ipcRenderer.invoke('fs:stageTempSketch', name, content)
+  },
+
+  // 编辑器语言服务（LSP）：补全 / 悬停 / 跳转 / 实时诊断。
+  // 全部返回 { ok, data?, error? } —— clangd 没装时 ok:false，渲染层据此静默降级。
+  lsp: {
+    sync: (p: { file: string; text: string; languageId?: string; delayMs?: number }): Promise<LspResult<LspDiag[]>> =>
+      ipcRenderer.invoke('lsp:sync', p),
+    completion: (p: {
+      file: string; text: string; line: number; character: number
+      triggerKind?: 1 | 2 | 3; triggerCharacter?: string; languageId?: string
+    }): Promise<LspResult<CompletionItemOut[]>> => ipcRenderer.invoke('lsp:completion', p),
+    hover: (p: { file: string; text: string; line: number; character: number; languageId?: string }): Promise<LspResult<string>> =>
+      ipcRenderer.invoke('lsp:hover', p),
+    definition: (p: { file: string; text: string; line: number; character: number; languageId?: string }): Promise<LspResult<LspLocation[]>> =>
+      ipcRenderer.invoke('lsp:definition', p),
+    ensureDb: (p: {
+      projectRoot: string; fqbn?: string; files: string[]
+      coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]
+    }): Promise<LspResult<string>> => ipcRenderer.invoke('lsp:ensure-db', p),
+    status: (): Promise<Array<{ key: string; ready: boolean }>> => ipcRenderer.invoke('lsp:status'),
+    dispose: (): Promise<void> => ipcRenderer.invoke('lsp:dispose')
   },
 
 

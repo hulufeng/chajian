@@ -4,6 +4,11 @@ import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync
 import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
+// 编辑器语言服务：补全 / 悬停 / 跳转 / 实时诊断（#29 #31）+ 编译数据库保障（#30）
+import {
+  syncDocument, completion, hover as lspHover, definition as lspDefinition,
+  ensureCompileDb, disposeAll as disposeLsp, status as lspStatus
+} from './services/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
 import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
@@ -419,6 +424,23 @@ ipcMain.handle('fs:stat', (_e, path: string) => {
   const st = statSync(path)
   return { size: st.size, mtimeMs: st.mtimeMs }
 })
+
+// ── 编辑器语言服务（LSP）──
+// 全部返回 { ok, data?, error? }：语言服务器没装（clangd 不在 PATH）时降级为 ok:false，
+// 渲染层据此静默关闭智能感知，而不是弹错误——不能因为没装 clangd 就让用户用不了编辑器。
+ipcMain.handle('lsp:sync', (_e, p: { file: string; text: string; languageId?: string; delayMs?: number }) => syncDocument(p))
+ipcMain.handle('lsp:completion', (_e, p: {
+  file: string; text: string; line: number; character: number
+  triggerKind?: 1 | 2 | 3; triggerCharacter?: string; languageId?: string
+}) => completion(p))
+ipcMain.handle('lsp:hover', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspHover(p))
+ipcMain.handle('lsp:definition', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspDefinition(p))
+ipcMain.handle('lsp:ensure-db', (_e, p: {
+  projectRoot: string; fqbn?: string; files: string[]
+  coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]
+}) => ensureCompileDb(p))
+ipcMain.handle('lsp:status', () => lspStatus())
+ipcMain.handle('lsp:dispose', () => disposeLsp())
 
 // 内置示例 / 未保存文件 → 暂存为真实临时工程（Arduino IDE 同款思路）：
 // 把当前编辑的 .ino 内容写到 <临时目录>/codelab-sketch-run/<名称>/<名称>.ino，

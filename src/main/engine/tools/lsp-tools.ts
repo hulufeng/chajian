@@ -4,28 +4,14 @@
 import { dirname, extname, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+// 扩展名/服务器映射改由 lspService 单一提供（编辑器与 Agent 共用同一份，避免两处漂移）
 import { LspClient } from '../../services/lsp-client'
+import { EXT_LANGUAGE, LANG_SERVERS } from '../../services/lspService'
 import { readTextFile } from '../../services/fsService'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
-// 扩展名 -> 语言 id
-const EXT_LANG: Record<string, string> = {
-  '.ino': 'cpp', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.h': 'cpp', '.hpp': 'cpp', '.c': 'c',
-  '.ts': 'typescript', '.tsx': 'typescript', '.js': 'javascript', '.jsx': 'javascript',
-  '.py': 'python', '.go': 'go', '.rs': 'rust', '.java': 'java'
-}
-
-// 语言 id -> 语言服务器启动命令
-const SERVERS: Record<string, { command: string; args?: string[] }> = {
-  cpp: { command: 'clangd' },
-  c: { command: 'clangd' },
-  typescript: { command: 'typescript-language-server', args: ['--stdio'] },
-  javascript: { command: 'typescript-language-server', args: ['--stdio'] },
-  python: { command: 'pylsp' },
-  go: { command: 'gopls' },
-  rust: { command: 'rust-analyzer' },
-  java: { command: 'jdtls' }
-}
+const EXT_LANG = EXT_LANGUAGE
+const SERVERS = LANG_SERVERS
 
 // 按 语言@项目根 缓存 client，跨项目隔离 + 多次调用复用
 const clients = new Map<string, LspClient>()

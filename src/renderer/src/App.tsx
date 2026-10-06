@@ -295,6 +295,14 @@ function App(): React.JSX.Element {
   // 工具链 / 串口
   const [toolchain, setToolchain] = useState<ToolchainStatus | null>(null)
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32c3')
+  // 板卡架构（由 fqbn 推导）：决定编辑器内置硬件片段与悬停文档的取向。
+  // 纯字符串推导、开销可忽略，不必 useMemo。
+  const boardArch: 'esp32' | 'stm32' | 'any' = (() => {
+    const f = fqbn.toLowerCase()
+    if (f.includes('esp32')) return 'esp32'
+    if (f.includes('stm32')) return 'stm32'
+    return 'any'
+  })()
   const [boardName, setBoardName] = useState('')
   const [ports, setPorts] = useState<SerialPortInfo[]>([])
   const [selectedPort, setSelectedPort] = useState('')
@@ -1600,6 +1608,7 @@ function App(): React.JSX.Element {
               onSave={(id) => void onSave(id)}
               theme={theme}
               settings={editorSettings}
+              arch={boardArch}
             />
           ))}
           {/* 折叠条（showMinibar）不能只在极简模式给：专业模式下把面板收起后，
