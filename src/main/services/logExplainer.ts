@@ -29,10 +29,10 @@ const RULES: Array<{ kind: string; re: RegExp }> = [
   { kind: 'restart', re: /restarting|rebooting|rst0|software reset|auto reboot/i },
   { kind: 'power', re: /brownout|undervoltage|vdd|power.*(fail|drop)|欠压/i },
   { kind: 'heap', re: /out of memory|heap (corruption|exhausted)|allocation fail|cannot allocate/i },
-  { kind: 'stack', re: /stack trace|0x[0-9a-f]{8}\s+0x[0-9a-f]{8}|\ATP|at 0x/i },
+  { kind: 'stack', re: /stack trace|0x[0-9a-f]{8}\s+0x[0-9a-f]{8}|at 0x/i },
   { kind: 'assert', re: /assert|abort\(\)|abort\(\)|failed assert/i },
   { kind: 'wifi', re: /wifi.*(fail|disconnect|auth|timeout)|disconnected from ap|station:(leave|disconnect)/i },
-  { kind: 'uart', re: /\b(at\+|ok\r?\n|error\r?\n)\b/i },
+  { kind: 'uart', re: /\b(at\+|ok\r?\n|error\r?\n)/i },
   { kind: 'sensor', re: /i2c|nack|no device|sda|scl|sensor.*(fail|timeout)/i },
   { kind: 'flash', re: /flash (read|write|fail)|signature|invalid header|wrong mode/i },
   { kind: 'perf', re: /cpu (0|1)|cache (miss|error)|illegal instruction|load illegal/i }
