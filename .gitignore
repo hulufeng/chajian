@@ -1,6 +1,7 @@
 node_modules/
 out/
 out_plugin/
+out-b*/
 dist/
 *.log
 .DS_Store

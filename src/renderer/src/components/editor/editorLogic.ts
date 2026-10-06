@@ -23,12 +23,16 @@ export function classifyFile(name: string, meta: FileMeta): { readOnly: boolean;
   return { readOnly: false }
 }
 
+/**
+ * 所有分支都带 mtimeMs：调用方（App.openFile）不是逐个判别式的去取，
+ * 而是统一 patch `mtimeMs: d.mtimeMs`，缺它就编译不过。
+ */
 export type OpenDecision =
   | { kind: 'add'; content: string; mtimeMs: number }
   | { kind: 'protect'; notice: string; mtimeMs: number }
   | { kind: 'reload'; content: string; mtimeMs: number }
   | { kind: 'keep-dirty'; mtimeMs: number; warn: string }
-  | { kind: 'noop' }
+  | { kind: 'noop'; mtimeMs: number }
 
 /**
  * 打开文件的纯判定（不碰 React / IPC，便于单测）：
@@ -59,5 +63,5 @@ export function decideOpen(
     }
   }
   if (changed || !existing.content) return { kind: 'reload', content, mtimeMs: meta.mtimeMs }
-  return { kind: 'noop' }
+  return { kind: 'noop', mtimeMs: meta.mtimeMs }
 }

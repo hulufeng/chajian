@@ -2134,6 +2134,119 @@ body {
   padding: 0 8px;
 }
 
+/* ---------- 分屏多视图（#25/#26，全部用令牌，无 hex） ---------- */
+.editor-split {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.editor-pane:last-child {
+  border-right: none;
+}
+
+.editor-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0 8px 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-pane.active .editor-pane-header {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+.editor-pane-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.editor-pane-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.editor-pane-actions .btn.icon {
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.editor-pane-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  background: var(--bg);
+}
+
+.editor-readonly {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+}
+
+.editor-readonly-card {
+  max-width: 520px;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  background: var(--warning-soft);
+  padding: 20px 24px;
+  color: var(--text);
+}
+
+.editor-readonly-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--warning);
+}
+
+.editor-readonly-body {
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: inherit;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.split-divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: var(--border);
+  position: relative;
+  transition: background 0.12s;
+}
+
+.split-divider:hover,
+.split-divider:active {
+  background: var(--accent);
+}
+
 /* ---------- AI 面板：对齐增强 ---------- */
 .ai-text {
   white-space: pre-wrap;

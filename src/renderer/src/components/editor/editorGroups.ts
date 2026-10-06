@@ -53,9 +53,17 @@ export function openTab(groups: Groups, groupId: string, tab: EditorTab): { grou
   if (!groups.some((g) => g.id === groupId)) return { groups, activeGroupId: groupId }
   const loc = findTabLocation(groups, tab.id)
   let next: Groups = groups.map((g) => ({ ...g, tabs: g.tabs.slice() }))
+  // 只回收「被本次跨组去重搬空」的组；预先存在的空组（用户刚点 ⊞ 新建的）不得被误回收，
+  // 否则用户一分屏、焦点切回旧组开个文件，新分的空组就凭空消失了。
+  let emptiedId: string | null = null
   if (loc && loc.groupId !== groupId) {
-    // 从原组移除（跨组去重）
-    next = next.map((g) => (g.id === loc.groupId ? { ...g, tabs: g.tabs.filter((t) => t.id !== tab.id), activeId: g.activeId === tab.id ? (g.tabs.find((t) => t.id !== tab.id)?.id ?? null) : g.activeId } : g))
+    const srcId = loc.groupId
+    next = next.map((g) =>
+      g.id === srcId
+        ? { ...g, tabs: g.tabs.filter((t) => t.id !== tab.id), activeId: g.activeId === tab.id ? (g.tabs.find((t) => t.id !== tab.id)?.id ?? null) : g.activeId }
+        : g
+    )
+    if (next.find((g) => g.id === srcId)?.tabs.length === 0) emptiedId = srcId
   }
   next = next.map((g) => {
     if (g.id !== groupId) return g
@@ -66,7 +74,8 @@ export function openTab(groups: Groups, groupId: string, tab: EditorTab): { grou
       activeId: tab.id,
     }
   })
-  next = pruneEmptyGroups(next)
+  if (emptiedId && next.length > 1) next = next.filter((g) => g.id !== emptiedId)
+  next = next.length > 0 ? next : groups.slice(0, 1)
   return { groups: next, activeGroupId: groupId }
 }
 
@@ -126,31 +135,26 @@ export function moveTab(groups: Groups, tabId: string, toGroupId: string, toInde
     return next
   }
 
-  // 跨组：先移除
+  // 跨组：先移除（同样只回收「被搬空」的源组）
+  let emptiedId: string | null = null
   next = next.map((g) =>
     g.id === loc.groupId
       ? { ...g, tabs: g.tabs.filter((t) => t.id !== tabId), activeId: g.activeId === tabId ? (g.tabs.find((t) => t.id !== tabId)?.id ?? null) : g.activeId }
       : g
   )
+  if (next.find((g) => g.id === loc.groupId)?.tabs.length === 0) emptiedId = loc.groupId
   const ti = next.findIndex((g) => g.id === toGroupId)
   if (ti < 0) return groups
   const arr = next[ti].tabs
   const insertAt = toIndex === undefined ? arr.length : Math.max(0, Math.min(toIndex, arr.length))
   arr.splice(insertAt, 0, moved)
   next[ti] = { ...next[ti], tabs: arr, activeId: tabId }
-  next = pruneEmptyGroups(next)
-  return next
+  if (emptiedId && next.length > 1) next = next.filter((g) => g.id !== emptiedId)
+  return next.length > 0 ? next : groups.slice(0, 1)
 }
 
 /** 新增一个空组（id 由调用方提供，保证纯函数可测） */
 export function addGroup(groups: Groups, id: string): { groups: Groups; id: string } {
   if (groups.some((g) => g.id === id)) return { groups, id }
   return { groups: [...groups, createGroup(id)], id }
-}
-
-/** 回收空组，但至少保留一个组 */
-function pruneEmptyGroups(groups: Groups): Groups {
-  if (groups.length <= 1) return groups
-  const nonEmpty = groups.filter((g) => g.tabs.length > 0)
-  return nonEmpty.length > 0 ? nonEmpty : groups.slice(0, 1)
 }

@@ -5,6 +5,7 @@ import ProjectTree, { type TreeNode } from './components/ProjectTree'
 import EditorArea, { type EditorTab } from './components/EditorArea'
 import { decideOpen, classifyFile } from './components/editor/editorLogic'
 import { loadEditorSettings, saveEditorSettings, type EditorSettings } from './components/editor/editorSettings'
+import { type Groups, createGroup, openTab, closeTab, findTabLocation, flattenTabs, addGroup, moveTab } from './components/editor/editorGroups'
 import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
@@ -228,8 +229,68 @@ function App(): React.JSX.Element {
   // 项目 / 文件
   const [projectRoot, setProjectRoot] = useState<string | null>(null)
   const [tree, setTree] = useState<TreeNode | null>(null)
-  const [tabs, setTabs] = useState<EditorTab[]>(DEFAULT_TABS)
-  const [activePath, setActivePath] = useState<string>(DEFAULT_TABS[0].id)
+  // 分屏：groups 是标签页的唯一真相源（单一 group 时等价于旧 tabs）。activeGroupId 为当前聚焦组。
+  const [groups, setGroups] = useState<Groups>(() => [createGroup('g1', DEFAULT_TABS)])
+  const [activeGroupId, setActiveGroupId] = useState<string>('g1')
+  const tabs = flattenTabs(groups) // 派生：供 resolveSketch / guardUnsaved / WelcomeView 等旧消费方
+  const [activePath, setActivePath] = useState<string>(DEFAULT_TABS[0]?.id ?? '')
+  const groupsRef = useRef(groups); groupsRef.current = groups
+  const activeGroupIdRef = useRef(activeGroupId); activeGroupIdRef.current = activeGroupId
+  // guardUnsaved 定义在下方（依赖 saveTab）。useCallback 依赖数组是立即求值的，
+  // 上方的 closeGroup 直接引用它会报 TS2448/2454「used before declaration」——
+  // 与 schedulePrecheckRef 同套路，用 ref 持有最新实现破除 TDZ。
+  const guardUnsavedRef = useRef<(targets: EditorTab[]) => Promise<boolean>>(() => Promise.resolve(true))
+  // 跨组按 id 打补丁（onChange / onSave / dirty 清除 / 外部刷新）。用 ref 供 [] deps 的 openFile 调用。
+  const updateTabByIdRef = useRef<(id: string, patch: Partial<EditorTab>) => void>(() => {})
+  updateTabByIdRef.current = (id, patch) => {
+    setGroups((gs) => gs.map((g) => ({ ...g, tabs: g.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })))
+  }
+
+  // 往当前激活组追加新 tab（AI 生成 / 新建空白）
+  const addTabToActiveRef = useRef<(tab: EditorTab) => void>(() => {})
+  addTabToActiveRef.current = (tab) => {
+    setGroups((gs) => gs.map((g) => (g.id === activeGroupIdRef.current ? { ...g, tabs: [...g.tabs, tab], activeId: tab.id } : g)))
+  }
+
+  // 标签聚焦（来自任意组的点击）：聚焦其所在组 + 全局 activePath
+  const handleSelectTab = useCallback((groupId: string, tabId: string) => {
+    setActiveGroupId(groupId)
+    setActivePath(tabId)
+    setGroups((gs) => gs.map((g) => (g.id === groupId ? { ...g, activeId: tabId } : g)))
+  }, [])
+
+  // 分屏：在激活组右侧新增一个空组（用户再开另一个文件即并排对照）
+  const splitEditor = useCallback(() => {
+    const id = `group-${Date.now()}`
+    const r = addGroup(groupsRef.current, id)
+    setGroups(r.groups)
+    setActiveGroupId(id)
+  }, [])
+
+  // 关闭整个组（先过未保存闸门）：逐 tab 走 closeTab，自然回收空组
+  const closeGroup = useCallback(async (groupId: string) => {
+    const g = groupsRef.current.find((x) => x.id === groupId)
+    if (!g) return
+    const dirty = g.tabs.filter((t) => t.dirty)
+    if (dirty.length > 0 && !(await guardUnsavedRef.current(dirty))) return
+    let next = groupsRef.current
+    for (const t of g.tabs) {
+      const r = closeTab(next, groupId, t.id)
+      next = r.groups
+    }
+    setGroups(next)
+    setActiveGroupId(next[0]?.id ?? groupId)
+    if (activePath && !flattenTabs(next).some((t) => t.id === activePath)) {
+      setActivePath(flattenTabs(next)[0]?.id ?? '')
+    }
+  }, [activePath])
+
+  // 跨组移动 tab（#26 拖拽落点）：调用纯函数 moveTab，移动即激活目标组 + 全局焦点同步
+  const moveTabToGroup = useCallback((tabId: string, toGroupId: string) => {
+    setGroups((gs) => moveTab(gs, tabId, toGroupId))
+    setActiveGroupId(toGroupId)
+    setActivePath(tabId)
+  }, [])
 
   // 工具链 / 串口
   const [toolchain, setToolchain] = useState<ToolchainStatus | null>(null)
@@ -823,45 +884,41 @@ function App(): React.JSX.Element {
         content = await window.api.fs.read(path)
       } catch (e) {
         pushOut((p) => p + `\n[错误] 无法打开 ${path}：${(e as Error).message}\n`)
-        setTabs((prev) => prev.filter((t) => t.id !== path))
         return
       }
     }
 
     const ex = tabsRef.current.find((t) => t.id === path)
     const d = decideOpen(ex, name, meta, content)
-    switch (d.kind) {
-      case 'add':
-        setTabs((prev) => [...prev, { id: path, name, language: langOf(name), content, mtimeMs: d.mtimeMs }])
-        break
-      case 'protect':
-        setTabs((prev) => {
-          if (prev.some((t) => t.id === path)) {
-            return prev.map((t) => (t.id === path ? { ...t, readOnly: true, notice: d.notice } : t))
-          }
-          return [
-            ...prev,
-            { id: path, name, language: langOf(name), content: '', readOnly: true, notice: d.notice, mtimeMs: d.mtimeMs }
-          ]
-        })
-        break
-      case 'reload':
-        setTabs((prev) =>
-          prev.map((t) => (t.id === path ? { ...t, content: d.content, mtimeMs: d.mtimeMs, dirty: false } : t))
-        )
-        break
-      case 'keep-dirty':
-        pushOut((p) => p + '\n' + d.warn + '\n')
-        setTabs((prev) => prev.map((t) => (t.id === path ? { ...t, mtimeMs: d.mtimeMs } : t)))
-        break
-      case 'noop':
-        break
+    const loc = findTabLocation(groupsRef.current, path)
+
+    if (loc) {
+      // 已打开：原地更新字段并聚焦其所在组（不跨组挪动）
+      const patch: Partial<EditorTab> = { mtimeMs: d.mtimeMs }
+      if (d.kind === 'reload') { patch.content = d.content; patch.dirty = false }
+      else if (d.kind === 'protect') { patch.readOnly = true; patch.notice = d.notice; patch.content = '' }
+      else if (d.kind === 'keep-dirty') { pushOut((p) => p + '\n' + d.warn + '\n') }
+      updateTabByIdRef.current(path, patch)
+      setGroups((gs) => gs.map((g) => (g.id === loc.groupId ? { ...g, activeId: path } : g)))
+      setActiveGroupId(loc.groupId)
+    } else {
+      // 新增到当前激活组
+      let newTab: EditorTab
+      if (d.kind === 'protect') {
+        newTab = { id: path, name, language: langOf(name), content: '', readOnly: true, notice: d.notice, mtimeMs: d.mtimeMs }
+      } else {
+        newTab = { id: path, name, language: langOf(name), content, mtimeMs: d.mtimeMs }
+      }
+      const r = openTab(groupsRef.current, activeGroupIdRef.current, newTab)
+      setGroups(r.groups)
+      setActiveGroupId(r.activeGroupId)
     }
+    setActivePath(path)
   }, [])
 
   // 编辑器变更
   const onChange = useCallback((id: string, content: string) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, content, dirty: true } : t)))
+    updateTabByIdRef.current(id, { content, dirty: true })
     // 停输 1s 防抖预check：用户改完代码静默 1s 后自动扫引脚冲突，不用手动点
     schedulePrecheckRef.current()
   }, [])
@@ -874,7 +931,7 @@ function App(): React.JSX.Element {
   const saveTab = useCallback(async (tab: EditorTab): Promise<boolean> => {
     try {
       await window.api.fs.write(tab.id, tab.content)
-      setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, dirty: false } : t)))
+      updateTabByIdRef.current(tab.id, { dirty: false })
       pushOut((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
       // 保存即预检：落盘后立刻用最新内容扫引脚冲突（保存是「检什么」的明确锚点）
       void runPrecheckRef.current()
@@ -923,6 +980,8 @@ function App(): React.JSX.Element {
     },
     [saveTab]
   )
+  // 供上方 closeGroup 使用（破除 TDZ：上方依赖数组求值太早，拿不到这里的 guardUnsaved）
+  guardUnsavedRef.current = guardUnsaved
 
   /** 关窗前的最新 tabs（用 ref 存，避免每次击键都重新注册监听器） */
   const tabsRef = useRef(tabs)
@@ -1010,13 +1069,15 @@ function App(): React.JSX.Element {
     async (id: string) => {
       const tab = tabs.find((t) => t.id === id)
       if (tab?.dirty && !(await guardUnsaved([tab]))) return
-      // 先算再提交：setState 的 updater 必须是纯函数，
-      // 之前在里面调 setActivePath，StrictMode 双调用会切到错误的 tab。
-      const idx = tabs.findIndex((t) => t.id === id)
-      const next = tabs.filter((t) => t.id !== id)
-      setTabs(next)
-      if (id === activePath && next.length > 0) {
-        setActivePath(next[Math.min(idx, next.length - 1)].id)
+      const loc = findTabLocation(groupsRef.current, id)
+      if (!loc) return
+      const r = closeTab(groupsRef.current, loc.groupId, id)
+      setGroups(r.groups)
+      setActiveGroupId(r.activeGroupId)
+      // 若关掉的是全局聚焦 tab，焦点回退到该组剩余激活项（或全局首个）
+      if (id === activePath) {
+        const g = r.groups.find((x) => x.id === r.activeGroupId)
+        setActivePath(g?.activeId ?? (flattenTabs(r.groups)[0]?.id ?? ''))
       }
     },
     [tabs, activePath, guardUnsaved]
@@ -1060,7 +1121,7 @@ function App(): React.JSX.Element {
     const sketch = await prepareSketchForBuild(
       resolved,
       (s) => pushOut((p) => p + s),
-      (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
+      (id) => updateTabByIdRef.current(id, { dirty: false })
     )
     if (!sketch) {
       setCompileState('error')
@@ -1158,7 +1219,7 @@ function App(): React.JSX.Element {
     const sketch = await prepareSketchForBuild(
       resolved,
       (s) => pushOut((p) => p + s),
-      (id) => setTabs((p) => p.map((t) => (t.id === id ? { ...t, dirty: false } : t)))
+      (id) => updateTabByIdRef.current(id, { dirty: false })
     )
     if (!sketch) {
       setCompileState('error')
@@ -1342,7 +1403,7 @@ function App(): React.JSX.Element {
     }
     const info = extMap[lang.toLowerCase()] ?? { ext: 'txt', language: 'plaintext' }
     const id = `ai-${Date.now()}.${info.ext}`
-    setTabs((prev) => [...prev, { id, name: `ai-generated.${info.ext}`, language: info.language, content }])
+    addTabToActiveRef.current({ id, name: `ai-generated.${info.ext}`, language: info.language, content })
     setActivePath(id)
     pushOut((prev) => prev + `\n✓ AI 代码已应用到新文件：ai-generated.${info.ext}\n`)
   }, [])
@@ -1359,7 +1420,7 @@ function App(): React.JSX.Element {
   // 新建空白文件
   const newUntitledFile = useCallback(() => {
     const id = `untitled-${Date.now()}`
-    setTabs((prev) => [...prev, { id, name: 'untitled', language: 'plaintext', content: '' }])
+    addTabToActiveRef.current({ id, name: 'untitled', language: 'plaintext', content: '' })
     setActivePath(id)
   }, [])
 
@@ -1397,7 +1458,8 @@ function App(): React.JSX.Element {
             // 用户开了 5 个文件没保存，按一下 Ctrl+W 就全没了。
             const dirty = tabs.filter((t) => t.dirty)
             if (!(await guardUnsaved(dirty))) return
-            setTabs([])
+            setGroups([createGroup('g1')])
+            setActiveGroupId('g1')
             setActivePath('')
             setProjectRoot(null)
             setTree(null)
@@ -1527,10 +1589,13 @@ function App(): React.JSX.Element {
             />
           ) : (
             <EditorArea
-              tabs={tabs}
-              activeId={activePath}
-              onSelect={setActivePath}
-              onClose={onClose}
+              groups={groups}
+              activeGroupId={activeGroupId}
+              onSelectTab={handleSelectTab}
+              onCloseTab={onClose}
+              onSplit={splitEditor}
+              onCloseGroup={closeGroup}
+              onMoveTab={moveTabToGroup}
               onChange={onChange}
               onSave={(id) => void onSave(id)}
               theme={theme}

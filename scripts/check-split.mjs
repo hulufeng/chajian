@@ -112,6 +112,24 @@ check('最后一组关空 → closedGroupId 为 null（没真回收）', lr.clos
 // getActiveTab
 check('getActiveTab 取激活 tab', getActiveTab([createGroup('g1', [tab('a'), tab('b')], 'b')], 'g1')?.id === 'b')
 
+// 空组不被误回收（用户刚点 ⊞ 新建的空组，在别的组开文件也不能让它凭空消失）
+let keepG = addGroup([createGroup('g1', [tab('a')], 'a')], 'g2') // g2：用户刚分出来的空组
+check('新建空组 → 2 组且 g2 为空', keepG.groups.length === 2 && keepG.groups[1].tabs.length === 0)
+const after = openTab(keepG.groups, 'g1', tab('b')).groups // 焦点回到 g1 再开文件
+check('在其他组开文件 → 空组 g2 仍保留', after.length === 2 && after.some((x) => x.id === 'g2'))
+
+// 跨组去重把源组搬空 → 源组回收
+let drainG = [createGroup('g1', [tab('a')], 'a'), createGroup('g2', [tab('x')], 'x')]
+drainG = openTab(drainG, 'g2', tab('a')).groups // 把 g1 唯一的 a 搬到 g2
+check('搬运搬空源组 → 源组被回收', drainG.length === 1 && drainG[0].id === 'g2')
+check('搬运搬空源组 → 全局 tab 仍唯一', flattenTabs(drainG).length === 2)
+
+// moveTab 搬空源组 → 源组回收；但不会牵连本就空着的第三方组
+let m2 = [createGroup('g1', [tab('a')], 'a'), createGroup('g2', [tab('x')], 'x'), createGroup('g3', [], null)]
+m2 = moveTab(m2, 'a', 'g2')
+check('moveTab 搬空源组 → g1 回收', !m2.some((x) => x.id === 'g1'))
+check('moveTab 保留本就空着的 g3', m2.some((x) => x.id === 'g3' && x.tabs.length === 0))
+
 rmSync(tmp, { recursive: true, force: true })
 
 console.log(`\n分屏状态模型自检：通过 ${pass} / 失败 ${fails.length}`)
