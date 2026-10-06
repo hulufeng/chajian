@@ -158,6 +158,73 @@ function walkSources(root: string): ParsedFile[] {
   return out
 }
 
+/**
+ * 把注释从源码行里抹掉（行尾 `//`、块注释 `/*…*\/`、跨行块注释），字符串字面量里的 `//`
+ * 原样保留（抹成空格，避免把 `"a//b"` 的右半截吃掉）。
+ *
+ * 为什么必须做：`digitalWrite(2, HIGH);   // 点亮 LED` 是 Arduino 最常见的写法，而 GPIO2 在
+ * ESP32 上是启动 strapping 脚 —— 注释不剥掉，这条注释里的调用就会跟真代码一样参与判定，
+ * 用户看到一条"你写的代码踩了 strapping 脚"的警告，实际那行是注释（**误报比漏报更烦人**）。
+ * 跨行块注释同理：`/*` 独占一行、调用写在下一行的写法很常见。
+ */
+function stripComments(lines: string[]): string[] {
+  const out: string[] = []
+  let inBlock = false
+  for (const raw of lines) {
+    let s = raw
+    if (inBlock) {
+      const end = s.indexOf('*/')
+      if (end < 0) {
+        out.push('')
+        continue
+      }
+      s = s.slice(end + 2)
+      inBlock = false
+      if (!s.trim()) {
+        out.push('')
+        continue
+      }
+    }
+    let res = ''
+    let quote: string | null = null
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (quote) {
+        res += ch
+        if (ch === '\\') {
+          res += s[i + 1] || ''
+          i++
+          continue
+        }
+        if (ch === quote) quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch
+        res += ch
+        continue
+      }
+      if (ch === '/' && s[i + 1] === '/') break // 行尾注释：后面整段不要了
+      if (ch === '/' && s[i + 1] === '*') {
+        let j = i + 2
+        while (j < s.length && !(s[j] === '*' && s[j + 1] === '/')) j++
+        if (j >= s.length) {
+          // 块注释没在本行闭合 → 本行走完就止，剩下的行由 inBlock 兜
+          res += s.slice(0, i)
+          inBlock = true
+          break
+        }
+        for (let k = i; k < j + 2; k++) res += s[k]
+        i = j + 1
+        continue
+      }
+      res += ch
+    }
+    out.push(inBlock ? '' : res)
+  }
+  return out
+}
+
 /** 解析 `#define NAME <value>`，只收简单值（数字 / GPIO_NUM_x），跳过表达式。 */
 function collectMacros(files: ParsedFile[]): Map<string, number> {
   const macros = new Map<string, number>()
@@ -230,11 +297,13 @@ export function checkPinConflicts(root: string, opts: { fqbn?: string } = {}): P
   const chip = detectChipModel(opts.fqbn)
   const model = CHIP_MODELS[chip]
   const files = walkSources(root)
-  const macros = collectMacros(files)
+  // 扫之前先剥注释：注释里的引脚调用不能当真代码（详见 stripComments 的说明）
+  const sources = files.map((f) => ({ ...f, lines: stripComments(f.lines) }))
+  const macros = collectMacros(sources)
   const uses: PinUse[] = []
   const unresolved: UnresolvedPin[] = []
 
-  for (const f of files) {
+  for (const f of sources) {
     const rel = f.rel
     f.lines.forEach((line, idx) => {
       const trimmed = line.trim()
