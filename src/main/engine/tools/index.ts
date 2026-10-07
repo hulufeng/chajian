@@ -17,6 +17,7 @@ import { backgroundTaskTools } from './background-task-tools'
 import { scheduleTools } from './schedule-tools'
 import { skillTools } from './skill-tools'
 import { todoTools } from './todo-tools'
+import { gitTools } from './git-tools'
 import { askUserTools } from './ask-user-tool'
 import { projectTools } from './project-tools'
 import { verifyTools } from './verify-tool'
@@ -570,6 +571,7 @@ export const coreTools: ToolDefinition[] = [
   ...scheduleTools,
   ...skillTools,
   ...todoTools,
+  ...gitTools,
   ...askUserTools,
   ...projectTools,
   ...verifyTools,

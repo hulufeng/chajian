@@ -11,6 +11,7 @@ import { findToolchain, listConnectedBoardsWithSerial } from '../services/toolch
 import { listMemory } from '../services/memoryService'
 import { buildTodosSection as buildTodosSectionFor, loadTodos as loadTodosFor } from './tools/todo-tools'
 import { listSkills } from '../services/skillService'
+import { newToolTiming, makeTimingAuditMiddleware, makeSlowToolMiddleware, type ToolTiming } from './tool-observers'
 import type {
   AgentRunOptions, AgentStatus, AgentStats, ToolCall, ConfirmRequest, ToolContext, ToolResult, ToolDefinition
 } from './types'
@@ -90,6 +91,8 @@ export class AgentRunner {
   private status: AgentStatus = 'idle'
   private messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = []
   private stats: AgentStats = { turns: 0, toolCalls: 0, startTime: 0, elapsedMs: 0, inputTokens: 0, outputTokens: 0 }
+  /** 工具耗时累计（由 tool-registry 的中间件写入，getStats 时并入 stats） */
+  private toolTiming: ToolTiming = newToolTiming()
   private maxTurns = 20
   private projectRoot: string | null = null
   private firmware: FirmwareDetection | null = null
@@ -130,6 +133,10 @@ export class AgentRunner {
 
   // ── 计划模式状态 ──
   private planApproved = false
+  /** 本会话是否进入过「计划审批」流程。
+   *  只有走过 submit_plan 才应该按批准状态过滤工具——
+   *  否则普通会话 planApproved 恒为 false，会被误当成「计划未批准」而砍掉写工具。 */
+  private planGateActive = false
   private planStore: { plan: string; status: 'proposed' | 'approved' | 'rejected'; steps: Array<{ title: string; status: string }> } | null = null
   private planResolve: ((value: { action: 'approve' | 'reject' | 'feedback'; feedback?: string }) => void) | null = null
 
@@ -138,6 +145,16 @@ export class AgentRunner {
 
   constructor(onEvent: (event: { type: string; data?: unknown }) => void) {
     this.onEvent = onEvent
+    // 注册工具观测中间件（耗时统计 + 审计 + 慢操作反馈）。
+    // runToolWithRecovery 走的是 toolRegistry.execute()，所以这里注册即对全部工具生效；
+    // 放在构造函数而非模块顶层，是因为中间件要闭包捕获本实例的 toolTiming。
+    // 加幂等判断：toolRegistry 是单例，多 Agent 实例各 new 一次时不会重复注册导致计时翻倍。
+    if (!toolRegistry.hasPostMiddleware('timing-audit')) {
+      toolRegistry.usePost(makeTimingAuditMiddleware(() => this.toolTiming))
+    }
+    if (!toolRegistry.hasAroundMiddleware('slow-tool')) {
+      toolRegistry.useAround(makeSlowToolMiddleware())
+    }
   }
 
   setSecurityMode(mode: 'auto' | 'default' | 'plan'): void {
@@ -149,7 +166,13 @@ export class AgentRunner {
   }
 
   getStats(): AgentStats {
-    return { ...this.stats, elapsedMs: Date.now() - this.stats.startTime }
+    return {
+      ...this.stats,
+      elapsedMs: Date.now() - this.stats.startTime,
+      // 工具耗时来自中间件累加，与轮数/token 同级对外可见
+      toolMs: this.toolTiming.toolMs,
+      slowestTools: this.toolTiming.slowest
+    }
   }
 
   stop(): void {
@@ -231,6 +254,8 @@ export class AgentRunner {
     this.recentReadFiles.clear()
     this.planApproved = false
     this.planStore = null
+    // 工具耗时按会话重置：跨 run 累计会让「这次 run 慢在哪」失真
+    this.toolTiming = newToolTiming()
 
     // 初始化消息：教学知识库命中 → 注入系统提示（帮助本地小模型准确回答硬件编程基础问题）
     const userText = options.messages.find((m) => m.role === 'user')?.content || ''
@@ -305,6 +330,8 @@ export class AgentRunner {
         // ── 计划提交（submit_plan）：等待用户批准后才启用全部工具 ──
         const submitPlanCall = (result.toolCalls || []).find((tc) => tc.function?.name === 'submit_plan')
         if (submitPlanCall) {
+          // 一旦走到计划流程就打开工具闸门：此后未批准前不给写/执行类工具
+          this.planGateActive = true
           const planArgs = JSON.parse(submitPlanCall.function?.arguments || '{}') as { plan?: string }
           const planText = planArgs.plan || result.content || '(模型未产出计划文本)'
           this.planStore = { plan: planText, status: 'proposed', steps: [] }
@@ -968,10 +995,35 @@ ${blocks.join('\n\n')}`
 
   // 调用模型（SSE 流式，累积 tool_calls）
   // useTools=false 时传空工具集（对齐 TrieCode wrap-up：强制模型纯文本总结，不再调用工具）
+  /**只有计划已批准，才放开写/执行类工具。未批准时模型只能读 + 提交计划，
+   *  从能力上「够不着」真改真跑——比只靠提示词约束可靠（提示词弱模型本来就不太听）。
+   *  计划模式没启用（没走过 submit_plan）时 planApproved 恒为 false 但闸门不生效，
+   *  因为 gateOnPlan 只在 modelPlanned 为真时才过滤。 */
+  private schemasForTurn(): ReturnType<typeof toolRegistry.toFunctionSchemas> {
+    const all = toolRegistry.toFunctionSchemas()
+    if (!this.planGateActive) return all
+    if (this.planApproved) return all
+    const READ_ONLY = new Set(['read', 'query'])
+    const allowed = new Set([
+      ...READ_ONLY,
+      // 规划期仍要能查板卡/编译现状，好把计划建立在真实环境上（都是只读）
+      'board_list', 'board_detect', 'platform_list', 'code_symbols',
+      'lsp_definition', 'lsp_references', 'lsp_hover', 'lsp_diagnostics',
+      'search_content', 'list_files', 'read_file', 'todo_list', 'recall_memory',
+      'list_skills', 'read_skill', 'arxiv_search', 'web_search', 'web_fetch', 'mcp_tools'
+    ])
+    return all.filter((s) => {
+      const def = toolRegistry.get(s.function.name)
+      // 没登记的（比如子集工具）保守放开，避免误伤；category 是权限的权威来源
+      if (!def) return false
+      return READ_ONLY.has(def.category) || allowed.has(def.name)
+    })
+  }
+
   private async callModel(useTools = true): Promise<{ content: string; toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }> {
     const state = getAiState()
     const model = state.modelId || 'glm-4.7-flash'
-    const toolSchemas = useTools ? toolRegistry.toFunctionSchemas() : []
+    const toolSchemas = useTools ? this.schemasForTurn() : []
 
     return new Promise<{ content: string; toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }>((resolve, reject) => {
       let fullContent = ''

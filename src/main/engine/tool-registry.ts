@@ -33,6 +33,9 @@ export type AroundMiddleware = (
 // post 中间件：执行后观测
 export type PostMiddleware = (ctx: PipelineContext, result: ToolResult) => Promise<void> | void
 
+/** 带 name 的中间件：用于幂等注册（多 Agent 实例共享同一个 toolRegistry 单例） */
+export type NamedMiddleware<T> = T & { name?: string }
+
 class ToolRegistry {
   private tools = new Map<string, ToolDefinition>()
   private preMiddlewares: PreMiddleware[] = []
@@ -79,6 +82,15 @@ class ToolRegistry {
     this.preMiddlewares = []
     this.aroundMiddlewares = []
     this.postMiddlewares = []
+  }
+
+  /** 按名字判断是否已注册同名中间件，避免多实例重复注册导致统计翻倍 */
+  hasPostMiddleware(name: string): boolean {
+    return this.postMiddlewares.some((m) => m.name === name)
+  }
+
+  hasAroundMiddleware(name: string): boolean {
+    return this.aroundMiddlewares.some((m) => m.name === name)
   }
 
   // 转换为 OpenAI function calling 格式

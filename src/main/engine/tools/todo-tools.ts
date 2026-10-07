@@ -154,4 +154,37 @@ const todoDoneTool: ToolDefinition = {
   }
 }
 
-export const todoTools: ToolDefinition[] = [todoWriteTool, todoListTool, todoDoneTool]
+/**
+ * 提交执行计划，等待用户批准后才动手。
+ *
+ * 这个工具的 execute 几乎不会真正跑：AgentRunner 在主循环里**先于通用工具执行**
+ * 拦截 submit_plan（见 agent-runner.ts 的「计划提交」分支），把计划文本推给渲染层
+ * 展示 PlanCard，等用户 approve/reject/feedback 决策后才继续。
+ * 所以这里只做参数兜底，正常情况下不会走到。
+ */
+const submitPlanTool: ToolDefinition = {
+  name: 'submit_plan',
+  description:
+    '提交一份执行计划，等用户批准后再动手。改动较大、步骤较多时先用它把步骤摊开给用户过目，' +
+    '不要直接开干。plan 用编号列表写清每一步做什么；用户批准后你才能调用写类/执行类工具。',
+  parameters: {
+    type: 'object',
+    properties: {
+      plan: { type: 'string', description: '计划正文，建议用「1. … 2. … 3. …」编号列出可执行步骤' }
+    },
+    required: ['plan']
+  },
+  category: 'query',
+  execute: async (args): Promise<ToolResult> => {
+    const plan = String(args.plan || '').trim()
+    if (!plan) return { ok: false, content: '', error: 'plan 不能为空' }
+    // 走到这里说明 AgentRunner 的拦截没生效（不该发生），如实回报而不是假装已提交
+    return {
+      ok: false,
+      content: '',
+      error: 'submit_plan 计划提交通道未生效，请直接输出计划文本给用户确认。'
+    }
+  }
+}
+
+export const todoTools: ToolDefinition[] = [todoWriteTool, todoListTool, todoDoneTool, submitPlanTool]

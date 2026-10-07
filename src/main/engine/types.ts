@@ -72,6 +72,10 @@ export interface AgentStats {
   elapsedMs: number
   inputTokens: number
   outputTokens: number
+  /** 工具执行累计耗时（ms）。由 tool-registry 的 post 中间件累加。 */
+  toolMs?: number
+  /** 最慢的若干次工具调用（{name, ms}，按耗时降序）。用于「哪一步卡住了」的排查。 */
+  slowestTools?: Array<{ name: string; ms: number }>
 }
 
 export interface AgentRunOptions {

@@ -380,6 +380,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   // 早前两者都写 streamingThinking，导致推理内容把正在输出的正文覆盖掉。
   const [streamingThinking, setStreamingThinking] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
+  // 计划审批（submit_plan）：主进程等用户决策才继续，UI 要给出批准/驳回/要求修改三个出口
+  const [planReq, setPlanReq] = useState<{ plan: string; decisionId: string } | null>(null)
+  const [planFeedback, setPlanFeedback] = useState('')
   // 实时工作计时（对齐 TrieCode"已工作 16s"跳动样式；busy 时每秒递增）
   const [elapsedTick, setElapsedTick] = useState(0)
 
@@ -567,6 +570,12 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           setStreamingText('')
           setStreamingThinking('')
           setStreamingReasoning('')
+          break
+        }
+        case 'plan': {
+          const d = event.data as { plan?: string; decisionId?: string }
+          setPlanReq({ plan: d?.plan || '', decisionId: d?.decisionId || '' })
+          setPlanFeedback('')
           break
         }
         case 'need_confirm': {
@@ -944,6 +953,15 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     }
   }
 
+  const submitPlan = async (action: 'approve' | 'reject' | 'feedback'): Promise<void> => {
+    setPlanReq(null)
+    try {
+      await window.api.agent.planRespond({ action, feedback: planFeedback.trim() || undefined })
+    } catch (e) {
+      setMessages((prev) => [...prev, { kind: 'assistant', text: `计划审批没能送达 Agent：${(e as Error).message}` }])
+    }
+  }
+
   const submitAsk = async (): Promise<void> => {
     if (!askReq) return
     const answers = askAnswers.map((a, i) => {
@@ -1318,6 +1336,27 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
               <button className="agent-confirm-btn allow" onClick={() => void respondConfirm('allow_once')}>允许一次</button>
               <button className="agent-confirm-btn allow-session" onClick={() => void respondConfirm('allow_session')}>本会话允许</button>
               <button className="agent-confirm-btn reject" onClick={() => void respondConfirm('reject')}>拒绝</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 计划审批（submit_plan）：主进程会挂起等决策，批准后才继续执行 */}
+      {planReq && (
+        <div className="agent-confirm-overlay">
+          <div className="agent-confirm-dialog">
+            <div className="agent-confirm-title">执行计划 · 待批准</div>
+            <pre className="agent-confirm-args">{planReq.plan}</pre>
+            <input
+              className="agent-confirm-args"
+              placeholder="要求修改计划时写在这里（可留空）"
+              value={planFeedback}
+              onChange={(e) => setPlanFeedback(e.target.value)}
+            />
+            <div className="agent-confirm-actions">
+              <button className="agent-confirm-btn allow" onClick={() => void submitPlan('approve')}>批准并执行</button>
+              <button className="agent-confirm-btn allow-session" onClick={() => void submitPlan('feedback')}>要求修改</button>
+              <button className="agent-confirm-btn reject" onClick={() => void submitPlan('reject')}>否决</button>
             </div>
           </div>
         </div>
