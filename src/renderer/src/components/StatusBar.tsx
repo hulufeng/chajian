@@ -31,6 +31,10 @@ interface Props {
   precheck?: PrecheckSnapshot
   /** 点击预检圆点：展开完整报告（App 负责打进输出面板） */
   onPrecheckClick?: () => void
+  /** 保存即预检（层2 深度编译，实验性）快照；未开启/未跑过则 undefined */
+  deepCheck?: { status: 'idle' | 'pending' | 'ok' | 'error'; summary: string; text: string }
+  /** 点击层2 圆点：展开完整编译报告（App 负责打进输出面板） */
+  onDeepCheckClick?: () => void
 }
 
 type Dot = { color: string; text: string; title: string; onClick?: () => void }
@@ -68,7 +72,9 @@ function StatusBar({
   targetLabel,
   aiHealth,
   precheck,
-  onPrecheckClick
+  onPrecheckClick,
+  deepCheck,
+  onDeepCheckClick
 }: Props): React.JSX.Element {
   const ready = toolchain?.available ? '1/1 后端就绪' : '0/1 后端就绪'
 
@@ -111,6 +117,15 @@ function StatusBar({
               onClick: onPrecheckClick
             }
           })()
+
+  // 层2 深度编译预检圆点：与层1 完全分开（颜色用 violet 区分），避免两件事的结论混成一个语义。
+  const deepCheckDot: Dot | null = !deepCheck || deepCheck.status === 'idle'
+    ? null
+    : deepCheck.status === 'pending'
+      ? { color: 'var(--violet)', text: '深度编译中', title: '正在真实编译校验（依赖/语法/库）…', onClick: onDeepCheckClick }
+      : deepCheck.status === 'ok'
+        ? { color: 'var(--success)', text: '深度通过', title: '真实编译校验通过：依赖、语法、库均正常。', onClick: onDeepCheckClick }
+        : { color: 'var(--danger)', text: '深度编译失败', title: deepCheck.summary || '真实编译校验失败，点击查看报告。', onClick: onDeepCheckClick }
 
   const serial: Dot | null = serialOpen
     ? { color: 'var(--success)', text: `串口 ${port || '已打开'}`, title: `串口已打开 ${port} @ ${baud}` }
@@ -161,6 +176,7 @@ function StatusBar({
       {running ? dot(running) : null}
       {ai ? dot(ai) : null}
       {precheckDot ? dot(precheckDot) : null}
+      {deepCheckDot ? dot(deepCheckDot) : null}
       {serial ? dot(serial) : null}
       {debug ? dot(debug) : null}
       {gitChanges !== undefined && (

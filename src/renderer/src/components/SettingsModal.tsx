@@ -21,6 +21,9 @@ interface SettingsProps {
   /** 编辑器偏好（字号/缩进/换行/minimap/字体），来自 App，实时回写 */
   editorSettings: EditorSettings
   onEditorSettingsChange: (s: EditorSettings) => void
+  /** 层2 深度编译预检（实验性）开关 */
+  deepPrecheckOn: boolean
+  onDeepPrecheckChange: () => void
 }
 
 const SHELL_OPTIONS: Array<{ value: ShellType; label: string }> = [
@@ -67,7 +70,7 @@ const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange, deepPrecheckOn, onDeepPrecheckChange }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
@@ -688,6 +691,15 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                   <select className="settings-select" value={shell} onChange={(e) => onShellChange(e.target.value as ShellType)}>
                     {SHELL_OPTIONS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
                   </select>
+                </div>
+                <div className="settings-row">
+                  <span>层2 深度编译预检（实验性）</span>
+                  <input
+                    type="checkbox"
+                    checked={deepPrecheckOn}
+                    onChange={onDeepPrecheckChange}
+                    title="保存即预检时额外跑一次真实编译，提前发现依赖缺失 / 语法错 / 库找不到。默认关闭（真实编译耗时几十秒，且会随编辑防抖触发）。"
+                  />
                 </div>
               </div>
             )}

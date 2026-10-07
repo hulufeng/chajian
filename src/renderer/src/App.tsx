@@ -50,6 +50,21 @@ function findSketch(node: TreeNode | null): string | null {
   return null
 }
 
+/**
+ * 内容指纹（FNV-1a 32bit，纯函数无依赖）：层2 深度预检的缓存键。
+ * 为什么不用 content.length：等长改写（改一个字符、换一行）会让缓存误命中，
+ * 把上一次的「通过」当成这一次的结论——这正是保存即预检最忌讳的「误导性通过」
+ * （假成功比报错更骗人）。改内容 → 指纹变 → 缓存失效重跑。
+ */
+function contentFingerprint(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return (h >>> 0).toString(16)
+}
+
 /** 是否为磁盘上的绝对路径（虚拟文件如 welcome/welcome.ino 不是） */
 function isAbsPath(p: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/')
@@ -491,6 +506,39 @@ function App(): React.JSX.Element {
   const [precheck, setPrecheck] = useState<PrecheckSnapshot>({ status: 'idle', boardValid: true, issues: [], summary: '', text: '' })
   /** 预检防抖的引用持有（onChange 早于 schedulePrecheck 定义，用 ref 破除 TDZ） */
   const schedulePrecheckRef = useRef<() => void>(() => {})
+
+  // 层2 深度编译预检（实验性，默认关闭）：真实编译校验（依赖缺失/语法错/库找不到）。
+  // 与层1 预检（纯静态）、手动编译（compileState）完全解耦：独立 IPC、独立状态、独立圆点。
+  /** 层2 调度引用持有（save/onChange 早于 scheduleDeepCheck 定义，用 ref 破除 TDZ） */
+  const scheduleDeepCheckRef = useRef<() => void>(() => {})
+  const [deepPrecheckOn, setDeepPrecheckOn] = useState<boolean>(() => localStorage.getItem('codelab-deep-precheck') === '1')
+  const [deepCheck, setDeepCheck] = useState<{ status: 'idle' | 'pending' | 'ok' | 'error'; summary: string; text: string }>({ status: 'idle', summary: '', text: '' })
+  const deepRunningRef = useRef<boolean>(false)
+  const deepSeqRef = useRef<number>(0)
+  const deepCacheRef = useRef<{ key: string; status: 'ok' | 'error'; summary: string; text: string } | null>(null)
+  const deepCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toggleDeepPrecheck = useCallback((): void => {
+    setDeepPrecheckOn((v) => {
+      const next = !v
+      localStorage.setItem('codelab-deep-precheck', next ? '1' : '0')
+      if (!next) {
+        // 关掉就清掉状态圆点 + 缓存，并撤掉挂起的防抖任务：
+        // 否则 2.5s 内关掉时，挂起定时器仍会触发旧闭包跑完编译、把圆点写回来（等于「关了还亮」）。
+        if (deepCheckTimerRef.current) {
+          clearTimeout(deepCheckTimerRef.current)
+          deepCheckTimerRef.current = null
+        }
+        // 作废在飞结果：若真实编译已跑起来，此刻关掉也要让它的返回值落地时被判陈旧而丢弃，
+        // 否则 30s 后圆点会自己亮回来。
+        deepSeqRef.current += 1
+        setDeepCheck({ status: 'idle', summary: '', text: '' })
+        deepCacheRef.current = null
+      } else {
+        scheduleDeepCheckRef.current?.()
+      }
+      return next
+    })
+  }, [])
 
   // 调试状态变化时更新状态栏（面板也会自己收，这里只取一份给状态栏用）
   useEffect(() => {
@@ -934,6 +982,8 @@ function App(): React.JSX.Element {
     updateTabByIdRef.current(id, { content, dirty: true })
     // 停输 1s 防抖预check：用户改完代码静默 1s 后自动扫引脚冲突，不用手动点
     schedulePrecheckRef.current()
+    // 层2 深度编译预检同样在停输后调度（2.5s 防抖，且默认关闭，内部会再判一次 deepPrecheckOn）
+    scheduleDeepCheckRef.current()
   }, [])
 
   /**
@@ -948,6 +998,8 @@ function App(): React.JSX.Element {
       pushOut((prev) => prev + `\n✓ 已保存 ${tab.name}\n`)
       // 保存即预检：落盘后立刻用最新内容扫引脚冲突（保存是「检什么」的明确锚点）
       void runPrecheckRef.current()
+      // 层2 深度编译预检：保存也是锚点，调度一次（默认关闭时内部直接 return）
+      scheduleDeepCheckRef.current()
       return true
     } catch (e) {
       pushOut((prev) => prev + `\n[错误] 保存失败：${(e as Error).message}\n`)
@@ -1051,9 +1103,66 @@ function App(): React.JSX.Element {
   }, [])
   schedulePrecheckRef.current = schedulePrecheck
 
+  // 层2 深度编译预检：复用 arduino-cli 真实编译，捕获依赖缺失/语法错/库找不到。
+  // 与层1 预检（纯静态）、手动编译（compileState/busy）完全解耦：独立 IPC + 独立状态 + 独立圆点。
+  const runDeepCheck = useCallback(async (): Promise<void> => {
+    if (!deepPrecheckOn) return
+    const root = projectRoot
+    const fb = fqbn
+    if (!root || !fb || busy || compileState === 'compiling' || compileState === 'uploading') return
+    if (!toolchain?.available || !toolchain.path) return
+    const resolved = resolveSketch(tabs, activePath, tree)
+    if (!resolved) return
+    // 落盘编辑器最新内容再编译（与手动编译同语义），但用 no-op 回调避免把标签页「未保存」点偷偷清掉
+    const sketch = await prepareSketchForBuild(
+      resolved,
+      (s) => pushOut((p) => p + s),
+      () => undefined
+    )
+    if (!sketch) return
+    // 缓存：内容指纹+fqbn 没变就复用上次结论，不重复跑几十秒的真实编译。
+    // 用内容指纹（不是 content.length）：等长改写也要让缓存失效，避免「误导性通过」。
+    const key = `${fb}::${contentFingerprint(tabs.map((t) => `${t.id}\u0000${t.content}`).join('\u0001'))}`
+    if (deepCacheRef.current && deepCacheRef.current.key === key) {
+      setDeepCheck({ status: deepCacheRef.current.status, summary: deepCacheRef.current.summary, text: deepCacheRef.current.text })
+      return
+    }
+    if (deepRunningRef.current) return // 串行，避免并发起多个 arduino-cli 编译
+    const seq = ++deepSeqRef.current
+    deepRunningRef.current = true
+    setDeepCheck((d) => ({ ...d, status: 'pending' }))
+    try {
+      const r = await window.api.sketch.deepCompilePrecheck({ sketch, fqbn: fb })
+      if (seq !== deepSeqRef.current) return // 已有更新的触发，丢弃陈旧结果
+      const errText = r.ok ? '' : (extractBuildError(r.out) || r.out || '编译失败')
+      const status: 'ok' | 'error' = r.ok ? 'ok' : 'error'
+      const text = r.ok ? '真实编译校验通过：依赖、语法、库均正常。' : `── 深度编译预检报告 ──\n${errText}`
+      const summary = r.ok ? '深度预检通过' : errText.split('\n')[0].slice(0, 80) || '编译失败'
+      setDeepCheck({ status, summary, text })
+      deepCacheRef.current = { key, status, summary, text }
+    } catch {
+      if (seq === deepSeqRef.current) setDeepCheck((d) => ({ ...d, status: 'idle' }))
+    } finally {
+      deepRunningRef.current = false
+    }
+  }, [deepPrecheckOn, projectRoot, fqbn, busy, compileState, toolchain, tabs, activePath, tree])
+
+  // 层2 停输 2.5s 防抖：编译要几十秒，不能每次击键都跑（deepCheckTimerRef 已在状态块声明）
+  const scheduleDeepCheck = useCallback((): void => {
+    if (!deepPrecheckOn) return
+    if (deepCheckTimerRef.current) clearTimeout(deepCheckTimerRef.current)
+    deepCheckTimerRef.current = setTimeout(() => {
+      deepCheckTimerRef.current = null
+      void runDeepCheck()
+    }, 2500)
+  }, [deepPrecheckOn, runDeepCheck])
+  scheduleDeepCheckRef.current = scheduleDeepCheck
+
   // 项目打开 / 切换、或换开发板后，立即重新预检（这两个动作改的是「检什么」，必须立刻反映）
   useEffect(() => {
     if (projectRoot && fqbn) void runPrecheck()
+    // 层2 深度编译预检：换板/换项目让缓存失效并重检（默认关闭时内部直接 return，不浪费编译）
+    if (projectRoot && fqbn && deepPrecheckOn) scheduleDeepCheck()
     // 只在这两个依赖上跑：保存/编辑走各自的显式触发，避免重复跑
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectRoot, fqbn])
@@ -1085,6 +1194,13 @@ function App(): React.JSX.Element {
     ensureOutputVisible()
     pushOut((prev) => prev + `\n── 保存即预检报告 ──\n${precheck.text}\n`)
   }, [precheck, ensureOutputVisible])
+
+  // 点击层2 深度预检圆点：把完整编译报告打进输出面板并展开
+  const onDeepCheckClick = useCallback((): void => {
+    if (!deepCheck.text) return
+    ensureOutputVisible()
+    pushOut((prev) => prev + `\n${deepCheck.text}\n`)
+  }, [deepCheck, ensureOutputVisible])
 
   // 关窗：主进程会把 close 事件拦住先问这里，直接点窗口 × 也不能把改动带走
   useEffect(() => {
@@ -1754,6 +1870,8 @@ function App(): React.JSX.Element {
         targetLabel={targetLabel}
         precheck={precheck}
         onPrecheckClick={onPrecheckClick}
+        deepCheck={deepCheck}
+        onDeepCheckClick={onDeepCheckClick}
       />
       {showNewProject && (
         <NewProjectDialog
@@ -1782,6 +1900,8 @@ function App(): React.JSX.Element {
           version={appVersion}
           editorSettings={editorSettings}
           onEditorSettingsChange={updateEditorSettings}
+          deepPrecheckOn={deepPrecheckOn}
+          onDeepPrecheckChange={toggleDeepPrecheck}
         />
       )}
       {wiringSvg && (

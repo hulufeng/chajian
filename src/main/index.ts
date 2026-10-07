@@ -1256,6 +1256,22 @@ ipcMain.handle('sketch:precheck', (_e, opts: { projectRoot?: string; fqbn?: stri
   }
 })
 
+// 层2 深度编译预检：真实编译校验（依赖缺失/语法错/库找不到），与手动编译完全解耦。
+// 走独立 IPC、返回 {ok,code,out}，不发射 task 事件，因此不会触碰 compileState/buildStage/buildError（避免状态打架）。
+// 复用 compileSketch（子进程调官方 arduino-cli），只回传输出尾部避免撑爆 IPC 负载（错误通常在末尾）。
+ipcMain.handle('sketch:deepCompilePrecheck', async (_e, opts: { sketch: string; fqbn: string }) => {
+  const tc = findToolchain()
+  if (!tc) return { ok: false, code: -2, out: '工具链不可用' }
+  let out = ''
+  const code = await new Promise<number>((resolve) => {
+    const cp = compileSketch({ sketch: opts.sketch, fqbn: opts.fqbn, bin: tc }, (c) => { out += c }, (c) => resolve(c))
+    const t = setTimeout(() => { try { cp.kill() } catch { /* ignore */ } resolve(-1) }, 180_000)
+    cp.on('close', () => clearTimeout(t))
+  })
+  const tail = out.length > 4000 ? out.slice(out.length - 4000) : out
+  return { ok: code === 0, code, out: tail }
+})
+
 // ---------- 模板 / 示例库 ----------
 ipcMain.handle('template:groups', () => groupTemplates().map((g) => ({
   category: g.category,

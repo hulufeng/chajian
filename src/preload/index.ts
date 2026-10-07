@@ -617,7 +617,11 @@ const api = {
       issues: PrecheckSnapshot['issues']
       summary: string
       text: string
-    }> => ipcRenderer.invoke('sketch:precheck', opts)
+    }> => ipcRenderer.invoke('sketch:precheck', opts),
+    // 层2 深度编译预检：真实编译校验（依赖缺失/语法错/库找不到）。
+    // 与手动编译完全解耦：独立 IPC、返回 {ok,code,out}，不发射 task 事件，不碰 compileState。
+    deepCompilePrecheck: (opts: { sketch: string; fqbn: string }): Promise<{ ok: boolean; code: number; out: string }> =>
+      ipcRenderer.invoke('sketch:deepCompilePrecheck', opts)
   },
 
   // 模板 / 示例库
