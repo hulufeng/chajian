@@ -1340,9 +1340,23 @@ function App(): React.JSX.Element {
       const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort })
       if (uploadResult.id) {
         setActiveTaskId(uploadResult.id)
-        pendingTasksRef.current.set(uploadResult.id, async () => {
+        pendingTasksRef.current.set(uploadResult.id, async (code: number) => {
           setBusy(false)
           await restoreSerial()
+          // P1：烧录成功后，若烧录前串口没开着 → 自动打开并切到串口监视器页签。
+          // 失败路径不动：restoreSerial 只在烧录前就开着时才恢复，不会凭空开新串口占口。
+          if (code === 0 && !wasSerialOpen && selectedPort) {
+            try {
+              await window.api.serial.open({ port: selectedPort, baud })
+              setSerialOpen(true)
+              ensureOutputVisible()
+              // 重建 OutputPanel → 页签回到 defaultTab「串口监视器」
+              setOutputKey((k) => k + 1)
+              pushOut((prev) => prev + '\n[提示] 烧录成功，已自动打开串口监视器。\n')
+            } catch {
+              /* 开串口失败不阻断烧录成功结论 */
+            }
+          }
         })
         // 120s 兜底：烧录事件丢失时复位状态，避免"永久烧录中"假死
         guardTimerRef.current = setTimeout(() => {
