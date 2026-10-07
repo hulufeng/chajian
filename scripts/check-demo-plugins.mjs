@@ -166,7 +166,7 @@ buildSync({
 })
 const { validateManifest } = await import('file://' + vOut.replace(/\\/g, '/'))
 
-for (const id of ['esp32-sensor-lab', 'serial-analyser', 'serial-scope', 'esp32-crash-lookup']) {
+for (const id of ['esp32-sensor-lab', 'serial-analyser', 'serial-scope', 'esp32-crash-lookup', 'plugin-dev-toolchain']) {
   const mf = join(PLUGINS, id, 'plugin.json')
   if (!existsSync(mf)) { ok(false, `${id} 有 plugin.json`); continue }
   const r = validateManifest(JSON.parse(readFileSync(mf, 'utf8')))
@@ -194,7 +194,7 @@ for (const id of ['serial-analyser', 'serial-scope', 'esp32-crash-lookup']) {
 console.log('\n[6] 内置清单 sha256 与实际 zip 一致')
 const { createHash } = await import('node:crypto')
 const catalogSrc = readFileSync(join(root, 'src/main/plugins/plugin-catalog.ts'), 'utf8')
-for (const id of ['esp32-sensor-lab', 'serial-analyser', 'serial-scope', 'esp32-crash-lookup']) {
+for (const id of ['esp32-sensor-lab', 'serial-analyser', 'serial-scope', 'esp32-crash-lookup', 'plugin-dev-toolchain']) {
   const zipPath = join(PLUGINS, `${id}.zip`)
   if (!existsSync(zipPath)) { ok(false, `${id}.zip 存在`); continue }
   const real = createHash('sha256').update(readFileSync(zipPath)).digest('hex')

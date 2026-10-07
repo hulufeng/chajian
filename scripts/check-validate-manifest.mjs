@@ -118,6 +118,16 @@ check('⑪ settings 非数组 → 报错', hasErr({ name: 'X', version: '1', set
 check('⑪ setting 缺 key → 报错', hasErr({ name: 'X', version: '1', settings: [{ type: 'string' }] }, 'settings[0].key'))
 check('⑪ setting type 非法 → 报错', hasErr({ name: 'X', version: '1', settings: [{ key: 'k', type: 'date' }] }, 'settings[0].type'))
 
+// ── ⑫ skills ───────────────────────────────────────────────────────────
+check('⑫ skills 非数组 → 报错', hasErr({ name: 'X', version: '1', skills: {} }, 'skills'))
+check('⑫ skill 缺 name → 报错', hasErr({ name: 'X', version: '1', skills: [{ description: 't' }] }, 'skills[0].name'))
+check('⑫ skill 缺 description → 报错', hasErr({ name: 'X', version: '1', skills: [{ name: 's' }] }, 'skills[0].description'))
+check('⑫ skills 合法通过', valid({ name: 'X', version: '1', skills: [{ name: 's', description: 'd', prompt: 'p' }] }))
+
+// ── ⑬ tools[].category ─────────────────────────────────────────────────
+check('⑬ tool category 非法 → 报错', hasErr({ name: 'X', version: '1', tools: [{ name: 't', transport: 'internal', internal: { service: 's', method: 'm' }, category: 'weird' }] }, 'tools[0].category'))
+check('⑬ tool category 合法通过', valid({ name: 'X', version: '1', tools: [{ name: 't', transport: 'internal', internal: { service: 's', method: 'm' }, category: 'create' }] }))
+
 console.log(`\n[check-validate-manifest] ${pass} 通过，${fails.length} 失败`)
 if (fails.length) {
   for (const f of fails) console.log('  ✗ ' + f)

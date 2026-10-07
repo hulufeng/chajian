@@ -27,6 +27,9 @@ const VALID_BACKEND_TYPES = new Set(['grpc', 'process', 'http', 'stdio'])
 // 设置 type
 const VALID_SETTING_TYPES = new Set(['string', 'number', 'boolean', 'select', 'url', 'urlArray', 'password'])
 
+// 工具 category（元插件三件套用 create/query/modify；其余为通用执行类）
+const VALID_TOOL_CATEGORIES = new Set(['create', 'query', 'modify', 'delete', 'execute'])
+
 // kebab-case 正则
 const KEBAB_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
@@ -123,6 +126,11 @@ export function validateManifest(manifest: unknown): ValidateResult {
         if (!tool.name || typeof tool.name !== 'string') {
           errors.push({ field: `tools[${i}].name`, message: '工具 name 必填' })
           continue
+        }
+        // category 可选枚举（元插件三件套用 create/query/modify）
+        const category = tool.category as string | undefined
+        if (category && !VALID_TOOL_CATEGORIES.has(category)) {
+          errors.push({ field: `tools[${i}].category`, message: `工具 ${String(tool.name)} 的 category 必须是 ${[...VALID_TOOL_CATEGORIES].join('/')}` })
         }
         const transport = tool.transport as string
         if (!transport || !VALID_TRANSPORTS.has(transport)) {
@@ -346,6 +354,24 @@ export function validateManifest(manifest: unknown): ValidateResult {
         const type = setting.type as string
         if (type && !VALID_SETTING_TYPES.has(type)) {
           errors.push({ field: `settings[${i}].type`, message: `设置 type 必须是 ${[...VALID_SETTING_TYPES].join('/')}，当前: ${type}` })
+        }
+      }
+    }
+  }
+
+  // 11. skills（技能层：多步规划与选型引导）
+  if (m.skills !== undefined) {
+    if (!Array.isArray(m.skills)) {
+      errors.push({ field: 'skills', message: 'skills 必须是数组' })
+    } else {
+      for (let i = 0; i < (m.skills as unknown[]).length; i++) {
+        const skill = (m.skills as Record<string, unknown>[])[i]
+        if (!skill || typeof skill !== 'object') continue
+        if (!skill.name || typeof skill.name !== 'string') {
+          errors.push({ field: `skills[${i}].name`, message: '技能 name 必填' })
+        }
+        if (!skill.description || typeof skill.description !== 'string') {
+          errors.push({ field: `skills[${i}].description`, message: '技能 description 必填' })
         }
       }
     }

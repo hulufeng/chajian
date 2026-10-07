@@ -131,4 +131,18 @@ export const DEFAULT_CATALOG: CatalogEntry[] = [
     },
     'plugin-demo/esp32-crash-lookup.zip'
   ),
+  builtinEntry(
+    {
+      id: 'plugin-dev-toolchain',
+      name: 'plugin-dev-toolchain',
+      displayName: '插件开发工具链（元插件）',
+      version: '0.1.0',
+      description: '用来设计插件的插件：create 生成骨架、validate 校验 manifest、install 安装到本机，并配「创建插件」技能引导选型。',
+      author: 'CodeLab 官方',
+      sha256: '2b93796d6abca86b3c93e7785ce00b85239706f39d14532ac4e1980e803b36e5',
+      exposes: ['plugin-dev.create', 'plugin-dev.validate', 'plugin-dev.install'],
+      minAppVersion: '0.0.1',
+    },
+    'plugin-demo/plugin-dev-toolchain.zip'
+  ),
 ]

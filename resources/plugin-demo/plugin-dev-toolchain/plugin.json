@@ -1,0 +1,83 @@
+{
+  "id": "plugin-dev-toolchain",
+  "name": "plugin-dev-toolchain",
+  "displayName": "插件开发工具链（元插件）",
+  "version": "0.1.0",
+  "description": "用来设计插件的插件：create 生成骨架、validate 校验 manifest、install 安装到本机，并配「创建插件」技能引导选型。",
+  "author": "CodeLab 官方",
+  "minAppVersion": "0.0.1",
+  "entry": "index.js",
+  "channels": {
+    "internal": ["plugin-dev.create", "plugin-dev.validate", "plugin-dev.install"],
+    "backend": [],
+    "cli": [],
+    "http": [],
+    "grpc": [],
+    "mcp": [],
+    "mqtt": []
+  },
+  "skills": [
+    {
+      "name": "创建插件",
+      "description": "引导 AI 从零生成一个 codelab 插件：先问清需求，再选 transport，再产出骨架并校验。",
+      "prompt": "（见 skill-create-plugin.md：需求 → 基础信息 → 选 transport → create → 完善 manifest → validate → 问用户是否安装 → install → 问是否启用）"
+    }
+  ],
+  "tools": [
+    {
+      "name": "plugin-dev.create",
+      "transport": "internal",
+      "category": "create",
+      "description": "根据 id/name/transport/author/outDir 生成一个新的插件骨架（plugin.json + index.js），落盘到 outDir 下的 <id>/ 目录。",
+      "internal": { "service": "pluginDev", "method": "create" },
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "插件 kebab-case id，如 my-sensor" },
+          "name": { "type": "string", "description": "英文标识，缺省同 id" },
+          "displayName": { "type": "string", "description": "中文展示名" },
+          "transport": {
+            "type": "string",
+            "enum": ["cli", "internal", "http", "grpc", "mcp", "backend", "mqtt"],
+            "description": "主通道，决定工具绑定形状"
+          },
+          "author": { "type": "string", "description": "作者" },
+          "outDir": { "type": "string", "description": "骨架输出根目录（绝对路径）" }
+        },
+        "required": ["id", "transport", "outDir"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "plugin-dev.validate",
+      "transport": "internal",
+      "category": "query",
+      "description": "校验某个目录下的 plugin.json 是否合法（复用宿主 app.validateManifest 校验口径，单一事实来源）。",
+      "internal": { "service": "pluginDev", "method": "validate" },
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "plugin.json 所在目录或文件绝对路径" }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "plugin-dev.install",
+      "transport": "internal",
+      "category": "modify",
+      "description": "把本地插件目录安装到本机 userData/plugins/<id> 并热加载（先复用宿主校验，不通过则中止）。",
+      "internal": { "service": "pluginDev", "method": "install" },
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "插件目录绝对路径（含 plugin.json）" }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "settings": []
+}

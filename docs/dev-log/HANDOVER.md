@@ -246,6 +246,10 @@ node scripts/check-*.mjs                # 受影响的那些
 | `src/renderer/src/assets/theme.css` | **唯一颜色源**（渲染层不准出现 hex/rgb 字面量） |
 | `builder.full.config.json` | 出包配置（白名单 + asar:false + npmRebuild:false） |
 | `start-labcode.bat` | 一键跑 `out/` 真实产物做真机测试（免打包） |
+| `docs/插件架构/plugin-schema-draft.md` | **plugin.json schema 草案**（对齐 TrieCode 的 skills/tools/transports；7 通道含 mqtt；skills[]/tools[].category/信任模型/元插件契约/JSON Schema） |
+| `resources/plugin-demo/plugin-dev-toolchain/` | **元插件三件套**（create/validate/install + 「创建插件」Skill），经宿主内通道 `app.validateManifest`/`app.reloadPlugins` 复用单一事实来源 |
+| `src/main/plugins/hostAdapter.ts` | 宿主能力暴露；新增 `app.validateManifest` / `app.reloadPlugins` 两个 internal 命令供元插件调用 |
+| `src/main/plugins/validate-manifest.ts` | manifest 校验器（11 项，含 skills[] 与 tools[].category 校验；7 通道 transport） |
 
 ---
 
