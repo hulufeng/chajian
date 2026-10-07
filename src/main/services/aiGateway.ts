@@ -364,6 +364,22 @@ export function getLocalModel(): string | null {
   return activeLocalModel
 }
 
+/**
+ * 本次任务要同步到全局的本地模型；返回 undefined 表示「本次没指定，不要动全局」。
+ *
+ * 为什么单独抽这个函数：Agent 每次 run 都要处理一次「本地模型同步」，
+ * 早期写法是 setLocalModel(options.localModel || null)——没指定就传 null，
+ * 于是把用户在设置里选好的本地模型**清空**了。后果是后续 aiChat 调 getLocalModel()
+ * 拿到 null，静默降级回云端：下拉框里明明选着「Qwen2.5 Coder 3B」，发出的消息却走云端
+ * （401，或白耗积分）。启动时自动接回本地引擎（engine:ensure）也会被这样一次运行抹掉。
+ *
+ * 规则：显式指定才覆盖；未指定一律「不动」。
+ */
+export function resolveLocalModelForRun(requested?: string | null): string | undefined {
+  const v = (requested ?? '').trim()
+  return v ? v : undefined
+}
+
 // ---------- SSE 流式聊天（支持 tool_calls / function calling） ----------
 export interface StreamChunk {
   type: 'content' | 'reasoning' | 'tool_call_start' | 'tool_call_args'

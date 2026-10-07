@@ -3,7 +3,7 @@
 import { toolRegistry } from './tool-registry'
 import { coreTools } from './tools'
 import { PermissionPolicy } from './permission-policy'
-import { aiChatStream, getAiState, setLocalModel } from '../services/aiGateway'
+import { aiChatStream, getAiState, setLocalModel, resolveLocalModelForRun } from '../services/aiGateway'
 import { searchKnowledge, knowledgeCount } from '../ai/knowledgeBase'
 import { detectFirmwareProject, loadProjectConfigBlock, FIRMWARE_RULES_BLOCK, type FirmwareDetection } from './project-config'
 import { buildProjectContext } from './project-context'
@@ -236,8 +236,12 @@ export class AgentRunner {
     this.debugMode = options.debugMode ?? false
     this.thinkingLevel = options.thinkingLevel || 'standard'
 
-    // 本地模型（Ollama）：设置到 aiGateway，aiChatStream 会走本地分支
-    setLocalModel(options.localModel || null)
+    // 本地模型（Ollama）：只在本次**显式指定**时才同步到 aiGateway。
+    // 不能写成 setLocalModel(options.localModel || null)：没指定就传 null 会把用户在设置里
+    // 选好的本地模型清空，之后 aiChat 取不到本地模型就静默降级回云端
+    // （表现：下拉框选着本地模型，发出的消息却走云端、401 或白耗积分）。
+    const lm = resolveLocalModelForRun(options.localModel)
+    if (lm) setLocalModel(lm)
 
     // 重置护栏状态
     this.sterileActions.clear()
