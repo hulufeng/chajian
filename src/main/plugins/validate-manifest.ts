@@ -355,6 +355,17 @@ export function validateManifest(manifest: unknown): ValidateResult {
         if (type && !VALID_SETTING_TYPES.has(type)) {
           errors.push({ field: `settings[${i}].type`, message: `设置 type 必须是 ${[...VALID_SETTING_TYPES].join('/')}，当前: ${type}` })
         }
+        // password 类型不允许在 manifest 里写死默认值（密钥必须走 {settings.*} 运行时注入，
+        // 不能随包分发落库——否则等于把密钥明文打进 zip，校验器在这里直接拦下）。
+        if (type === 'password') {
+          const def = setting.default
+          if (def !== undefined && def !== '') {
+            errors.push({
+              field: `settings[${i}].default`,
+              message: 'password 类型不允许在 manifest 中写死默认值（密钥应走 {settings.*} 运行时注入，不随包分发）',
+            })
+          }
+        }
       }
     }
   }

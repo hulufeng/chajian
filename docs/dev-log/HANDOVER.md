@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `68b10c4`（pkgout36 源码与自检已全部入库，工作树干净） |
+| 最新提交 | `bf855e8`（plugin.json schema 草案 + 元插件三件套脚手架；仅剩 safe-delete 残留 out_*/_probe* 未提交） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -202,6 +202,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **悬停功能介绍** | pkgout34 | 全局单例 `FeatureHintLayer` 在 `document` 事件委托，元素挂 `data-hint-title/desc/tip` 出卡片（portal 到 body）。**不包 Tooltip 容器**（工具栏 flex 紧密排布，包一层就挤歪）。文案集中 `featureHints.ts`（14 条），覆盖 19 处挂点。延迟 420ms + `pointer-events:none` + 按下/Esc/滚动即收。设置可关 |
 | **测试信息收集** | pkgout35 | 见 §3 |
 | **板卡自动纠正 + 实测** | pkgout36 | 见 §6 #4 |
+| **插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）** | 本轮 | 见 §12 |
 
 ---
 
@@ -249,7 +250,12 @@ node scripts/check-*.mjs                # 受影响的那些
 | `docs/插件架构/plugin-schema-draft.md` | **plugin.json schema 草案**（对齐 TrieCode 的 skills/tools/transports；7 通道含 mqtt；skills[]/tools[].category/信任模型/元插件契约/JSON Schema） |
 | `resources/plugin-demo/plugin-dev-toolchain/` | **元插件三件套**（create/validate/install + 「创建插件」Skill），经宿主内通道 `app.validateManifest`/`app.reloadPlugins` 复用单一事实来源 |
 | `src/main/plugins/hostAdapter.ts` | 宿主能力暴露；新增 `app.validateManifest` / `app.reloadPlugins` 两个 internal 命令供元插件调用 |
-| `src/main/plugins/validate-manifest.ts` | manifest 校验器（11 项，含 skills[] 与 tools[].category 校验；7 通道 transport） |
+| `src/main/plugins/validate-manifest.ts` | manifest 校验器（11 项，含 skills[] 与 tools[].category 校验；7 通道 transport；password 默认不可写死） |
+| `src/main/plugins/settings-resolver.ts` | `{settings.*}` 占位符注入（密钥不硬编码、不随包分发） |
+| `src/main/plugins/mqtt-bridge.ts` | MQTT 桥接运行时（差异化通道；可选 mqtt 包，缺依赖结构化降级） |
+| `src/main/plugins/pluginManager.ts` | 运行时核心；新增 `runTool` 七通道统一执行器 + `getSkills`/`getTools`（含 sideEffect 映射）+ 声明式工具自动注册 |
+| `scripts/check-plugin-runtime.mjs` | 新增：插件运行时自检（renderHttpRequest / mapPluginCategoryToEngine / skills+tools 聚合 / MQTT 降级） |
+| `scripts/check-validate-manifest.mjs` | 新增 password 默认空校验断言 |
 
 ---
 
@@ -259,6 +265,22 @@ node scripts/check-*.mjs                # 受影响的那些
 |---|---|
 | `HANDOFF-2026-10-07.md` / `handoff.md` / `handoff-2026-10-06.md` | 历次交接书（2026-10-08 那份因内容全部并入本文，已直接删除），内容都在本文 |
 | `TEST-LOG-2026-10-07.md` | 真机测试记录，内容已并入本文 §6 |
+
+---
+
+## 12. 插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）
+
+上一轮交付了 plugin.json schema 草案 + 元插件三件套脚手架。本轮把「设计」落到「代码」，补齐运行时缺口，使七通道不再有一半是死声明：
+
+- **信任分级两级（official/thirdparty）**：`CatalogEntry.tier`；官方插件随应用分发、已审计，首次安装免确认（`pluginInstaller.ts` 判断 `entry.tier !== 'official'` 才弹确认卡），`listPlugins` 官方恒为已信任。第三方/本地市场首次仍须确认卡。
+- **`{settings.*}` 占位符注入**：`settings-resolver.ts` 在加载时把 manifest/工具绑定里的 `{settings.key}` 替换为用户设置值（密钥不硬编码、不随包分发）。`validate-manifest.ts` 新增 password 类型「默认不可写死」规则防密钥落库，配套 `check-validate-manifest.mjs` 断言。
+- **外部通道统一执行器**：`pluginManager.runTool` 七通道分派。cli/http/mqtt/grpc/mcp 声明式工具自动注册并按绑定形状直接执行；http 实装（fetch + 超时 + 占位符/参数注入 + query 合并）；grpc/mcp 留适配器挂载点（未注册结构化降级，不崩溃）；internal/backend 由插件/宿主手动 register（不覆盖既有契约）；mqtt 走 `mqtt-bridge.ts`。
+- **tools[].category 运行时消费**：`getTools` 返回 `category` + 映射到引擎权限维度 `sideEffect`（create/modify/delete→write，query→query，execute→execute），供 Agent 复用 `permissionPolicy` 做确认门控。
+- **Skills 运行时接入**：`getSkills` + IPC `plugin:skills` + preload `api.plugin.skills`，命令面板/Agent 做能力引导。
+- **信任配套文件**：元插件 `plugin-dev.create` 生成的骨架自动附带 `LICENSE`/`NOTICE`/`CONTRIBUTING.md`（第三方插件明确来源、防仿冒）；已重打包 `plugin-dev-toolchain.zip` 并刷新清单 sha256。
+- **验证**：tsc 双过通过；`check-validate-manifest`(53) / `check-demo-plugins`(87) / 新增 `check-plugin-runtime`(23) 全绿；`scan-ipc-handlers` 0 命中；其余 3 扫描无 CRITICAL。
+- **注意**：`mqtt-bridge.ts` 用 `req(MQTT_PKG)` 非字面量包名（`'mq'+'tt'`）避免打包器在构建期解析未安装的 mqtt 依赖；运行时真正需要才 `require`，缺依赖直接结构化降级。
+
 | `log-20.md` ~ `log-33.md`、`next-steps.md`、`slim-design.md`、`competitive-landscape.md` | 过程档案，仍独立保留 |
 
 **维护规则**：以后只改这一份；确实需要分文件时，先在本文件索引里登记。

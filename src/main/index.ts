@@ -495,6 +495,8 @@ ipcMain.handle('plugin:projectTypes', () => pluginManager.getProjectTypes())
 ipcMain.handle('plugin:capabilities', () => pluginManager.getCapabilities())
 ipcMain.handle('plugin:devicePanels', () => pluginManager.getDevicePanels())
 ipcMain.handle('plugin:commands', () => pluginManager.getCommands())
+ipcMain.handle('plugin:skills', () => pluginManager.getSkills())
+ipcMain.handle('plugin:tools', () => pluginManager.getTools())
 
 
 // 能力驱动：按 capability ID 路由到插件声明的工具（capability 能力路由模式）

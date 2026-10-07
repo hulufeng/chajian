@@ -174,6 +174,27 @@ codelab 插件是**专门暴露给 AI Agent 调用**的能力包（区别于传�
 | **两层校验** | ① manifest 校验（validate-manifest.ts 11 项，防误配置不防恶意）② zip sha256 校验和（防中途换包） |
 | **诊断纪律** | 沿用 HANDOVER 红线「只写本机不外发、不记 Key」——与 TrieCode 同源但更强调本机边界 |
 
+### 7.1 已实现：运行级信任分级（`CatalogEntry.tier`）
+
+设计稿的「官方 / 第三方两级」已落到代码，差异点在于**官方插件随应用分发、已审计，首次安装免确认**：
+
+- `plugin-catalog.ts` 的 `CatalogEntry` 新增 `tier?: 'official' | 'thirdparty'`。
+- 内置 `DEFAULT_CATALOG` 条目全部标 `tier: 'official'`（`builtinEntry()` 统一注入）。
+- `pluginInstaller.ts`：安装判断 `!isTrusted(id) && opts.trust !== true && entry.tier !== 'official'` 才弹确认卡；`listPlugins()` 里 `trusted: e.tier === 'official' || isTrusted(e.id)`（官方恒为已信任）。
+- 第三方 / 本地市场插件（`tier` 缺省或 `'thirdparty'`）首次安装仍须用户确认。
+
+### 7.2 已实现：第三方插件来源声明文件（`create` 脚手架生成）
+
+为落实「第三方不被误当官方」，元插件 `plugin-dev.create` 生成的骨架现在**自动附带三份信任配套文件**（用户在 `create` 时填写 `author`）：
+
+| 文件 | 作用 |
+|---|---|
+| `LICENSE` | MIT 协议 + 明示「未被官方审计/分发，风险自担」 |
+| `NOTICE` | 插件标识 / 作者 / 主通道 + 明确「非官方、谨防仿冒」声明 |
+| `CONTRIBUTING.md` | 提交前先 `validate`、改 manifest 必重打包刷 sha256、安全改动附威胁说明 |
+
+> 官方插件（tier:'official'）自身不强制带 `NOTICE`（已在清单层声明来源）；但**任何第三方插件应在 `create` 后核对这两份文件**，避免被用户误认为官方。
+
 ---
 
 ## 8. 元插件三件套契约（`plugin-dev-toolchain`）

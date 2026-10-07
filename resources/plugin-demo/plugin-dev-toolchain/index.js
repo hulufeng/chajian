@@ -50,13 +50,40 @@ function createSkeleton(args) {
   fs.writeFileSync(path.join(root, 'plugin.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8')
   fs.writeFileSync(path.join(root, 'index.js'), indexSrc, 'utf8')
 
+  // 信任配套文件：第三方/本地插件应明确声明来源与授权，避免被误当官方插件
+  const year = new Date().getFullYear()
+  fs.writeFileSync(
+    path.join(root, 'LICENSE'),
+    `MIT License\n\nCopyright (c) ${year} ${author}\n\n` +
+      '本插件按 MIT 协议开源。安装即表示你已阅读并理解：本插件未被 CodeLab 官方审计或随应用分发，\n' +
+      '其运行风险由使用者自行承担。\n',
+    'utf8'
+  )
+  fs.writeFileSync(
+    path.join(root, 'NOTICE'),
+    `NOTICE\n======\n\n` +
+      `插件标识：${id}\n显示名：${displayName}\n作者：${author}\n主通道：${transport}\n\n` +
+      '本插件不属于 CodeLab 官方插件，未经官方审计或签名。\n' +
+      '若其声称“官方”，请向 CodeLab 官方核实来源，谨防仿冒。\n',
+    'utf8'
+  )
+  fs.writeFileSync(
+    path.join(root, 'CONTRIBUTING.md'),
+    `# 贡献指南（${displayName}）\n\n` +
+      '- 提交前请先在本机用 `plugin-dev.validate` 校验 plugin.json。\n' +
+      '- 修改 manifest 后务必重新打包插件 zip 并刷新清单 sha256。\n' +
+      '- 安全相关改动请附威胁说明（通道越权 / 密钥处理 / 文件写范围）。\n',
+    'utf8'
+  )
+
   return {
     ok: true,
     path: root,
-    files: ['plugin.json', 'index.js'],
+    files: ['plugin.json', 'index.js', 'LICENSE', 'NOTICE', 'CONTRIBUTING.md'],
     next: [
       `补全 ${path.join(root, 'plugin.json')} 的 description / capabilities / settings`,
       `在 ${path.join(root, 'index.js')} 的 load() 里实现 ${transport} 通道绑定`,
+      `核对 ${path.join(root, 'LICENSE')} / ${path.join(root, 'NOTICE')} 的署名与来源声明`,
       '运行 plugin-dev.validate 校验',
       '运行 plugin-dev.install 安装到本机'
     ]

@@ -32,6 +32,8 @@ export interface CatalogEntry {
   /** 声明的能力/工具名，安装确认卡展示 */
   exposes?: string[]
   minAppVersion?: string
+  /** 信任分级：official=随应用分发、已审计（免确认）；thirdparty=第三方/本地市场（首次需确认） */
+  tier?: 'official' | 'thirdparty'
 }
 
 /**
@@ -67,6 +69,7 @@ function builtinEntry(
   return {
     ...meta,
     source: '内置源',
+    tier: 'official',
     get url(): string {
       const p = resolveBuiltinBundle(bundleRel)
       return p ? pathToFileURL(p).href : ''
@@ -139,7 +142,7 @@ export const DEFAULT_CATALOG: CatalogEntry[] = [
       version: '0.1.0',
       description: '用来设计插件的插件：create 生成骨架、validate 校验 manifest、install 安装到本机，并配「创建插件」技能引导选型。',
       author: 'CodeLab 官方',
-      sha256: '2b93796d6abca86b3c93e7785ce00b85239706f39d14532ac4e1980e803b36e5',
+      sha256: '1cbaec48a9cdbf3540d241f1e89c711aaa6cfc64175210f64e0361eb74bd1062',
       exposes: ['plugin-dev.create', 'plugin-dev.validate', 'plugin-dev.install'],
       minAppVersion: '0.0.1',
     },

@@ -228,7 +228,9 @@ export async function installPlugin(
   const entry = DEFAULT_CATALOG.find((e) => e.id === id)
   if (!entry) return { ok: false, needConfirm: false, error: `清单里没有插件 ${id}` }
 
-  if (!isTrusted(id) && opts.trust !== true) {
+  // 信任分级：官方插件随应用分发、已审计，首次安装免确认；
+  // 第三方 / 本地市场插件首次安装必须弹确认卡，用户同意后带 trust=true 重调。
+  if (!isTrusted(id) && opts.trust !== true && entry.tier !== 'official') {
     return { ok: false, needConfirm: true, entry }
   }
 
@@ -383,6 +385,6 @@ export async function listPlugins(emit?: Emit): Promise<Array<CatalogEntry & { i
   return catalog.map((e) => ({
     ...e,
     installed: installed.has(e.name) || installed.has(e.id),
-    trusted: isTrusted(e.id),
+    trusted: e.tier === 'official' || isTrusted(e.id),
   }))
 }

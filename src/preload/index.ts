@@ -490,6 +490,10 @@ const api = {
       ipcRenderer.invoke('plugin:devicePanels'),
     commands: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; kind: string; view?: string; placement?: string; when?: string; transport?: string }>> =>
       ipcRenderer.invoke('plugin:commands'),
+    skills: (): Promise<Array<{ plugin: string; name: string; description: string; prompt?: string }>> =>
+      ipcRenderer.invoke('plugin:skills'),
+    tools: (): Promise<Array<{ plugin: string; name: string; transport: string; category?: string; description?: string }>> =>
+      ipcRenderer.invoke('plugin:tools'),
     // 插件市场（下载安装 / 卸载 / 清单 / 热重载 / 直接调插件命令）
     catalog: (): Promise<Array<{
       id: string

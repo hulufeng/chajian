@@ -117,6 +117,9 @@ check('⑩ devicePanel selector 缺 id → 报错', hasErr({ name: 'X', version:
 check('⑪ settings 非数组 → 报错', hasErr({ name: 'X', version: '1', settings: {} }, 'settings'))
 check('⑪ setting 缺 key → 报错', hasErr({ name: 'X', version: '1', settings: [{ type: 'string' }] }, 'settings[0].key'))
 check('⑪ setting type 非法 → 报错', hasErr({ name: 'X', version: '1', settings: [{ key: 'k', type: 'date' }] }, 'settings[0].type'))
+check('⑪ password 写死默认值 → 报错（防密钥落库）', hasErr({ name: 'X', version: '1', settings: [{ key: 'k', type: 'password', default: 'hunter2' }] }, 'settings[0].default'))
+check('⑪ password 默认空串 → 放行', !hasErr({ name: 'X', version: '1', settings: [{ key: 'k', type: 'password', default: '' }] }, 'settings[0].default'))
+check('⑪ password 无默认 → 放行', !hasErr({ name: 'X', version: '1', settings: [{ key: 'k', type: 'password' }] }, 'settings[0].default'))
 
 // ── ⑫ skills ───────────────────────────────────────────────────────────
 check('⑫ skills 非数组 → 报错', hasErr({ name: 'X', version: '1', skills: {} }, 'skills'))
