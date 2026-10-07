@@ -38,6 +38,26 @@ export interface ToolchainStatus {
   path: string | null
 }
 
+/** 崩溃签名分析结果（本地规则解析，不依赖 AI） */
+export interface CrashSignatureResult {
+  ok: boolean
+  error?: string
+  /** 是否识别出崩溃 */
+  crashed?: boolean
+  /** panic / abort / assert / stack-overflow / watchdog / brownout / heap / unknown */
+  kind?: string
+  exception?: string
+  core?: number
+  pc?: string
+  excvaddr?: string
+  backtrace?: string[]
+  /** 稳定签名：同固件同位置崩溃 → 相同字符串（可去重计数） */
+  signature?: string
+  summary?: string
+  advice?: string[]
+  report?: string
+}
+
 export interface SerialPortInfo {
   path: string
   manufacturer?: string
@@ -415,6 +435,9 @@ const api = {
     /** 用 AI 解读串口日志（走当前通道：BYOK / 本地引擎 / 内置） */
     explain: (opts?: { id?: string; logs?: string; maxChars?: number }): Promise<{ text: string; findings: Array<{ kind: string; line: number; text: string }>; channel: string; modelHint: string }> =>
       ipcRenderer.invoke('serial:explain', opts),
+    /** 崩溃签名分析（本地规则解析，不调 AI）：串口日志 → 稳定签名 + 排查建议 */
+    crashAnalyze: (opts?: { id?: string; logs?: string }): Promise<CrashSignatureResult> =>
+      ipcRenderer.invoke('serial:crashAnalyze', opts),
     // 热插拔：串口列表变化（插上/拔出开发板）
     onPortsChanged: (cb: (d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, d: { ports: Array<{ path: string; manufacturer?: string; friendlyName?: string }>; added: string[]; removed: string[] }): void => cb(d)

@@ -47,6 +47,7 @@ import { checkPinConflicts, formatPinReport, type PinReport } from './services/p
 import { listTemplates, getTemplate, materializeTemplate, groupTemplates } from './services/templateLibrary'
 import { explainSerialLog, type ExplainResult } from './services/logExplainer'
 import { readSerialLog } from './services/serialService'
+import { analyzeCrashLog, formatCrashReport } from './services/crash-signature'
 import { initDiag, diag, diagInfo, diagTask, buildReport } from './services/diagLog'
 import { recordBurn, listBurnHistory, getBurn, rollbackBurn, removeBurn, ensureSnapshot, summarizeBurn } from './services/burnHistory'
 import { buildShareCard, buildAndOpenShareCard, listShareCards } from './services/shareCard'
@@ -1355,6 +1356,21 @@ ipcMain.handle('serial:explain', async (_e, opts: { id?: string; logs?: string; 
   }
   const result: ExplainResult = await explainSerialLog(logs, { maxChars: opts?.maxChars })
   return result
+})
+
+// 崩溃签名分析：纯本地解析（不调 AI、不联网）——把串口日志解析成稳定签名 + 排查建议。
+// 与 serial:explain 是互补的两条路：explain 靠模型读日志，crashAnalyze 靠规则精确提取
+// 异常类型 / PC / 调用栈，并给出可去重的崩溃签名（同一处崩溃反复刷屏时尤其有用）。
+ipcMain.handle('serial:crashAnalyze', (_e, opts?: { id?: string; logs?: string }) => {
+  let logs = String(opts?.logs || '')
+  if (!logs && opts?.id) {
+    const r = readSerialLog(String(opts.id))
+    if (!r.ok) return { ok: false, error: r.error || '取串口日志失败' }
+    logs = r.data || ''
+  }
+  if (!logs.trim()) return { ok: false, error: '没有可分析的串口日志（先打开串口并让设备输出）' }
+  const sig = analyzeCrashLog(logs)
+  return { ok: true, ...sig, report: formatCrashReport(sig) }
 })
 
 // ---------- 烧录历史 / 回滚 ----------

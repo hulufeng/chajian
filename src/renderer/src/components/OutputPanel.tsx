@@ -4,7 +4,7 @@ import TerminalView, { type TerminalHandle } from './TerminalView'
 import SerialPlotter from './SerialPlotter'
 import { hint } from '../featureHints'
 import type { Ref } from 'react'
-import type { BuildStageInfo, SerialPortInfo } from '../../../preload'
+import type { BuildStageInfo, SerialPortInfo, CrashSignatureResult } from '../../../preload'
 
 type OutputKind = '输出' | '问题' | '串口监视器' | '终端'
 
@@ -133,6 +133,27 @@ function OutputPanel({
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<OutputKind>(defaultTab ?? '输出')
   const [serialView, setSerialView] = useState<'文本' | '波形'>('文本')
+  // 崩溃签名分析（本地规则解析，不调 AI、不联网）
+  const [crash, setCrash] = useState<CrashSignatureResult | null>(null)
+  const [crashBusy, setCrashBusy] = useState(false)
+
+  const runCrashAnalyze = (): void => {
+    setCrashBusy(true)
+    window.api.serial
+      .crashAnalyze({ logs: serialLog })
+      .then((r) => setCrash(r))
+      .catch((e: unknown) => setCrash({ ok: false, error: e instanceof Error ? e.message : String(e) }))
+      .finally(() => setCrashBusy(false))
+  }
+
+  // 轻量迹象检测：只在日志里出现崩溃关键字时给按钮加提示，避免每次刷新都跑完整解析
+  const crashHint = useMemo(
+    () =>
+      /Guru Meditation|panic'ed|abort\(\)|assert failed|stack overflow|Stack canary|Brownout|watchdog/i.test(
+        serialLog
+      ),
+    [serialLog]
+  )
   const outputRef = useRef<HTMLDivElement>(null)
   const serialRef = useRef<HTMLDivElement>(null)
 
@@ -289,6 +310,14 @@ function OutputPanel({
               >
                 {serialOpen ? '■ 关闭' : '● 打开'}
               </button>
+              <button
+                className={`btn${crashHint ? ' crash-alert' : ''}`}
+                onClick={runCrashAnalyze}
+                disabled={crashBusy || !serialLog}
+                title="解析串口日志里的崩溃信息（本地规则解析，不调用 AI、不联网）"
+              >
+                {crashBusy ? '分析中…' : crashHint ? '🧯 崩溃分析 · 检测到迹象' : '🧯 崩溃分析'}
+              </button>
               <div className="serial-subtabs">
                 <button
                   className={`subtab${serialView === '文本' ? ' active' : ''}`}
@@ -304,6 +333,69 @@ function OutputPanel({
                 </button>
               </div>
             </div>
+            {crash && (
+              <div className={`crash-panel${crash.crashed ? ' crashed' : ''}`}>
+                <div className="crash-head">
+                  <span className="crash-title">
+                    {crash.ok === false ? '⚠ 分析失败' : crash.crashed ? '🧯 检测到崩溃' : '✅ 未识别到崩溃'}
+                  </span>
+                  <button className="crash-close" onClick={() => setCrash(null)} title="收起">
+                    ×
+                  </button>
+                </div>
+                {crash.ok === false ? (
+                  <div className="crash-error">{crash.error}</div>
+                ) : (
+                  <>
+                    <div className="crash-summary">{crash.summary}</div>
+                    {crash.crashed && (
+                      <>
+                        <div className="crash-fields">
+                          {crash.exception && (
+                            <span>
+                              异常类型 <b>{crash.exception}</b>
+                            </span>
+                          )}
+                          {crash.pc && (
+                            <span>
+                              PC <b>{crash.pc}</b>
+                            </span>
+                          )}
+                          {crash.excvaddr && (
+                            <span>
+                              访问地址 <b>{crash.excvaddr}</b>
+                            </span>
+                          )}
+                          {crash.core !== undefined && (
+                            <span>
+                              核 <b>Core {crash.core}</b>
+                            </span>
+                          )}
+                        </div>
+                        {crash.signature && (
+                          <div className="crash-sig">
+                            签名 <code>{crash.signature}</code>
+                            <span className="crash-sig-tip">（同固件同位置崩溃签名相同，可用来去重计数）</span>
+                          </div>
+                        )}
+                        {crash.backtrace && crash.backtrace.length > 0 && (
+                          <div className="crash-bt">
+                            调用栈 <code>{crash.backtrace.slice(0, 4).join(' ')}</code>
+                          </div>
+                        )}
+                        {crash.advice && crash.advice.length > 0 && (
+                          <ul className="crash-advice">
+                            {crash.advice.map((a, i) => (
+                              <li key={i}>{a}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {serialView === '文本' ? (
               <div className="mono-log" ref={serialRef}>
                 {serialLog ? (
