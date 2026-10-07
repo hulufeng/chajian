@@ -10,7 +10,7 @@
 - [x] **D4 arduino-cli 集成**：启动时自动检测工具链（PATH + 常见安装路径），状态显示在工具栏 / 状态栏
 - [x] **D5 编译 / 烧录**：工具栏「编译」「烧录」按钮，封装 arduino-cli compile/upload，流式输出到「输出」tab，错误行自动汇总到「问题 2」tab
 - [x] **D6 项目树 + 文件读写**：打开项目文件夹 → 渲染文件树（自动跳过 node_modules/.git 等）→ 点击文件在 Monaco 打开，支持编辑 / 保存（脏标记 ●）
-- [ ] **D7 AI 闭环**：AI 网关已占位（设置环境变量 `CODELAB_AI_BASE_URL` / `CODELAB_AI_API_KEY` / `CODELAB_AI_MODEL` 后接入 OpenAI 兼容接口；未配置时返回提示）。**当前按用户要求留空，暂不接入真实模型**
+- [x] **D7 AI 闭环**：三通道AI 网关（内置免费模型 / BYOK / 官方登录+积分），**85 个 Agent 工具**可真动手干活（写码、跑命令、编译烧录、控浏览器、git）。含三档权限、**计划审批**（先提交计划、批准后才放开写/执行工具）、工具耗时统计、LSP 代码智能（补全/悬停/跳转/诊断）、定时任务调度
 - [x] **D8 打包分发**：electron-builder 打 Windows 安装包（NSIS）+ 免安装便携版，应用图标使用品牌 Logo，关闭原生模块 rebuild（serialport 走 Node-API，跨 ABI 兼容，实测可用）
 - [x] **D9 插件化**：自研插件运行时（对标 TrieCode 7 通道：internal / backend / cli / http / grpc / mcp / mqtt），**3 款官方插件已封装**——Arduino CLI / ESP-IDF / STM32Cube 工具链（manifest 声明式 + 命令注册），编译/烧录/串口全部经插件通道调用
 - [x] **自动更新**：electron-updater 接入（generic provider），打包自动生成 latest.yml / app-update.yml，状态栏「⟳ 检查更新」按钮 + 下载进度 + 一键安装 + 更新源运行时配置（详见 UPDATE_DEPLOY.md）
@@ -106,7 +106,7 @@ codelab-desktop/
 ## 运行命令
 
 ```bash
-cd D:\工作\代码实验室\codelab-desktop
+# 在项目根目录执行
 npm run dev       # 开发模式（自动打开窗口）
 npm run build     # 构建产物到 out/
 npm run start     # 预览构建产物
@@ -134,24 +134,66 @@ npm run dist      # 打包 Windows 安装包（NSIS + 更新元数据）
 4. **串口监视**：底部「串口监视器」tab → 选端口 / 波特率 → 「● 打开」，设备数据实时显示
 5. **终端**：底部「终端」tab → 输入命令回车，在项目目录执行（PowerShell）
 6. **检查更新**：状态栏「⟳ 检查更新」，有新版可下载安装
-7. **AI 助手**：右侧面板对话（D7 留空，配置 `CODELAB_AI_BASE_URL` / `CODELAB_AI_API_KEY` 环境变量后接入真实模型）
+7. **AI 助手**：右侧面板对话。**85 个 Agent 工具**可真动手干活——写文件、跑命令、编译烧录、查资料、控浏览器、git 操作（详见下文「AI Agent 能力」）
+
+## AI Agent 能力
+
+三通道 AI 网关，任选其一：
+
+| 通道 | 说明 |
+|---|---|
+| 内置免费模型 | 装好本地模型即可用，无需 API Key |
+| BYOK | 自带Key（OpenAI 兼容接口 / 本地 llama-server） |
+| 官方登录 | 登录后用积分 |
+
+**工具面**：85 个工具，覆盖文件读写、终端执行、编译烧录、串口、板卡、文档检索（LSP）、网页抓取、浏览器自动化、git、插件调用。
+
+**安全机制**：
+- 三档权限（auto / default / plan），`default` 下写类与执行类操作弹确认框
+- **计划审批（submit_plan）**：模型可先提交执行计划，用户批准后才放开写/执行工具——未批准时从**能力上**够不着（不只是提示词约束）
+- 工具耗时统计与慢操作反馈（`AgentStats.toolMs` / `slowestTools`）
+
+**浏览器自动化**：基于 Electron 内置 CDP（`webContents.debugger`）自研，**零三方依赖**，不需要额外安装 Playwright 或浏览器。
+
+**代码智能（LSP）**：内置 clangd 接入，自动生成 `compile_commands.json`（含 ESP32/STM32 头文件路径与 Arduino 宏），支持补全/悬停/跳转/实时诊断。
+
+## 自检体系
+
+23 个自检脚本、约 700 条断言，覆盖纯函数逻辑、协议编解码、插件 manifest、zip 打包闭环、UI 资源等：
+
+```bash
+node scripts/check-board-registry.mjs     # 板卡表（10 款）
+node scripts/check-agent-tools.mjs        # Agent 工具注册与权限分级
+node scripts/check-browser-driver.mjs     # 浏览器驱动
+node scripts/check-demo-plugins.mjs# 示例插件逻辑 + sha256 一致性
+node scripts/check-sse-toolcalls.mjs      # 三通道 SSE tool_calls 解析
+# 其余见scripts/check-*.mjs
+```
+
+约定：**先写测试再修代码**；误报比漏报更烦人（判定宁可漏一条）；依赖electron 的模块用 `scripts/stubs/electron-dom-stub.mjs` 顶掉真实 Electron。
 
 ## 验证结果
 
 - `npm run typecheck`：通过（node + web）
 - `npm run build`：通过（main / preload / renderer 三部分）
-- `npm run dev`：插件系统就绪（已加载 Arduino CLI v0.3.11 / ESP-IDF v0.1.11 / STM32Cube v0.1.2 共 3 款），窗口创建 + 渲染完成，无错误
-- `dist/win-unpacked/CodeLab.exe`：启动验证通过（进程存活、无崩溃）
+- LSP：clangd 22.1.1 真机跑通，可从 `.ino` 跳转到 core 的 `HardwareSerial.h`
 - 原生模块：serialport 在 Electron 44（Node 24，ABI 149）下加载成功，`SerialPort.list()` 实测枚举到端口
 - 自动更新：`latest.yml`（sha512/大小）与 `app-update.yml` 随打包生成
 
 ## 品牌素材
 
-- `D:\工作\代码实验室\codelab-doc\logo_appicon.png` — 主图标
-- `D:\工作\代码实验室\codelab-doc\logo_horizontal.png` — 横版组合
+- `logo_appicon.png` — 主图标（打包为 `build/icon.ico`）
+- `logo_horizontal.png` — 横版组合
+
+## 开发记录
+
+`docs/dev-log/` 是项目的开发过程档案，记录真实的设计取舍、踩过的坑、以及阶段性交接状态
+（含竞品分析、修复记录log-20~33）。这些内容通常不会出现在代码注释里，但对理解
+「为什么这么设计」和「这里曾经错在哪」有帮助。详见 [docs/dev-log/README.md](docs/dev-log/README.md)。
 
 ## 下一步
 
-1. **更新服务器已上线（完成）**：按 `UPDATE_DEPLOY.md` 把 latest.yml + 安装包传到 HTTPS 更新源 `https://bluebubai.work/updates/`，0.1.0 / 0.1.1 / 0.1.2 已发布并用 `node scripts/set-update-url.js <url>` 写入应用（详见 UPDATE_DEPLOY.md）
-2. **D7 真实 AI**：用户确认后填写 API 配置，跑通「AI 生成 → 编译 → 烧录 → 串口回读」最短闭环
-3. **更多插件**：Wokwi 模拟器 / browser-toolchain 等按统一模板封装
+1. **更新服务器**：已上线（0.1.0 / 0.1.1 / 0.1.2 已发布至 `https://bluebubai.work/updates/`，详见 UPDATE_DEPLOY.md）
+2. **插件生态**：示例插件已就位（串口数据分析 / 波形监视 / 崩溃速查），待上架GitHub Releases；用户自建插件可放`userData/plugins/market/*.json` 本地上架
+3. **板卡覆盖**：当前 10 款（ESP32 5 + STM32 5），按「能编译 + 有 openocd cfg + USB VID:PID 真实」三条件扩充
+4. **调试链路**：OpenOCD 集成已就绪，GDB 交互调试（断点/单步/变量查看）在规划中
