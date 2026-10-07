@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `bf6c542`（grpc/mcp 真实适配器 + 崩溃签名分析 + MQTT 真机验证；tsc 双过 + 七套 check + 扫描全绿） |
+| 最新提交 | `832ac9d`（grpc/mcp 真实适配器 + 崩溃签名分析含串口 UI 入口 + MQTT 真机验证；tsc 双过 + 七套 check + 扫描全绿） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -203,7 +203,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **测试信息收集** | pkgout35 | 见 §3 |
 | **板卡自动纠正 + 实测** | pkgout36 | 见 §6 #4 |
 | **插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）** | 本轮 | 见 §12 |
-| **grpc/mcp 真实适配器 + 崩溃签名分析 + MQTT 真机验证** | 本轮 | 见 §13 |
+| **grpc/mcp 真实适配器 + 崩溃签名分析（含串口 UI 入口）+ MQTT 真机验证** | 本轮 | 见 §13 |
 
 ---
 
@@ -265,6 +265,10 @@ node scripts/check-*.mjs                # 受影响的那些
 | `scripts/check-mcp-bridge.mjs` | 新增：自建最小 MCP server（stdio JSON-RPC）验证握手→调用→结果归一化（8 断言） |
 | `scripts/check-crash-signature.mjs` | 新增：崩溃解析 + **签名稳定性**（同处同签名 / 异处异签名）+ 不误报（23 断言） |
 | `scripts/check-mqtt-bridge.mjs` | 新增：MQTT 依赖可用性 + 未连接报错 + 不可达经 error 事件上报 + 公共 broker 往返（无外网自动跳过） |
+| `src/main/index.ts`（更新） | 新增 IPC `serial:crashAnalyze`（本地规则解析，不调 AI） |
+| `src/preload/index.ts`（更新） | 新增 `api.serial.crashAnalyze()` + 导出 `CrashSignatureResult` 类型 |
+| `src/renderer/src/components/OutputPanel.tsx`（更新） | 串口监视器新增「🧯 崩溃分析」按钮 + 结果面板（结论 / PC / 签名 / 调用栈 / 建议） |
+| `src/renderer/src/assets/main.css`（更新） | `.crash-*` 样式（全走 theme token，无 hex 字面量） |
 
 ---
 
@@ -324,3 +328,16 @@ node scripts/check-*.mjs                # 受影响的那些
   - MCP 自检第 5 组最初失败：插件自带 server 的会话名是 `plugin:<tool>`，与前面用例同名会被复用 → 换唯一工具名才真正走到启动失败分支。
   - grpc-bridge 里闭包捕获 `let client` 会让 TS 丢掉非空判断 → 收窄成 `const c` 再进闭包。
   - gRPC 包名同样用非字面量拼接（`'@grpc/'+'grpc-js'`），与 mqtt 同源考虑：避免打包器构建期解析依赖。
+
+### 13.1 崩溃签名接入串口监视器 UI
+
+能力原本只在命令层（internal `app.analyzeCrash` / backend `serial.crashAnalyze`），没有界面入口，用户根本看不到。已接进串口监视器：
+
+- **入口**：串口监视器工具栏新增「🧯 崩溃分析」按钮。日志里出现崩溃关键字（Guru Meditation / panic'ed / abort() / assert failed / stack overflow / Stack canary / Brownout / watchdog）时按钮变红并显示「检测到迹象」。
+  - 关键字检测只用于提示，完整解析仍走 IPC，避免每次刷屏都跑一遍解析。
+- **结果面板**：一句话结论 + 异常类型 / PC / 访问地址 / Core + **稳定签名**（旁注「同固件同位置崩溃签名相同，可用来去重计数」）+ 调用栈 + 排查建议列表。
+- **通道**：新增 IPC `serial:crashAnalyze` + preload `api.serial.crashAnalyze()` + 导出类型 `CrashSignatureResult`。
+- **与 AI 解释的关系**：`serial:explain` 靠模型读日志，crashAnalyze 靠规则精确提取——**互补，不是替代**。崩溃是高度结构化的信息，用规则更快更准，还不需要 Key、不联网。
+- **样式**：`.crash-*` 全部走 theme token（`--danger` / `--panel-2` / `--text-dim`），无 hex 字面量、无 inline style。
+- **验证**：tsc 双过；`scan-ipc-handlers` 0 命中；`scan-ui-crash` 无风险；其余扫描 CRITICAL 0；`check-crash-signature` 23/0。
+- ⚠ **UI 只能真机验**：Electron 44 在本机沙箱起不来（GPU 崩），用 `start-labcode.bat` 跑 `out/` 真实产物验证。
