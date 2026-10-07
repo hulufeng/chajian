@@ -1,6 +1,7 @@
 // 浏览器自动化 Agent 工具：导航 / 截图 / 点击 / 填表 / 执行 JS / 网络记录 / 关闭
 // 对齐 TrieCode 截图里 agent 的"浏览器自动化（导航/截图/点击/填表/网络请求/JS 执行）"能力。
-// 依赖 Playwright（动态加载，未安装时提示 npm i playwright）。
+// 驱动方式：Electron 内置 webContents.debugger（CDP）+ 本项目自研自动化逻辑，
+// 不依赖 Playwright 等三方库，无需额外安装。
 import {
   browserNavigate,
   browserScreenshot,
@@ -23,7 +24,7 @@ function guard(fn: () => Promise<string>): Promise<ToolResult> {
 
 const browserNavigateTool: ToolDefinition = {
   name: 'browser_navigate',
-  description: '浏览器自动化：导航到指定 URL。需已安装 Playwright（npm i playwright && npx playwright install chromium）。后续 click/fill/screenshot 共享同一页面。',
+  description: '浏览器自动化：导航到指定 URL。开箱即用无需额外安装（内置 Chromium 驱动）。后续 click/fill/screenshot 共享同一页面。',
   parameters: {
     type: 'object',
     properties: {
