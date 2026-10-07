@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `832ac9d`（grpc/mcp 真实适配器 + 崩溃签名分析含串口 UI 入口 + MQTT 真机验证；tsc 双过 + 七套 check + 扫描全绿） |
+| 最新提交 | `8873a93`（修「选着本地模型却走云端」+ grpc/mcp 适配器 + 崩溃签名 UI + MQTT 真机验证；tsc 双过 + 八套 check + 扫描全绿） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -204,6 +204,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **板卡自动纠正 + 实测** | pkgout36 | 见 §6 #4 |
 | **插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）** | 本轮 | 见 §12 |
 | **grpc/mcp 真实适配器 + 崩溃签名分析（含串口 UI 入口）+ MQTT 真机验证** | 本轮 | 见 §13 |
+| **修复「选着本地模型却走云端」（本地模型被 Agent run 清空）** | 本轮 | 见 §14 |
 
 ---
 
@@ -269,6 +270,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | `src/preload/index.ts`（更新） | 新增 `api.serial.crashAnalyze()` + 导出 `CrashSignatureResult` 类型 |
 | `src/renderer/src/components/OutputPanel.tsx`（更新） | 串口监视器新增「🧯 崩溃分析」按钮 + 结果面板（结论 / PC / 签名 / 调用栈 / 建议） |
 | `src/renderer/src/assets/main.css`（更新） | `.crash-*` 样式（全走 theme token，无 hex 字面量） |
+| `scripts/check-local-model.mjs` | 新增：本地模型选择自检（显式指定才覆盖 / 未指定不动 / 源码防回归，9 断言） |
 
 ---
 
@@ -341,3 +343,28 @@ node scripts/check-*.mjs                # 受影响的那些
 - **样式**：`.crash-*` 全部走 theme token（`--danger` / `--panel-2` / `--text-dim`），无 hex 字面量、无 inline style。
 - **验证**：tsc 双过；`scan-ipc-handlers` 0 命中；`scan-ui-crash` 无风险；其余扫描 CRITICAL 0；`check-crash-signature` 23/0。
 - ⚠ **UI 只能真机验**：Electron 44 在本机沙箱起不来（GPU 崩），用 `start-labcode.bat` 跑 `out/` 真实产物验证。
+
+---
+
+## 14. 修复「选着本地模型却走云端」（本地模型被 Agent run 清空）
+
+用户问「大模型的问题解决了吗」→ 指向 Agent 本地模型（localModel）bug。核查结论：**之前没解决**，本轮真正修掉。
+
+- **症状**：下拉框里明明选着「Qwen2.5 Coder 3B」，发出的消息却走云端（401 或白耗积分）。
+- **真因**：`agent-runner.run()` 每次都执行 `setLocalModel(options.localModel || null)`。
+  本次没指定本地模型时传 `null`，把用户在设置里选好的模型**清空**；
+  后续 `aiChat` 调 `getLocalModel()` 拿到 null → 静默降级回云端。
+- **为什么之前"修过"却没好**：`7136ea8`（打开即用）只在**启动时**补了 `setLocalModel`
+  （`engine:ensure` + 开机后台接回本地引擎），**没动这处清空逻辑**。
+  所以只要有一次 run 没带 `localModel`，启动时接回的引擎就被抹掉——这是典型的
+  「补了入口没堵漏洞」，光看提交记录会以为已经修好了。
+- **修法**：
+  - `aiGateway` 新增 `resolveLocalModelForRun(requested)`：显式指定才返回模型名，
+    未指定 / 空串 / 空白一律 `undefined`（表示「不动全局」）。
+  - `agent-runner` 改为 `const lm = resolveLocalModelForRun(options.localModel); if (lm) setLocalModel(lm)`。
+- **防回归**：新增 `scripts/check-local-model.mjs`（9 断言）——
+  未指定时已选模型仍在（旧写法在这一步会被清成 null），
+  且源码里禁止再出现「未指定即清空」写法（只匹配代码行，注释里的反面教材不误报）。
+- **验证**：tsc 双过；`check-local-model` 9/0；`check-log-explainer` 20/0（aiGateway 改动回归）。
+- ⚠ **仍需真机确认**：本地引擎涉及 Ollama/llama 进程，沙箱内跑不了；
+  真机选一个本地模型发消息，确认不再回落云端（看是否还出现 401 或积分消耗）。
