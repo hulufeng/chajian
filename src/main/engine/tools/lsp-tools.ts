@@ -6,7 +6,9 @@ import { existsSync } from 'node:fs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 // 扩展名/服务器映射改由 lspService 单一提供（编辑器与 Agent 共用同一份，避免两处漂移）
 import { LspClient } from '../../services/lsp-client'
-import { EXT_LANGUAGE, LANG_SERVERS } from '../../services/lspService'
+import { EXT_LANGUAGE, LANG_SERVERS, ensureCompileDb, getServerSearchDir } from '../../services/lspService'
+import { locateServerCommand } from '../../services/lsp-server-path'
+import { findToolchain, listConnectedBoardsWithSerial } from '../../services/toolchain'
 import { readTextFile } from '../../services/fsService'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
@@ -42,15 +44,67 @@ function findProjectRoot(file: string): string {
   return dirname(file)
 }
 
+/** 启动失败记录：避免板子没接/工具链没装时每次调用都重跑探测 */
+const failed = new Map<string, string>()
+
+/**
+ * 惰性保证项目根下有 compile_commands.json。
+ *
+ * 为什么 Agent 侧必须自己做：编辑器侧在「开项目 / 换板」时由 App 调 ensureCompileDb 生成，
+ * 但 Agent 工具是**一次性查询**——用户可能没开过这个项目（或没选过板），compile_commands.json 就不存在。
+ * 缺了它 clangd 找不到 Arduino.h，诊断里满屏 file not found，Agent 的 LSP 能力等于废掉。
+ *
+ * fqbn 从哪来：ToolContext 里没有板卡信息，所以复用 board_detect 的同一套探测
+ * （findToolchain + listConnectedBoardsWithSerial）拿真实连接的板子。
+ * 探测不到（没接板 / 没装工具链）就静默跳过——此时 clangd 仍能工作，
+ * 只是 Arduino 头文件解析不了，这与编辑器侧「失败一律静默」的既有约定一致。
+ */
+const dbEnsured = new Set<string>()
+async function ensureDbForProject(root: string): Promise<void> {
+  if (dbEnsured.has(root)) return
+  dbEnsured.add(root) // 无论成败都只试一次，避免每次调用都起进程探测板子
+  try {
+    // 已经有就直接用：编辑器侧可能刚生成过，force 会白白重建
+    const existing = join(root, 'compile_commands.json')
+    if (existsSync(existing)) return
+    // 非 C/C++ 项目（node/python/go…）不需要 Arduino 的 include 推导，跳过
+    const bin = findToolchain()
+    if (!bin) return
+    const boards = await listConnectedBoardsWithSerial(bin)
+    const fqbn = boards.find((b) => b.fqbn)?.fqbn
+    if (!fqbn) return
+    // 失败不抛：ensureCompileDb 返回 {ok:false}，这里静默降级为「无 -I 的普通解析」
+    ensureCompileDb({ projectRoot: root, fqbn })
+  } catch {
+    // 探测异常一律吞掉：LSP 是增强能力，不该因为生成编译数据库失败而整体不可用
+  }
+}
+
 async function getClient(languageId: string, file: string): Promise<LspClient> {
   const root = findProjectRoot(file)
   const key = `${languageId}@${root}`
   const cached = clients.get(key)
   if (cached) return cached
+  const err = failed.get(key)
+  if (err) throw new Error(err)
   const srv = SERVERS[languageId]
   if (!srv) throw new Error(`不支持的语言：${languageId}（无对应语言服务器配置）`)
-  const client = new LspClient(srv.command, srv.args || [], pathToFileURL(root).href)
-  await client.start()
+
+  // C/C++ 靠 clangd，没有 compile_commands.json 就找不到 Arduino.h（详见 ensureDbForProject）
+  if (languageId === 'cpp' || languageId === 'c') {
+    await ensureDbForProject(root)
+  }
+
+  // 定位可执行：用户装了 LLVM/clangd 但没加 PATH 是常态，与编辑器侧同一套定位逻辑。
+  // userDataDir 从 lspService 读（主进程启动时注入过），不在工具侧重复推导 APPDATA 路径。
+  const bin = locateServerCommand(srv.command, getServerSearchDir())
+  const client = new LspClient(bin, srv.args || [], pathToFileURL(root).href)
+  try {
+    await client.start()
+  } catch (e) {
+    failed.set(key, `${srv.command} 启动失败（未安装或不在 PATH）：${(e as Error).message}`)
+    throw new Error(failed.get(key)!)
+  }
   clients.set(key, client)
   return client
 }

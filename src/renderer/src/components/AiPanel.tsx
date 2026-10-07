@@ -376,7 +376,10 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   const [askReq, setAskReq] = useState<{ questions: Array<{ question: string; type?: string; options?: string[] }>; decisionId: string } | null>(null)
   const [askAnswers, setAskAnswers] = useState<string[]>([])
   const [streamingText, setStreamingText] = useState('')
+  // 模型思考过程（reasoning 增量）与正文（content 增量）是两个独立的流，必须分开存。
+  // 早前两者都写 streamingThinking，导致推理内容把正在输出的正文覆盖掉。
   const [streamingThinking, setStreamingThinking] = useState('')
+  const [streamingReasoning, setStreamingReasoning] = useState('')
   // 实时工作计时（对齐 TrieCode"已工作 16s"跳动样式；busy 时每秒递增）
   const [elapsedTick, setElapsedTick] = useState(0)
 
@@ -543,7 +546,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
         }
         case 'reasoning': {
           const d = event.data as { content?: string; full?: string }
-          if (d?.full !== undefined) setStreamingThinking(d.full)
+          if (d?.full !== undefined) setStreamingReasoning(d.full)
           break
         }
         case 'tool_call': {
@@ -563,6 +566,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           }
           setStreamingText('')
           setStreamingThinking('')
+          setStreamingReasoning('')
           break
         }
         case 'need_confirm': {
@@ -597,6 +601,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           setBusy(false)
           setStreamingText('')
           setStreamingThinking('')
+          setStreamingReasoning('')
           break
         }
         case 'error': {
@@ -613,7 +618,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingText, streamingThinking])
+  }, [messages, streamingText, streamingThinking, streamingReasoning])
 
   // 通道健康度低频刷新。
   // 之前只在面板打开时拉一次：主进程在后台自动接上本地引擎（十几秒）之后，
@@ -843,6 +848,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     setBusy(true)
     setStreamingText('')
     setStreamingThinking('')
+    setStreamingReasoning('')
     setAgentStatus('thinking')
 
     // 使用 Agent 模式
@@ -901,6 +907,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     setContextItems([])
     setStreamingText('')
     setStreamingThinking('')
+    setStreamingReasoning('')
     // busy/agentStatus 必须一起复位：agent 正在跑时点「新建对话」，
     // 旧会话的流式回调还会往新会话里灌字，发送按钮会永久 disabled（面板假死）。
     setBusy(false)
@@ -1373,7 +1380,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
             onRewind={(m.kind === 'user' || m.kind === 'assistant') && i > 0 ? () => rewindTo(i) : undefined}
           />
         ))}
-        {/* 流式思考中 */}
+        {/* 模型推理过程（reasoning 流）：与正文分开渲染，不覆盖正文 */}
+        {streamingReasoning && busy && <ThinkingBlock text={streamingReasoning} />}
+        {/* 系统提示类消息（协议纠正 / 反幻觉纠正 / 上下文压缩等，走 thinking 事件） */}
         {streamingThinking && busy && <ThinkingBlock text={streamingThinking + '…'} />}
         {/* 流式输出中 */}
         {streamingText && busy && (
@@ -1381,7 +1390,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
             <div className="ai-text"><LightMarkdown text={streamingText} /><span className="cursor-blink">▌</span></div>
           </div>
         )}
-        {busy && !streamingText && !streamingThinking && agentStatus === 'thinking' && (
+        {busy && !streamingText && !streamingThinking && !streamingReasoning && agentStatus === 'thinking' && (
           <div className="msg assistant typing">思考中…</div>
         )}
         {busy && agentStatus === 'tool_calling' && (

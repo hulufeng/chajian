@@ -104,6 +104,15 @@ export function configureServerSearch(opts: { userDataDir: string }): void {
   userDataDir = opts.userDataDir
 }
 
+/**
+ * 供工具侧（lsp-tools）复用同一个 userDataDir。
+ * Agent 的 LSP 工具是独立模块，拿不到主进程注入的模块级变量；
+ * 让它自己再推导一遍 APPDATA 路径属于重复推导（两处会漂移），所以这里开一个只读访问器。
+ */
+export function getServerSearchDir(): string {
+  return userDataDir
+}
+
 function fileToUri(file: string): string {
   return pathToFileURL(file).href
 }
