@@ -81,7 +81,7 @@ export class LspClient {
     this.proc?.stdin?.write(payload)
   }
 
-  private request(method: string, params: unknown): Promise<unknown> {
+  private request(method: string, params: unknown, timeoutMs = 30000): Promise<unknown> {
     const id = ++this.seq
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
@@ -91,7 +91,7 @@ export class LspClient {
           this.pending.delete(id)
           reject(new Error(`LSP 请求超时: ${method}`))
         }
-      }, 30000)
+      }, timeoutMs)
     })
   }
 
@@ -191,7 +191,8 @@ export class LspClient {
     line: number,
     character: number,
     triggerKind: 1 | 2 | 3 = 1,
-    triggerCharacter?: string
+    triggerCharacter?: string,
+    timeoutMs = 30000
   ): Promise<unknown> {
     const context: Record<string, unknown> = { triggerKind }
     if (triggerKind === 2 && triggerCharacter) context.triggerCharacter = triggerCharacter
@@ -199,29 +200,29 @@ export class LspClient {
       textDocument: { uri },
       position: { line, character },
       context
-    })
+    }, timeoutMs)
   }
 
-  async definition(uri: string, line: number, character: number): Promise<unknown> {
+  async definition(uri: string, line: number, character: number, timeoutMs = 30000): Promise<unknown> {
     return this.request('textDocument/definition', {
       textDocument: { uri },
       position: { line, character }
-    })
+    }, timeoutMs)
   }
 
-  async references(uri: string, line: number, character: number): Promise<unknown> {
+  async references(uri: string, line: number, character: number, timeoutMs = 30000): Promise<unknown> {
     return this.request('textDocument/references', {
       textDocument: { uri },
       position: { line, character },
       context: { includeDeclaration: true }
-    })
+    }, timeoutMs)
   }
 
-  async hover(uri: string, line: number, character: number): Promise<unknown> {
+  async hover(uri: string, line: number, character: number, timeoutMs = 30000): Promise<unknown> {
     return this.request('textDocument/hover', {
       textDocument: { uri },
       position: { line, character }
-    })
+    }, timeoutMs)
   }
 
   async documentSymbol(uri: string): Promise<unknown> {

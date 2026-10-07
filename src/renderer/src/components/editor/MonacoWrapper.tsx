@@ -83,10 +83,13 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
   const registerProviders = (monaco: any): void => {
     // 只登记一次：本组件是无 key 的长实例，重复 register 会堆重复 provider。
     const langs = ['cpp', 'c']
+    // ESP32 重头文件首次建 preamble 可能 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp-client.ts）。
+    // 编辑器侧放大到 60s，避免打开重文件后首次补全/悬停被 30s 掐断拿到空（background-index 预热完则很快）。
+    const LSP_TIMEOUT_MS = 60000
 
     monaco.languages.registerCompletionItemProvider(langs, {
       triggerCharacters: ['.', '>', ':'],
-      provideCompletionItems: async (model: any, position: any) => {
+      provideCompletionItems: async (model: any, position: any, context?: any) => {
         if (!enableLsp) return { suggestions: [] }
         try {
           const file = model.uri?.fsPath || path
@@ -95,7 +98,11 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
             text: model.getValue(),
             line: position.lineNumber - 1, // Monaco 1-based -> LSP 0-based
             character: position.column - 1,
-            triggerKind: 1
+            // 转发 Monaco 的触发上下文：打字 '.' 触发时 triggerKind=2 + triggerCharacter='.'，
+            // 否则 clangd 不会返回成员补全（实测 mySerial. 只在 triggerKind:2 时返回 91 项）。
+            triggerKind: (context?.triggerKind ?? 1) as 1 | 2 | 3,
+            triggerCharacter: context?.triggerCharacter,
+            timeoutMs: LSP_TIMEOUT_MS
           })
           if (!r.ok || !r.data) return { suggestions: [] }
           const word = model.getWordUntilPosition(position)
@@ -146,7 +153,8 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
                 file,
                 text: model.getValue(),
                 line: position.lineNumber - 1,
-                character: position.column - 1
+                character: position.column - 1,
+                timeoutMs: LSP_TIMEOUT_MS
               })
             : null
           const text = mergeHover(r?.ok ? (r.data || null) : null, local)
@@ -186,7 +194,8 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
             file,
             text: model.getValue(),
             line: position.lineNumber - 1,
-            character: position.column - 1
+            character: position.column - 1,
+            timeoutMs: LSP_TIMEOUT_MS
           })
           if (!r.ok || !r.data || r.data.length === 0) return null
           // 只取第一个目标：Monaco 跳转用 Location 数组，这里保持够用即可

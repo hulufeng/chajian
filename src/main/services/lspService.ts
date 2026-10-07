@@ -181,6 +181,8 @@ export async function completion(p: {
   triggerKind?: 1 | 2 | 3
   triggerCharacter?: string
   languageId?: string
+  /** 单条请求的超时（毫秒）。重头文件首次补全 clangd 建 preamble 可能 > 默认 30s，演示/预热时可调大 */
+  timeoutMs?: number
 }): Promise<LspResult<CompletionItemOut[]>> {
   const languageId = p.languageId || langOf(p.file)
   if (!languageId) return { ok: false, error: '不支持的语言' }
@@ -190,7 +192,7 @@ export async function completion(p: {
     // 补全前先把当前内容同步过去，保证服务端看到的和编辑器一致
     await client.openDocument(uri, languageId, p.text, 0)
     await client.updateDocument(uri, p.text, 0)
-    const res = await client.completion(uri, p.line, p.character, p.triggerKind ?? 1, p.triggerCharacter)
+    const res = await client.completion(uri, p.line, p.character, p.triggerKind ?? 1, p.triggerCharacter, p.timeoutMs)
     return { ok: true, data: normalizeCompletion(res) }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -230,6 +232,8 @@ export async function hover(p: {
   line: number
   character: number
   languageId?: string
+  /** 单条请求的超时（毫秒），重头文件首次解析可能 > 默认 30s */
+  timeoutMs?: number
 }): Promise<LspResult<string>> {
   const languageId = p.languageId || langOf(p.file)
   if (!languageId) return { ok: false, error: '不支持的语言' }
@@ -238,7 +242,7 @@ export async function hover(p: {
     const uri = fileToUri(p.file)
     await client.openDocument(uri, languageId, p.text, 0)
     await client.updateDocument(uri, p.text, 0)
-    const res = await client.hover(uri, p.line, p.character) as Record<string, unknown> | null
+    const res = await client.hover(uri, p.line, p.character, p.timeoutMs) as Record<string, unknown> | null
     return { ok: true, data: res ? stringifyHover(res.contents) : '' }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -263,6 +267,8 @@ export async function definition(p: {
   line: number
   character: number
   languageId?: string
+  /** 单条请求的超时（毫秒），重头文件首次解析可能 > 默认 30s */
+  timeoutMs?: number
 }): Promise<LspResult<{ file: string; line: number; character: number }[]>> {
   const languageId = p.languageId || langOf(p.file)
   if (!languageId) return { ok: false, error: '不支持的语言' }
@@ -271,7 +277,7 @@ export async function definition(p: {
     const uri = fileToUri(p.file)
     await client.openDocument(uri, languageId, p.text, 0)
     await client.updateDocument(uri, p.text, 0)
-    const res = await client.definition(uri, p.line, p.character)
+    const res = await client.definition(uri, p.line, p.character, p.timeoutMs)
     const arr = Array.isArray(res) ? res : [res]
     const locations: Array<{ file: string; line: number; character: number }> = []
     for (const item of arr) {

@@ -431,10 +431,10 @@ ipcMain.handle('fs:stat', (_e, path: string) => {
 ipcMain.handle('lsp:sync', (_e, p: { file: string; text: string; languageId?: string; delayMs?: number }) => syncDocument(p))
 ipcMain.handle('lsp:completion', (_e, p: {
   file: string; text: string; line: number; character: number
-  triggerKind?: 1 | 2 | 3; triggerCharacter?: string; languageId?: string
+  triggerKind?: 1 | 2 | 3; triggerCharacter?: string; languageId?: string; timeoutMs?: number
 }) => completion(p))
-ipcMain.handle('lsp:hover', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspHover(p))
-ipcMain.handle('lsp:definition', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string }) => lspDefinition(p))
+ipcMain.handle('lsp:hover', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string; timeoutMs?: number }) => lspHover(p))
+ipcMain.handle('lsp:definition', (_e, p: { file: string; text: string; line: number; character: number; languageId?: string; timeoutMs?: number }) => lspDefinition(p))
 ipcMain.handle('lsp:ensure-db', (_e, p: {
   projectRoot: string; fqbn?: string; files?: string[]
   coreRoot?: string; variant?: string; cpuFreqMHz?: number; extraIncludes?: string[]; force?: boolean

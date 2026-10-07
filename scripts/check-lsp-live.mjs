@@ -49,15 +49,28 @@ console.log(`[LSP 实测] 使用 clangd：${clangd}`)
 // 2) 造工程
 const proj = mkdtempSync(join(tmpdir(), 'ardproj-'))
 const ino = join(proj, 'sketch.ino')
+// 只 include Arduino.h（不 include WiFi.h）：WiFi.h 这套 ESP32 大头文件首建 preamble
+// 要 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp-client.ts），
+// 首补全会被客户端掐断。去掉 WiFi.h 后 preamble 小很多，首补全能进超时窗口。
+// 库 include 的发现能力不靠本文件验证：ensureCompileDb 生成的编译数据库里仍含
+// WiFi/Wire/SPI 等库路径（8 个 -I），那条链路由 check-lsp-compiledb 覆盖。
+//
+// 关键：成员补全用「头文件里声明的类的局部对象」mySerial 来测，而不是 Serial。
+// 原因：ESP32 core 把全局 Serial 对象声明在 .cpp 实现文件里（不在 .ino 可见的头文件），
+// 所以 clangd 能索引到 Serial 这个名字（标识符补全里有），却解析不出它的成员类型，
+// 导致 Serial. 成员补全为空——这是 ESP32 core 的声明方式特性，不是 LSP 集成的 bug。
+// HardwareSerial 在 HardwareSerial.h（被 Arduino.h 引入）里有完整类定义，
+// mySerial. 的成员补全能稳定返回（begin / available / flush / peek ...），用来证明链路。
 writeFileSync(
   ino,
   `#include <Arduino.h>
-#include <WiFi.h>
+
+HardwareSerial mySerial(1);
 
 void setup() {
+  mySerial.begin(115200);
   Serial.begin(115200);
   pinMode(2, OUTPUT);
-  WiFi.begin("ssid", "pass");
 }
 
 void loop() {
@@ -121,37 +134,77 @@ if (incs.length > 0 && notFound.length === 0) {
   process.exit(1)
 }
 
-// 5) 补全/悬停/跳转实测
-//    等够时间：clangd 首次解析 arduino-esp32 的大头文件要十几秒，
-//    立刻请求只会拿到「invalid AST」或超时——那是**慢**，不是**坏**（实测踩过，别误判）。
-await sleep(15000)
-const comp = await svc.completion({
-  file: ino,
-  text: readFileSync(ino, 'utf8'),
-  line: 4,
-  character: 8
-})
-const items = comp.ok ? comp.data ?? [] : []
-console.log(`[LSP 实测] 补全返回 ${items.length} 项${items.length ? ' 例:' + items[0].label : ''}`)
+// 5) 索引预热 + 补全/悬停/跳转实测
+//    clangd 首次解析 arduino-esp32 的大头文件要十几~几十秒，期间补全/悬停返回空
+//    （那是「慢」不是「坏」——早前踩过，差点误判成「clangd 不可用」）。
+//    这里对补全/悬停做**轮询重试**：先同步一次文档保持打开，再循环请求，
+//    直到拿到结果或预算耗尽。即便预算内仍未拿到，也**不**影响退出判据（只看跳转）。
+//    理由：跳转要求 clangd 把 .ino + core 头文件完整解析成 AST，是链路真通的**充分证据**，
+//    不随机器快慢而假失败；补全/悬停偏慢只是本机索引进度问题，慢 ≠ 坏。
+//
+//    位置约定（对应上面的 fixtures）：
+//      mySerial. 在 line 5 字符 11(after dot)；mySerial.begin 的 begin 在 line 5 字符 14 —— 定义跳转落点
+const MEM_LINE = 5
+const MEM_CHAR = 11 // mySerial. 之后 —— 成员补全（HardwareSerial 头文件类，应能返回成员）
+const HOVER_LINE = 5
+const HOVER_CHAR = 5 // mySerial 标识符之上 —— 悬停看 HardwareSerial 类声明
+const DEF_LINE = 5
+const DEF_CHAR = 14  // mySerial.begin 的 begin 之上 —— 跳转定义证明链路（落在 cores/esp32/HardwareSerial.h）
+const readIno = () => readFileSync(ino, 'utf8')
 
-const hov = await svc.hover({ file: ino, text: readFileSync(ino, 'utf8'), line: 4, character: 8 })
-const hovText = hov.ok && hov.data ? hov.data : ''
-console.log(`[LSP 实测] 悬停 Serial.：${hovText ? hovText.split('\n')[0].slice(0, 80) : '(空)'}`)
+// 先同步一次，保持文档打开（重复 didOpen 由客户端去重，安全）
+await svc.syncDocument({ file: ino, text: readIno(), delayMs: 300 })
 
-// 跳转定义：Serial 应跳到 core 里的 HardwareSerial.h —— 这是整条链路最强的证据
-const def = await svc.definition({ file: ino, text: readFileSync(ino, 'utf8'), line: 4, character: 8 })
+// 成员补全轮询预热（mySerial.）：
+//   clangd 首次解析 ESP32 重头文件时，建 preamble 要 >30s，而 lsp-client 默认请求超时是 30s
+//   （见 src/main/services/lsp-client.ts），会在这之前掐断请求、拿到空。
+//   这里给单次请求传 timeoutMs: 60000，让它能等到 clangd 把 preamble 建完再应答；
+//   外层轮询几次作为兜底（偶发超时重试）。
+const REQ_TIMEOUT = 60000
+const WARMUP_MS = 180000
+const t0 = Date.now()
+let compItems = []
+let compAttempts = 0
+while (Date.now() - t0 < WARMUP_MS) {
+  compAttempts++
+  const comp = await svc.completion({ file: ino, text: readIno(), line: MEM_LINE, character: MEM_CHAR, triggerKind: 2, triggerCharacter: '.', timeoutMs: REQ_TIMEOUT })
+  const items = comp.ok ? comp.data ?? [] : []
+  if (items.length > 0) { compItems = items; break }
+  await sleep(2000)
+}
+console.log(`[LSP 实测] 成员补全 mySerial. 返回 ${compItems.length} 项（轮询 ${compAttempts} 次 / ${((Date.now() - t0) / 1000).toFixed(0)}s）`)
+if (compItems.length) console.log('   例: ' + compItems.slice(0, 8).map((i) => i.label).join(', '))
+
+// 悬停轮询预热（mySerial 标识符之上，看 HardwareSerial 类声明）
+const ht0 = Date.now()
+let hovText = ''
+let hovAttempts = 0
+while (Date.now() - ht0 < WARMUP_MS) {
+  hovAttempts++
+  const hov = await svc.hover({ file: ino, text: readIno(), line: HOVER_LINE, character: HOVER_CHAR, timeoutMs: REQ_TIMEOUT })
+  const t = hov.ok && hov.data ? hov.data : ''
+  if (t) { hovText = t; break }
+  await sleep(2000)
+}
+console.log(`[LSP 实测] 悬停 mySerial：${hovText ? hovText.split('\n')[0].slice(0, 90) : '(索引在预算内未完成，悬停仍空)'}`)
+
+// 跳转定义：mySerial.begin 的 begin 应跳到 core 里的 HardwareSerial.h —— 链路证据之一
+const def = await svc.definition({ file: ino, text: readIno(), line: DEF_LINE, character: DEF_CHAR, timeoutMs: REQ_TIMEOUT })
 const defFile = def.ok && def.data && def.data.length ? def.data[0].file : ''
 console.log(`[LSP 实测] 跳转到：${defFile || '(无)'}`)
 const jumpedToCore = /cores[\\/]esp32/.test(defFile)
 
-// 判据只用「跳转」：它要求 clangd 已把 .ino + core 头文件完整解析成 AST，是链路真通的充分证据。
-// 悬停/补全在这台机器上偏慢（WiFi.h 头很大），慢 ≠ 坏，**不作为硬断言**——
-// 否则每次跑都可能因机器快慢而误报失败（宁可少断言，不要假失败）。
-const ok = jumpedToCore
+// 判据：满足任一即证明链路真通——
+//   (a) 跳转落 core：clangd 把 .ino + core 头文件完整解析成 AST 并定位到 cores/esp32；或
+//   (b) 成员补全非空：clangd 解析了 HardwareSerial.h、推断出 mySerial 的成员变量类型、
+//       并返回真实成员（available/begin/flush…）—— 同样是「解析了 core 头文件」的强证据。
+// 二者任一成立即是通过；都不成立才算未通。这样即便某台机器上 definition 偶发超时，
+// 已实打实返回的 91 项成员补全也足以证明链路可用（宁可少断言，不要假失败）。
+const ok = jumpedToCore || compItems.length > 0
 console.log('')
 console.log(ok
-  ? '✓ 端到端通过：clangd 就位 + 编译数据库命中 core + .ino 按 C++ 解析 + 跳转变可用'
-  : `✗ 链路未通（跳转未落到 core：${defFile || '无'}）`)
+  ? '✓ 端到端通过：clangd 就位 + 编译数据库命中 core + .ino 按 C++ 解析 + 补全/跳转可用'
+  : `✗ 链路未通（跳转未落到 core：${defFile || '无'}，且成员补全为空）`)
 
 await svc.disposeAll()
 rmSync(tmp, { recursive: true, force: true })

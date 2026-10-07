@@ -316,10 +316,12 @@ const api = {
     completion: (p: {
       file: string; text: string; line: number; character: number
       triggerKind?: 1 | 2 | 3; triggerCharacter?: string; languageId?: string
+      /** 单条请求超时（ms）。ESP32 重头文件首次建 preamble 可能 > 默认 30s，编辑器侧放大避免首补全被掐空 */
+      timeoutMs?: number
     }): Promise<LspResult<CompletionItemOut[]>> => ipcRenderer.invoke('lsp:completion', p),
-    hover: (p: { file: string; text: string; line: number; character: number; languageId?: string }): Promise<LspResult<string>> =>
+    hover: (p: { file: string; text: string; line: number; character: number; languageId?: string; timeoutMs?: number }): Promise<LspResult<string>> =>
       ipcRenderer.invoke('lsp:hover', p),
-    definition: (p: { file: string; text: string; line: number; character: number; languageId?: string }): Promise<LspResult<LspLocation[]>> =>
+    definition: (p: { file: string; text: string; line: number; character: number; languageId?: string; timeoutMs?: number }): Promise<LspResult<LspLocation[]>> =>
       ipcRenderer.invoke('lsp:definition', p),
     ensureDb: (p: {
       projectRoot: string; fqbn?: string; files?: string[]
