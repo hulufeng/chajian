@@ -498,8 +498,11 @@ export function aiChatStream(
       },
       { signal: controller.signal }
     )
-      .then((r) => { if (!cancelled) onDone(null, r?.usage) })
-      .catch((e) => { if (!cancelled) onDone(e) })
+      // 与 fetchStream 保持一致：取消（AbortError）走干净结束 onDone(null)，
+      // 不再「吞掉 onDone」——否则 Agent 模式下点停止时 callModel 的 await 永远不 settle，
+      // 主循环到不了 stopped 检查，Agent 卡死（表现为「没反应」）。
+      .then((r) => { onDone(null, r?.usage) })
+      .catch((e) => { if (e && e.name === 'AbortError') onDone(null); else onDone(e) })
     return () => {
       cancelled = true
       // 真正断开本地请求：以前只是「不再回调」，HTTP 还在跑，用户点了停止照样卡着

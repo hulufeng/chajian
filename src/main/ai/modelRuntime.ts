@@ -573,7 +573,8 @@ export function chatWithLocalModelStream(
 
     // 本地推理超时兜底：引擎卡住 / 模型加载慢时，没有超时保护界面会一直转圈「没反应」。
     // 用「不活动超时」而不是总时长：只要还在出数据就不算超时，静默超过阈值才报错。
-    const idleTimeoutMs = opts?.idleTimeoutMs ?? LOCAL_IDLE_TIMEOUT_MS
+    // 优先显式传入（便于单测/复用），其次环境变量 LABCODE_LLAMA_IDLE_MS（便于规避真实长加载 + 自动化测试），最后默认 120s。
+    const idleTimeoutMs = opts?.idleTimeoutMs ?? (Number(process.env.LABCODE_LLAMA_IDLE_MS) || LOCAL_IDLE_TIMEOUT_MS)
     let idleTimer: ReturnType<typeof setTimeout> | null = null
     const clearIdle = (): void => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null } }
     const finishOk = (v: { text: string; usage: { inputTokens: number; outputTokens: number } }): void => { clearIdle(); resolve(v) }
@@ -677,15 +678,22 @@ export function chatWithLocalModelStream(
     req.on('error', (e) => finishErr(e))
     // 取消支持：UI / Agent 点停止时真正断开请求。
     // 此前 cancel 只是「不再回调」，底层 HTTP 还在跑，用户点了停止也照样卡着。
+    // 取消以 name==='AbortError' 标记（与 aiGateway.fetchStream 约定一致），
+    // 上层据此区分「用户主动取消」与「真实错误」，取消时走干净结束（onDone(null)）。
+    const makeAbortErr = (): Error => {
+      const e = new Error('已取消本地模型请求')
+      e.name = 'AbortError'
+      return e
+    }
     if (opts?.signal) {
       if (opts.signal.aborted) {
         req.destroy()
-        finishErr(new Error('已取消本地模型请求'))
+        finishErr(makeAbortErr())
         return
       }
       opts.signal.addEventListener('abort', () => {
         try { req.destroy() } catch { /* 已结束 */ }
-        finishErr(new Error('已取消本地模型请求'))
+        finishErr(makeAbortErr())
       })
     }
     req.write(body)
