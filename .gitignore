@@ -20,3 +20,7 @@ dist-plugin/
 # 注意：electron 测试桩在 scripts/stubs/（是源码，要入库），
 # 只有 esbuild 生成的 bundle 产物才落这里
 scripts/.tmp/
+
+# GitHub OAuth 设备码流程的临时凭据（绝不能入库）
+.gh-token.txt
+.gh-device.json
