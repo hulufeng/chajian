@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `148fe0c`（工作区有未提交改动，见 §9） |
+| 最新提交 | `68b10c4`（pkgout36 源码与自检已全部入库，工作树干净） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -223,7 +223,7 @@ node scripts/check-*.mjs                # 受影响的那些
 
 ## 9. 未提交改动与并行会话
 
-`git status` 有 20+ 个未提交文件，其中一部分是**并行会话**写的：
+`git status` 仅剩 safe-delete 让路残留与临时探针（`out_bad*` / `out_prev_*` / `_probe_*.mjs` / `_react_src/`，刻意不入库，删除会触发护栏故保留）；pkgout31→pkgout36 的源码与自检已于 `68b10c4` 全部增量提交（C1 文档固化 `2a77b37` + C2 功能整合 `68b10c4`）。
 
 - 本线：编辑器 URI 修复、烧录 `--build-path`、增量编译、悬停介绍、诊断收集、板卡实测（`probeChipId`）。
 - 另一线（出 pkgout35 之后写入）：`parseChipMismatch` + `notifyChipMismatch`（芯片不匹配自动纠正）+ 对应自检断言。
