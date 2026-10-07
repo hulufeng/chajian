@@ -1,0 +1,54 @@
+{
+  "id": "serial-analyser",
+  "name": "serial-analyser",
+  "displayName": "串口数据分析器",
+  "version": "0.1.0",
+  "description": "把串口输出当数据流分析：自动识别 CSV/JSON/键值对，统计频率、均值、极值与异常跳变，识别常见传感器格式。",
+  "author": "CodeLab 官方",
+  "minAppVersion": "0.0.1",
+  "entry": "index.js",
+  "channels": {
+    "backend": ["serial.analyse", "serial.stats", "serial.detect"],
+    "internal": ["serial.parse"]
+  },
+  "capabilities": {
+    "serial-analyser": { "transport": "internal", "service": "serial", "method": "parse" }
+  },
+  "tools": [
+    {
+      "name": "serial.detect",
+      "transport": "internal",
+      "internal": { "service": "serial", "method": "detect" },
+      "description": "识别一段串口输出的数据格式（CSV / JSON / 键值对 / 纯文本），返回推断出的列名与采样行数",
+      "schema": { "type": "object", "properties": { "text": { "type": "string", "description": "串口输出文本；省略则取当前会话累积日志" } }, "additionalProperties": false }
+    },
+    {
+      "name": "serial.stats",
+      "transport": "internal",
+      "internal": { "service": "serial", "method": "stats" },
+      "description": "对指定数值列做统计：样本数/均值/中位数/标准差/最小/最大，并给出异常跳变点（超过均值 ±3σ）",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "串口输出文本；省略则取当前会话累积日志" },
+          "column": { "type": "string", "description": "列名或列序号；省略则对所有数值列统计" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "serial.analyse",
+      "transport": "internal",
+      "internal": { "service": "serial", "method": "analyse" },
+      "description": "一键分析当前串口会话：识别格式 + 对所有数值列出统计摘要，适合「设备在刷数据，帮我看看正常吗」",
+      "schema": { "type": "object", "properties": { "maxLines": { "type": "number", "description": "回溯多少行设备输出，默认 200" } }, "additionalProperties": false }
+    }
+  ],
+  "commands": [
+    { "id": "analyse", "title": "分析当前串口数据", "kind": "action", "transport": "backend" },
+    { "id": "detect", "title": "识别数据格式", "kind": "action", "transport": "backend" }
+  ],
+  "settings": [
+    { "key": "serial.sigma", "label": "异常跳变阈值（σ）", "type": "number", "default": 3 }
+  ]
+}

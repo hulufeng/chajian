@@ -1,0 +1,35 @@
+{
+  "id": "esp32-crash-lookup",
+  "name": "esp32-crash-lookup",
+  "displayName": "ESP32 崩溃速查表",
+  "version": "0.1.0",
+  "description": "离线崩溃知识库：按报错文本/Guru Meditation 签名快速定位原因与修复建议，并给出 addr2line 解码命令。纯离线，不联网。",
+  "author": "CodeLab 官方",
+  "minAppVersion": "0.0.1",
+  "entry": "index.js",
+  "channels": {
+    "internal": ["crash.lookup", "crash.list"]
+  },
+  "capabilities": {
+    "crash-lookup": { "transport": "internal", "service": "crash", "method": "lookup" }
+  },
+  "tools": [
+    {
+      "name": "crash.lookup",
+      "transport": "internal",
+      "internal": { "service": "crash", "method": "lookup" },
+      "description": "按 ESP32 崩溃/报错文本查原因与修复建议（Guru Meditation / Backtrace / Brownout / 看门狗 / 栈溢出等 10 类签名）",
+      "schema": { "type": "object", "properties": { "text": { "type": "string", "description": "串口输出或报错文本" } }, "required": ["text"], "additionalProperties": false }
+    },
+    {
+      "name": "crash.list",
+      "transport": "internal",
+      "internal": { "service": "crash", "method": "list" },
+      "description": "列出全部崩溃签名及其含义，用于「有哪些崩溃类型」这类问答",
+      "schema": { "type": "object", "properties": {}, "additionalProperties": false }
+    }
+  ],
+  "commands": [
+    { "id": "lookup", "title": "查崩溃原因", "kind": "action", "transport": "internal" }
+  ]
+}

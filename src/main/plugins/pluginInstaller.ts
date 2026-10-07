@@ -88,10 +88,66 @@ async function fetchJson(buf: Buffer): Promise<CatalogEntry[]> {
   return parsed as CatalogEntry[]
 }
 
-/** 拉清单：有配置远端就优先远端，失败回退内置；远端条目覆盖同 id 的内置条目 */
+/**
+ * 本地市场目录：userData/plugins/market/*.json
+ *
+ * 为什么需要：内置清单是「随应用分发」的，任何改动都要改代码+重打包+重算 sha256。
+ * 而「我自己写了个插件，想让它出现在市场里」是最常见的诉求——
+ * 让用户往这个目录丢一个 JSON 就能上架，不用等官方收录。
+ *
+ * 条目里的 url 写本地 zip 的绝对路径即可（file:// 或裸路径 downloadBuffer 都认）。
+ */
+function localMarketDir(): string {
+  return join(app.getPath('userData'), 'plugins', 'market')
+}
+
+/** 读本地市场条目；单个文件坏了只跳过它，不让整个市场打不开 */
+function loadLocalMarket(emit?: Emit): CatalogEntry[] {
+  const dir = localMarketDir()
+  if (!existsSync(dir)) return []
+  let files: string[]
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith('.json'))
+  } catch {
+    return []
+  }
+  const out: CatalogEntry[] = []
+  for (const f of files) {
+    const full = join(dir, f)
+    try {
+      const parsed = JSON.parse(readFileSync(full, 'utf-8')) as unknown
+      if (!Array.isArray(parsed)) throw new Error('应为数组')
+      for (const e of parsed as CatalogEntry[]) {
+        if (!e?.id || !e?.url) {
+          emit?.(`[清单] 跳过 ${f} 里的条目：缺 id 或 url`)
+          continue
+        }
+        out.push({ ...e, source: e.source || `本地市场（${f}）` })
+      }
+    } catch (e) {
+      // 不做静默失败：坏掉的清单文件要让用户知道，否则「我放了插件怎么没出现」无从排查
+      emit?.(`[清单] 本地市场文件 ${f} 解析失败，已跳过：${(e as Error).message}`)
+    }
+  }
+  if (out.length > 0) emit?.(`[清单] 本地市场 ${out.length} 个条目（${dir}）`)
+  return out
+}
+
+/**
+ * 拉清单。优先级：远端（若配置）> 内置，被同 id 的后者覆盖；
+ * 本地市场条目优先级最高（用户自己放的，理应能覆盖内置/远端的同 id 条目）。
+ */
 export async function loadCatalog(emit?: Emit): Promise<CatalogEntry[]> {
+  const local = loadLocalMarket(emit)
   const url = remoteCatalogUrl()
-  if (!url) return DEFAULT_CATALOG
+  const base = url ? await loadRemoteOrFallback(url, emit) : DEFAULT_CATALOG
+  const merged = new Map(base.map((e) => [e.id, e]))
+  for (const e of local) merged.set(e.id, e)
+  return [...merged.values()]
+}
+
+/** 远端清单优先，失败回退内置 */
+async function loadRemoteOrFallback(url: string, emit?: Emit): Promise<CatalogEntry[]> {
   try {
     const buf = await downloadBuffer(url, emit ? (m) => emit(`[清单] ${m}`) : undefined)
     const remote = await fetchJson(buf)

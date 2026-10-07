@@ -1,0 +1,53 @@
+{
+  "id": "serial-scope",
+  "name": "serial-scope",
+  "displayName": "串口波形监视器",
+  "version": "0.1.0",
+  "description": "把串口数值流渲染成 ASCII 波形与趋势图：无需图形界面，在终端/日志里直接看波形、算频率与周期、检测丢包。",
+  "author": "CodeLab 官方",
+  "minAppVersion": "0.0.1",
+  "entry": "index.js",
+  "channels": {
+    "backend": ["scope.wave", "scope.stats", "scope.frequency"]
+  },
+  "capabilities": {
+    "serial-scope": { "transport": "internal", "service": "scope", "method": "stats" }
+  },
+  "tools": [
+    {
+      "name": "scope.wave",
+      "transport": "internal",
+      "internal": { "service": "scope", "method": "wave" },
+      "description": "把当前串口输出渲染成 ASCII 波形图（适合在日志里直观看出趋势与抖动）",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "column": { "type": "string", "description": "列名或序号；省略则取第一个数值列" },
+          "width": { "type": "number", "description": "波形宽度（字符数），默认 60，最大 200" },
+          "height": { "type": "number", "description": "波形高度（行数），默认 10，最大 40" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "scope.frequency",
+      "transport": "internal",
+      "internal": { "service": "scope", "method": "frequency" },
+      "description": "估算采样频率与周期（基于日志时间戳或行数），并检测是否有数据丢包/中断",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "column": { "type": "string", "description": "列名或序号；省略则取第一个数值列" }
+        },
+        "additionalProperties": false
+      }
+    }
+  ],
+  "commands": [
+    { "id": "wave", "title": "画波形", "kind": "action", "transport": "backend" },
+    { "id": "frequency", "title": "估算频率", "kind": "action", "transport": "backend" }
+  ],
+  "settings": [
+    { "key": "scope.height", "label": "默认波形高度（行）", "type": "number", "default": 10 }
+  ]
+}

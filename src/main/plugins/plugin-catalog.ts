@@ -48,7 +48,10 @@ function builtinBundleCandidates(rel: string): string[] {
   ].filter(Boolean)
 }
 
-/** 首个真实存在的内置 zip 路径；都找不到则返回空串（安装器会给出明确错误，不静默） */
+/**
+ * 首个真实存在的内置 zip 路径；都找不到则返回空串（安装器会给出明确错误，不静默）。
+ * rel 传相对路径（如 'plugin-demo/xxx.zip'）。
+ */
 export function resolveBuiltinBundle(rel = 'plugin-demo/esp32-sensor-lab.zip'): string {
   for (const p of builtinBundleCandidates(rel)) {
     if (existsSync(p)) return p
@@ -56,23 +59,76 @@ export function resolveBuiltinBundle(rel = 'plugin-demo/esp32-sensor-lab.zip'): 
   return ''
 }
 
-export const DEFAULT_CATALOG: CatalogEntry[] = [
-  {
-    id: 'esp32-sensor-lab',
-    name: 'esp32-sensor-lab',
-    displayName: 'ESP32 传感器实验台',
-    version: '0.1.0',
-    description: '内置常见传感器读取（温湿度 / 光照 / 距离）与一键数据曲线，直接接串口即出图。',
-    author: 'CodeLab 官方',
+/** 生成一条内置清单条目：惰性解析 zip 真实路径，sha256 由 scripts/build-demo-plugins.mjs 产出 */
+function builtinEntry(
+  meta: Omit<CatalogEntry, 'url' | 'source'>,
+  bundleRel: string
+): CatalogEntry {
+  return {
+    ...meta,
     source: '内置源',
-    // 惰性 getter：首次读取时才探测真实路径，避免模块加载时就固化某个机器的绝对路径
     get url(): string {
-      const p = resolveBuiltinBundle()
+      const p = resolveBuiltinBundle(bundleRel)
       return p ? pathToFileURL(p).href : ''
     },
-    // 改包内容后必须同步更新这个校验和（安装器会比对，不符直接中止）
-    sha256: 'ffbbcc6631c3dbc5abb7e1e8680803c36f312bcaca92c74327cac59ef3d85aaf',
-    exposes: ['sensor-read', 'sensor-chart'],
-    minAppVersion: '0.0.1',
-  },
+  }
+}
+
+export const DEFAULT_CATALOG: CatalogEntry[] = [
+  builtinEntry(
+    {
+      id: 'esp32-sensor-lab',
+      name: 'esp32-sensor-lab',
+      displayName: 'ESP32 传感器实验台',
+      version: '0.1.0',
+      description: '内置常见传感器读取（温湿度 / 光照 / 距离）与一键数据曲线，直接接串口即出图。',
+      author: 'CodeLab 官方',
+      sha256: 'e5eeedae4f7cf4a66941c2261e33bb755ca5e1f40fc87154ea27faf0e53367e5',
+      exposes: ['sensor-read', 'sensor-chart'],
+      minAppVersion: '0.0.1',
+    },
+    'plugin-demo/esp32-sensor-lab.zip'
+  ),
+  builtinEntry(
+    {
+      id: 'serial-analyser',
+      name: 'serial-analyser',
+      displayName: '串口数据分析器',
+      version: '0.1.0',
+      description: '把串口输出当数据流分析：自动识别 CSV/JSON/键值对格式，统计均值/中位数/标准差并标出离群点。',
+      author: 'CodeLab 官方',
+      sha256: '5e7f8ff6a0aab2b1c17cecf8852da6e81155ab61e63a3ce3d31faab6a37a2bf4',
+      exposes: ['serial-analyser'],
+      minAppVersion: '0.0.1',
+    },
+    'plugin-demo/serial-analyser.zip'
+  ),
+  builtinEntry(
+    {
+      id: 'serial-scope',
+      name: 'serial-scope',
+      displayName: '串口波形监视器',
+      version: '0.1.0',
+      description: '把串口数值流渲染成 ASCII 波形（Agent 可直接读文本波形判断趋势），并估算采样频率、检测丢包。',
+      author: 'CodeLab 官方',
+      sha256: '13df390274f2b489eed3e98e1f1cc8fde8d8fa396693064e6517a03400344301',
+      exposes: ['serial-scope'],
+      minAppVersion: '0.0.1',
+    },
+    'plugin-demo/serial-scope.zip'
+  ),
+  builtinEntry(
+    {
+      id: 'esp32-crash-lookup',
+      name: 'esp32-crash-lookup',
+      displayName: 'ESP32 崩溃速查表',
+      version: '0.1.0',
+      description: '离线崩溃知识库：10 类 ESP32 崩溃签名（Guru Meditation/Brownout/看门狗/栈溢出…）的原因、自查步骤与修复建议，含 addr2line 解码命令。',
+      author: 'CodeLab 官方',
+      sha256: 'e5125d2f8139a834a0cbd377ee58d3db542bfdff60b1e2783956daa602e7250c',
+      exposes: ['crash-lookup'],
+      minAppVersion: '0.0.1',
+    },
+    'plugin-demo/esp32-crash-lookup.zip'
+  ),
 ]
