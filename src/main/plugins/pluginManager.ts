@@ -8,6 +8,8 @@ export type ChannelName = 'internal' | 'backend' | 'cli' | 'http' | 'grpc' | 'mc
 
 import { resolvePlaceholders } from './settings-resolver'
 import { mqttBridge, type MqttServerSpec } from './mqtt-bridge'
+import { grpcBridge, type GrpcCallSpec } from './grpc-bridge'
+import { mcpBridge, type McpCallSpec } from './mcp-bridge'
 import type { ToolCategory } from '../engine/types'
 
 export interface ScaffoldFile {
@@ -97,8 +99,18 @@ export interface PluginToolDef {
   description?: string
   cli?: { command?: string[]; timeoutMs?: number; successCodes?: number[]; stream?: boolean }
   http?: { url: string; method?: string; headers?: Record<string, string>; body?: string; query?: Record<string, string>; timeoutMs?: number }
-  grpc?: { service?: string; method?: string }
-  mcp?: { server?: string; tool?: string }
+  grpc?: {
+    /** 服务端地址，如 127.0.0.1:50051 */
+    addr?: string
+    /** .proto 路径，支持 {plugin}/x.proto */
+    proto?: string
+    package?: string
+    service?: string
+    method?: string
+    timeoutMs?: number
+    tls?: boolean
+  }
+  mcp?: { server?: string; tool?: string; command?: string; args?: string[]; timeoutMs?: number }
   internal?: { service?: string; method?: string }
   backend?: { backendId?: string; method?: string }
   mqtt?: { server?: string; op?: string; topic?: string }
@@ -191,6 +203,17 @@ export function mapPluginCategoryToEngine(category?: string): ToolCategory {
 }
 
 export class PluginManager {
+  constructor() {
+    // grpc / mcp 此前是「声明了却没人执行」的死通道，这里接上真实执行器：
+    // 适配器由桥接模块提供，缺依赖 / 服务不可达时返回结构化错误，绝不抛穿到调用方。
+    this.registerTransportAdapter('grpc', (toolDef, args, emit, manifest) =>
+      this.execGrpcAdapter(toolDef, args, emit, manifest)
+    )
+    this.registerTransportAdapter('mcp', (toolDef, args, emit) =>
+      this.execMcpAdapter(toolDef, args, emit)
+    )
+  }
+
   private manifests: PluginManifest[] = []
   private commands = new Map<string, CommandEntry>()
   private builtins: Array<{ manifest: PluginManifest; load: (ctx: PluginContext) => void }> = []
@@ -515,7 +538,7 @@ export class PluginManager {
       case 'mqtt':
         return this.runMqttTool(toolDef, args, emit, manifest)
       case 'grpc':
-        return this.runGrpcTool(toolDef, args, emit)
+        return this.runGrpcTool(toolDef, args, emit, manifest)
       case 'mcp':
         return this.runMcpTool(toolDef, args, emit)
       case 'internal':
@@ -588,19 +611,63 @@ export class PluginManager {
     return () => undefined
   }
 
-  /** 外部通道适配器（grpc/mcp 等需要真实客户端时由宿主注册；未注册则结构化降级，不崩溃） */
-  private transportAdapters: Record<string, ((toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void) => (() => void) | void) | undefined> = {}
+  /** 外部通道适配器（grpc/mcp 由桥接模块在构造时注册；未注册则结构化降级，不崩溃） */
+  private transportAdapters: Record<
+    string,
+    | ((toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void, manifest?: PluginManifest) => (() => void) | void)
+    | undefined
+  > = {}
 
   registerTransportAdapter(
     transport: string,
-    fn: (toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void) => (() => void) | void
+    fn: (toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void, manifest?: PluginManifest) => (() => void) | void
   ): void {
     this.transportAdapters[transport] = fn
   }
 
-  runGrpcTool(toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void): () => void {
+  /** 统一输出：字符串原样输出，其余转格式化 JSON */
+  private stringifyOut(data: unknown): string {
+    return typeof data === 'string' ? data + '\n' : JSON.stringify(data, null, 2) + '\n'
+  }
+
+  /** gRPC 通道执行器：动态 proto 反射调用 + deadline；缺依赖/服务不可达→结构化错误 */
+  private execGrpcAdapter(
+    toolDef: PluginToolDef,
+    args: Record<string, unknown>,
+    emit?: (chunk: string) => void,
+    manifest?: PluginManifest
+  ): () => void {
+    let cancelled = false
+    void (async () => {
+      const r = await grpcBridge.call((toolDef.grpc || {}) as GrpcCallSpec, args || {}, manifest?.name)
+      if (cancelled) return
+      emit?.(r.ok ? this.stringifyOut(r.data) : `[grpc 错误] ${r.error}\n`)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }
+
+  /** MCP 通道执行器：复用宿主 stdio MCP 客户端；server 未连接/启动失败→结构化错误 */
+  private execMcpAdapter(
+    toolDef: PluginToolDef,
+    args: Record<string, unknown>,
+    emit?: (chunk: string) => void
+  ): () => void {
+    let cancelled = false
+    void (async () => {
+      const r = await mcpBridge.call((toolDef.mcp || {}) as McpCallSpec, args || {})
+      if (cancelled) return
+      emit?.(r.ok ? this.stringifyOut(r.data) : `[mcp 错误] ${r.error}\n`)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }
+
+  runGrpcTool(toolDef: PluginToolDef, args: Record<string, unknown>, emit?: (chunk: string) => void, manifest?: PluginManifest): () => void {
     const adapter = this.transportAdapters['grpc']
-    if (adapter) return (adapter(toolDef, args, emit) as (() => void) | void) || (() => undefined)
+    if (adapter) return (adapter(toolDef, args, emit, manifest) as (() => void) | void) || (() => undefined)
     emit?.('[grpc] 通道为框架预留：需宿主注册 gRPC 适配器（如 @grpc/grpc-js）后方可执行。\n')
     emit?.(`[grpc] 调用规格: ${JSON.stringify(toolDef.grpc || {})}\n`)
     return () => undefined

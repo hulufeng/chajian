@@ -26,8 +26,8 @@ codelab 插件是**专门暴露给 AI Agent 调用**的能力包（区别于传�
 | `cli` | 直接 spawn 子进程调外部 CLI（arduino-cli / esptool / openocd） | `cli.command[]`, `cli.timeoutMs`, `cli.successCodes`, `cli.stream` | 与 TrieCode 一致；直调保真度高于包一层 MCP |
 | `internal` | 调宿主标准服务（串口 / 编译 / 插件开发…） | `internal.service`, `internal.method` | 同构；`service:"pluginDev"` 专供元插件 |
 | `http` | 调远程 HTTP 服务 | `http.url`, `http.method`, `http.headers` | 同构 |
-| `grpc` | 调 gRPC 后端（如 arduino-cli daemon） | `grpc.service`, `grpc.method` | TrieCode 已有；我方 arduino-cli daemon 用 |
-| `mcp` | 调 MCP 服务器暴露的工具 | `mcp.server`, `mcp.tool` | 同构（主流方案仅用 MCP，我方把它列为七通道之一） |
+| `grpc` | 调 gRPC 服务（动态 proto 反射） | `grpc.addr`, `grpc.proto`, `grpc.service`, `grpc.method`（+`package?`/`timeoutMs?`/`tls?`） | **已实装**：运行时加载插件自带 .proto 反射调用，不必预生成桩代码 |
+| `mcp` | 调 MCP 服务器暴露的工具 | `mcp.tool` +（`mcp.server` 或 `mcp.command`/`args`） | **已实装**：复用宿主 stdio MCP 客户端；插件也可自带启动命令拉起 |
 | `backend` | 调插件自带后端（进程 / stdio JSON-RPC / grpc） | `backend.backendId`, `backend.method` | 同构 |
 | `mqtt` | 设备遥测回流 / 长任务状态 / 多智能体协同 | `mqtt.server`, `mqtt.op` | **我方差异化新增量**，TrieCode 六通道无此 |
 
@@ -126,13 +126,28 @@ codelab 插件是**专门暴露给 AI Agent 调用**的能力包（区别于传�
 |---|---|---|
 | `cli` | `cli.command[]`, `cli.timeoutMs?`, `cli.successCodes?`, `cli.stream?` | command 非空数组；占位符 `{argName}`/`{defaultPort}`/`{defaultFQBN}` |
 | `http` | `http.url`, `http.method?`, `http.headers?` | url 必填 |
-| `grpc` | `grpc.service`, `grpc.method` | 两者必填 |
-| `mcp` | `mcp.server`, `mcp.tool` | 两者必填 |
+| `grpc` | `grpc.addr`, `grpc.proto`, `grpc.service`, `grpc.method` | 四者必填；`grpc.proto` 支持 `{plugin}/x.proto`（解析到插件资源目录）；`package`/`timeoutMs`/`tls` 可选 |
+| `mcp` | `mcp.tool` + `mcp.server` 或 `mcp.command` | `mcp.tool` 必填；`mcp.server`（宿主已连接的 server 名）与 `mcp.command`+`args`（插件自带拉起）二选一 |
 | `internal` | `internal.service`, `internal.method` | 两者必填（元插件用 `service:"pluginDev"`） |
 | `backend` | `backend.backendId`, `backend.method` | 两者必填 |
 | `mqtt` | `mqtt.server`, `mqtt.op` | 两者必填 |
 
 > **元插件约定**：`internal.service === "pluginDev"` 时 `method ∈ {create, validate, install}`，对应三件套。
+
+#### 通道执行器落地状态（避免「声明了却没人执行」）
+
+| transport | 执行器 | 落地情况 |
+|---|---|---|
+| `cli` | `runCliTool` | 已实装（子进程 + 占位符 + 超时） |
+| `http` | `runHttpTool` | 已实装（fetch + 超时 + `{settings.*}`/`{arg}` 注入 + query 合并） |
+| `grpc` | `grpc-bridge.ts` | 已实装（动态 proto 反射 + deadline；缺依赖/不可达→结构化错误） |
+| `mcp` | `mcp-bridge.ts` | 已实装（复用宿主 stdio MCP 客户端；插件可自带 command 拉起） |
+| `mqtt` | `mqtt-bridge.ts` | 已实装（可选依赖 `mqtt`；未装则结构化降级，不崩溃） |
+| `internal` / `backend` | `runPointerTool` | 指针型：命令由插件/宿主 `register` 后按名调用（不自动注册，避免覆盖手动实现） |
+
+- grpc/mcp 适配器在 `PluginManager` 构造时经 `registerTransportAdapter` 挂载；原「框架预留」降级提示保留为兜底。
+- 声明式工具（`cli/http/grpc/mcp/mqtt`）由运行时自动注册命令；`internal/backend` 不自动注册。
+- `grpc-bridge` 做了两级缓存（proto 定义按路径、客户端按 addr+service）与 deadline 超时，服务端不响应时按 `timeoutMs` 返回，不挂住 IDE。
 
 ---
 

@@ -101,8 +101,10 @@ ok(!pmNoReg.has('internal', 't-int'), 'internal 工具不被自动注册（避�
 const intRet = pm.invoke('internal', 't-int', {})
 ok(intRet && intRet.ok === true, 'internal 命令由插件手动注册后可用，符合既有契约')
 
-// ── 4. MQTT 优雅降级 ──
-console.log('\n[4] MQTT 工具在缺依赖时结构化降级')
+// ── 4. MQTT 通道：依赖已装则真实执行，未装则结构化降级（两种环境都必须不崩溃） ──
+// 说明：mqtt 是 optionalDependencies。装了就应走真实发布路径，没装才降级；
+// 断言按实际输出判定，避免在依赖装/不装两种环境下出现「文案与事实不符」的假绿。
+console.log('\n[4] MQTT 通道（依赖已装走真实执行 / 未装则降级）')
 const pm2 = new PluginManager()
 const mManifest = {
   id: 'mq', name: 'mq', displayName: 'MQ', version: '0.1.0', description: 'd', entry: 'i.js',
@@ -115,7 +117,11 @@ pm2.init()
 ok(pm2.has('mqtt', 't-mqtt'), 'mqtt 声明式工具被自动注册命令')
 let mout = ''
 pm2.invoke('mqtt', 't-mqtt', { payload: 'hi' }, (c) => { mout += c })
-ok(/未安装 mqtt|mqtt/.test(mout), `MQTT 缺依赖时结构化降级（不崩溃）：${mout.trim()}`)
+const mDegraded = mout.includes('未安装 mqtt')
+ok(
+  mDegraded || mout.includes('已发布到'),
+  `MQTT 通道不崩溃（${mDegraded ? '依赖缺失→结构化降级' : '依赖已装→走真实发布路径'}）：${mout.trim()}`
+)
 
 console.log('')
 console.log(`[插件运行时自检] 通过 ${pass} / 失败 ${fail}`)

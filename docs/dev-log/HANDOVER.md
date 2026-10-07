@@ -203,6 +203,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **测试信息收集** | pkgout35 | 见 §3 |
 | **板卡自动纠正 + 实测** | pkgout36 | 见 §6 #4 |
 | **插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）** | 本轮 | 见 §12 |
+| **grpc/mcp 真实适配器 + 崩溃签名分析 + MQTT 真机验证** | 本轮 | 见 §13 |
 
 ---
 
@@ -256,6 +257,14 @@ node scripts/check-*.mjs                # 受影响的那些
 | `src/main/plugins/pluginManager.ts` | 运行时核心；新增 `runTool` 七通道统一执行器 + `getSkills`/`getTools`（含 sideEffect 映射）+ 声明式工具自动注册 |
 | `scripts/check-plugin-runtime.mjs` | 新增：插件运行时自检（renderHttpRequest / mapPluginCategoryToEngine / skills+tools 聚合 / MQTT 降级） |
 | `scripts/check-validate-manifest.mjs` | 新增 password 默认空校验断言 |
+| `src/main/plugins/grpc-bridge.ts` | gRPC 通道桥接：动态 proto 反射调用（addr/proto/package/service/method）+ 两级缓存 + deadline；缺依赖/不可达→结构化错误 |
+| `src/main/plugins/mcp-bridge.ts` | MCP 通道桥接：复用宿主 stdio MCP 客户端；支持 `mcp.server`（已连接）或 `mcp.command`（插件自带拉起）；`stopAll()` 只清理 `plugin:` 前缀会话 |
+| `src/main/services/crash-signature.ts` | 崩溃签名分析：解析 panic/abort/assert/栈溢出/看门狗/掉电/内存不足，产出**稳定签名**（丢弃栈指针）+ 小白可读建议 |
+| `src/main/plugins/hostAdapter.ts`（更新） | 新增 internal `app.analyzeCrash` + backend `serial.crashAnalyze`（读当前串口会话日志后分析） |
+| `scripts/check-grpc-bridge.mjs` | 新增：起真实 gRPC server 验证反射调用 / PascalCase 兼容 / 缺字段报错 / deadline 不挂住（16 断言） |
+| `scripts/check-mcp-bridge.mjs` | 新增：自建最小 MCP server（stdio JSON-RPC）验证握手→调用→结果归一化（8 断言） |
+| `scripts/check-crash-signature.mjs` | 新增：崩溃解析 + **签名稳定性**（同处同签名 / 异处异签名）+ 不误报（23 断言） |
+| `scripts/check-mqtt-bridge.mjs` | 新增：MQTT 依赖可用性 + 未连接报错 + 不可达经 error 事件上报 + 公共 broker 往返（无外网自动跳过） |
 
 ---
 
@@ -284,3 +293,34 @@ node scripts/check-*.mjs                # 受影响的那些
 | `log-20.md` ~ `log-33.md`、`next-steps.md`、`slim-design.md`、`competitive-landscape.md` | 过程档案，仍独立保留 |
 
 **维护规则**：以后只改这一份；确实需要分文件时，先在本文件索引里登记。
+
+---
+
+## 13. 通道补齐：grpc / mcp 真实适配器 + 崩溃签名分析 + MQTT 真机验证
+
+上一轮把七通道接进 `runTool` 统一执行器，但 grpc/mcp 仍是「适配器挂载点 + 降级提示」。本轮把它们做成真能跑的通道，并把崩溃分析做进宿主后端。
+
+- **gRPC 真实适配器（`grpc-bridge.ts`）**：插件只需自带一个 `.proto`。
+  - 动态反射：`@grpc/proto-loader` 运行时加载 proto → `@grpc/grpc-js` 按 `package.service/method` 调用，不必预生成桩代码（这两个依赖项目里本来就有）。
+  - 两级缓存：proto 定义按路径缓存、客户端按 `addr+service` 缓存，重复调用不重复解析/建连。
+  - deadline 超时：一元 RPC 一律带 `{ deadline }`，服务端不响应时按 `timeoutMs` 返回（自检实测 1213ms 返回 DEADLINE_EXCEEDED，未挂住）。
+  - 方法名兼容：proto 里写 `SayHello`（PascalCase）也能命中（proto-loader 生成的是 camelCase）。
+  - proto 路径三条规则：绝对路径 / `{plugin}/x.proto`（解析到插件资源目录）/ 相对 cwd。
+- **MCP 真实适配器（`mcp-bridge.ts`）**：复用宿主已有的 stdio JSON-RPC 2.0 客户端，不另写协议栈。
+  - 双来源：`mcp.server` 用宿主「MCP 设置」里已连接的 server；`mcp.command`+`args` 由插件自带拉起（会话名 `plugin:<tool>`，同名复用避免重复拉进程）。
+  - 结果归一化：MCP 的 `content[]` 收敛成 `{ok, data}` 文本；`isError` 收敛成 `ok:false`。
+  - `stopAll()` 只停 `plugin:` 前缀会话，**不碰用户在设置里自己连的 server**。
+- **崩溃签名分析（`crash-signature.ts`，做进宿主后端）**：串口崩溃日志对新手是天书，且同一处崩溃会刷出成百上千条几乎一样的输出。
+  - 解析 panic（LoadProhibited / StoreProhibited / IllegalInstruction …）/ abort / assert / 栈溢出 / 看门狗 / 掉电 / 内存不足，提取 异常类型、Core、PC、EXCVADDR、调用栈。
+  - **稳定签名**：丢弃每次会变的栈指针(SP)，只留 `kind|exception|PC|调用栈前3帧PC` → 同处崩溃签名相同（可去重/计数），异处崩溃签名不同（可区分）。
+  - 中文结论 + 可执行建议（掉电指向供电而非改代码；栈溢出指向大局部数组 / 任务栈太小）。
+  - 宿主命令：internal `app.analyzeCrash`（纯文本进）+ backend `serial.crashAnalyze`（读当前串口会话日志后分析）。
+- **MQTT 真机验证**：`mqtt` 已加入 **optionalDependencies**（没装也能构建/运行，装了才启用通道）。
+  - 自检：依赖可用、未连接时结构化报错、不可达时经 `error` 事件上报（ECONNREFUSED）而非抛出。
+  - **真机往返已跑通**：连公共 broker `broker.emqx.io:1883` 完成 publish→subscribe 往返（本次沙箱有外网）。复现见 `scripts/check-mqtt-bridge.mjs`。
+- **验证**：tsc 双过；`check-grpc-bridge`(16) / `check-mcp-bridge`(8) / `check-crash-signature`(23) / `check-mqtt-bridge`(10) 全绿；回归 `check-plugin-runtime`(23) / `check-validate-manifest`(53) / `check-demo-plugins`(87)；四套扫描 CRITICAL 0、`scan-ipc-handlers` 0 命中。
+- **踩坑**：
+  - `check-plugin-runtime` 的「MQTT 缺依赖降级」断言在装上 mqtt 后**语义翻转**（实际走真实发布路径却仍显示降级文案）→ 改成按实际输出判定，装/不装两种环境都不假绿。
+  - MCP 自检第 5 组最初失败：插件自带 server 的会话名是 `plugin:<tool>`，与前面用例同名会被复用 → 换唯一工具名才真正走到启动失败分支。
+  - grpc-bridge 里闭包捕获 `let client` 会让 TS 丢掉非空判断 → 收窄成 `const c` 再进闭包。
+  - gRPC 包名同样用非字面量拼接（`'@grpc/'+'grpc-js'`），与 mqtt 同源考虑：避免打包器构建期解析依赖。

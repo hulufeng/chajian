@@ -1,6 +1,7 @@
 import { listPorts, listSerialSessions, readSerialLog } from '../services/serialService'
 import { validateManifest } from './validate-manifest'
 import { scanInstalledPlugins } from './pluginInstaller'
+import { analyzeCrashLog, formatCrashReport } from '../services/crash-signature'
 import type { PluginContext, PluginManifest } from './pluginManager'
 
 /**
@@ -9,9 +10,11 @@ import type { PluginContext, PluginManifest } from './pluginManager'
  * 作用：把宿主侧的能力暴露成命令，第三方插件通过 ctx.invoke(...) 调用即可，
  * 插件自身不 require 宿主模块（打包后路径会变），耦合只靠命令名。
  *   - backend：serial.list / serial.sessions / serial.peek（读设备输出）
+ *     / serial.crashAnalyze（读当前会话日志 → 崩溃签名分析）
  *   - internal：app.validateManifest（复用宿主校验口径）/ app.reloadPlugins（热加载）
  *     这两个是给「元插件」plugin-dev-toolchain 用的：validate/install 经内通道复用
  *     宿主单一事实来源，避免各插件各自实现一套校验器。
+ *     app.analyzeCrash：把串口崩溃日志解析成结构化签名（插件不必各写一套解析器）。
  */
 
 export const hostManifest: PluginManifest = {
@@ -22,8 +25,8 @@ export const hostManifest: PluginManifest = {
   entry: 'host-adapter/index.js',
   // channels 是全量七通道表（内部通道校验按这个形状走），这里只对外声明下面几条
   channels: {
-    internal: ['app.validateManifest', 'app.reloadPlugins'],
-    backend: ['serial.list', 'serial.sessions', 'serial.peek'],
+    internal: ['app.validateManifest', 'app.reloadPlugins', 'app.analyzeCrash'],
+    backend: ['serial.list', 'serial.sessions', 'serial.peek', 'serial.crashAnalyze'],
     cli: [],
     http: [],
     grpc: [],
@@ -76,5 +79,31 @@ export function load(ctx: PluginContext): void {
       loaded: loaded.length,
       enabled: loaded.filter((p) => p.loaded).length
     }
+  })
+
+  // 内通道：崩溃签名分析（串口日志文本进 → 结构化签名出）
+  // 崩溃日志对新手是天书，且同一处崩溃会刷出成百上千条几乎一样的输出；
+  // 这里产出「稳定签名」（可去重/计数/比对）+ 小白可读结论与排查建议，插件直接复用宿主口径。
+  ctx.registerInternal('app.analyzeCrash', (args) => {
+    const a = (args || {}) as { text?: string }
+    const text = typeof a.text === 'string' ? a.text : ''
+    if (!text.trim()) return { ok: false, error: '缺少 text（待分析的串口日志文本）' }
+    const sig = analyzeCrashLog(text)
+    return { ok: true, ...sig, report: formatCrashReport(sig) }
+  })
+
+  // 后端通道：直接读当前串口会话日志并分析（插件不必自己拼串口读取逻辑）
+  ctx.registerBackend('serial.crashAnalyze', (args) => {
+    const opts = (args || {}) as { id?: string; maxLines?: number }
+    const sessions = listSerialSessions()
+    if (sessions.length === 0) {
+      return { ok: false, error: '没有打开的串口会话（先用串口监视器打开设备）' }
+    }
+    const id = opts.id || (sessions.find((s) => s.open) || sessions[0]).id
+    const read = readSerialLog(id)
+    if (!read.ok) return { ok: false, error: read.error }
+    const maxLines = Number(opts.maxLines) > 0 ? Number(opts.maxLines) : 200
+    const sig = analyzeCrashLog(tailLines(read.data || '', maxLines))
+    return { ok: true, id, ...sig, report: formatCrashReport(sig) }
   })
 }
