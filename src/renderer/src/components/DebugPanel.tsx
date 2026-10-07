@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DebugChip, DebugState, MemoryReadResult, NvsEntry, PartitionEntry, RegisterValue, ThreadInfo } from '../../../preload'
+import { setDebugActive, setCurrentSource } from './editor/debugStore'
 
 interface Props {
   /** 当前板卡 FQBN（用于推断调试芯片，如 esp32:esp32:esp32s3 → esp32s3） */
@@ -39,6 +40,18 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
   const [bps, setBps] = useState<string[]>([])
   const [ execCmd, setExecCmd] = useState('')
   const [ execOut, setExecOut] = useState('')
+  /** 当前暂停所在函数名（由 syncCurrentLine 从 PC 反查，空串表示无/未加载符号） */
+  const [ curFn, setCurFn ] = useState('')
+  /** 调用栈回溯结果（帧指针法；frames 为空/none 时看 note 如实说明原因） */
+  const [ cs, setCs ] = useState<{ frames: Array<{ index: number; address: number; fn: string | null; file: string | null; line: number | null }>; method: string; note: string } | null>(null)
+  /** Watch：全局变量候选 + 当前选中 + 读回值 */
+  const [ globals, setGlobals ] = useState<Array<{ name: string; address: number; size: number; typeName?: string }>>([])
+  const [ watchName, setWatchName ] = useState('')
+  const [ watchVal, setWatchVal ] = useState<{ name: string; address: number; size: number; typeName?: string; hex: string; asInt: number | null; asFloat: number | null; hint: string } | null>(null)
+  /** 局部变量（当前 PC 所在函数，栈地址；需帧指针） */
+  const [ locals, setLocals ] = useState<Array<{ name: string; typeName: string; addr: number; offset: number; funcName?: string }>>([])
+  const [ localName, setLocalName ] = useState('')
+  const [ localVal, setLocalVal ] = useState<{ name: string; typeName?: string; hex: string; asInt: number | null; asFloat: number | null; hint: string } | null>(null)
   // 片内 Flash 存储：分区表 + NVS（复用 openocd 读内存，不需要另装 esptool）
   const [ parts, setParts ] = useState<PartitionEntry[]>([])
   const [ nvs, setNvs ] = useState<NvsEntry[]>([])
@@ -71,13 +84,53 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
     window.api.debug.state().then(setState).catch(() => undefined)
   }, [])
 
+  /** 停住后读 PC → 映射成源码 文件:行，写进 store 供编辑器高亮当前执行行 */
+  const syncCurrentLine = useCallback(async (): Promise<void> => {
+    try {
+      const regs = await window.api.debug.registers()
+      setRegs(regs)
+      const pc = regs.find((r) => /^(pc|PC)$/i.test(r.name))?.num
+      if (pc === undefined) { setCurrentSource('', null); return }
+      const loc = (await window.api.debug.location(pc)) as
+        | { source: { file: string; line: number } | null; fn: { name: string } | null }
+        | null
+      setCurrentSource(loc?.source?.file ?? '', loc?.source?.line ?? null)
+      setCurFn(loc?.fn?.name ?? '')
+    } catch {
+      setCurrentSource('', null)
+    }
+  }, [])
+
+  /** 拉当前函数的局部变量（停住后调用才有意义） */
+  const loadLocals = useCallback(async (): Promise<void> => {
+    try {
+      setLocals((await window.api.debug.locals()) as Array<{ name: string; typeName: string; addr: number; offset: number; funcName?: string }>)
+    } catch { setLocals([]) }
+  }, [])
+
+  /** 执行会「停在原地」的命令（暂停/单步/复位）后刷新当前行 + 局部变量 */
+  const runAndSync = useCallback(
+    async (fn: () => Promise<string>): Promise<string> => {
+      const out = await run(fn)
+      await syncCurrentLine()
+      void loadLocals()
+      return out
+    },
+    [syncCurrentLine, loadLocals]
+  )
+
   const connect = async (): Promise<void> => {
     setBusy(true); setErr('')
     try {
       const s = await window.api.debug.start({ chip })
       setState(s)
+      setDebugActive(true)
+      await syncCurrentLine()
+      void loadGlobals()
+      void loadLocals()
     } catch (e) {
       setErr((e as Error).message)
+      setDebugActive(false)
     } finally {
       setBusy(false)
       refresh()
@@ -90,6 +143,11 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
       setState(s)
       setRegs([]); setThreads([]); setMem(null); setBps([]); setExecOut('')
     } catch (e) { setErr((e as Error).message) }
+    finally {
+      setDebugActive(false)
+      setCurrentSource('', null)
+      setCurFn('')
+    }
   }
 
   const readRegs = async (): Promise<void> => {
@@ -106,6 +164,42 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
       const r = await window.api.debug.threads()
       setThreads(r.threads)
     } catch (e) { setErr((e as Error).message) }
+  }
+
+  /** 回溯调用栈（帧指针法）。做不了就显示 note，不硬凑。 */
+  const readCallStack = async (): Promise<void> => {
+    setBusy(true); setErr('')
+    try {
+      setCs((await window.api.debug.callStack(32)) as any)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  /** 拉全局变量候选（Watch 下拉） */
+  const loadGlobals = useCallback(async (): Promise<void> => {
+    try {
+      setGlobals((await window.api.debug.globals()) as Array<{ name: string; address: number; size: number }>)
+    } catch { setGlobals([]) }
+  }, [])
+
+  /** 读取选中全局变量的当前值 */
+  const readWatch = async (): Promise<void> => {
+    if (!watchName) return
+    setBusy(true); setErr('')
+    try {
+      setWatchVal((await window.api.debug.watch(watchName)) as any)
+    } catch (e) { setWatchVal(null); setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  /** 读局部变量当前值 */
+  const readLocal = async (): Promise<void> => {
+    if (!localName) return
+    setBusy(true); setErr('')
+    try {
+      setLocalVal((await window.api.debug.watchLocal(localName)) as any)
+    } catch (e) { setLocalVal(null); setErr((e as Error).message) }
+    finally { setBusy(false) }
   }
 
   const run = async (fn: () => Promise<string>): Promise<string> => {
@@ -146,12 +240,13 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
         <span className="debug-spacer" />
         {running ? (
           <>
-            <button className="btn" disabled={busy} onClick={() => void run(() => window.api.debug.halt())}>⏸ 暂停</button>
-            <button className="btn" disabled={busy} onClick={() => void run(() => window.api.debug.resume())}>▶ 运行</button>
-            <button className="btn" disabled={busy} onClick={() => void run(() => window.api.debug.step())}>⤼ 单步</button>
-            <button className="btn" disabled={busy} onClick={() => void run(() => window.api.debug.reset())}>⟲ 复位</button>
+            <button className="btn" disabled={busy} onClick={() => void runAndSync(() => window.api.debug.halt())}>⏸ 暂停</button>
+            <button className="btn" disabled={busy} onClick={() => { setCurrentSource('', null); setCurFn(''); void run(() => window.api.debug.resume()) }}>▶ 运行</button>
+            <button className="btn" disabled={busy} onClick={() => void runAndSync(() => window.api.debug.step())}>⤼ 单步</button>
+            <button className="btn" disabled={busy} onClick={() => void runAndSync(() => window.api.debug.reset())}>⟲ 复位</button>
             <button className="btn" disabled={busy} onClick={() => void readRegs()}>寄存器</button>
             <button className="btn" disabled={busy} onClick={() => void readThreads()}>线程</button>
+            <button className="btn" disabled={busy} onClick={() => void readCallStack()}>调用栈</button>
             <button className="btn" disabled={busy} onClick={() => void run(() => window.api.debug.poll())}>轮询</button>
             <button className="btn danger" onClick={() => void disconnect()}>断开</button>
           </>
@@ -201,8 +296,110 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
               ))}
             </div>
 
-            <div className="debug-block-title">内存 <span className="debug-hint">mdb</span></div>
+            {cs && (
+              <>
+                <div className="debug-block-title">
+                  调用栈 <span className="debug-hint">帧指针回溯</span>
+                </div>
+                <div className="debug-callstack">
+                  <div className="debug-empty">{cs.note}</div>
+                  {cs.frames.map((f) => (
+                    <div key={f.index} className="debug-frame">
+                      <span className="debug-frame-idx">#{f.index}</span>
+                      <span className="debug-frame-fn">{f.fn ?? '(未知函数)'}</span>
+                      <span className="debug-frame-loc">
+                        {f.file ? `${f.file}:${f.line ?? '?'}` : '—'}
+                      </span>
+                      <span className="debug-frame-addr">0x{f.address.toString(16)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="debug-block-title">
+              变量 Watch <span className="debug-hint">全局</span>
+              <button className="btn mini" onClick={() => void loadGlobals()} title="刷新全局变量列表">⟳</button>
+            </div>
             <div className="debug-row">
+              <select
+                className="toolbar-input"
+                value={watchName}
+                onChange={(e) => setWatchName(e.target.value)}
+                spellCheck={false}
+              >
+                <option value="">{globals.length === 0 ? '（连接后拉取全局变量）' : '选择变量…'}</option>
+                {globals.map((g) => (
+                  <option key={g.name} value={g.name}>
+                    {g.typeName ? `${g.typeName} ` : ''}{g.name}  (0x{g.address.toString(16)}, {g.size}B)
+                  </option>
+                ))}
+              </select>
+              <button className="btn" disabled={busy || !watchName} onClick={() => void readWatch()}>
+                读取
+              </button>
+            </div>
+            {watchVal && (
+              <div className="debug-watch">
+                <div className="debug-frame">
+                  <span className="debug-frame-fn">{watchVal.name}</span>
+                  <span className="debug-frame-addr">0x{watchVal.address.toString(16)}</span>
+                </div>
+                <div className="debug-watch-line">
+                  <span className="debug-watch-k">hex</span>
+                  <span className="debug-watch-v">{watchVal.hex}</span>
+                </div>
+                {watchVal.asInt !== null && (
+                  <div className="debug-watch-line">
+                    <span className="debug-watch-k">int</span>
+                    <span className="debug-watch-v">{watchVal.asInt}</span>
+                  </div>
+                )}
+                {watchVal.asFloat !== null && (
+                  <div className="debug-watch-line">
+                    <span className="debug-watch-k">float</span>
+                    <span className="debug-watch-v">{watchVal.asFloat}</span>
+                  </div>
+                )}
+                <div className="debug-empty">{watchVal.hint}</div>
+              </div>
+            )}
+
+            <div className="debug-block-title">
+              局部变量 <span className="debug-hint">栈</span>
+              <button className="btn mini" onClick={() => void loadLocals()} title="刷新局部变量">⟳</button>
+            </div>
+            <div className="debug-row">
+              <select
+                className="toolbar-input"
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                spellCheck={false}
+              >
+                <option value="">{locals.length === 0 ? '（暂停/单步后拉取当前函数局部变量）' : '选择变量…'}</option>
+                {locals.map((l) => (
+                  <option key={l.name} value={l.name}>
+                    {l.typeName} {l.name}  (fp{l.offset >= 0 ? '+' : ''}{l.offset})
+                  </option>
+                ))}
+              </select>
+              <button className="btn" disabled={busy || !localName} onClick={() => void readLocal()}>
+                读取
+              </button>
+            </div>
+            {localVal && (
+              <div className="debug-watch">
+                <div className="debug-frame">
+                  <span className="debug-frame-fn">{localVal.typeName} {localVal.name}</span>
+                </div>
+                <div className="debug-watch-line"><span className="debug-watch-k">hex</span><span className="debug-watch-v">{localVal.hex}</span></div>
+                {localVal.asInt !== null && <div className="debug-watch-line"><span className="debug-watch-k">int</span><span className="debug-watch-v">{localVal.asInt}</span></div>}
+                {localVal.asFloat !== null && <div className="debug-watch-line"><span className="debug-watch-k">float</span><span className="debug-watch-v">{localVal.asFloat}</span></div>}
+                <div className="debug-empty">{localVal.hint}</div>
+              </div>
+            )}
+
+            <div className="debug-block-title">内存 <span className="debug-hint">mdb</span></div>            <div className="debug-row">
               <input
                 className="toolbar-input"
                 value={memAddr}

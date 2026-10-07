@@ -4742,3 +4742,108 @@ body.ai-resizing {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── 源码级调试：断点圆点 / 当前执行行（Monaco 装饰类）─────────────
+   颜色一律走 theme.css 令牌，明暗主题自动适配（禁 hex/rgba 字面量）。*/
+.debug-bp-glyph {
+  background: var(--danger);
+  border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  margin: 6px auto 0;
+  cursor: pointer;
+}
+.debug-bp-glyph:hover {
+  background: var(--danger);
+  filter: brightness(1.25);
+}
+.debug-pc-glyph {
+  background: var(--warning);
+  width: 0;
+  height: 0;
+  margin: 6px auto 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid var(--warning);
+  background: transparent;
+}
+.debug-current-line {
+  background: var(--accent-soft-weak);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* 调用栈（帧指针回溯） */
+.debug-callstack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.debug-frame {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-soft, transparent);
+}
+.debug-frame:hover {
+  background: var(--accent-soft-weak);
+}
+.debug-frame-idx {
+  color: var(--text-dim);
+  min-width: 28px;
+  flex-shrink: 0;
+}
+.debug-frame-fn {
+  color: var(--text);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.debug-frame-loc {
+  color: var(--accent-text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debug-frame-addr {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* 变量 Watch */
+.debug-watch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.debug-watch-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+}
+.debug-watch-k {
+  color: var(--text-dim);
+  min-width: 40px;
+  flex-shrink: 0;
+}
+.debug-watch-v {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debug-block-title .btn.mini {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}

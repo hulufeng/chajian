@@ -69,6 +69,18 @@ import {
   readRawBytes
 } from './services/debugService'
 import {
+  loadDebugSymbols,
+  addrToSource as debugAddrToSource,
+  lineToAddr as debugLineToAddr,
+  currentLocation as debugCurrentLocation,
+  callStack as debugCallStack,
+  globals as debugGlobals,
+  watchGlobal as debugWatchGlobal,
+  locals as debugLocals,
+  readLocalVarByName as debugReadLocal,
+  toggleSourceBreakpoint
+} from './services/debug-symbols-service'
+import {
   findPio,
   installPio,
   detectPioProject,
@@ -1608,6 +1620,29 @@ ipcMain.handle('debug:setBreakpoint', (_e, addr: string | number) => setBreakpoi
 ipcMain.handle('debug:removeBreakpoint', (_e, addr?: string | number) => removeBreakpoint(addr))
 
 ipcMain.handle('debug:exec', (_e, cmd: string) => debugExec(cmd))
+
+// ── 源码级调试：符号索引 + 断点/当前行 ──
+ipcMain.handle('debug:symbols', (_e, buildPath: string) => loadDebugSymbols(buildPath || ''))
+
+ipcMain.handle('debug:addrToSource', (_e, addr: number) => debugAddrToSource(Number(addr)))
+
+ipcMain.handle('debug:lineToAddr', (_e, file: string, line: number) => debugLineToAddr(file, Number(line)))
+
+ipcMain.handle('debug:location', (_e, pc: number) => debugCurrentLocation(Number(pc)))
+
+ipcMain.handle('debug:toggleBreakpoint', (_e, file: string, line: number, enable: boolean) =>
+  toggleSourceBreakpoint(file, Number(line), !!enable)
+)
+
+ipcMain.handle('debug:callstack', (_e, maxFrames?: number) => debugCallStack(maxFrames ?? 32))
+
+ipcMain.handle('debug:globals', () => debugGlobals())
+
+ipcMain.handle('debug:watch', (_e, name: string) => debugWatchGlobal(String(name || '')))
+
+ipcMain.handle('debug:locals', () => debugLocals())
+
+ipcMain.handle('debug:watchLocal', (_e, name: string) => debugReadLocal(String(name || '')))
 
 // ── 分区表 / NVS（复用 openocd 读内存，不额外拉 esptool）──
 ipcMain.handle('debug:partitions', async () => {

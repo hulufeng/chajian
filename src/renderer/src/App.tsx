@@ -709,6 +709,11 @@ function App(): React.JSX.Element {
       if (isCompile || isUpload) {
         setCompileState(d.code === 0 ? 'success' : 'error')
         setCompileProgress(null)
+        // 编译成功后预热源码级调试符号索引（行断点/当前行高亮依赖它）。
+        // 静默失败：编译已成功，符号只影响调试功能，不能因此干扰编译态。
+        if (isCompile && d.code === 0 && (d as any).buildPath) {
+          void (window.api as any).debug?.symbols?.((d as any).buildPath)
+        }
         // 过程可见化：停表并冻结最终耗时（结果卡要显示真实耗时）
         const startedAt = buildStartedAtRef.current
         if (startedAt !== null) {

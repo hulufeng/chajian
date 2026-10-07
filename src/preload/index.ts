@@ -707,6 +707,29 @@ const api = {
     setBreakpoint: (addr: string | number): Promise<string> => ipcRenderer.invoke('debug:setBreakpoint', addr),
     removeBreakpoint: (addr?: string | number): Promise<string> => ipcRenderer.invoke('debug:removeBreakpoint', addr),
     exec: (cmd: string): Promise<string> => ipcRenderer.invoke('debug:exec', cmd),
+    /** 加载编译产物的调试符号（按 buildPath 缓存索引）。hasLineInfo=false 表示编译未带 -g */
+  symbols: (buildPath: string): Promise<unknown> => ipcRenderer.invoke('debug:symbols', buildPath),
+    /** 地址 → 源码 {file,line}（当前行高亮） */
+  addrToSource: (addr: number): Promise<{ file: string; line: number; column?: number } | null> =>
+      ipcRenderer.invoke('debug:addrToSource', addr),
+    /** (文件,行) → 断点地址（空行会落到下一条可执行语句） */
+    lineToAddr: (file: string, line: number): Promise<number | null> =>
+      ipcRenderer.invoke('debug:lineToAddr', file, line),
+    /** 取当前行 + 所在函数（停住后一次性拿，减少往返） */
+    location: (pc: number): Promise<unknown> => ipcRenderer.invoke('debug:location', pc),
+    /** 切换某行断点（下发到 openocd 硬件断点） */
+    toggleBreakpoint: (file: string, line: number, enable: boolean): Promise<unknown> =>
+      ipcRenderer.invoke('debug:toggleBreakpoint', file, line, enable),
+    /** 回溯调用栈（帧指针法；需固件启用 -fno-omit-frame-pointer，做不了会如实说明） */
+    callStack: (maxFrames?: number): Promise<unknown> => ipcRenderer.invoke('debug:callstack', maxFrames),
+    /** 列出全局变量（Watch 候选） */
+    globals: (): Promise<unknown> => ipcRenderer.invoke('debug:globals'),
+    /** 读某全局变量当前值（hex/int/float 多解释，类型未知时如实标注） */
+    watch: (name: string): Promise<unknown> => ipcRenderer.invoke('debug:watch', name),
+    /** 列出当前 PC 所在函数的局部变量（含栈地址，需帧指针） */
+    locals: (): Promise<unknown> => ipcRenderer.invoke('debug:locals'),
+    /** 读某局部变量当前值（按类型解释） */
+    watchLocal: (name: string): Promise<unknown> => ipcRenderer.invoke('debug:watchLocal', name),
     /** 读片内分区表（0x8000 起，需要已连接片上调试器） */
     partitions: (): Promise<PartitionEntry[]> => ipcRenderer.invoke('debug:partitions'),
     /** 读 NVS 条目（尽力解析，不做 CRC 校验） */

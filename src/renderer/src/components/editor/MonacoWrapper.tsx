@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { type EditorSettings } from './editorSettings'
 import { matchSnippets, toSuggestions } from './hardwareSnippets'
 import { hoverFor, mergeHover } from './pinHover'
+import { getDebugView, subscribeDebugView, linesForFile, sameSourceFile, toggleBreakpointAt } from './debugStore'
 
 /** 板卡架构：决定给哪些硬件片段/文档（esp32 与 stm32 的 API 差别很大） */
 export type BoardArch = 'esp32' | 'stm32' | 'any'
@@ -35,6 +36,13 @@ interface Props {
 export default function MonacoWrapper({ path, language, value, theme, settings, enableLsp = true, arch = 'any', onChange }: Props) {
   const editorRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
+  /** 断点/执行位装饰集合（Monaco 装饰由编辑器管理，需保留引用以便增量更新/释放） */
+  const decoRef = useRef<any>(null)
+  // 调试视图状态来自全局 store（DebugPanel 写、编辑器读），避免 prop-drilling
+  const [dbg, setDbg] = useState(getDebugView())
+  useEffect(() => subscribeDebugView(() => setDbg({ ...getDebugView() })), [])
+  const dbgBreakpointLines = useMemo(() => linesForFile(path), [dbg.breakpoints, path])
+  const dbgShowCurrent = dbg.currentLine !== null && sameSourceFile(path, dbg.currentFile)
   const mounted = useRef(false)
   const suppress = useRef(false)
   const registered = useRef(false)
@@ -231,6 +239,13 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
       }
       registered.current = true
     }
+    // 调试：点击字形槽（断点所在列）切换断点。GlyphMargin 命中才算，避免误触
+    editor.onMouseDown((e: any) => {
+      const isGlyph = e.target?.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+      if (!isGlyph) return
+      const line: number = e.target?.position?.lineNumber
+      if (line && line > 0) void toggleBreakpointAt(path, line)
+    })
   }
 
   // 打开 / 切换新文件时拉一次诊断
@@ -264,6 +279,47 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
 
+  // 断点圆点 + 当前执行行装饰。会话未活跃时清空装饰。
+  useEffect(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) return
+    if (!decoRef.current) decoRef.current = editor.createDecorationsCollection([])
+
+    if (!dbg.active) {
+      decoRef.current.clear()
+      return
+    }
+    const bpRanges = dbgBreakpointLines.map(
+      (line) => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: { glyphMarginClassName: 'debug-bp-glyph', glyphMarginHoverMessage: { value: '断点（点击切换）' } }
+      })
+    )
+    const curRanges = dbgShowCurrent && dbg.currentLine
+      ? [
+          {
+            range: new monaco.Range(dbg.currentLine, 1, dbg.currentLine, 1),
+            options: {
+              isWholeLine: true,
+              className: 'debug-current-line',
+              glyphMarginClassName: 'debug-pc-glyph',
+              glyphMarginHoverMessage: { value: '▶ 当前执行位置' }
+            }
+          }
+        ]
+      : []
+    decoRef.current.set([...bpRanges, ...curRanges])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbg.active, dbgBreakpointLines, dbgShowCurrent, dbg.currentLine])
+
+  useEffect(() => {
+    return () => {
+      // 卸载时释放装饰集合
+      try { decoRef.current?.clear() } catch { /* noop */ }
+    }
+  }, [])
+
   useEffect(() => {
     sync(value)
     // 仅 value 变化触发；path/theme/language 变化由 <Editor> 自身处理
@@ -294,6 +350,7 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
         detectIndentation: false,
         wordWrap: settings.wordWrap,
         lineNumbers: 'on',
+        glyphMargin: dbg.active,
         renderLineHighlight: 'line',
         smoothScrolling: true,
         cursorBlinking: 'smooth',
