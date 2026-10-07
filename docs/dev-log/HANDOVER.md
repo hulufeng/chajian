@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `66498b3`（根治本地模型「没反应」：chat 请求不活动超时 + 真取消 + 非流式复用；tsc 双过 + 七套 check + 扫描全绿） |
+| 最新提交 | `f6de67b`（修 Agent 模式点停止卡死 + 不活动超时支持环境变量 + 真机模拟脚本；tsc 双过 + 六套 check + 扫描全绿） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -206,6 +206,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **grpc/mcp 真实适配器 + 崩溃签名分析（含串口 UI 入口）+ MQTT 真机验证** | 本轮 | 见 §13 |
 | **修复「选着本地模型却走云端」（本地模型被 Agent run 清空）** | 本轮 | 见 §14 |
 | **根治「发消息没反应」（本地模型 chat 请求挂死 + 真取消）** | 本轮 | 见 §15 |
+| **修 Agent 模式点停止卡死 + 真机模拟** | 本轮 | 见 §16 |
 
 ---
 
@@ -372,6 +373,28 @@ node scripts/check-*.mjs                # 受影响的那些
   23/0；`check-log-explainer` 20/0；`check-plugin-runtime` 23/0；四套静态扫描 CRITICAL 0、IPC 0 命中。
 - ⚠ **仍需真机确认**：涉及 llama 进程，沙箱跑不了。真机选本地模型发消息，确认
   ① 不再永久转圈（卡住会出「…没有新输出」报错而非挂死）② 点停止能立即中断。
+
+## 16. 修 Agent 模式点停止卡死（"没反应"的另一个真凶）+ 真机模拟
+
+续 §15：用户让我"真机模拟"本地模型对话链路，过程中发现更隐蔽的卡死点。
+
+- **真因**：`aiGateway.aiChatStream` 的**本地分支**在用户取消时**吞掉 onDone**
+  （`.then/.catch` 都 `if (!cancelled) onDone(...)`）。云端/BYOK 分支经 `fetchStream`
+  在 abort 时调 `onDone(null)`（干净结束）—— 两分支行为不一致。
+- **后果（连锁）**：`AgentRunner.callModel()` 把 onDone 当作 `await` 的 resolver；
+  用户点停止 → stream 被 abort → 本地分支不调 onDone → `callModel` 的 promise 永远不 settle →
+  主循环到不了 `if (this.stopped) break` → **Agent 卡死**（界面没反应）。
+  `agent.stop()` 本身只设 `stopped=true`，不 abort 底层流，所以旧代码下取消必挂。
+- **修法（与 fetchStream 对齐）**：
+  - `modelRuntime.chatWithLocalModelStream` 取消时 reject 一个 `name='AbortError'` 的错误（与
+    fetchStream 的 `e.name === 'AbortError'` 约定一致）。
+  - `aiGateway.aiChatStream` 本地分支改为 `.catch((e) => { if (e?.name === 'AbortError') onDone(null); else onDone(e) })`
+    —— 取消走干净结束，不再吞掉。onChunk 仍按 `cancelled` 抑制（停止后不吐字）。简单对话 UI 不受影响。
+- **不活动超时支持环境变量** `LABCODE_LLAMA_IDLE_MS`（默认 120s），与 `LABCODE_LLAMA_PORT` 同思路。
+- **真机模拟脚本** `scripts/sim-local-model.mjs`（12 断言）：用**真实生产代码** `aiGateway.aiChatStream/aiChat`
+  （UI 实际入口）串起真实 HTTP 假 llama 引擎（模拟 /health + SSE），覆盖正常流式 / 卡死超时 / 点停止必调 onDone（证明 Agent 不卡死）/ 非流式 / 未选模型快速报错 五条路径。沙箱限制：GUI 渲染 + 真实 llama 二进制需用户在真机验证。
+- **验证**：tsc 双过；sim-local-model 12/0；check-local-timeout 7/0；check-local-model 9/0；check-crash-signature 23/0；check-log-explainer 20/0；check-plugin-runtime 23/0；四套静态扫描 CRITICAL 0、scan-ipc-handlers 0 命中。
+- 提交 `f6de67b`（modelRuntime + aiGateway + sim-local-model.mjs，3 文件 +200）。
 
 ## 14. 修复「选着本地模型却走云端」（本地模型被 Agent run 清空）
 
