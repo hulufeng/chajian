@@ -486,14 +486,25 @@ export function aiChatStream(
   // 本地模型（Ollama）分支：支持 tools / function calling，无需登录、不耗积分
   const local = getLocalModel()
   if (local) {
+    const controller = new AbortController()
     let cancelled = false
-    chatWithLocalModelStream(local, messages, tools, (chunk) => {
-      if (cancelled) return
-      onChunk(chunk as StreamChunk)
-    })
+    chatWithLocalModelStream(
+      local,
+      messages,
+      tools,
+      (chunk) => {
+        if (cancelled) return
+        onChunk(chunk as StreamChunk)
+      },
+      { signal: controller.signal }
+    )
       .then((r) => { if (!cancelled) onDone(null, r?.usage) })
       .catch((e) => { if (!cancelled) onDone(e) })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      // 真正断开本地请求：以前只是「不再回调」，HTTP 还在跑，用户点了停止照样卡着
+      controller.abort()
+    }
   }
 
   // 选了本地模型但引擎没起来 → 直说，别偷偷走云端

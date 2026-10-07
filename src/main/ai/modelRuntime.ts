@@ -9,7 +9,10 @@ import { app } from 'electron'
 
 // ── 常量 ──────────────────────────────────────────────────────
 const LLAMA_HOST = '127.0.0.1'
-const LLAMA_PORT = 8080
+/** 本地引擎端口；可用环境变量 LABCODE_LLAMA_PORT 覆盖（默认 8080），便于规避端口冲突与自动化测试 */
+const LLAMA_PORT = Number(process.env.LABCODE_LLAMA_PORT) || 8080
+/** 本地推理「不活动超时」默认值：静默超过这个时长就明确报错，避免界面一直转圈「没反应」 */
+const LOCAL_IDLE_TIMEOUT_MS = 120_000
 
 // llama.cpp 引擎（CPU 版，MIT 许可可商用闭源；经 gh-proxy 镜像下载）
 const LLAMA_CPP_TAG = 'b11146'
@@ -549,6 +552,7 @@ export function chatWithLocalModelStream(
   messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }>,
   tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: object } }>,
   onChunk: (chunk: LocalStreamChunk) => void,
+  opts?: { idleTimeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
   return new Promise(async (resolve, reject) => {
     // 确保引擎在跑
@@ -567,7 +571,23 @@ export function chatWithLocalModelStream(
       temperature: 0.3,
     })
 
-    const req = http.request({
+    // 本地推理超时兜底：引擎卡住 / 模型加载慢时，没有超时保护界面会一直转圈「没反应」。
+    // 用「不活动超时」而不是总时长：只要还在出数据就不算超时，静默超过阈值才报错。
+    const idleTimeoutMs = opts?.idleTimeoutMs ?? LOCAL_IDLE_TIMEOUT_MS
+    let idleTimer: ReturnType<typeof setTimeout> | null = null
+    const clearIdle = (): void => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null } }
+    const finishOk = (v: { text: string; usage: { inputTokens: number; outputTokens: number } }): void => { clearIdle(); resolve(v) }
+    const finishErr = (e: Error): void => { clearIdle(); reject(e) }
+    const armIdle = (): void => {
+      clearIdle()
+      idleTimer = setTimeout(() => {
+        try { req.destroy() } catch { /* 已结束 */ }
+        finishErr(new Error(`本地模型 ${Math.round(idleTimeoutMs / 1000)}s 没有新输出（可能在加载模型或内存不足，可换更小的模型重试）`))
+      }, idleTimeoutMs)
+    }
+
+    let req: http.ClientRequest
+    req = http.request({
       host: LLAMA_HOST,
       port: LLAMA_PORT,
       path: '/v1/chat/completions',
@@ -577,6 +597,7 @@ export function chatWithLocalModelStream(
         'Content-Length': Buffer.byteLength(body),
       },
     }, (res) => {
+      armIdle() // 收到响应头：重置不活动计时
       let fullText = ''
       let buf = ''
       let usage: { inputTokens: number; outputTokens: number } | null = null
@@ -604,6 +625,7 @@ export function chatWithLocalModelStream(
       }
 
       res.on('data', (chunk: Buffer) => {
+        armIdle() // 还在出数据：重置不活动计时
         buf += chunk.toString()
         const lines = buf.split('\n')
         buf = lines.pop() || ''
@@ -613,7 +635,7 @@ export function chatWithLocalModelStream(
           const data = trimmed.slice(5).trim()
           if (data === '[DONE]') {
             emitToolCalls()
-            resolve({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
+            finishOk({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
             return
           }
           try {
@@ -648,64 +670,51 @@ export function chatWithLocalModelStream(
       })
       res.on('end', () => {
         emitToolCalls()
-        resolve({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
+        finishOk({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
       })
-      res.on('error', reject)
+      res.on('error', (e) => finishErr(e))
     })
-    req.on('error', reject)
+    req.on('error', (e) => finishErr(e))
+    // 取消支持：UI / Agent 点停止时真正断开请求。
+    // 此前 cancel 只是「不再回调」，底层 HTTP 还在跑，用户点了停止也照样卡着。
+    if (opts?.signal) {
+      if (opts.signal.aborted) {
+        req.destroy()
+        finishErr(new Error('已取消本地模型请求'))
+        return
+      }
+      opts.signal.addEventListener('abort', () => {
+        try { req.destroy() } catch { /* 已结束 */ }
+        finishErr(new Error('已取消本地模型请求'))
+      })
+    }
     req.write(body)
     req.end()
+    armIdle() // 从请求发出开始计时
   })
 }
 
-/** 兼容旧 IPC：简单聊天（非流式） */
+/**
+ * 兼容旧 IPC：简单聊天（非流式）。
+ * 直接复用流式实现，保证「不活动超时 + 可取消」对所有本地路径统一生效 —
+ * 早期只有流式路径加了超时，这个非流式分支仍是无超时的裸 http.request，
+ * 一旦引擎对 chat 端点卡住（模型加载/内存不足），界面就一直转圈「没反应」。
+ * 复用后两条路径共用同一套超时与中断逻辑，不会再漏。
+ */
 export function chatWithLocalModel(
   model: string,
   messages: Array<{ role: string; content: string }>,
   onChunk?: (text: string) => void,
 ): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    const engine = await startLlamaEngine(model)
-    if (!engine.success) { reject(new Error(engine.error || '引擎启动失败')); return }
-
-    const body = JSON.stringify({
-      model: 'local-model',
-      messages,
-      stream: !!onChunk,
-      max_tokens: 4096,
-      temperature: 0.3,
-    })
-
-    const req = http.request({
-      host: LLAMA_HOST, port: LLAMA_PORT,
-      path: '/v1/chat/completions', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-    }, (res) => {
-      let fullText = ''
-      let buf = ''
-      res.on('data', (chunk: Buffer) => {
-        buf += chunk.toString()
-        const lines = buf.split('\n')
-        buf = lines.pop() || ''
-        for (const line of lines) {
-          const t = line.trim()
-          if (!t.startsWith('data:')) continue
-          const d = t.slice(5).trim()
-          if (d === '[DONE]') { resolve(fullText); return }
-          try {
-            const msg = JSON.parse(d)
-            const c = msg.choices?.[0]?.delta?.content || msg.choices?.[0]?.message?.content
-            if (c) { fullText += c; onChunk?.(c) }
-          } catch { /* ignore */ }
-        }
-      })
-      res.on('end', () => resolve(fullText))
-      res.on('error', reject)
-    })
-    req.on('error', reject)
-    req.write(body)
-    req.end()
-  })
+  return chatWithLocalModelStream(
+    model,
+    messages,
+    [],
+    (chunk) => {
+      if (chunk.type === 'content' && chunk.text && onChunk) onChunk(chunk.text)
+    },
+    { idleTimeoutMs: LOCAL_IDLE_TIMEOUT_MS },
+  ).then((r) => r.text)
 }
 
 /** 兼容性保留（旧接口） */
