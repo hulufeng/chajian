@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `8873a93`（修「选着本地模型却走云端」+ grpc/mcp 适配器 + 崩溃签名 UI + MQTT 真机验证；tsc 双过 + 八套 check + 扫描全绿） |
+| 最新提交 | `66498b3`（根治本地模型「没反应」：chat 请求不活动超时 + 真取消 + 非流式复用；tsc 双过 + 七套 check + 扫描全绿） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -205,6 +205,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **插件运行时对齐（信任分级 / 占位符 / 外部通道 / MQTT）** | 本轮 | 见 §12 |
 | **grpc/mcp 真实适配器 + 崩溃签名分析（含串口 UI 入口）+ MQTT 真机验证** | 本轮 | 见 §13 |
 | **修复「选着本地模型却走云端」（本地模型被 Agent run 清空）** | 本轮 | 见 §14 |
+| **根治「发消息没反应」（本地模型 chat 请求挂死 + 真取消）** | 本轮 | 见 §15 |
 
 ---
 
@@ -345,6 +346,32 @@ node scripts/check-*.mjs                # 受影响的那些
 - ⚠ **UI 只能真机验**：Electron 44 在本机沙箱起不来（GPU 崩），用 `start-labcode.bat` 跑 `out/` 真实产物验证。
 
 ---
+
+## 15. 根治「发消息没反应」（本地模型 chat 请求挂死）
+
+用户实测 §14 修复后仍反馈「没反应」（界面一直转圈、不报错、不出字）。继续查，定位到更底层的卡死点。
+
+- **症状**：选本地模型发消息，UI 永久转圈，既不返回内容也不报错。
+- **真因**：`chatWithLocalModelStream` 里的 `http.request('/v1/chat/completions')` **没有任何超时**。
+  `startLlamaEngine` 本身是有界的（最多轮询 60s 超时），所以卡死点在这之后：
+  引擎被 `/health` 健康检查发现「在跑」，但 chat 端点卡住（模型加载中 / 内存不足导致
+  llama-server 不吐字）时，请求就**永久挂起**。
+- **修法**：
+  - `modelRuntime` 新增**不活动超时**（默认 120s）：收到响应头 / 每来一个数据块都重置计时，
+    只要还在出字就不算超时；静默超过阈值才明确报错（指向「加载模型 / 内存不足，换更小模型」），
+    不误伤慢模型首 token。
+  - **取消真正生效**：`AbortController.abort()` 现在会 `req.destroy()` 断开底层 HTTP；
+    以前只是「不再回调」，HTTP 仍在跑，点了停止照样卡。
+  - `chatWithLocalModel`（非流式，`aiChat` 旧路径也走它）改为**复用**流式实现 →
+    超时 / 取消对所有本地路径统一生效，不再漏一处。
+  - `LLAMA_PORT` 支持环境变量 `LABCODE_LLAMA_PORT` 覆盖（默认 8080），便于规避端口冲突与自动化测试。
+- **防回归**：新增 `scripts/check-local-timeout.mjs`（7 断言），用假 TCP server 复刻
+  「引擎在跑但 chat 卡死」场景：断言 1.5s 内超时报错（旧实现永久挂起）、正常 SSE 仍能解析、
+  abort 即时中断（311ms）。
+- **验证**：tsc 双过；`check-local-timeout` 7/0；`check-local-model` 9/0；`check-crash-signature`
+  23/0；`check-log-explainer` 20/0；`check-plugin-runtime` 23/0；四套静态扫描 CRITICAL 0、IPC 0 命中。
+- ⚠ **仍需真机确认**：涉及 llama 进程，沙箱跑不了。真机选本地模型发消息，确认
+  ① 不再永久转圈（卡住会出「…没有新输出」报错而非挂死）② 点停止能立即中断。
 
 ## 14. 修复「选着本地模型却走云端」（本地模型被 Agent run 清空）
 
