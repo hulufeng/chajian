@@ -48,7 +48,7 @@ const outfile = join(tmp, 'bundle.mjs')
 buildSync({
   entryPoints: [entry],
   bundle: true, format: 'esm', platform: 'node', outfile,
-  alias: { electron: join(root, 'scripts/.tmp/electron-dom-stub.mjs') }
+  alias: { electron: join(root, 'scripts/stubs/electron-dom-stub.mjs') }
 })
 const mod = await import('file://' + outfile.replace(/\\/g, '/'))
 const { toolRegistry } = mod

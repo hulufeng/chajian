@@ -20,7 +20,7 @@ buildSync({
   format: 'esm',
   platform: 'node',
   outfile,
-  alias: { electron: resolve('scripts/.tmp/electron-dom-stub.mjs') }
+  alias: { electron: resolve('scripts/stubs/electron-dom-stub.mjs') }
 })
 const base = process.cwd().replace(/\\/g, '/')
 const mod = await import('file://' + base + '/' + outfile.replace(/\\/g, '/'))

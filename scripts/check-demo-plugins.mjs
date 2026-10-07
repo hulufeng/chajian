@@ -162,7 +162,7 @@ export * as pm from ${JSON.stringify(join(root, 'src/main/plugins/pluginManager.
 )
 buildSync({
   entryPoints: [vEntry], bundle: true, format: 'esm', platform: 'node', outfile: vOut,
-  alias: { electron: join(root, 'scripts/.tmp/electron-dom-stub.mjs') }
+  alias: { electron: join(root, 'scripts/stubs/electron-dom-stub.mjs') }
 })
 const { validateManifest } = await import('file://' + vOut.replace(/\\/g, '/'))
 
