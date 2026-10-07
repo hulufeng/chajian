@@ -108,6 +108,11 @@ export async function loadCatalog(emit?: Emit): Promise<CatalogEntry[]> {
 // ── 下载 ─────────────────────────────────────────────────────────────────────
 
 async function downloadBuffer(rawUrl: string, emit?: Emit): Promise<Buffer> {
+  // 空 url 是「清单里没给可用来源」的信号（内置包的路径探测全部落空就是这种）。
+  // 明确报错，别掉进下面 readFileSync('') 抛一个看不懂的 ENOENT。
+  if (!rawUrl || !rawUrl.trim()) {
+    throw new Error('插件清单未提供可用下载地址（内置包路径探测全部落空，请确认 resources 目录已随应用打包，或改用远端清单 pluginCatalogUrl）')
+  }
   if (/^file:\/\//.test(rawUrl)) {
     // 走 fileURLToPath 而不是手拼路径：Windows 下 file:///D:/x 的手工剥壳会变成 /D:/x 再被解析成 D:\D:\x
     const p = fileURLToPath(new URL(rawUrl))

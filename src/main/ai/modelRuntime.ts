@@ -580,7 +580,28 @@ export function chatWithLocalModelStream(
       let fullText = ''
       let buf = ''
       let usage: { inputTokens: number; outputTokens: number } | null = null
-      const activeToolCalls = new Map<string, { name: string; args: string }>()
+      // 工具调用按 index 累积，流末统一发出。
+      // 原实现用 `tc.id || 随机 id` 作 key：llama-server 的增量帧通常只有 arguments 片段、
+      // 不带 id，于是每个片段都生成一个新随机 id → activeToolCalls 里堆出一堆碎片、
+      // 参数永远归并不到同一次调用。index 才是稳定标识（三个通道统一按它累积）。
+      const tcByIndex = new Map<number, { id: string; name: string; args: string }>()
+      let tcMaxIndex = -1
+
+      // 统一出口：按 index 顺序成对发出工具调用（start 在前、args 在后）。
+      // [DONE] 早退与 res 'end' 都要走它，且必须幂等（两个出口都可能触发）。
+      let toolCallsEmitted = false
+      const emitToolCalls = (): void => {
+        if (toolCallsEmitted) return
+        toolCallsEmitted = true
+        for (let i = 0; i <= tcMaxIndex; i++) {
+          const e = tcByIndex.get(i)
+          if (!e || !e.name) continue
+          // id 缺失时补一个稳定值：AgentRunner 靠 id 把 args 关联到调用
+          const id = e.id || `tc_local_${i}`
+          onChunk({ type: 'tool_call_start', id, name: e.name })
+          if (e.args) onChunk({ type: 'tool_call_args', text: e.args })
+        }
+      }
 
       res.on('data', (chunk: Buffer) => {
         buf += chunk.toString()
@@ -591,6 +612,7 @@ export function chatWithLocalModelStream(
           if (!trimmed || !trimmed.startsWith('data:')) continue
           const data = trimmed.slice(5).trim()
           if (data === '[DONE]') {
+            emitToolCalls()
             resolve({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
             return
           }
@@ -608,28 +630,26 @@ export function chatWithLocalModelStream(
               onChunk({ type: 'content', text: delta.content })
             }
             if (delta?.tool_calls) {
+              // 只累积，不在这里发：等流结束按 index 顺序成对发出（start→args），
+              // 与官方/BYOK 通道一致，也避免与 AgentRunner 的单指针解析器错位。
               for (const tc of delta.tool_calls) {
-                const tcId = tc.id || `tc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-                const name = tc.function?.name
+                const idx = typeof tc.index === 'number' ? tc.index : 0
+                if (!tcByIndex.has(idx)) tcByIndex.set(idx, { id: '', name: '', args: '' })
+                const entry = tcByIndex.get(idx)!
+                if (tc.id) entry.id = tc.id
+                if (tc.function?.name) entry.name = tc.function.name
                 const args = tc.function?.arguments
-                if (name && !activeToolCalls.has(tcId)) {
-                  activeToolCalls.set(tcId, { name, args: '' })
-                  onChunk({ type: 'tool_call_start', id: tcId, name })
-                }
-                if (args) {
-                  const argsStr = typeof args === 'string' ? args : JSON.stringify(args)
-                  const entry = activeToolCalls.get(tcId)
-                  if (entry) {
-                    entry.args += argsStr
-                    onChunk({ type: 'tool_call_args', id: tcId, text: argsStr })
-                  }
-                }
+                if (args) entry.args += typeof args === 'string' ? args : JSON.stringify(args)
+                if (idx > tcMaxIndex) tcMaxIndex = idx
               }
             }
           } catch { /* ignore partial JSON */ }
         }
       })
-      res.on('end', () => resolve({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } }))
+      res.on('end', () => {
+        emitToolCalls()
+        resolve({ text: fullText, usage: usage || { inputTokens: 0, outputTokens: 0 } })
+      })
       res.on('error', reject)
     })
     req.on('error', reject)

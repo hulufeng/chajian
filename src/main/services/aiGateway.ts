@@ -553,6 +553,9 @@ export function aiChatStream(
       const decoder = new TextDecoder()
       let buffer = ''
       let usage: { inputTokens: number; outputTokens: number } | null = null
+      // 工具调用按 index 累积（见下方 delta.tool_calls 处理处的说明）
+      const tcMap = new Map<number, { id: string; name: string; args: string }>()
+      let tcMaxIndex = -1
 
       while (true) {
         const { done, value } = await reader.read()
@@ -606,14 +609,19 @@ export function aiChatStream(
               onChunk({ type: 'reasoning', text: delta.reasoning_content })
             }
             if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-              console.error('[aiChatStream] tool_calls delta:', JSON.stringify(delta.tool_calls).slice(0, 300))
+              // 按 index 累积（与上面 fetchStream/BYOK 分支同一套）。
+              // 原实现是「边收边发」：增量帧里 id/name 只在首帧出现，后续帧只有 arguments
+              // 片段，于是每个片段都另起一次 tool_call_args；而 AgentRunner 的解析器用
+              // 单指针 currentToolIndex 顺序配对 start/args，多工具交错时会把 args 配到
+              // 别的 id 上。累积到流结束后按 index 顺序成对发出才对得上。
               for (const tc of delta.tool_calls) {
-                if (tc.id || tc.function?.name) {
-                  onChunk({ type: 'tool_call_start', id: tc.id, name: tc.function?.name })
-                }
-                if (tc.function?.arguments) {
-                  onChunk({ type: 'tool_call_args', text: tc.function.arguments })
-                }
+                const idx = typeof tc.index === 'number' ? tc.index : 0
+                if (!tcMap.has(idx)) tcMap.set(idx, { id: '', name: '', args: '' })
+                const entry = tcMap.get(idx)!
+                if (tc.id) entry.id = tc.id
+                if (tc.function?.name) entry.name = tc.function.name
+                if (tc.function?.arguments) entry.args += tc.function.arguments
+                if (idx > tcMaxIndex) tcMaxIndex = idx
               }
             }
             // 积分更新（兼容旧格式 data: {creditsLeft}）
@@ -627,6 +635,13 @@ export function aiChatStream(
         }
       }
       console.error('[aiChatStream] parsing complete, calling onDone(null)')
+      // 流结束：按 index 顺序成对发出（start 在前、args 在后），对齐 AgentRunner 的解析预期
+      for (let i = 0; i <= tcMaxIndex; i++) {
+        const entry = tcMap.get(i)
+        if (!entry) continue
+        onChunk({ type: 'tool_call_start', id: entry.id, name: entry.name })
+        if (entry.args) onChunk({ type: 'tool_call_args', text: entry.args })
+      }
       onDone(null, usage || undefined)
     })
     .catch((e) => {
