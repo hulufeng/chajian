@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DevicePanel from './DevicePanel'
 import DeviceFilesPanel from './DeviceFilesPanel'
+import { hint } from '../featureHints'
 
 interface ToolchainSidebarProps {
   projectRoot?: string | null
@@ -115,7 +116,8 @@ function ToolchainSidebar({ projectRoot, onBoardChange, onPortChange, onOpenSeri
             key={tab.id}
             className={`toolchain-tab ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
-            title={tab.label}
+            title={tab.id === 'device' ? undefined : tab.label}
+            {...(tab.id === 'device' ? hint('target') : {})}
           >
             <span className="toolchain-tab-icon">{tab.icon}</span>
             <span className="toolchain-tab-label">{tab.label}</span>

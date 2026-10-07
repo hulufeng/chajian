@@ -30,7 +30,7 @@ buildSync({
 const m = await import('file://' + outfile.replace(/\\/g, '/'))
 rmSync(out, { recursive: true, force: true })
 
-const { parseBuildOutput, parseBuildStage, parseFlashProgress, parseUsageSummary, formatBytes, classifyOutputLine } = m
+const { parseBuildOutput, parseBuildStage, parseFlashProgress, parseUsageSummary, formatBytes, classifyOutputLine, parseChipMismatch } = m
 
 let pass = 0
 const fails = []
@@ -186,6 +186,35 @@ const check = (name, cond, detail) => {
   check('  ↳ 认不出的文本返回 null', parseUsageSummary('随便一行') === null)
   check('  ↳ formatBytes 分级', formatBytes(0) === '0 B' && formatBytes(512) === '512 B' && formatBytes(2048) === '2.0 KB' && formatBytes(3 * 1024 * 1024) === '3.00 MB',
     [formatBytes(0), formatBytes(512), formatBytes(2048), formatBytes(3 * 1024 * 1024)].join(' / '))
+}
+
+// ── ⑫ 芯片不匹配（真机最常见的坑：选了 S3，插的是 C3）──────────────────
+// 真机实测原文（2026-10-07 用户报告 pkgout35）：
+//   esptool v5.3.0 / Serial port COM29: / Connecting...
+//   A fatal error occurred: This chip is ESP32-C3, not ESP32-S3. Wrong chip argument?
+//   Failed uploading: uploading error: exit status 2
+{
+  const raw = [
+    'esptool v5.3.0\r\n',
+    'Serial port COM29:\r\n',
+    'Connecting...\r\n',
+    'A fatal error occurred: This chip is ESP32-C3, not ESP32-S3. Wrong chip argument?\r\n',
+    'Failed uploading: uploading error: exit status 2\r\n'
+  ].join('')
+  const mm = parseChipMismatch(raw)
+  check('⑫ 识别出芯片不匹配', !!mm, JSON.stringify(mm))
+  check('  ↳ actual 归一化成 esp32c3', mm?.actual === 'esp32c3', String(mm?.actual))
+  check('  ↳ expected 归一化成 esp32s3', mm?.expected === 'esp32s3', String(mm?.expected))
+  // 反向（选了 C3 插 S3）同样要能认
+  const rev = parseChipMismatch('A fatal error occurred: This chip is ESP32-S3, not ESP32-C3. Wrong chip argument?')
+  check('  ↳ 反向不匹配也能识别', rev?.actual === 'esp32s3' && rev?.expected === 'esp32c3', JSON.stringify(rev))
+  // 全小写 / 无连字符的写法（esptool 不同版本措辞会变）
+  const loose = parseChipMismatch('This chip is esp32-c3, not esp32-s3')
+  check('  ↳ 大小写与连字符不敏感', loose?.actual === 'esp32c3' && loose?.expected === 'esp32s3', JSON.stringify(loose))
+  // 无关输出绝不能误报（误报会乱改用户的板卡选择，比漏报更糟）
+  check('  ↳ 正常烧录输出不误报', parseChipMismatch('Writing at 0x00010000... (100 %)\nHash of data verified.\nHard resetting via RTS pin...') === null)
+  check('  ↳ 空输入不误报', parseChipMismatch('') === null)
+  check('  ↳ 别的握手失败不误报', parseChipMismatch('A fatal error occurred: Failed to connect to ESP32-S3: No serial data received.') === null)
 }
 
 // ── ⑪ 空输入不能炸 ──────────────────────────────────────────────────────

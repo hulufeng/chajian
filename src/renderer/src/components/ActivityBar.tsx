@@ -1,3 +1,5 @@
+import { hint, type FeatureHintId } from '../featureHints'
+
 interface ActivityBarProps {
   active: string
   onChange: (id: string) => void
@@ -24,10 +26,11 @@ const SparkIcon = (): React.JSX.Element => (
   </svg>
 )
 
-const ITEMS = [
-  { id: 'device', icon: ChipIcon, label: '烧录' },
-  { id: 'ai', icon: SparkIcon, label: '辅助编程' },
-  { id: 'files', icon: FolderIcon, label: '文件' },
+/** hintId：悬停时显示哪条功能介绍（文案统一在 featureHints.ts） */
+const ITEMS: Array<{ id: string; icon: () => React.JSX.Element; label: string; hintId: FeatureHintId }> = [
+  { id: 'device', icon: ChipIcon, label: '烧录', hintId: 'target' },
+  { id: 'ai', icon: SparkIcon, label: '辅助编程', hintId: 'aiPanel' },
+  { id: 'files', icon: FolderIcon, label: '文件', hintId: 'projectTree' },
 ]
 
 function ActivityBar({ active, onChange, aiActive, simple }: ActivityBarProps): React.JSX.Element {
@@ -41,7 +44,7 @@ function ActivityBar({ active, onChange, aiActive, simple }: ActivityBarProps): 
             key={item.id}
             className={`activity-item ${isActive ? 'active' : ''}`}
             onClick={() => onChange(item.id)}
-            title={item.label}
+            {...hint(item.hintId)}
           >
             <Icon />
             {!simple && <span className="activity-label">{item.label}</span>}
@@ -52,7 +55,7 @@ function ActivityBar({ active, onChange, aiActive, simple }: ActivityBarProps): 
       {simple ? (
         <div
           className="activity-item"
-          title="设置"
+          {...hint('settings')}
           onClick={() => {
             const ev = new CustomEvent('codelab:openSettings')
             window.dispatchEvent(ev)

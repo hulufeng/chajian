@@ -1,0 +1,43 @@
+{
+  "appId": "com.labcode.desktop",
+  "productName": "LabCode",
+  "electronDist": "node_modules/electron/dist",
+  "directories": {
+    "output": "pkgout36",
+    "buildResources": "build"
+  },
+  "files": [
+    "out/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    { "from": "proto", "to": "proto" },
+    { "from": "resources/knowledge", "to": "knowledge" },
+    { "from": "examples", "to": "examples" },
+    { "from": "resources/llama", "to": "llama" }
+  ],
+  "asar": false,
+  "asarUnpack": [
+    "**/node_modules/node-pty/**",
+    "**/node_modules/@serialport/**",
+    "**/node_modules/serialport/**",
+    "**/*.node",
+    "**/plugins/**"
+  ],
+  "npmRebuild": false,
+  "win": {
+    "target": [
+      { "target": "nsis", "arch": ["x64"] }
+    ],
+    "icon": "build/icon.ico",
+    "artifactName": "LabCode-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "LabCode 代码实验室"
+  }
+}

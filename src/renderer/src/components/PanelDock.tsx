@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { hint, type FeatureHintId } from '../featureHints'
 
 export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git' | 'agents'
 
-/** label 用短名（工具栏空间有限），全名放 hint 走 tooltip */
-export const PANEL_META: Array<{ id: PanelId; label: string; hint: string }> = [
-  { id: 'output', label: '输出', hint: '输出 · 编译日志 / 串口监视 / 波形 / 终端 / 问题' },
-  { id: 'debug', label: '调试', hint: '调试 · 寄存器 / 内存 / 断点 / 片内存储' },
-  { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检' },
+/**
+ * label 用短名（工具栏空间有限），全名放 hint 走 tooltip。
+ * hintId：悬停时显示的功能介绍条目（文案统一在 featureHints.ts）；
+ * 没配的面板（Pio / 协作）继续用原生 title，不硬凑文案 —— 不熟的功能不写介绍。
+ */
+export const PANEL_META: Array<{ id: PanelId; label: string; hint: string; hintId?: FeatureHintId }> = [
+  { id: 'output', label: '输出', hint: '输出 · 编译日志 / 串口监视 / 波形 / 终端 / 问题', hintId: 'output' },
+  { id: 'debug', label: '调试', hint: '调试 · 寄存器 / 内存 / 断点 / 片内存储', hintId: 'debugPanel' },
+  { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检', hintId: 'target' },
   { id: 'platformio', label: 'Pio', hint: 'PlatformIO · pio run 构建 / 烧录 / 串口监视（从硬件目标面板进入）' },
-  { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史' },
+  { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史', hintId: 'git' },
   { id: 'agents', label: '协作', hint: '多智能体协作 · 任务分解与并行执行看板' }
 ]
 
@@ -103,7 +108,8 @@ export default function PanelDock({
           <span
             key={p.id}
             className={`dock-tab ${active === p.id ? 'on' : ''}`}
-            title={p.hint}
+            title={p.hintId ? undefined : p.hint}
+            {...(p.hintId ? hint(p.hintId) : {})}
             onClick={() => onChange(active === p.id ? null : p.id)}
           >
             {p.label}

@@ -23,6 +23,7 @@ import CommandPalette from './components/CommandPalette'
 import WelcomeView from './components/WelcomeView'
 import StatusBar from './components/StatusBar'
 import SettingsModal from './components/SettingsModal'
+import FeatureHintLayer from './components/FeatureHintLayer'
 import type { TerminalHandle } from './components/TerminalView'
 import type { ToolchainStatus, SerialPortInfo, UpdaterStatus } from '../../preload'
 
@@ -328,6 +329,15 @@ function App(): React.JSX.Element {
   const [compileProgress, setCompileProgress] = useState<{ percent: number; message: string } | null>(null)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
 
+  // 真机测试留痕：板卡 / 端口是编译烧录的唯一依据，改一次记一次
+  useEffect(() => {
+    window.api?.diag?.log('target:change', { fqbn, port: selectedPort, boardName })
+  }, [fqbn, selectedPort, boardName])
+
+  /** 当前 fqbn 的 ref 镜像：任务事件订阅是挂载时注册的（deps=[]），闭包里读不到最新 state */
+  const fqbnRef = useRef(fqbn)
+  useEffect(() => { fqbnRef.current = fqbn }, [fqbn])
+
   // 编译过程可见化：阶段 / 已用时 / 资源用量（阶段与用量由主进程从真实输出解析）
   // 烧录阶段要走自己的 5 格（连接→擦除→写入→校验→复位），所以这里必须是完整的 BuildStageInfo，
   // 不能只写 { stage, label } —— 那样 flashStage 会被类型挡掉，烧录阶段条退化成一行文字。
@@ -540,6 +550,17 @@ function App(): React.JSX.Element {
     })
   }, [])
 
+  // 悬停功能介绍：默认开（教学场景下没人会拒绝「这是什么」），熟了可以在设置里关掉。
+  // 存 localStorage 而不是走设置持久化，是为了和 shell / 主题等开关保持同一种写法。
+  const [featureHintsOn, setFeatureHintsOn] = useState<boolean>(() => localStorage.getItem('codelab-feature-hints') !== '0')
+  const toggleFeatureHints = useCallback((): void => {
+    setFeatureHintsOn((v) => {
+      const next = !v
+      localStorage.setItem('codelab-feature-hints', next ? '1' : '0')
+      return next
+    })
+  }, [])
+
   // 调试状态变化时更新状态栏（面板也会自己收，这里只取一份给状态栏用）
   useEffect(() => {
     let alive = true
@@ -618,6 +639,8 @@ function App(): React.JSX.Element {
 
   const terminalRef = useRef<TerminalHandle>(null)
   const pendingTasksRef = useRef<Map<string, (code: number) => void>>(new Map())
+  /** 最近一次成功编译的产物目录（task:exit 带回）。烧录必须带上同一 --build-path，见真机 bug #3。 */
+  const lastCompileBuildPathRef = useRef('')
   /**
    * 本次编译/烧录的真实起点。
    * 必须用 ref 而不是直接读 state：onTaskExit 的监听器是挂载时注册的（依赖数组为 []），
@@ -759,8 +782,13 @@ function App(): React.JSX.Element {
         setCompileProgress(null)
         // 编译成功后预热源码级调试符号索引（行断点/当前行高亮依赖它）。
         // 静默失败：编译已成功，符号只影响调试功能，不能因此干扰编译态。
-        if (isCompile && d.code === 0 && (d as any).buildPath) {
-          void (window.api as any).debug?.symbols?.((d as any).buildPath)
+        if (isCompile && d.code === 0) {
+          // 记下最新编译产物目录：烧录必须带同一 --build-path（CLI 降级编译产物在自建目录
+          // Temp\codelab-build\sketch-*，不带它 arduino-cli upload 去默认缓存找 → "Compiled sketch not found"）
+          lastCompileBuildPathRef.current = (d as any).buildPath || ''
+          if (lastCompileBuildPathRef.current) {
+            void (window.api as any).debug?.symbols?.(lastCompileBuildPathRef.current)
+          }
         }
         // 过程可见化：停表并冻结最终耗时（结果卡要显示真实耗时）
         const startedAt = buildStartedAtRef.current
@@ -858,9 +886,37 @@ function App(): React.JSX.Element {
             prev +
             `\n🔌 检测到开发板：${d.port}${d.fqbn ? ` · ${d.name || d.fqbn}` : '（未识别到板卡型号，仅选中端口）'}，已自动选中。\n`
         )
+        // 认不出板卡时必须把「正在沿用哪块板」说出来：
+        // ESP32-C3/S3/P4 原生 USB 共用 303a:1001，自动识别常失败；
+        // 静默沿用旧板卡会让用户白等一次全量编译，最后才被 esptool 打回（真机已踩）。
+        if (!d.fqbn) {
+          pushOut(
+            (prev) =>
+              prev +
+              `⚠ 没能认出这块板的具体型号（ESP32 的 C3/S3/P4 用的是同一个 USB ID，机器分不出来）。\n` +
+              `   目标板卡仍是上次选的 ${boardName || fqbn}——如果和实物不符，请到「硬件目标」面板改对再烧录。\n`
+          )
+        }
       } else if (d.action === 'removed') {
         setSelectedPort((prev) => (d.removed?.includes(prev) ? '' : prev))
         pushOut((prev) => prev + `\n🔌 串口已拔出：${(d.removed || []).join('、')}\n`)
+      }
+    })
+    // 烧录「芯片不匹配」：esptool 实测到的芯片和目标板卡不是一回事
+    // （真机原文：This chip is ESP32-C3, not ESP32-S3 —— 编译全过了，最后一步被打回）。
+    // esptool 是真读过 chip id 的，信它比信 VID:PID 启发式可靠（C3/S3/P4 共用 303a:1001），
+    // 所以这里直接把板卡改成实测芯片并持久化，用户再点一次烧录即可。
+    const offChip = window.api.device.onChipMismatch?.((d) => {
+      window.api?.diag?.log('upload:chip-mismatch:ui', d)
+      const target = d.suggestFqbn
+      if (target && target !== fqbnRef.current) {
+        setFqbn(target)
+        if (d.suggestName) setBoardName(d.suggestName)
+        // 写回设备上下文：否则下次启动又会恢复成错的那个（上次就是这么踩的）
+        window.api.device.set({ board: target }).catch(() => undefined)
+        pushOut((prev) => prev + `\n⚠ 板卡选错了：你选的是 ${d.expected.toUpperCase()}，esptool 实测这块芯片是 ${d.actual.toUpperCase()}。\n   已自动把目标板卡改为 ${d.suggestName || target}，请再点一次「烧录」（会按新板卡重新编译一次）。\n`)
+      } else {
+        pushOut((prev) => prev + `\n⚠ 芯片不匹配：目标板卡是 ${d.expected.toUpperCase()}，实测芯片是 ${d.actual.toUpperCase()}。请在「硬件目标」面板选对板卡后再烧录。\n`)
       }
     })
     return () => {
@@ -871,6 +927,7 @@ function App(): React.JSX.Element {
       offClose()
       offPorts?.()
       offAuto?.()
+      offChip?.()
       // 订阅卸载时把待合并的节流定时器清掉，别留下悬挂定时器
       cancelLogFlush()
     }
@@ -917,6 +974,7 @@ function App(): React.JSX.Element {
   const openProject = useCallback(async () => {
     const res = await window.api.project.open()
     if (!res) return
+    window.api?.diag?.log('project:open', { root: res.root, treeNodes: res.tree ? 1 : 0 })
     setProjectRoot(res.root)
     setTree(res.tree)
     setCwdHint(res.root)
@@ -973,6 +1031,9 @@ function App(): React.JSX.Element {
       const r = openTab(groupsRef.current, activeGroupIdRef.current, newTab)
       setGroups(r.groups)
       setActiveGroupId(r.activeGroupId)
+      // 打开反馈：字节/行数直接来自磁盘读取结果。文件打开异常时，看这行就能
+      // 一秒分清是「读到了 0 字节」还是「读到了但编辑器没渲染出来」。
+      pushOut((p) => p + `\n✓ 已打开 ${name}（${meta.size} 字节 / ${content === '' ? 0 : content.split('\n').length} 行）${content === '' ? ' ⚠ 内容为空' : ''}`)
     }
     setActivePath(path)
   }, [])
@@ -1236,6 +1297,12 @@ function App(): React.JSX.Element {
   // 编译 / 烧录（对齐 TrieCode：门控 + 保存检查 + 状态机 + 流式输出）
   // 内置示例 / 未保存的 .ino 会自动暂存到临时目录再编译烧录（Arduino IDE 同款做法），无需先建项目。
   const runCompile = useCallback(async () => {
+    // 真机测试留痕：点编译时的现场（有没有工具链 / 哪个 sketch / 什么板卡）——
+    // 「点了编译没反应」类问题，一眼就能看出是被哪个门控拦下的
+    window.api?.diag?.log('ui:compile-click', {
+      compileState, hasToolchain: !!toolchain?.available, fqbn,
+      activePath, tabCount: tabs.length, hasTree: !!tree
+    })
     // 门控最前：进行中再点击给明确反馈（而不是静默吞掉，避免"点了没反应像卡死"）
     if (compileState === 'compiling' || compileState === 'uploading') {
       pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
@@ -1321,6 +1388,12 @@ function App(): React.JSX.Element {
   }, [toolchain, tree, activePath, fqbn, compileState, tabs, everBuilt])
 
   const runUpload = useCallback(async () => {
+    // 真机测试留痕：烧录最怕「端口 / 板卡 / 产物目录」三缺一，这里把三者都记下来
+    window.api?.diag?.log('ui:upload-click', {
+      compileState, hasToolchain: !!toolchain?.available, fqbn,
+      port: selectedPort, lastBuildPath: lastCompileBuildPathRef.current,
+      activePath, hasTree: !!tree
+    })
     // 门控最前：进行中再点击给明确反馈（避免静默吞掉像"卡死"）
     if (compileState === 'compiling' || compileState === 'uploading') {
       pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
@@ -1453,7 +1526,7 @@ function App(): React.JSX.Element {
     setBuildStage({ stage: 'flashing', label: `写入 ${selectedPort}` })
     ensureOutputVisible()
     try {
-      const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort })
+      const uploadResult = await window.api.grpc.upload({ sketch, fqbn, port: selectedPort, buildPath: lastCompileBuildPathRef.current })
       if (uploadResult.id) {
         setActiveTaskId(uploadResult.id)
         pendingTasksRef.current.set(uploadResult.id, async (code: number) => {
@@ -1902,8 +1975,12 @@ function App(): React.JSX.Element {
           onEditorSettingsChange={updateEditorSettings}
           deepPrecheckOn={deepPrecheckOn}
           onDeepPrecheckChange={toggleDeepPrecheck}
+          featureHintsOn={featureHintsOn}
+          onFeatureHintsChange={toggleFeatureHints}
         />
       )}
+      {/* 功能介绍浮层：全局单例，靠元素上的 data-hint-* 属性触发，挂一次即可 */}
+      <FeatureHintLayer enabled={featureHintsOn} />
       {wiringSvg && (
         <div className="wiring-overlay" onClick={() => setWiringSvg(null)}>
           <div className="wiring-modal" onClick={(e) => e.stopPropagation()}>

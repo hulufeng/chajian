@@ -8,6 +8,18 @@ import { getDebugView, subscribeDebugView, linesForFile, sameSourceFile, toggleB
 /** 板卡架构：决定给哪些硬件片段/文档（esp32 与 stm32 的 API 差别很大） */
 export type BoardArch = 'esp32' | 'stm32' | 'any'
 
+/**
+ * @monaco-editor/react 内部用 `Uri.parse(path)` 生成 model URI，而 Uri.parse 对
+ * Windows 盘符路径（'C:\...'）会把盘符 'C' 解析成 scheme、丢掉盘符（实测 toString
+ * 变成 'C:%5CUsers%5C...' 的怪形态），路径含中文/空格时同样中招，model 复用与
+ * undo/光标保持随之错乱。这里显式转成合法 file:// URI 字符串再交给它：
+ * 'C:\a b\中文\foo.ino' → 'file:///C%3A/a%20b/.../foo.ino'，Uri.parse 对该形态
+ * roundtrip 正常（scheme=file、盘符保留），按文件建 model 才是可靠的。
+ */
+function toModelPath(p: string): string {
+  return 'file:///' + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')
+}
+
 interface Props {
   path: string
   language: string
@@ -329,7 +341,7 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
   return (
     <Editor
       height="100%"
-      path={path}
+      path={toModelPath(path)}
       language={language}
       theme={theme === 'dark' ? 'vs-dark' : 'vs'}
       onMount={handleMount}

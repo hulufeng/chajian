@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { hint } from '../featureHints'
 
 interface MenuItem {
   label: string
@@ -44,6 +45,9 @@ const MENU_TREE: Record<string, MenuItem[]> = {
     { label: '设置…', shortcut: 'Ctrl+,', action: 'openSettings' },
   ],
   帮助: [
+    // 真机测试用：导出本机日志给开发的我看（只写本机、手动触发），
+    // 挂在这里是为了让你在任何界面模式下都能一步找到
+    { label: '导出测试报告…', action: 'exportDiag' },
     { label: '关于 LabCode', action: 'about' },
   ],
 }
@@ -178,6 +182,10 @@ function TitleBar({
       case 'openSettings': onOpenSettings(); break
       case 'toggleSimple': onToggleSimple(); break
       case 'openSearch': onOpenSearch(); break
+      case 'exportDiag':
+        // 导出后主进程会直接打开所在文件夹，这里不需要再弹一个提示框
+        void window.api?.diag?.export?.()
+        break
       case 'about':
         alert('LabCode 代码实验室\n写码 · 烧录 · AI 辅助 · 排错，一个工具搞定\n版本 0.2.0')
         break
@@ -259,10 +267,10 @@ function TitleBar({
           </div>
         ) : (
           <>
-            <button className="titlebar-quick" title="文件树" onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.5 }}>
+            <button className="titlebar-quick" {...hint('projectTree')} onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.5 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
             </button>
-            <button className="titlebar-quick" title={editorVisible ? "折叠编辑器" : "还原编辑器"} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.5 }}>
+            <button className="titlebar-quick" {...hint('editor', { title: editorVisible ? '编辑器 · 折叠' : '编辑器 · 还原' })} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.5 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
             </button>
           </>
@@ -302,7 +310,9 @@ function TitleBar({
       <div className="titlebar-tools">
         <button
           className={`tb-btn${simple ? ' tb-main' : ''} ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
-          title={compileState === 'compiling' ? '编译中…' : compileState === 'uploading' ? '烧录中…' : compileState === 'success' ? '编译成功' : compileState === 'error' ? '编译失败' : '编译'}
+          {...hint('compile', {
+            title: compileState === 'compiling' ? '编译中…（只校验，不写板子）' : compileState === 'success' ? '编译成功（可烧录）' : compileState === 'error' ? '编译失败（看输出面板的错误行）' : '编译（只校验，不写板子）',
+          })}
           onClick={onCompile}
           disabled={busy}
         >
@@ -319,7 +329,7 @@ function TitleBar({
         </button>
         <button
           className={`tb-btn${simple ? ' tb-main' : ''}`}
-          title="烧录到开发板"
+          {...hint('upload')}
           onClick={onUpload}
           style={{
             background: 'var(--accent)',
@@ -365,28 +375,28 @@ function TitleBar({
             {/* 第二段：面板开关（都切底部面板组，顺序 = 日常工作流顺序） */}
             <button
               className={`tb-btn ${terminalVisible ? 'tb-success' : ''}`}
-              title="输出（编译输出 / 串口 / 终端 / 问题）"
+              {...hint('output')}
               onClick={onToggleTerminal}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
             </button>
             <button
               className={`tb-btn ${debugVisible ? 'tb-success' : ''}`}
-              title="片上调试器（JTAG/DAP，openocd + telnet）"
+              {...hint('debug')}
               onClick={onToggleDebug}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
             </button>
             <button
               className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
-              title="Git（变更 / 分支 / 提交历史）"
+              {...hint('git')}
               onClick={onToggleGit}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
             </button>
             <button
               className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
-              title="硬件目标（板卡 / 构建路径 / 烧录 / 调试器，ESP32 与 STM32 统一）"
+              {...hint('target')}
               onClick={onToggleTarget}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
@@ -394,7 +404,7 @@ function TitleBar({
             <div className="tb-sep" />
             {/* PlatformIO 面板不再占工具栏位置：它属于「构建路径 = PlatformIO」时的操作面板，
                 从硬件目标面板进入即可（选 PlatformIO 路径会自动切过去），避免两个入口含义重叠。 */}
-            <button className="tb-btn" title="搜索" onClick={onOpenSearch}>
+            <button className="tb-btn" {...hint('search')} onClick={onOpenSearch}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
             </button>
           </>

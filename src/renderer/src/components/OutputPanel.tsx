@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import BuildProgress from './BuildProgress'
 import TerminalView, { type TerminalHandle } from './TerminalView'
 import SerialPlotter from './SerialPlotter'
+import { hint } from '../featureHints'
 import type { Ref } from 'react'
 import type { BuildStageInfo, SerialPortInfo } from '../../../preload'
 
@@ -189,6 +190,7 @@ function OutputPanel({
             key={t}
             className={`output-tab${t === tab ? ' active' : ''}`}
             onClick={() => setTab(t)}
+            {...(t === '串口监视器' ? hint('serial') : {})}
           >
             {t}
           </div>

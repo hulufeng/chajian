@@ -4847,3 +4847,47 @@ body.ai-resizing {
   font-size: 11px;
   line-height: 1.4;
 }
+
+/* ==========================================================================
+   功能介绍浮层（悬停即显示，FeatureHintLayer）
+   --------------------------------------------------------------------------
+   卡片是「读」不是「点」：pointer-events:none 保证它永不拦住下面的按钮；
+   颜色一律 var(--token)，深浅主题自动跟随。
+   ========================================================================== */
+.fh-card {
+  position: fixed;
+  z-index: 4000;
+  pointer-events: none;
+  box-sizing: border-box;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.6;
+  animation: fh-in 120ms ease-out;
+}
+@keyframes fh-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.fh-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.fh-desc {
+  color: var(--text-dim);
+  white-space: normal;
+  word-break: break-word;
+}
+.fh-tip {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  color: var(--accent-text);
+}

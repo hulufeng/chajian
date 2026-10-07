@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 // 编辑器语言服务：补全 / 悬停 / 跳转 / 实时诊断（#29 #31）+ 编译数据库保障（#30）
 import {
@@ -24,7 +25,7 @@ import {
 } from './plugins/pluginInstaller'
 import type { ChannelName } from './plugins/pluginManager'
 import { readSettings, writeSettings } from './settings'
-import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoards, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
+import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoards, listConnectedBoardsWithSerial, probeChipId, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
 import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
@@ -37,6 +38,7 @@ import {
   parseBuildStage,
   parseFlashProgress,
   parseUsageSummary,
+  parseChipMismatch,
   STAGE_LABEL
 } from './services/build-diagnostics'
 import { generateWiringDiagram, readSketchCode } from './services/wiringService'
@@ -45,6 +47,7 @@ import { checkPinConflicts, formatPinReport, type PinReport } from './services/p
 import { listTemplates, getTemplate, materializeTemplate, groupTemplates } from './services/templateLibrary'
 import { explainSerialLog, type ExplainResult } from './services/logExplainer'
 import { readSerialLog } from './services/serialService'
+import { initDiag, diag, diagInfo, diagTask, buildReport } from './services/diagLog'
 import { recordBurn, listBurnHistory, getBurn, rollbackBurn, removeBurn, ensureSnapshot, summarizeBurn } from './services/burnHistory'
 import { buildShareCard, buildAndOpenShareCard, listShareCards } from './services/shareCard'
 import {
@@ -416,7 +419,11 @@ ipcMain.handle('project:tree', async (_e, root: string) => {
 
 ipcMain.handle('fs:readFile', async (_e, path: string) => {
   if (typeof path !== 'string') throw new Error('无效路径')
-  return readTextFile(path)
+  const r = await readTextFile(path)
+  // 「打开文件是空的」这类 bug 到底出在读取层还是渲染层，靠这一条就能区分：
+  // bytes=0 → 主进程就没读到；bytes>0 但界面空 → 渲染层/Monaco 的问题。
+  diag('fs:readFile', { path, bytes: r.length, lines: r ? r.split('\n').length : 0, ext: path.split('.').pop() ?? '' })
+  return r
 })
 
 ipcMain.handle('fs:writeFile', async (_e, path: string, content: string) => {
@@ -551,7 +558,12 @@ function startPluginStream(
   return { id }
 }
 
-ipcMain.handle('toolchain:detect', () => pluginManager.invoke('backend', 'toolchain.detect', {}))
+ipcMain.handle('toolchain:detect', () => {
+  const r = pluginManager.invoke('backend', 'toolchain.detect', {})
+  // 「状态栏显示 arduino-cli 版本 / 未找到」的依据就来自这次探测，排错时必看
+  try { diag('toolchain:detect', { result: JSON.stringify(r).slice(0, 1200) }) } catch { /* ignore */ }
+  return r
+})
 
 // 一键安装 arduino-cli（新用户无需手动下载），进度通过 toolchain:install-progress 事件推送
 ipcMain.handle('toolchain:install', async (event) => {
@@ -579,6 +591,8 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   const absSketch = norm.path
   const sender = event.sender
   const id = `grpc-compile-${++taskSeq}`
+  // 真机测试留痕：这次编译的入参 / 走哪条通道 / 退出码 / 报错尾部都进诊断日志
+  const rec = diagTask(id, 'compile', { sketch: absSketch, fqbn: opts.fqbn })
 
   // 校验工程文件真实存在：内置示例 / 未保存的虚拟文件直接报错，
   // 避免把不存在的路径丢给 daemon/CLI 后无输出挂死
@@ -587,6 +601,7 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
       sender.send('task:output', { id, chunk: `[错误] 工程文件不存在：${absSketch}\n[提示] 当前编辑的可能是内置示例或未保存文件。请先「新建项目 / 打开项目」获得真实工程后再编译。\n` })
       sender.send('task:exit', { id, code: 1, buildPath: '' })
     }
+    rec.finish(1, { reason: 'sketch-not-exist' })
     return { id }
   }
 
@@ -602,6 +617,7 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
     let log = ''
     let lastStage = ''
     arduinoGrpc.compile(absSketch, opts.fqbn, (line) => {
+      rec.push(line)
       log += line
       if (sender.isDestroyed()) return
       sender.send('task:output', { id, chunk: line })
@@ -628,6 +644,7 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
         // 编译成功时把产物目录带给渲染层（模拟烧录"当前代码"用）
         sender.send('task:exit', { id, code: result.success ? 0 : 1, buildPath: result.success ? result.buildPath || '' : '', fqbn: opts.fqbn })
       }
+      rec.finish(result.success ? 0 : 1, { via: 'grpc', buildPath: result.buildPath || '' })
     })
     return { id }
   }
@@ -639,9 +656,15 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
       sender.send('task:output', { id, chunk: '[错误] 未找到 arduino-cli 工具链，且 gRPC daemon 启动失败，无法编译。\n' })
       sender.send('task:exit', { id, code: 1, buildPath: '' })
     }
+    rec.finish(1, { reason: 'no-toolchain' })
     return { id }
   }
-  const buildPath = join(tmpdir(), 'codelab-build', `sketch-${Date.now()}`)
+  // 稳定 build 目录（按 sketch 路径 + fqbn 派生）：arduino-cli 会复用目录里的中间产物，
+  // 二次编译从「全量重编」（实测 37.5s）降到增量（几秒）。此前用 `sketch-<Date.now()>`
+  // 每次新建随机目录 → 缓存全丢、每趟都全量。产物目录仍由我们自己掌控（不丢给默认缓存），
+  // 供调试符号（找 .elf）与烧录（--build-path）复用同一路径。
+  const buildKey = createHash('sha1').update(`${absSketch}|${opts.fqbn}`).digest('hex').slice(0, 16)
+  const buildPath = join(tmpdir(), 'codelab-build', `sk-${buildKey}`)
   mkdirSync(buildPath, { recursive: true })
   console.log(`[compile] CLI 降级编译: ${absSketch} → ${buildPath}`)
   let cliLog = ''
@@ -649,6 +672,7 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
   const cp = compileSketch(
     { sketch: absSketch, fqbn: opts.fqbn, bin: tool, buildPath },
     (chunk) => {
+      rec.push(chunk)
       cliLog += chunk
       if (sender.isDestroyed()) return
       sender.send('task:output', { id, chunk })
@@ -665,16 +689,34 @@ ipcMain.handle('grpc:compile', async (event, opts: { sketch: string; fqbn: strin
         if (code !== 0) sender.send('task:output', { id, chunk: buildDiagnosticChunk(cliLog) })
         sender.send('task:exit', { id, code: code === 0 ? 0 : 1, buildPath: code === 0 ? buildPath : '', fqbn: opts.fqbn })
       }
+      rec.finish(code === 0 ? 0 : 1, { via: 'cli', buildPath: code === 0 ? buildPath : '' })
     }
   )
   activeTasks.set(id, () => { try { cp.kill() } catch { /* 已退出 */ } })
   return { id }
 })
-ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string; port: string }) => {
+/**
+ * 烧录失败时判断「是不是板卡选错了」：esptool 会明说
+ * `This chip is ESP32-C3, not ESP32-S3`。它是真连上芯片读过 chip id 的，
+ * 结论比任何 VID:PID 启发式都准（C3/S3/P4 共用 303a:1001，自动识别经常认不出）。
+ * 命中就广播给渲染层，让界面把板卡改成实测芯片 —— 用户不用自己去猜。
+ */
+function notifyChipMismatch(sender: Electron.WebContents, log: string, currentFqbn: string): void {
+  const mm = parseChipMismatch(log)
+  if (!mm) return
+  const t = listTargets().find((x) => x.chip === mm.actual && x.fqbn)
+  const payload = { actual: mm.actual, expected: mm.expected, currentFqbn, suggestFqbn: t?.fqbn ?? '', suggestName: t?.name ?? '' }
+  diag('upload:chip-mismatch', payload)
+  if (!sender.isDestroyed()) sender.send('upload:chip-mismatch', payload)
+}
+
+ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string; port: string; buildPath?: string }) => {
   const norm = normalizeSketchPath(require('node:path').resolve(process.cwd(), opts.sketch))
   const absSketch = norm.path
   const sender = event.sender
   const id = `grpc-upload-${++taskSeq}`
+  // 真机测试留痕：烧录必带 buildPath（上一步编译的产物目录）与端口，缺哪个都会失败
+  const rec = diagTask(id, 'upload', { sketch: absSketch, fqbn: opts.fqbn, port: opts.port, buildPath: opts.buildPath || '' })
   // 烧录前先释放调试会话（openocd 与 esptool 不能同时占用目标）
   if (isDebugActive()) {
     stopDebug()
@@ -687,6 +729,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       sender.send('task:output', { id, chunk: `[错误] 工程文件不存在：${absSketch}\n[提示] 请先「新建项目 / 打开项目」获得真实工程后再烧录。\n` })
       sender.send('task:exit', { id, code: 1 })
     }
+    rec.finish(1, { reason: 'sketch-not-exist' })
     return { id }
   }
   if (!opts.port) {
@@ -694,6 +737,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       sender.send('task:output', { id, chunk: '[错误] 未选择串口端口，无法烧录。请在左侧「设备」面板选择端口。\n' })
       sender.send('task:exit', { id, code: 1 })
     }
+    rec.finish(1, { reason: 'no-port' })
     return { id }
   }
 
@@ -708,6 +752,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
   if (grpcOk) {
     let upLog = ''
     arduinoGrpc.upload(absSketch, opts.fqbn, opts.port, (line) => {
+      rec.push(line)
       upLog += line
       if (sender.isDestroyed()) return
       sender.send('task:output', { id, chunk: line })
@@ -716,7 +761,7 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       if (fp) sender.send('task:progress', { id, percent: fp.percent ?? 0, message: fp.label, stage: fp.stage })
     }, (p) => {
       if (!sender.isDestroyed()) sender.send('task:progress', { id, percent: p.percent, message: p.message })
-    }).then((result) => {
+    }, opts.buildPath).then((result) => {
       if (norm.cleanup) norm.cleanup()
       if (!sender.isDestroyed()) {
         // 失败时补发错误详情（否则 UI 只显示退出码，看不到失败原因）
@@ -728,6 +773,8 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
         if (!result.success) sender.send('task:output', { id, chunk: buildDiagnosticChunk(upLog) })
         sender.send('task:exit', { id, code: result.success ? 0 : 1 })
       }
+      rec.finish(result.success ? 0 : 1, { via: 'grpc' })
+      if (!result.success) notifyChipMismatch(sender, upLog, opts.fqbn)
     })
     return { id }
   }
@@ -739,12 +786,14 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
       sender.send('task:output', { id, chunk: '[错误] 未找到 arduino-cli 工具链，且 gRPC daemon 启动失败，无法烧录。\n' })
       sender.send('task:exit', { id, code: 1 })
     }
+    rec.finish(1, { reason: 'no-toolchain' })
     return { id }
   }
   let cliLog = ''
   const cp = uploadSketch(
-    { sketch: absSketch, fqbn: opts.fqbn, bin: tool, port: opts.port },
+    { sketch: absSketch, fqbn: opts.fqbn, bin: tool, port: opts.port, buildPath: opts.buildPath },
     (chunk) => {
+      rec.push(chunk)
       cliLog += chunk
       if (sender.isDestroyed()) return
       sender.send('task:output', { id, chunk })
@@ -759,6 +808,8 @@ ipcMain.handle('grpc:upload', async (event, opts: { sketch: string; fqbn: string
         if (code !== 0) sender.send('task:output', { id, chunk: buildDiagnosticChunk(cliLog) })
         sender.send('task:exit', { id, code: code === 0 ? 0 : 1 })
       }
+      rec.finish(code === 0 ? 0 : 1, { via: 'cli' })
+      if (code !== 0) notifyChipMismatch(sender, cliLog, opts.fqbn)
     }
   )
   activeTasks.set(id, () => { try { cp.kill() } catch { /* 已退出 */ } })
@@ -1029,11 +1080,13 @@ ipcMain.handle('serial:write', (_e, opts: { id: string; data: string }) => {
 ipcMain.handle('serial:open', (event, opts: { port: string; baud: number }) => {
   const id = `serial-${opts.port}`
   const sender = event.sender
+  diag('serial:open', { id, port: opts.port, baud: opts.baud })
   const result = pluginManager.invoke('backend', 'serial.open', opts) as StreamTask
   const push = (chunk: string): void => {
     if (!sender.isDestroyed()) sender.send('serial:data', { id, data: chunk })
   }
   const done = (): void => {
+    diag('serial:close', { id, port: opts.port })
     if (!sender.isDestroyed()) sender.send('serial:close', { id, msg: `[${opts.port}] 串口已关闭` })
     activeTasks.delete(id)
   }
@@ -1819,7 +1872,82 @@ function broadcastDebugStopped(): void {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// 真机测试信息收集（diag）：用户在自己机器上跑一遍 → 设置里点「导出测试报告」
+// → 把那个 txt 发给我，我照着真实数据定位，而不是照着截图猜。
+// 三条底线：只写本机（不外发）、只记排错必需字段（不记文件内容/Key）、
+// 写失败一律静默（绝不能因为记日志拖垮主流程）。
+// ══════════════════════════════════════════════════════════════════════
+
+/** 渲染层上报（UI 动作 / 未捕获异常）：单向 send，不等返回，主流程零阻塞 */
+ipcMain.on('diag:log', (_e, payload: { event: string; data?: Record<string, unknown> }) => {
+  if (!payload || typeof payload.event !== 'string') return
+  diag(payload.event, payload.data)
+})
+
+ipcMain.handle('diag:info', () => diagInfo())
+
+ipcMain.handle('diag:openDir', () => {
+  const info = diagInfo()
+  if (!info.dir) return false
+  try { shell.openPath(info.dir) } catch { return false }
+  return true
+})
+
+/** 一键自检：把「环境到底缺什么」跑一遍，结果即时显示 + 写进日志 */
+ipcMain.handle('diag:selfTest', async () => {
+  const rep: Record<string, unknown> = {}
+  // 1) arduino-cli：路径 + 版本（编译/烧录的地基）
+  try {
+    const bin = findToolchain()
+    rep.cliPath = bin ?? null
+    if (bin) {
+      rep.cliVersion = execFileSync(bin, ['version'], { encoding: 'utf-8', timeout: 20000 }).trim().slice(0, 300)
+    }
+  } catch (e) { rep.cliError = String(e).slice(0, 300) }
+
+  // 2) 已连接的板卡（arduino-cli board list，权威识别）
+  try {
+    const bin = findToolchain()
+    rep.boards = bin ? await listConnectedBoards(bin) : []
+  } catch (e) { rep.boardsError = String(e).slice(0, 300) }
+
+  // 3) 串口端口
+  try { rep.ports = await listPorts() } catch (e) { rep.portsError = String(e).slice(0, 300) }
+
+  // 4) openocd（片上调试）
+  try { rep.openocd = getOpenocdInfo() } catch (e) { rep.openocdError = String(e).slice(0, 300) }
+
+  // 5) gRPC daemon 通道是否在用（编译/烧录走的哪条路）
+  try { rep.grpc = arduinoGrpc.getState() } catch (e) { rep.grpcError = String(e).slice(0, 300) }
+
+  diag('diag:selfTest', rep)
+  return rep
+})
+
+/** 导出测试报告：弹保存对话框（默认桌面），把全部会话日志打包成一个 txt */
+ipcMain.handle('diag:export', async () => {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  const probe = buildReport()
+  const picked = await dialog.showSaveDialog(win as BrowserWindow, {
+    title: '导出 LabCode 测试报告',
+    defaultPath: join(homedir(), 'Desktop', probe.defaultName),
+    filters: [{ name: '文本报告', extensions: ['txt'] }]
+  })
+  if (picked.canceled || !picked.filePath) return { path: null, canceled: true }
+  try {
+    writeFileSync(picked.filePath, probe.text, 'utf-8')
+    diag('diag:export', { to: picked.filePath, bytes: probe.text.length })
+    try { shell.showItemInFolder(picked.filePath) } catch { /* 打开文件夹失败不影响导出 */ }
+    return { path: picked.filePath, canceled: false, bytes: probe.text.length }
+  } catch (e) {
+    return { path: null, canceled: false, error: String(e).slice(0, 300) }
+  }
+})
+
 app.whenReady().then(() => {
+  // 诊断日志必须最先起来：后面所有埋点才有地方写
+  initDiag()
   initPlugins()
   createWindow()
   // 语言服务器可执行探测：告诉 lspService 用户数据目录，
@@ -1855,6 +1983,7 @@ app.whenReady().then(() => {
       }
     }
     // 1) 端口列表变化 → 刷新界面下拉
+    diag('serial:ports-changed', { added, removed, total: ports.length })
     broadcast('serial:ports-changed', { ports, added, removed })
 
     // 2) 新端口插入 → 识别板卡（arduino-cli board list + serialport 兜底，识别 ESP32 等），并自动选中
@@ -1863,6 +1992,8 @@ app.whenReady().then(() => {
       void (async () => {
         let fqbn = ''
         let name = ''
+        /** CLI 原始返回（记日志用：只记结论分不清「没返回」还是「端口名对不上」） */
+        let boardsRaw: Array<{ fqbn?: string; name?: string; port?: string }> = []
         try {
           const bin = findToolchain()
           if (bin) {
@@ -1871,6 +2002,7 @@ app.whenReady().then(() => {
             // 303a:1001 一律硬猜成 esp32s3，把 C3/P4 误标（见 ESP32_USB_HEURISTIC）。
             // 认不出就留空 → 板卡停在默认 esp32c3 + 端口已自动选中，由候选 UI 引导选准。
             const boards = (await listConnectedBoards(bin)) as Array<{ fqbn?: string; name?: string; port?: string }>
+            boardsRaw = boards
             const hit = boards.find((b) => b.port === port)
             if (hit?.fqbn) {
               fqbn = hit.fqbn
@@ -1880,7 +2012,31 @@ app.whenReady().then(() => {
         } catch {
           /* 板卡识别失败时仍自动选中端口 */
         }
+        // CLI 认不出时补一刀：直接读芯片 ID（esptool chip_id）。
+        // 真机报告原文：COM29 插入后 board:autodetect 的 fqbn 为空（C3/S3/P4 共用 303a:1001），
+        // 界面于是沿用上次的 esp32s3 → 编译 142s 全过 → 烧录被 esptool 打回
+        // 「This chip is ESP32-C3, not ESP32-S3」。这里提前读一次就能选对板卡。
+        let probed = ''
+        if (!fqbn) {
+          try {
+            const chip = await probeChipId(port, 8000)
+            probed = chip ?? ''
+            if (chip) {
+              const t = listTargets().find((x) => x.chip === chip && x.fqbn)
+              if (t?.fqbn) {
+                fqbn = t.fqbn
+                name = t.name
+              }
+            }
+          } catch {
+            /* 探测失败就按「认不出」处理，不影响插板流程 */
+          }
+        }
         console.log(`[hotplug] 检测到新端口 ${port}${fqbn ? `，识别板卡 ${name || fqbn}` : '（未识别到板卡型号）'}`)
+        // 「插上板子没反应 / 认错板卡」的第一手证据：CLI 到底回报了什么、esptool 读到什么。
+        // 连 boards 全文一起记：只记结论的话，下次仍分不清是「CLI 没返回」
+        // 还是「返回了但端口名对不上」——这两种的修法完全不同。
+        diag('board:autodetect', { port, fqbn, name, probed, boards: JSON.stringify(boardsRaw).slice(0, 1500) })
         broadcast('device:auto-select', { action: 'added', port, fqbn, name })
       })()
     }

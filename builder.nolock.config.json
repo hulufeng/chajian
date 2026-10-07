@@ -1,0 +1,7 @@
+{
+  "asar": false,
+  "npmRebuild": false,
+  "directories": {
+    "output": "pkgout27"
+  }
+}

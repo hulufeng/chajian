@@ -24,6 +24,9 @@ interface SettingsProps {
   /** 层2 深度编译预检（实验性）开关 */
   deepPrecheckOn: boolean
   onDeepPrecheckChange: () => void
+  /** 悬停功能介绍开关（默认开；熟了可以关掉，界面回归安静） */
+  featureHintsOn: boolean
+  onFeatureHintsChange: () => void
 }
 
 const SHELL_OPTIONS: Array<{ value: ShellType; label: string }> = [
@@ -52,6 +55,7 @@ const CATEGORIES = [
   { id: 'svd', label: '寄存器数据', icon: '🧾' },
   { id: 'editor', label: '编辑器', icon: '📝' },
   { id: 'general', label: '常规', icon: '⚙️' },
+  { id: 'diag', label: '测试与诊断', icon: '🧪' },
   { id: 'skills', label: '技能', icon: '✨' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
   { id: 'plugins', label: '插件', icon: '🧩' },
@@ -64,13 +68,13 @@ const CATEGORIES = [
  */
 const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
   { title: 'AI 与模型', items: CATEGORIES.filter((c) => c.id === 'models' || c.id === 'engine') },
-  { title: '硬件与工具链', items: CATEGORIES.filter((c) => ['svd', 'editor', 'general'].includes(c.id)) },
+  { title: '硬件与工具链', items: CATEGORIES.filter((c) => ['svd', 'editor', 'general', 'diag'].includes(c.id)) },
   { title: '扩展能力', items: CATEGORIES.filter((c) => ['mcp', 'plugins', 'skills', 'hooks'].includes(c.id)) }
 ]
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange, deepPrecheckOn, onDeepPrecheckChange }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange, deepPrecheckOn, onDeepPrecheckChange, featureHintsOn, onFeatureHintsChange }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
@@ -91,6 +95,11 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [byokApiKey, setByokApiKey] = useState('')
   const [byokModel, setByokModel] = useState('')
   const [byokSaved, setByokSaved] = useState(false)
+  // 测试与诊断：自检结果 / 导出反馈（开发的我拿这份报告定位真机问题）
+  const [diagBusy, setDiagBusy] = useState(false)
+  const [diagReport, setDiagReport] = useState<Record<string, unknown> | null>(null)
+  const [diagMsg, setDiagMsg] = useState('')
+  const [diagInfoText, setDiagInfoText] = useState('')
   /** 模型页自己的一处错误提示（删除/保存失败）。不复用 mcpMsg —— 那是 MCP 页的 */
   const [byokErr, setByokErr] = useState('')
 
@@ -263,6 +272,38 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   }
 
   const catLabel = (id: string): string => CATEGORIES.find((c) => c.id === id)?.label ?? id
+
+  /** 首次进「测试与诊断」时把日志目录显示出来：用户至少要能自己找到、自己删 */
+  useEffect(() => {
+    if (active !== 'diag' || diagInfoText) return
+    window.api.diag.info().then((i) => {
+      setDiagInfoText(i.dir ? `当前日志：${i.file}` : '（日志目录不可用，诊断已停用）')
+    }).catch(() => undefined)
+  }, [active, diagInfoText])
+
+  const runDiagSelfTest = async (): Promise<void> => {
+    setDiagBusy(true)
+    setDiagMsg('')
+    try {
+      const rep = await window.api.diag.selfTest()
+      setDiagReport(rep)
+      setDiagMsg('自检完成（结果如下，也已写入日志）')
+    } finally {
+      setDiagBusy(false)
+    }
+  }
+
+  const exportDiag = async (): Promise<void> => {
+    setDiagBusy(true)
+    setDiagMsg('')
+    try {
+      const r = await window.api.diag.export()
+      if (r.path) setDiagMsg(`已导出：${r.path}\n把这个文件发给我即可（含本机路径，发送前你自己过一眼）。`)
+      else if (!r.canceled) setDiagMsg(`导出失败：${r.error ?? '未知原因'}`)
+    } finally {
+      setDiagBusy(false)
+    }
+  }
 
   /** 官方仓库可装的芯片；列表还没拉回来时给个空 —— 宁可不显示，也不让 UI 和真下载的对不上 */
   const knownChips = svdList?.known ?? []
@@ -693,6 +734,15 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                   </select>
                 </div>
                 <div className="settings-row">
+                  <span>悬停功能介绍</span>
+                  <input
+                    type="checkbox"
+                    checked={featureHintsOn}
+                    onChange={onFeatureHintsChange}
+                    title="鼠标在按钮 / 图标上停半秒，弹出一张卡片说明这个功能是做什么的、什么时候用。熟悉界面后可以关掉。"
+                  />
+                </div>
+                <div className="settings-row">
                   <span>层2 深度编译预检（实验性）</span>
                   <input
                     type="checkbox"
@@ -701,6 +751,36 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     title="保存即预检时额外跑一次真实编译，提前发现依赖缺失 / 语法错 / 库找不到。默认关闭（真实编译耗时几十秒，且会随编辑防抖触发）。"
                   />
                 </div>
+              </div>
+            )}
+            {active === 'diag' && (
+              <div className="settings-section">
+                <h3>测试与诊断</h3>
+                <p className="settings-desc">
+                  你在本机每跑一遍，软件都会把关键链路（启动环境、工具链探测、板卡/端口识别、编译、烧录、串口、打开文件、界面报错）
+                  记成日志，**只写在你自己的电脑上，不会自动外发**。测完点「导出测试报告」，把生成的 txt 发给我，我就能照着真实数据定位问题，而不是靠猜。
+                </p>
+                <div className="settings-row">
+                  <span>运行环境自检</span>
+                  <button className="settings-btn" disabled={diagBusy} onClick={() => void runDiagSelfTest()}>
+                    {diagBusy ? '检查中…' : '开始自检'}
+                  </button>
+                </div>
+                <div className="settings-row">
+                  <span>导出测试报告</span>
+                  <button className="settings-btn" disabled={diagBusy} onClick={() => void exportDiag()}>导出到桌面…</button>
+                </div>
+                <div className="settings-row">
+                  <span>日志所在目录</span>
+                  <button className="settings-btn" onClick={() => void window.api.diag.openDir()}>打开目录</button>
+                </div>
+                {diagInfoText && <p className="settings-desc">{diagInfoText}</p>}
+                {diagMsg && <p className="settings-desc">{diagMsg}</p>}
+                {diagReport && (
+                  <pre className="settings-desc" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 260, overflow: 'auto', background: 'var(--panel-2)', padding: 8, borderRadius: 6 }}>
+                    {JSON.stringify(diagReport, null, 2)}
+                  </pre>
+                )}
               </div>
             )}
             {active === 'editor' && (

@@ -283,7 +283,8 @@ class ArduinoGrpcClient {
     fqbn: string,
     port: string,
     onOutput?: (line: string) => void,
-    onProgress?: (p: CompileProgress) => void
+    onProgress?: (p: CompileProgress) => void,
+    buildPath?: string
   ): Promise<CompileResult> {
     if (!this.client) return { success: false, output: '', error: 'gRPC 未连接' }
 
@@ -293,7 +294,10 @@ class ArduinoGrpcClient {
         sketch_path: sketch,
         fqbn,
         port,
-        verify: true
+        verify: true,
+        // 与 CLI 同理：编译产物在自建目录时必须指定，否则 daemon 侧同样报 "Compiled sketch not found"。
+        // proto 无该字段时序列化会丢弃，不会报错。
+        ...(buildPath ? { build_path: buildPath } : {})
       })
 
       let output = ''

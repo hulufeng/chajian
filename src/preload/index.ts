@@ -541,6 +541,16 @@ const api = {
       const listener = (_e: IpcRendererEvent, d: { action: 'added' | 'removed'; port: string; fqbn: string; name: string; removed?: string[] }): void => cb(d)
       ipcRenderer.on('device:auto-select', listener)
       return () => ipcRenderer.removeListener('device:auto-select', listener)
+    },
+    /**
+     * 烧录时 esptool 实测到的芯片与目标板卡不符（如"选了 S3、插的是 C3"）。
+     * 主进程只在 esptool 明确报出时才发，带上建议改成的 FQBN；
+     * 渲染层据此把板卡改对 —— 用户不用自己猜芯片型号。
+     */
+    onChipMismatch: (cb: (d: { actual: string; expected: string; currentFqbn: string; suggestFqbn: string; suggestName: string }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, d: { actual: string; expected: string; currentFqbn: string; suggestFqbn: string; suggestName: string }): void => cb(d)
+      ipcRenderer.on('upload:chip-mismatch', listener)
+      return () => ipcRenderer.removeListener('upload:chip-mismatch', listener)
     }
   },
 
@@ -572,6 +582,24 @@ const api = {
     uninstall: (name: string): Promise<{ id: string; error?: string }> => ipcRenderer.invoke('library:uninstall', { name })
   },
 
+  // 真机测试信息收集（诊断日志）：只写本机 userData；导出由用户在设置里手动触发
+  diag: {
+    /** 渲染层上报一条事件（UI 动作 / 未捕获异常），单向不等返回 */
+    log: (event: string, data?: Record<string, unknown>): void => {
+      ipcRenderer.send('diag:log', { event, data })
+    },
+    /** 日志目录 / 当前会话文件 */
+    info: (): Promise<{ dir: string; file: string; sessionId: string; disabled: boolean }> =>
+      ipcRenderer.invoke('diag:info'),
+    /** 跑一遍环境自检（arduino-cli / 板卡 / 端口 / openocd / gRPC） */
+    selfTest: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('diag:selfTest'),
+    /** 导出测试报告（弹保存对话框），返回落盘路径；用户取消则 path=null */
+    export: (): Promise<{ path: string | null; canceled?: boolean; bytes?: number; error?: string }> =>
+      ipcRenderer.invoke('diag:export'),
+    /** 在资源管理器里打开日志目录 */
+    openDir: (): Promise<boolean> => ipcRenderer.invoke('diag:openDir')
+  },
+
   // 工具链设置（开发板管理器附加地址等）
   settings: {
     getBoardUrls: (): Promise<{ urls: string[] }> => ipcRenderer.invoke('settings:getBoardUrls'),
@@ -588,7 +616,7 @@ const api = {
       ipcRenderer.invoke('grpc:state'),
     compile: (opts: { sketch: string; fqbn: string }): Promise<{ id: string }> =>
       ipcRenderer.invoke('grpc:compile', opts),
-    upload: (opts: { sketch: string; fqbn: string; port: string }): Promise<{ id: string }> =>
+    upload: (opts: { sketch: string; fqbn: string; port: string; buildPath?: string }): Promise<{ id: string }> =>
       ipcRenderer.invoke('grpc:upload', opts)
   },
 

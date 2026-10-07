@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DebugChip, DebugState, MemoryReadResult, NvsEntry, PartitionEntry, RegisterValue, ThreadInfo } from '../../../preload'
 import { setDebugActive, setCurrentSource } from './editor/debugStore'
+import { hint } from '../featureHints'
 
 interface Props {
   /** 当前板卡 FQBN（用于推断调试芯片，如 esp32:esp32:esp32s3 → esp32s3） */
@@ -230,7 +231,7 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
   return (
     <div className="debug-panel">
       <div className="debug-head">
-        <span className="debug-title">片上调试器</span>
+        <span className="debug-title" {...hint('debugPanel')}>片上调试器</span>
         <span className={`debug-dot ${running ? 'on' : disclosed ? 'off' : 'idle'}`} />
         <span className="debug-meta">
           {state

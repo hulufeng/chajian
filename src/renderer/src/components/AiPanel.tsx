@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorTab } from './EditorArea'
 import type { ChannelHealth } from '../../../preload'
+import { hint } from '../featureHints'
 
 // ---------- 类型 ----------
 interface AiModel {
@@ -1063,7 +1064,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
       <div className="ai-panel-resizer" onMouseDown={onResizeStart} title="拖拽调整面板宽度" />
       {/* 顶部：标题 + 模型选择 + 新建对话 */}
       <div className="ai-head">
-        <span>🤖 AI 智能体</span>
+        <span {...hint('aiPanel')}>🤖 AI 智能体</span>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {(() => {
             const hasBuiltin = models.filter((m) => m.available).length > 0

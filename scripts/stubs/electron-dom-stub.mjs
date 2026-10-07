@@ -7,6 +7,9 @@ export const app = {
     if (name === 'appData') return process.env.TEST_APPDATA || join(tmpdir(), 'codelab-test-appdata')
     return join(tmpdir(), 'codelab-test', name)
   },
+  // 版本号：诊断日志 / 分享卡片会读它。桩给固定值，断言才有确定性
+  getVersion: () => '0.0.0-test',
+  getLocale: () => 'zh-CN',
   getAppPath: () => process.cwd(),
   isPackaged: false,
   commandLine: {

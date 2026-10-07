@@ -637,6 +637,41 @@ export function formatBuildReport(report: BuildReport, opts?: { maxErrors?: numb
   return out.join('\n')
 }
 
+/**
+ * 芯片不匹配：esptool 连上芯片后，发现「你让我烧的是 X，实际插的是 Y」。
+ *
+ * 为什么单列一个函数：这是真机最高频、也最让人懵的一类失败 ——
+ * 编译一路通过（142s 都编完了），却在最后一步被 esptool 一句
+ * `This chip is ESP32-C3, not ESP32-S3` 打回。用户看到的是「烧录失败」，
+ * 真正的原因是**板卡选错了**，而 C3/S3/P4 还共用同一个 USB VID:PID，
+ * 自动识别又常常认不出来，于是这个坑会反复踩。
+ *
+ * 认出来之后上层就能自动把板卡改成实际芯片（比让用户自己猜可靠得多）：
+ * esptool 是真的连上芯片读过 chip id 的，它的结论比任何启发式都准。
+ *
+ * 只认 esptool 明确的措辞；认不出就返回 null，绝不猜（误改用户板卡比漏报更糟）。
+ */
+export interface ChipMismatch {
+  /** esptool 实测到的芯片（归一化：小写、去连字符，如 esp32c3） */
+  actual: string
+  /** 当前目标板卡的芯片（如 esp32s3） */
+  expected: string
+}
+
+export function parseChipMismatch(text: string): ChipMismatch | null {
+  const t = text || ''
+  // 真机原文：`A fatal error occurred: This chip is ESP32-C3, not ESP32-S3. Wrong chip argument?`
+  const m = t.match(/This chip is ([A-Za-z0-9_-]+), not ([A-Za-z0-9_-]+)/i)
+  if (!m) return null
+  const norm = (s: string): string => s.toLowerCase().replace(/-/g, '')
+  const actual = norm(m[1])
+  const expected = norm(m[2])
+  // 只认 ESP 系列芯片名（esptool 的措辞在这里始终是 ESP32-xx 之类）
+  if (!actual.startsWith('esp') || !expected.startsWith('esp')) return null
+  if (actual === expected) return null
+  return { actual, expected }
+}
+
 /** 给 Agent 系统/工具结果用的紧凑结构化摘要（JSON 文本）。 */
 export function diagnosticsForAgent(report: BuildReport): string {
   if (report.errorCount === 0 && report.warningCount === 0) return ''

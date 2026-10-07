@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, createWriteStream, unlinkSync, copyFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, createWriteStream, unlinkSync, copyFileSync, rmSync, readdirSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { get } from 'node:https'
@@ -103,6 +103,85 @@ export function runArduino(
   return cp
 }
 
+/* ==========================================================================
+   芯片直读（esptool chip_id）
+   --------------------------------------------------------------------------
+   为什么需要它：ESP32-C3 / S3 / P4 的原生 USB **共用同一个 VID:PID 303a:1001**，
+   `arduino-cli board list` 在真机上常常认不出来（本次真机报告原文：
+   board:autodetect 的 fqbn 为空）。认不出时界面只能沿用上次选的板卡，于是出现这条链路：
+     沿用 esp32s3 → 编译全过（真机实测 142s）→ 烧录最后一步被 esptool 打回
+     `This chip is ESP32-C3, not ESP32-S3`。
+   esptool 是真连上芯片读过 chip id 的，结论最可靠；在**插板时**补这一次探测，
+   就能选对板卡，把 142 秒的错编译省掉。
+
+   边界：只在「插入新端口且 CLI 认不出」时跑一次；失败一律返回 null（不猜），
+   端口被串口监视器占用时会自然失败并降级，不影响任何其他功能。
+   ========================================================================== */
+
+/** 定位 arduino-cli 自带的 esptool（ESP32 核心包内）：`<核心版本>/tools/esptool_py/<版本>/esptool.exe` */
+export function findEsptool(): string | null {
+  const home = homedir()
+  const roots = [
+    join(process.env.LOCALAPPDATA || '', 'Arduino15', 'packages', 'esp32', 'hardware', 'esp32'),
+    join(home, 'AppData', 'Local', 'Arduino15', 'packages', 'esp32', 'hardware', 'esp32'),
+    join(home, '.arduino15', 'packages', 'esp32', 'hardware', 'esp32')
+  ]
+  const exe = WIN ? 'esptool.exe' : 'esptool'
+  for (const root of roots) {
+    let cores: string[] = []
+    try { cores = readdirSync(root) } catch { continue }
+    // 目录名是版本号（3.3.11 / 3.3.9…）：逆序取「看起来更新」的先试
+    cores.sort().reverse()
+    for (const core of cores) {
+      const pyRoot = join(root, core, 'tools', 'esptool_py')
+      let sub: string[] = []
+      try { sub = readdirSync(pyRoot) } catch { continue }
+      sub.sort().reverse()
+      for (const s of sub) {
+        const p = join(pyRoot, s, exe)
+        if (existsSync(p)) return p
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * 从 esptool 输出里取芯片型号，归一成 boardRegistry 的 chip 标识（esp32c3 / esp32s3…）。
+ * 只认 esptool 明确写出型号的措辞（`Chip is ESP32-C3 (revision v0.4)`）；
+ * 认不出返回 null —— 宁可说「认不出」，也不能猜一个去烧。
+ */
+export function parseChipIdFromOutput(text: string): string | null {
+  if (!text) return null
+  const m = text.match(/Chip is (ESP[0-9]+-[A-Za-z0-9]+)/i)
+  if (!m) return null
+  return m[1].toLowerCase().replace(/-/g, '')
+}
+
+/** 读一次芯片型号；找不到 esptool、端口打不开、超时，一律安静返回 null。 */
+export function probeChipId(port: string, timeoutMs = 10000): Promise<string | null> {
+  const esptool = findEsptool()
+  if (!esptool || !port) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    let out = ''
+    let done = false
+    const finish = (v: string | null): void => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { cp.kill() } catch { /* 已退出 */ }
+      resolve(v)
+    }
+    // esptool v4/v5 参数一致：--chip esp32 覆盖全 ESP 系列
+    const cp = spawn(esptool, ['--chip', 'esp32', '--port', port, 'chip_id'], { windowsHide: true })
+    const timer = setTimeout(() => finish(parseChipIdFromOutput(out)), timeoutMs)
+    cp.stdout?.on('data', (d: Buffer) => { out += d.toString() })
+    cp.stderr?.on('data', (d: Buffer) => { out += d.toString() })
+    cp.on('error', () => finish(null))
+    cp.on('close', () => finish(parseChipIdFromOutput(out)))
+  })
+}
+
 export interface CompileOptions {
   sketch: string
   fqbn: string
@@ -144,7 +223,10 @@ export function compileSketch(o: CompileOptions, onData: (c: string) => void, on
 }
 
 export function uploadSketch(o: CompileOptions & { port: string }, onData: (c: string) => void, onExit: (c: number) => void): ChildProcess {
+  // 烧录必须带上与编译一致的 --build-path：编译产物在自建目录（Temp\codelab-build\sketch-*）时，
+  // 不带它 arduino-cli 只会去默认缓存 sketches\<hash> 找 → "Compiled sketch not found"（真机 bug #3）。
   const args = ['upload', '--fqbn', o.fqbn, '--port', o.port]
+  if (o.buildPath) args.push('--build-path', o.buildPath)
   const norm = normalizeSketchPath(o.sketch)
   args.push(norm.path)
   const proc = runArduino(args, { bin: o.bin }, onData, (code) => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { hint } from '../featureHints'
 
 export interface TreeNode {
   name: string
@@ -96,8 +97,8 @@ function ProjectTree({ root, tree, activePath, onOpenFile, onOpenProject }: Prop
   return (
     <section className="project-section">
       <div className="section-title">
-        <span>项目</span>
-        <button className="btn small" onClick={onOpenProject}>
+        <span {...hint('projectTree')}>项目</span>
+        <button className="btn small" {...hint('openProject')} onClick={onOpenProject}>
           打开
         </button>
       </div>
