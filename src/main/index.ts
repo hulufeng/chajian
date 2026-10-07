@@ -24,7 +24,7 @@ import {
 } from './plugins/pluginInstaller'
 import type { ChannelName } from './plugins/pluginManager'
 import { readSettings, writeSettings } from './settings'
-import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
+import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoards, listConnectedBoardsWithSerial, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
 import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
@@ -1866,10 +1866,14 @@ app.whenReady().then(() => {
         try {
           const bin = findToolchain()
           if (bin) {
-            const boards = (await listConnectedBoardsWithSerial(bin)) as Array<{ fqbn?: string; name?: string; port?: string }>
-            const hit = boards.find((b) => b.port === port) || boards[0]
-            if (hit) {
-              fqbn = hit.fqbn || ''
+            // 只信任 arduino-cli 的权威识别（它真连芯片查询，能区分 C3/S3/P4）。
+            // 故意不调 listConnectedBoardsWithSerial 的 serialport 兜底：它会把共用的
+            // 303a:1001 一律硬猜成 esp32s3，把 C3/P4 误标（见 ESP32_USB_HEURISTIC）。
+            // 认不出就留空 → 板卡停在默认 esp32c3 + 端口已自动选中，由候选 UI 引导选准。
+            const boards = (await listConnectedBoards(bin)) as Array<{ fqbn?: string; name?: string; port?: string }>
+            const hit = boards.find((b) => b.port === port)
+            if (hit?.fqbn) {
+              fqbn = hit.fqbn
               name = hit.name || ''
             }
           }
