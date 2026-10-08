@@ -24,3 +24,7 @@ scripts/.tmp/
 # GitHub OAuth 设备码流程的临时凭据（绝不能入库）
 .gh-token.txt
 .gh-device.json
+
+cloud-server/data/
+cloud-server/*.log
+cloud-server/*.err
