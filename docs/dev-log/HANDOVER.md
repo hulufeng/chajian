@@ -11,7 +11,7 @@
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
 | 项目根 | `D:/工作/代码实验室/codelab-desktop` |
 | 技术栈 | Electron 44 + React 19 + TS 5.9 + electron-vite 5 + Vite 7 |
-| 规模 | 28 个自检脚本 + 4 个静态扫描器 |
+| 规模 | 29 个自检脚本 + 4 个静态扫描器 |
 | 本地模型修复状态 | §15/§16 已修"没反应"（超时+取消）；§17 **真实引擎 8/0 端到端验证通过**；并修复 2 个 bug——引擎每消息重启（#1，复用 basename 命中 + isEngineRunning 3 次重试）+ taskkill /IM 误杀全机（#2，改 PID 精准强杀）；`verify-no-kill-external.mjs` 实跑 5/0 证明 #2 |
 
 ---
@@ -564,3 +564,39 @@ node scripts/check-*.mjs                # 受影响的那些
 1. 关掉所有 electron/LabCode 进程，删 14 个锁目录
 2. 删 window-state.json 解决 dev 窗口不显示
 3. 真机烧录/板卡纠正/增量编译需插板子测
+
+---
+
+## §21 竞品对齐 TrieCode：UI diff 可视化 + MCP 预设 + 模型能力/长上下文（2026-10-08）
+
+### 背景
+用户给了一张 LabCode vs TrieCode 对比表，要求「对齐开发」。经核对，表里部分说法不准确（MCP 工具/管理页早已存在），真正的三块差距是：**UI diff 可视化精度、Anthropic(Claude) BYOK 通道缺失、长上下文读取预算**。落地方案见 `docs/对齐TrieCode-差距落地方案-2026-10-08.md`。
+
+### T1 UI diff 可视化升级（Task #2，已完成）
+- 新增 `src/renderer/src/components/diff-parse.ts`：纯函数 unified diff 解析，同时支持标准 `@@` 头 与本项目简式 2 字符标记（`- `/`+ `/`  `）；词级 LCS 差异（O(n*m)，超 40000 降级整行）、CRLF 容忍。
+- 新增 `src/renderer/src/components/DiffView.tsx`：行号双栏 + hunk 头 + `+N −M` 统计徽章 + 词级 `<mark>` 高亮 + 统一/分栏切换 + 长 diff 折叠。全部走 theme token，无 hex 字面量（守渲染层红线）。
+- `AiPanel.tsx` 删掉旧 `<pre>` 逐行着色（含内联 hex `#ff6b6b`/`#51cf8a`），两处改用 `<DiffView text=.../>`。
+- 新增 `scripts/check-diff-view.mjs`：esbuild 打包解析器，30 项断言全过。
+
+### T2 MCP 常用服务器一键预设（Task #3，已完成）
+- `SettingsModal.tsx` 增 `MCP_PRESETS`（5 个：filesystem/memory/sequential-thinking/playwright/everything），`command(dir)` 返回 `npx -y @modelcontextprotocol/...`；UI 网格卡片，点选填入 draft（信任分级仍由用户手动点「信任」，预设不自动信任）。
+- `main.css` 增 `.mcp-preset*` 系列（token 化）。
+
+### T3 模型能力 + 长上下文对齐（Task #4，已完成）
+- **根因**：UI 里 Claude/Anthropic 预设早就存在，但 `chatByok`/`aiChatStream` 只实现了 OpenAI 格式 → Claude 选了必 404。补齐 Anthropic Messages API 适配。
+- `aiGateway.ts` 新增：`isAnthropicEndpoint` / `toAnthropicMessages`（system 抽离 + tool_use/tool_result 块 + 相邻同角色合并 + 首条必 user）/ `toAnthropicTools`（parameters→input_schema）/ `anthropicHeaders`（x-api-key + anthropic-version）/ `anthropicMessagesUrl`（容忍只填域名自动补 /v1）/ `chatByokAnthropic`（非流式）/ `anthropicStream`（SSE 归一化 content_block_delta/tool_use → StreamChunk）/ `currentReadBudget`（本地 4000 / 云端·BYOK 16000）。
+- `engine/tools/index.ts` 的 `read_file` 截断阈值从硬编码 4000 改为 `currentReadBudget()` 动态值（长上下文对齐最小落地）。
+- 新增 `scripts/check-anthropic-adapter.mjs`：起本地假 Anthropic server，35 项断言（端点识别/消息转换/tools/鉴权头/URL/预算/非流式/流式 tool_use 归一化）全过。
+
+### 验证结果（本轮）
+- tsc node + web 双过 exit 0。
+- 4 扫描：scan-ui-crash / scan-json-parse（1 处 `pluginInstaller.ts:86` 预存在，非本次改动）/ scan-ipc-handlers（0 缺 handler）/ scan-unhandled-rejection（预存在裸 await 模式，有全局兜底）全绿。
+- check 回归：check-local-model 9/0、check-sse-toolcalls 14/0、**check-anthropic-adapter 35/0（新）**、check-diff-view 30/0（新）。
+  - ⚠ `check-cloud-official` 1 失败：`渲染层调用 window.api.ai.register` 未命中 —— 经核对是**预存在问题**（HEAD 的 SettingsModal 本就无 register 调用，UI 只提供登录+试用，从未实现注册按钮），与本次改动无关，**不属回归**。
+- electron-vite build 成功（15.27s）；产物复核：`out/main/index.js` 含 `x-api-key`/`anthropic-version`/`content_block_delta`/`input_schema`/`currentReadBudget`；`out/renderer` 含 `diff-view`/`mcp-preset`/`diff-mark`。
+
+### 交付边界 / 注意事项
+- Anthropic 适配只走 **BYOK**（用户自有 API Key），不走官方积分通道，符合「外部能力只走 BYOK/子进程」红线。
+- **UI 仅真机可验**：diff 渲染 / MCP 预设卡片 / Claude 流式实测，需真机 `start-labcode.bat` 跑 `out\` 验证；本机沙箱起不了 Electron GUI。
+- 安装包（NSIS）沙箱内出不了（文件锁），要安装包在用户自己终端 `npm run dist`。
+- 未提交：`out_prev_20261008180725/`（构建前避让 safe-delete 的残留，勿提交）；本轮回退仅增量提交源码+文档+自检脚本。

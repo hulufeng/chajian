@@ -29,6 +29,7 @@ import { multiAgentTools } from './multi-agent-tools'
 import { mcpExternalTools } from './mcp-tools'
 import { pluginTools } from './plugin-tools'
 import { isWriteBlocked } from '../project-config'
+import { currentReadBudget } from '../../services/aiGateway'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'
 
 // 构建产物/依赖目录：agent 浏览项目时应跳过（避免读 .pio/.git/node_modules 等噪音与二进制）
@@ -139,8 +140,11 @@ const readFile: ToolDefinition = {
       // 记录 AI 读取基线（供后续写入冲突检测）
       setFileBaseline(target, content)
       const lines = content.split('\n').length
-      // 长文件截断：超过 4000 字符只返回前 4000 并提示
-      const body = content.length > 4000 ? content.slice(0, 4000) + `\n...(已截断，共 ${content.length} 字符，如需全文请分段读取)` : content
+      // 长文件截断：阈值按当前通道窗口自适应（本地 8K → 4000；云端/BYOK → 16000）
+      const budget = currentReadBudget()
+      const body = content.length > budget
+        ? content.slice(0, budget) + `\n...(已截断：当前模型单次读取上限 ${budget} 字符，共 ${content.length} 字符；如需全文请分段读取)`
+        : content
       return { ok: true, content: `文件: ${target} (${lines}行)\n\n${body}` }
     } catch (e) {
       return { ok: false, content: '', error: `读取文件失败: ${(e as Error).message}` }

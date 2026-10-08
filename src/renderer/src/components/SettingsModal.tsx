@@ -49,6 +49,39 @@ const BYOK_PROVIDERS: Array<{ value: string; label: string; baseUrl: string; mod
   { value: 'custom', label: '自定义 (OpenAI 兼容)', baseUrl: '', modelHint: '任意 OpenAI 兼容端点' }
 ]
 
+/**
+ * 常用 MCP 服务器一键预设（对齐 TrieCode 的插件生态体验：免手填命令）。
+ * 全部走 Node/npx（跨平台最稳）；点击只「填入名称+命令」，仍需用户手动点「添加」并「信任」——
+ * 预设不自动信任，信任门控保持不变。
+ */
+const MCP_PRESETS: Array<{ key: string; label: string; icon: string; desc: string; command: (dir: string) => string }> = [
+  {
+    key: 'filesystem', label: '文件系统', icon: '📁',
+    desc: '读写指定目录下的文件（最常用；默认用当前工程目录）',
+    command: (dir) => `npx -y @modelcontextprotocol/server-filesystem ${dir}`
+  },
+  {
+    key: 'memory', label: '记忆', icon: '🧠',
+    desc: '持久化知识图谱记忆，跨会话记住事实',
+    command: () => 'npx -y @modelcontextprotocol/server-memory'
+  },
+  {
+    key: 'sequential-thinking', label: '顺序思考', icon: '🪜',
+    desc: '结构化多步推理，适合复杂问题拆解',
+    command: () => 'npx -y @modelcontextprotocol/server-sequential-thinking'
+  },
+  {
+    key: 'playwright', label: '浏览器自动化', icon: '🌐',
+    desc: '打开网页、点击、截图、抓取（Playwright 官方 MCP）',
+    command: () => 'npx -y @playwright/mcp@latest'
+  },
+  {
+    key: 'everything', label: '演示调试', icon: '🧪',
+    desc: '官方「everything」样例服务器，用于验证连通与工具列表',
+    command: () => 'npx -y @modelcontextprotocol/server-everything'
+  }
+]
+
 const CATEGORIES = [
   { id: 'models', label: '模型', icon: '🧠' },
   { id: 'engine', label: '本地引擎', icon: '🖥️' },
@@ -1051,6 +1084,37 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                   MCP 服务器是在本机执行命令的外部进程，因此默认<strong>不被信任、不会被拉起</strong>。
                   信任状态只记录在本机（{mcpTrustPath || 'mcp-trust.json'}），工程仓库里的配置无法替你做决定。
                 </p>
+
+                {/* 常用服务器一键预设：点击填入「名称+命令」，随后仍需手动「添加」并「信任」 */}
+                <div className="mcp-presets">
+                  <div className="mcp-presets-title">常用服务器（一键填入）</div>
+                  <div className="mcp-presets-list">
+                    {MCP_PRESETS.map((p) => {
+                      const cmd = p.command((projectRoot || '').trim() || '.')
+                      return (
+                        <button
+                          key={p.key}
+                          className="mcp-preset-card"
+                          disabled={mcpBusy}
+                          title={`${p.desc}\n\n${cmd}`}
+                          onClick={() => {
+                            setMcpDraft({ name: p.label, command: cmd })
+                            setMcpMsg(`已填入「${p.label}」，点「添加」写入配置，再点「信任」才会拉起`)
+                          }}
+                        >
+                          <span className="mcp-preset-icon">{p.icon}</span>
+                          <span className="mcp-preset-body">
+                            <span className="mcp-preset-name">{p.label}</span>
+                            <span className="mcp-preset-desc">{p.desc}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="settings-desc" style={{ margin: '6px 0 0' }}>
+                    预设基于 Node/npx，需本机已安装 Node。填入后记得按<strong>信任门控</strong>流程操作（点击预设不会替你信任）。
+                  </p>
+                </div>
 
                 <div className="settings-row" style={{ gap: 6, flexWrap: 'wrap' }}>
                   <input

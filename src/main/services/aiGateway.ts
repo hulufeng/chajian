@@ -382,8 +382,200 @@ export function logout(): AiState {
 }
 
 // ---------- 聊天 ----------
+/**
+ * Anthropic Messages API 适配（BYOK 选 Claude 时使用）。
+ *
+ * Anthropic 与「OpenAI 兼容端点」有三处硬差别，不能共用一套请求：
+ *  1) 端点是 `/messages`（不是 `/chat/completions`）；鉴权用 `x-api-key` + `anthropic-version`（不是 Bearer）
+ *  2) `system` 是**顶层**参数，不放进 messages；messages 必须 user/assistant **交替**
+ *  3) 工具用 `input_schema`（不是 `parameters`）；工具结果走 user 消息里的 `tool_result` 块
+ * 只有明确是 Anthropic 端点才走这条路，绝不误判。
+ */
+export function isAnthropicEndpoint(baseUrl: string): boolean {
+  const u = String(baseUrl || '').toLowerCase()
+  return u.includes('anthropic.com') || u.includes('/anthropic')
+}
+
+interface AnthropicBlock { type: string; [k: string]: unknown }
+interface AnthropicMessage { role: 'user' | 'assistant'; content: string | AnthropicBlock[] }
+type RawChatMessage = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }
+
+/** OpenAI 兼容消息 → Anthropic 消息（含 system 抽离、tool_use / tool_result 块转换、相邻同角色合并）。 */
+export function toAnthropicMessages(messages: RawChatMessage[]): { system: string; messages: AnthropicMessage[] } {
+  const systemParts: string[] = []
+  const out: AnthropicMessage[] = []
+  const pushMerge = (role: 'user' | 'assistant', blocks: AnthropicBlock[] | string): void => {
+    const last = out[out.length - 1]
+    if (last && last.role === role) {
+      // 合并相邻同角色（Anthropic 要求交替，连续 tool 结果必须并到同一条 user 消息）
+      const a = Array.isArray(last.content) ? last.content : [{ type: 'text', text: last.content }]
+      const b = Array.isArray(blocks) ? blocks : [{ type: 'text', text: blocks }]
+      last.content = [...a, ...b]
+    } else {
+      out.push({ role, content: blocks })
+    }
+  }
+  for (const m of messages) {
+    if (m.role === 'system') { if (m.content) systemParts.push(m.content); continue }
+    if (m.role === 'tool') {
+      pushMerge('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id || '', content: m.content }])
+      continue
+    }
+    if (m.role === 'assistant') {
+      const blocks: AnthropicBlock[] = []
+      if (m.content) blocks.push({ type: 'text', text: m.content })
+      const tcs = Array.isArray(m.tool_calls) ? (m.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: string } }>) : []
+      for (const tc of tcs) {
+        let input: unknown = {}
+        try { input = JSON.parse(tc.function?.arguments || '{}') } catch { input = {} }
+        blocks.push({ type: 'tool_use', id: tc.id || `toolu_${Math.random().toString(36).slice(2)}`, name: tc.function?.name || '', input })
+      }
+      if (blocks.length > 0) pushMerge('assistant', blocks)
+      continue
+    }
+    pushMerge('user', m.content || '')
+  }
+  // 首条必须是 user（Anthropic 硬要求）
+  while (out.length > 0 && out[0].role !== 'user') out.shift()
+  return { system: systemParts.join('\n\n'), messages: out }
+}
+
+/** FunctionSchema[] → Anthropic tools（parameters → input_schema）。 */
+export function toAnthropicTools(tools: FunctionSchema[]): Array<{ name: string; description: string; input_schema: object }> {
+  return tools.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters
+  }))
+}
+
+const ANTHROPIC_VERSION = '2023-06-01'
+const ANTHROPIC_MAX_TOKENS = 8192
+
+export function anthropicHeaders(apiKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_VERSION
+  }
+}
+
+/** 组装 Anthropic Messages 端点：容忍用户只填到域名（自动补 /v1）。 */
+export function anthropicMessagesUrl(baseUrl: string): string {
+  let b = String(baseUrl || '').replace(/\/$/, '')
+  if (!/\/v\d+$/.test(b)) b += '/v1'
+  return b + '/messages'
+}
+
+/** 非流式 Anthropic 调用（aiChat 的 BYOK 分支会分派到这里）。 */
+export async function chatByokAnthropic(messages: RawChatMessage[], byok: { baseUrl: string; apiKey: string; model: string }): Promise<string> {
+  const { system, messages: msgs } = toAnthropicMessages(messages)
+  const url = anthropicMessagesUrl(byok.baseUrl)
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: anthropicHeaders(byok.apiKey),
+    body: JSON.stringify({
+      model: byok.model,
+      max_tokens: ANTHROPIC_MAX_TOKENS,
+      ...(system ? { system } : {}),
+      messages: msgs
+    })
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`自定义模型调用失败（${res.status}）：${text.slice(0, 200)}`)
+  }
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
+  return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('')
+}
+
+/**
+ * Anthropic SSE 流式：把 `content_block_*` / `message_*` 事件归一化为与 fetchStream 相同的 StreamChunk，
+ * 使 AgentRunner 无需为 Anthropic 单独写解析（tool_use 一样按 start → args 顺序发出）。
+ */
+export function anthropicStream(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  onChunk: (chunk: StreamChunk) => void,
+  signal: AbortSignal,
+  onDone: (err: Error | null, usage?: { inputTokens: number; outputTokens: number }) => void
+): void {
+  fetch(url, { method: 'POST', headers, body, signal })
+    .then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`流式请求失败（${res.status}）：${text.slice(0, 200)}`)
+      }
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('响应体为空')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let inputTokens = 0
+      let outputTokens = 0
+      let curTool: { id: string } | null = null
+      let curArgs = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n') // Anthropic SSE 以空行分隔事件
+        buffer = parts.pop() || ''
+        for (const part of parts) {
+          const dline = part.split('\n').find((l) => l.startsWith('data:'))
+          if (!dline) continue
+          let evt: { type?: string; [k: string]: unknown }
+          try { evt = JSON.parse(dline.slice(5).trim()) } catch { continue }
+          const anyEvt = evt as {
+            type?: string
+            message?: { usage?: { input_tokens?: number } }
+            content_block?: { type?: string; id?: string; name?: string }
+            delta?: { type?: string; text?: string; thinking?: string; partial_json?: string }
+            usage?: { output_tokens?: number }
+          }
+          switch (anyEvt.type) {
+            case 'message_start':
+              inputTokens = anyEvt.message?.usage?.input_tokens || 0
+              break
+            case 'content_block_start':
+              if (anyEvt.content_block?.type === 'tool_use') {
+                curTool = { id: anyEvt.content_block.id || '' }
+                curArgs = ''
+                onChunk({ type: 'tool_call_start', id: curTool.id, name: anyEvt.content_block.name || '' })
+              }
+              break
+            case 'content_block_delta': {
+              const d = anyEvt.delta || {}
+              if (d.type === 'text_delta' && d.text) onChunk({ type: 'content', text: d.text })
+              else if (d.type === 'thinking_delta' && d.thinking) onChunk({ type: 'reasoning', text: d.thinking })
+              else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string') curArgs += d.partial_json
+              break
+            }
+            case 'content_block_stop':
+              if (curTool) {
+                if (curArgs) onChunk({ type: 'tool_call_args', text: curArgs })
+                curTool = null
+                curArgs = ''
+              }
+              break
+            case 'message_delta':
+              if (anyEvt.usage?.output_tokens) outputTokens = anyEvt.usage.output_tokens
+              break
+          }
+        }
+      }
+      onDone(null, { inputTokens, outputTokens })
+    })
+    .catch((e) => {
+      if (e.name === 'AbortError') onDone(null)
+      else onDone(e)
+    })
+}
+
 async function chatByok(messages: ChatMessage[], byok: { baseUrl: string; apiKey: string; model: string }): Promise<string> {
   if (!byok.apiKey || !byok.baseUrl) throw new Error('自定义模型未配置完整（需 Base URL / API Key / 模型名）')
+  // Anthropic（Claude）走 Messages API，与 OpenAI 兼容端点不同
+  if (isAnthropicEndpoint(byok.baseUrl)) return chatByokAnthropic(messages as unknown as RawChatMessage[], byok)
   const url = byok.baseUrl.replace(/\/$/, '') + '/chat/completions'
   const res = await fetch(url, {
     method: 'POST',
@@ -486,6 +678,20 @@ export function getLocalModel(): string | null {
 export function resolveLocalModelForRun(requested?: string | null): string | undefined {
   const v = (requested ?? '').trim()
   return v ? v : undefined
+}
+
+/**
+ * 当前通道的「单文件读取预算」（字符数）—— 供 read_file / 上下文注入按模型窗口自适应。
+ *
+ * 本地 3B 模型窗口约 8K，一次塞太多字符会挤爆上下文 → 保守给 4000；
+ * 云端 / BYOK（Claude、GPT-4o 等 128K+ 窗口）给 16000，让长文件的阅读更完整。
+ * 这是「长上下文对齐」的最小落地：不改模型本身，先把工具侧的截断阈值与窗口匹配。
+ */
+export function currentReadBudget(): number {
+  const local = getLocalModel()
+  if (local) return 4000
+  if (String(getAiState().modelId || '').startsWith('local:')) return 4000
+  return 16000
 }
 
 // ---------- SSE 流式聊天（支持 tool_calls / function calling） ----------
@@ -636,6 +842,22 @@ export function aiChatStream(
     if (!activeByok.apiKey || !activeByok.baseUrl) {
       onDone(new Error('自定义模型未配置完整（需 Base URL / API Key / 模型名）'))
       return () => controller.abort()
+    }
+    // Anthropic（Claude）分支：走 Messages API + 专用 SSE 事件格式
+    if (isAnthropicEndpoint(activeByok.baseUrl)) {
+      const { system, messages: am } = toAnthropicMessages(messages as unknown as RawChatMessage[])
+      const aurl = anthropicMessagesUrl(activeByok.baseUrl)
+      const abody = JSON.stringify({
+        model: activeByok.model,
+        max_tokens: ANTHROPIC_MAX_TOKENS,
+        stream: true,
+        ...(system ? { system } : {}),
+        messages: am,
+        tools: tools.length > 0 ? toAnthropicTools(tools) : undefined
+      })
+      const aController = new AbortController()
+      anthropicStream(aurl, anthropicHeaders(activeByok.apiKey), abody, onChunk, aController.signal, onDone)
+      return () => aController.abort()
     }
     const url = activeByok.baseUrl.replace(/\/$/, '') + '/chat/completions'
     const headers = {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorTab } from './EditorArea'
 import type { ChannelHealth } from '../../../preload'
 import { hint } from '../featureHints'
+import DiffView from './DiffView'
 
 // ---------- 类型 ----------
 interface AiModel {
@@ -256,26 +257,6 @@ function ToolCallCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_call' 
   )
 }
 
-function DiffBlock({ text }: { text: string }): React.JSX.Element {
-  const lines = text.split('\n')
-  return (
-    <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, overflow: 'auto' }}>
-      {lines.map((line, i) => {
-        const isDel = line.startsWith('- ')
-        const isAdd = line.startsWith('+ ')
-        const isCtx = line.startsWith('  ')
-        const bg = isDel ? 'rgba(255,80,80,0.12)' : isAdd ? 'rgba(80,200,120,0.12)' : 'transparent'
-        const color = isDel ? '#ff6b6b' : isAdd ? '#51cf8a' : isCtx ? 'var(--text-muted)' : 'inherit'
-        return (
-          <div key={i} style={{ background: bg, color, padding: '0 8px', whiteSpace: 'pre' }}>
-            {line || ' '}
-          </div>
-        )
-      })}
-    </pre>
-  )
-}
-
 function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_result' }> }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const ok = msg.result.ok && !msg.rejected
@@ -302,14 +283,14 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
       </div>
       {!expanded && diffMatch && (
         <div style={{ padding: '4px 12px', fontSize: 11 }}>
-          <DiffBlock text={diffMatch[1]} />
+          <DiffView text={diffMatch[1]} />
         </div>
       )}
       {expanded && (
         <div className="agent-tool-output">
           {msg.result.error && <div className="agent-tool-error">{msg.result.error}</div>}
           {beforeDiff && <pre>{beforeDiff}</pre>}
-          {diffMatch && <DiffBlock text={diffMatch[1]} />}
+          {diffMatch && <DiffView text={diffMatch[1]} />}
           {afterDiff && <pre>{afterDiff}</pre>}
           {!diffMatch && <pre>{content}</pre>}
         </div>

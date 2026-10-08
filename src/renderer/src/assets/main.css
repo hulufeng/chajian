@@ -2900,6 +2900,97 @@ body.ai-resizing {
   border-radius: 4px;
 }
 
+/* ── 整文件可视化 diff（DiffView）── */
+.diff-view {
+  margin: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel);
+}
+.diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.diff-stat { font-weight: 600; font-size: 11px; }
+.diff-stat-add { color: var(--success); }
+.diff-stat-del { color: var(--danger); }
+.diff-stat-total { color: var(--text-muted); font-size: 10.5px; }
+.diff-view-toggle { margin-left: auto; display: flex; gap: 2px; }
+.diff-view-btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.diff-view-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.diff-body { max-height: 320px; overflow: auto; }
+.diff-hunk + .diff-hunk { border-top: 1px dashed var(--border); }
+.diff-hunk-head {
+  padding: 2px 8px;
+  color: var(--text-muted);
+  background: var(--panel-2);
+  font-size: 10.5px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.diff-ln {
+  flex: 0 0 auto;
+  width: 32px;
+  text-align: right;
+  padding-right: 6px;
+  color: var(--text-muted);
+  user-select: none;
+  font-size: 10.5px;
+}
+.diff-ln-new {
+  border-right: 1px solid var(--border);
+  margin-right: 4px;
+}
+.diff-sign { flex: 0 0 auto; width: 12px; text-align: center; color: var(--text-muted); user-select: none; }
+.diff-text { flex: 1 1 auto; padding-right: 8px; color: var(--text); }
+.diff-add { background: var(--success-soft-weak); }
+.diff-add .diff-sign, .diff-add .diff-text { color: var(--success); }
+.diff-add .diff-mark { background: var(--success-soft); border-radius: 2px; }
+.diff-del { background: var(--danger-soft-weak); }
+.diff-del .diff-sign, .diff-del .diff-text { color: var(--danger); }
+.diff-del .diff-mark { background: var(--danger-soft); border-radius: 2px; }
+.diff-context .diff-text { color: var(--text-dim); }
+.diff-split-row { display: flex; }
+.diff-col { flex: 1 1 50%; min-width: 0; }
+.diff-col-left { border-right: 1px solid var(--border); }
+.diff-empty { background: var(--panel-2); }
+.diff-expand {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--accent-text);
+  font-size: 11px;
+  padding: 3px;
+  cursor: pointer;
+}
+.diff-empty-note { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
+
 /* 思考过程 */
 .agent-thinking {
   margin: 6px 0;
@@ -3276,6 +3367,35 @@ body.ai-resizing {
   border-color: var(--success-soft);
   background: var(--success-soft-weak);
 }
+/* MCP 常用服务器一键预设 */
+.mcp-presets { margin: 8px 0 10px; }
+.mcp-presets-title { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+.mcp-presets-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px;
+}
+.mcp-preset-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--text);
+}
+.mcp-preset-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft-weak);
+}
+.mcp-preset-card:disabled { opacity: 0.55; cursor: default; }
+.mcp-preset-icon { font-size: 15px; line-height: 1.2; }
+.mcp-preset-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mcp-preset-name { font-size: 12px; font-weight: 600; }
+.mcp-preset-desc { font-size: 10.5px; color: var(--text-dim); line-height: 1.4; }
 .settings-foot {
   padding: 10px 0 0;
   font-size: 10px;
