@@ -79,13 +79,40 @@ async function sendEmail(toEmail, subject, text) {
 }
 
 // ── 内置模型（必须含 id:"deepseek-flash"，即客户端默认 modelId）──
+// provider 决定后端代理走哪条链路；baseUrl + keyEnv 是「服务端密钥」——
+// 只有 operator 在自己环境里配了对应 KEY 才会真代理，否则该模型走演示回复（统一计费仍生效）。
+// 另支持环境变量覆盖各 provider 的 baseUrl（便于走代理/Azure OpenAI 等）：
+//   OPENAI_BASE_URL / GEMINI_BASE_URL / DEEPSEEK_BASE_URL / DASHSCOPE_BASE_URL
 const MODELS = [
-  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速日常问答', available: true },
-  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', baseUrl: '', model: 'deepseek-coder', costPerCall: 2, desc: '代码专用', available: true },
-  { id: 'deepseek-r1', name: 'DeepSeek R1 推理', provider: 'deepseek', baseUrl: '', model: 'deepseek-reasoner', costPerCall: 4, desc: '深度推理/复杂调试', available: true },
-  { id: 'qwen-coder', name: '通义千问 Coder', provider: 'qwen', baseUrl: '', model: 'qwen2.5-coder-32b', costPerCall: 2, desc: '中文代码友好', available: true },
-  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '通用强模型', available: true }
+  // —— 原有：DeepSeek / 通义（OpenAI 兼容）——
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', keyEnv: 'DEEPSEEK_KEY', model: 'deepseek-chat', costPerCall: 1, desc: '快速日常问答', available: true },
+  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', keyEnv: 'DEEPSEEK_KEY', model: 'deepseek-coder', costPerCall: 2, desc: '代码专用', available: true },
+  { id: 'deepseek-r1', name: 'DeepSeek R1 推理', provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', keyEnv: 'DEEPSEEK_KEY', model: 'deepseek-reasoner', costPerCall: 4, desc: '深度推理/复杂调试', available: true },
+  { id: 'qwen-coder', name: '通义千问 Coder', provider: 'qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', keyEnv: 'DASHSCOPE_API_KEY', model: 'qwen2.5-coder-32b', costPerCall: 2, desc: '中文代码友好', available: true },
+  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', keyEnv: 'DASHSCOPE_API_KEY', model: 'qwen-max', costPerCall: 3, desc: '通用强模型', available: true },
+  // —— 新增：OpenAI（GPT-4o 系列，OpenAI 兼容）——
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', baseUrl: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY', model: 'gpt-4o', costPerCall: 6, desc: 'OpenAI 旗舰，多模态强', available: true },
+  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', baseUrl: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY', model: 'gpt-4o-mini', costPerCall: 3, desc: '轻量高性价比', available: true },
+  // —— 新增：Google Gemini（非 OpenAI 兼容，后端负责归一化）——
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', keyEnv: 'GEMINI_API_KEY', model: 'gemini-1.5-pro', costPerCall: 5, desc: 'Google 长上下文', available: true },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', keyEnv: 'GEMINI_API_KEY', model: 'gemini-2.0-flash', costPerCall: 3, desc: 'Google 高速模型', available: true }
 ]
+
+// ── 解析某模型的有效上游（baseUrl + 服务端 Key）；无则不代理（走演示）──
+function endpointFor(m) {
+  const override = {
+    openai: process.env.OPENAI_BASE_URL,
+    gemini: process.env.GEMINI_BASE_URL,
+    deepseek: process.env.DEEPSEEK_BASE_URL,
+    qwen: process.env.DASHSCOPE_BASE_URL
+  }[m.provider]
+  const baseUrl = override || m.baseUrl || ''
+  const key = (m.keyEnv && process.env[m.keyEnv]) || ''
+  if (baseUrl && key) return { url: baseUrl, key, provider: m.provider }
+  // 全局单上游兜底：仅 OpenAI 兼容档（deepseek/qwen/openai）；Gemini 必须自带 Key
+  if (m.provider !== 'gemini' && UPSTREAM_URL && UPSTREAM_KEY) return { url: UPSTREAM_URL, key: UPSTREAM_KEY, provider: m.provider }
+  return null
+}
 
 // ── 持久化（单进程 JSON，足够开发/演示）──
 function loadDb() {
@@ -317,7 +344,7 @@ const server = createServer(async (req, res) => {
       const { model, messages } = await readBody(req)
       const cost = costOf(model)
       if (u.totalCredits < cost) return sendJson(res, 402, { error: '积分不足,请充值' })
-      const content = await generateContent(UPSTREAM_URL, UPSTREAM_KEY, model, messages, false)
+      const content = await generateContentForModel(model, messages, false)
       deduct(u, cost)
       logReq(method, path, 200, `user=${u.email} model=${model} cost=${cost}`)
       return sendJson(res, 200, { content, creditsLeft: u.totalCredits, cost })
@@ -327,14 +354,16 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/chat/stream') {
       const u = getUserByToken(token)
       if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
-      const { model, messages } = await readBody(req)
+      const { model, messages, tools } = await readBody(req)
       const cost = costOf(model)
       if (u.totalCredits < cost) return sendJson(res, 402, { error: '积分不足,请充值' })
       logReq(method, path, 200, `user=${u.email} model=${model} stream`)
-      if (UPSTREAM_URL && UPSTREAM_KEY) {
-        return await proxyStream(res, UPSTREAM_URL, UPSTREAM_KEY, model, messages, () => { deduct(u, cost); return u.totalCredits })
+      const m = MODELS.find((x) => x.id === model)
+      const ep = endpointFor(m)
+      if (ep) {
+        return await proxyStreamForModel(res, model, messages, tools || [], () => { deduct(u, cost); return u.totalCredits })
       }
-      // 演示流式：分块吐字 + 末尾发积分事件
+      // 演示流式：分块吐字 + 末尾发积分事件（无对应 KEY 时）
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' })
       const demo = `（bluebubai 云端演示后端）已收到你的消息，当前模型 ${model}。这是联通测试回复——真实接入时此处会是模型输出。`
       const chunks = demo.match(/./gu) ? Array.from(demo) : [demo]
@@ -360,41 +389,55 @@ const server = createServer(async (req, res) => {
 })
 
 // ── 生成内容：真实代理 or 演示 ──
-async function generateContent(upstreamUrl, upstreamKey, model, messages, _stream) {
-  if (upstreamUrl && upstreamKey) {
-    const r = await fetch(`${upstreamUrl.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstreamKey}` },
-      body: JSON.stringify({ model: MODELS.find((m) => m.id === model)?.model || model, messages, stream: false })
-    })
-    const data = await r.json().catch(() => ({}))
-    return data.choices?.[0]?.message?.content || '（上游返回为空）'
+// 按 provider 分派：OpenAI 兼容（openai/deepseek/qwen）走 /chat/completions；
+// gemini 走 Google Generative Language API（格式不兼容，后端归一化为 OpenAI 兼容）。
+async function generateContentForModel(modelId, messages, _stream) {
+  const m = MODELS.find((x) => x.id === modelId)
+  if (!m) return '（未知模型）'
+  const ep = endpointFor(m)
+  if (!ep) {
+    const last = [...(messages || [])].reverse().find((x) => x.role === 'user')
+    return `（演示后端·未配置 ${m.name} 服务端 Key）你问的是：「${last ? last.content : ''}」。配置对应服务端 KEY（如 OPENAI_API_KEY）即可接入真实模型。`
   }
-  const last = [...(messages || [])].reverse().find((m) => m.role === 'user')
-  return `（演示后端·无 LLM key）你问的是：「${last ? last.content : ''}」。设置 AI_UPSTREAM_URL / AI_UPSTREAM_KEY 即可接入真实模型。`
+  if (m.provider === 'gemini') return await geminiGenerate(ep, m.model, messages, false)
+  const r = await fetch(`${ep.url.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` },
+    body: JSON.stringify({ model: m.model, messages, stream: false })
+  })
+  const data = await r.json().catch(() => ({}))
+  return data.choices?.[0]?.message?.content || '（上游返回为空）'
 }
 
-// ── 真实 LLM 流式代理：把上游 SSE 透传，结束后补发积分事件 ──
-async function proxyStream(res, upstreamUrl, upstreamKey, model, messages, onEnd) {
+// ── OpenAI 兼容 / Gemini 流式代理：把上游 SSE 透传或归一化，结束后补发积分事件 ──
+// tools 透传给 OpenAI 兼容档（deepseek/openai/qwen 均支持 function calling）；
+// Gemini 在后端把 OpenAI 格式 tools/messages 翻译成 functionDeclarations 并回流 tool_calls。
+async function proxyStreamForModel(res, modelId, messages, tools, onEnd) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' })
+  const m = MODELS.find((x) => x.id === modelId)
+  const ep = endpointFor(m)
   try {
-    const r = await fetch(`${upstreamUrl.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstreamKey}`, Accept: 'text/event-stream' },
-      body: JSON.stringify({ model: MODELS.find((m) => m.id === model)?.model || model, messages, stream: true })
-    })
-    if (!r.ok) { res.write(`data: ${JSON.stringify({ error: `上游错误 ${r.status}` })}\n\n`); res.end(); return }
-    const reader = r.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n'); buf = lines.pop() || ''
-      for (const line of lines) {
-        const t = line.trim()
-        if (t.startsWith('data:')) res.write(t + '\n\n')
+    if (m.provider === 'gemini') {
+      await geminiStream(res, ep, m.model, messages, tools)
+    } else {
+      const r = await fetch(`${ep.url.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}`, Accept: 'text/event-stream' },
+        body: JSON.stringify({ model: m.model, messages, stream: true, ...(tools && tools.length ? { tools, tool_choice: 'auto' } : {}) })
+      })
+      if (!r.ok) { res.write(`data: ${JSON.stringify({ error: `上游错误 ${r.status}` })}\n\n`); return }
+      const reader = r.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n'); buf = lines.pop() || ''
+        for (const line of lines) {
+          const t = line.trim()
+          if (t.startsWith('data:')) res.write(t + '\n\n')
+        }
       }
     }
   } catch (e) {
@@ -404,6 +447,104 @@ async function proxyStream(res, upstreamUrl, upstreamKey, model, messages, onEnd
   res.write(`event: credits\ndata: ${JSON.stringify({ remaining })}\n\n`)
   res.write('data: [DONE]\n\n')
   res.end()
+}
+
+// ── Gemini：OpenAI 格式 messages/tools → Gemini 格式 ──
+// system → systemInstruction；tool(result) → functionResponse；assistant 的 tool_calls → functionCall
+function translateToGemini(messages, tools) {
+  let systemText = ''
+  const contents = []
+  const toolCallNameById = {}
+  for (const msg of messages || []) {
+    if (msg.role === 'system') { systemText += (systemText ? '\n\n' : '') + (msg.content || ''); continue }
+    if (msg.role === 'assistant') {
+      for (const tc of (msg.tool_calls || [])) if (tc.id) toolCallNameById[tc.id] = tc.function?.name
+      const parts = []
+      if (msg.content) parts.push({ text: msg.content })
+      for (const tc of (msg.tool_calls || [])) {
+        let args = {}
+        try { args = JSON.parse(tc.function?.arguments || '{}') } catch {}
+        parts.push({ functionCall: { name: tc.function?.name, args } })
+      }
+      contents.push({ role: 'model', parts })
+      continue
+    }
+    if (msg.role === 'tool') {
+      const name = toolCallNameById[msg.tool_call_id] || 'tool'
+      contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { content: String(msg.content || '') } } }] })
+      continue
+    }
+    contents.push({ role: 'user', parts: [{ text: msg.content || '' }] })
+  }
+  const geminiTools = (tools && tools.length)
+    ? [{ functionDeclarations: tools.map((t) => ({ name: t.function.name, description: t.function.description, parameters: t.function.parameters })) }]
+    : undefined
+  return {
+    contents,
+    systemInstruction: systemText ? { parts: [{ text: systemText }] } : undefined,
+    geminiTools
+  }
+}
+
+// ── Gemini 非流式 ──
+async function geminiGenerate(ep, nativeModel, messages, _stream) {
+  const { contents, systemInstruction, geminiTools } = translateToGemini(messages, undefined)
+  const url = `${ep.url.replace(/\/$/, '')}/${nativeModel}:generateContent?key=${ep.key}`
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents, ...(systemInstruction ? { systemInstruction } : {}), ...(geminiTools ? { tools: geminiTools } : {}) })
+  })
+  const data = await r.json().catch(() => ({}))
+  const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || []
+  return parts.map((p) => p.text || '').join('') || '（Gemini 返回为空）'
+}
+
+// ── Gemini 流式：把 Gemini SSE 归一化为 OpenAI 兼容 SSE（text → content；functionCall → tool_calls）──
+async function geminiStream(res, ep, nativeModel, messages, tools) {
+  const { contents, systemInstruction, geminiTools } = translateToGemini(messages, tools)
+  const url = `${ep.url.replace(/\/$/, '')}/${nativeModel}:streamGenerateContent?alt=sse&key=${ep.key}`
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents, ...(systemInstruction ? { systemInstruction } : {}), ...(geminiTools ? { tools: geminiTools } : {}) })
+  })
+  if (!r.ok) { res.write(`data: ${JSON.stringify({ error: `Gemini 上游错误 ${r.status}` })}\n\n`); return }
+  const reader = r.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  const toolCalls = [] // {index, id, name, args}：流式期间累积，结束前统一回吐，避免增量 args 歧义
+  let cur = null
+  let idx = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const events = buf.split('\n\n'); buf = events.pop() || ''
+    for (const ev of events) {
+      const dl = ev.split('\n').find((l) => l.startsWith('data:'))
+      if (!dl) continue
+      let j
+      try { j = JSON.parse(dl.slice(5).trim()) } catch { continue }
+      const cand = j.candidates && j.candidates[0]
+      if (!cand) continue
+      const parts = (cand.content && cand.content.parts) || []
+      for (const p of parts) {
+        if (p.text) {
+          if (cur) { const ti = idx++; toolCalls.push({ index: ti, id: `gtool_${ti}`, name: cur.name, args: cur.args }); cur = null }
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: p.text } }] })}\n\n`)
+        } else if (p.functionCall) {
+          const a = p.functionCall.args ? JSON.stringify(p.functionCall.args) : ''
+          if (!cur) cur = { name: p.functionCall.name, args: a }
+          else cur.args += a // Gemini 可能把 args 分片，累积到同一调用
+        }
+      }
+    }
+  }
+  if (cur) { const ti = idx++; toolCalls.push({ index: ti, id: `gtool_${ti}`, name: cur.name, args: cur.args }); cur = null }
+  for (const tc of toolCalls) {
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: tc.index, id: tc.id, function: { name: tc.name, arguments: tc.args } }] } }] })}\n\n`)
+  }
 }
 
 server.listen(PORT, () => {

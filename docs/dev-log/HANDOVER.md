@@ -600,3 +600,37 @@ node scripts/check-*.mjs                # 受影响的那些
 - **UI 仅真机可验**：diff 渲染 / MCP 预设卡片 / Claude 流式实测，需真机 `start-labcode.bat` 跑 `out\` 验证；本机沙箱起不了 Electron GUI。
 - 安装包（NSIS）沙箱内出不了（文件锁），要安装包在用户自己终端 `npm run dist`。
 - 未提交：`out_prev_20261008180725/`（构建前避让 safe-delete 的残留，勿提交）；本轮回退仅增量提交源码+文档+自检脚本。
+
+---
+
+## §22 扩充官方云端模型清单（2026-10-08，接续「加云端」）
+
+### 背景
+TrieCode 对比里「云端模型 弱一档」。对齐方案 §21 的交付边界原本写「官方通道只提供 DeepSeek/通义」—— 用户选择把云端模型清单也扩出来：让官方云端（登录+积分、我们自建后端统一提供）多挂 **GPT-4o / GPT-4o-mini / Gemini 1.5 Pro / Gemini 2.0 Flash**，仍统一计费，不动 BYOK。
+
+### 后端改动（cloud-server/server.mjs）
+- **模型注册表改造**：`MODELS` 从「单一全局上游」改为**每模型自带 `provider` + `baseUrl` + `keyEnv`**。新增 4 个模型：
+  - `gpt-4o` / `gpt-4o-mini`（provider `openai`，baseUrl `https://api.openai.com/v1`，keyEnv `OPENAI_API_KEY`）
+  - `gemini-1.5-pro` / `gemini-2.0-flash`（provider `gemini`，baseUrl `https://generativelanguage.googleapis.com/v1beta/models`，keyEnv `GEMINI_API_KEY`）
+  - 原有 deepseek/qwen 也补上 `baseUrl`/`keyEnv`（`DEEPSEEK_KEY` / `DASHSCOPE_API_KEY`），不再是全局兜底。
+- **按 provider 分派**：新增 `endpointFor(m)` 解析每模型的有效上游（per-provider `baseUrl`+Key，否则全局 `AI_UPSTREAM_URL`/`AI_UPSTREAM_KEY` 兜底；**Gemini 必须自带 Key**）。
+- **Gemini 适配（重点）**：Gemini 与 OpenAI 不兼容，后端做归一化，客户端零改动：
+  - `translateToGemini()`：OpenAI 格式 `messages`/`tools` → Gemini `contents` + `systemInstruction` + `functionDeclarations`；`tool` 结果 → `functionResponse`；assistant 的 `tool_calls` → `functionCall`。
+  - `geminiStream()`：把 Gemini SSE **归一化为 OpenAI 兼容 SSE**（`text`→`content`；`functionCall`→`tool_calls`），流式 agent 模式可用。
+  - `geminiGenerate()`：非流式解析。
+- **OpenAI 兼容档**（`openai`/`deepseek`/`qwen`）：透传 `model`+`messages`+`tools`+`stream` 到 `/chat/completions`，与旧行为一致。
+- **演示兜底不变**：某模型没配 Key → 返回演示回复 + 真实扣积分（与旧 `/api/chat/stream` 演示分支等价）。
+- **新增可选 env**：`OPENAI_BASE_URL` / `GEMINI_BASE_URL` / `DEEPSEEK_BASE_URL` / `DASHSCOPE_BASE_URL` 覆盖各 provider baseUrl（走代理/Azure/自建网关）。
+
+### 前端
+- **无需改动**：官方通道模型列表来自 `/api/models`（动态），新增模型自动出现在「设置 → 模型 → 官方账户」选择器。客户端 `aiChatStream` 的官方通道只认 OpenAI 兼容 SSE，Gemini 已在后端归一化。
+
+### 验证
+- 新增 `scripts/check-cloud-models.mjs`（起后端 + 本地假 OpenAI/Gemini 上游，无真实 Key）：**19/0** 全过 —— /api/models 含新模型且保留 deepseek-flash；gpt-4o 打到 `/v1/chat/completions`+Bearer+model 正确；gemini 非流式/流式 URL 正确且响应被归一化为 content；无 Key 模型走演示不报错。
+- 回归：`e2e-cloud-server.mjs` **14/0**（演示模式整链路未因重构退化）；`check-cloud-official.mjs` 31/1（那 1 个是 §21 已记录的预存在 register 缺口，非本次回归）。
+
+### 交付边界
+- 真实可用**依赖你在这台服务上配 `OPENAI_API_KEY` / `GEMINI_API_KEY`**，否则这些模型只返回演示回复。**Key 是服务端密钥，用户不感知、不加价前提由你定 `costPerCall`**（已给相对定价：gpt-4o=6 / gpt-4o-mini=3 / gemini-1.5-pro=5 / gemini-2.0-flash=3）。
+- 仍遵守红线：云端走我们自建后端统一计费，不碰用户 BYOK Key。
+- 真机 UI 验证（新模型出现在官方账户下拉、流式输出）需真机 `start-labcode.bat` 跑 `out\`；沙箱起不了 Electron GUI。
+- 提交：`<commit>`，见下。
