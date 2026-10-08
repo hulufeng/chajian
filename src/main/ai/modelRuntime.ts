@@ -192,20 +192,32 @@ let engineProcess: ChildProcess | null = null
 let currentEngineModel = ''
 
 async function isEngineRunning(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const req = http.get(`http://${LLAMA_HOST}:${LLAMA_PORT}/health`, { timeout: 2000 }, (res) => {
-      resolve(res.statusCode === 200)
-      res.resume()
+  // 单次探测太脆：引擎刚结束一次请求时监听 socket 会有瞬变，单次误报「已死」会触发 killEngine+重启。
+  // 连探几次（每次超时 1.5s、间隔 300ms）再下结论，避免误杀/误重启（见 HANDOVER §17 bug #1 关联）。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const req = http.get(`http://${LLAMA_HOST}:${LLAMA_PORT}/health`, { timeout: 1500 }, (res) => {
+        resolve(res.statusCode === 200)
+        res.resume()
+      })
+      req.on('error', () => resolve(false))
+      req.on('timeout', () => { req.destroy(); resolve(false) })
     })
-    req.on('error', () => resolve(false))
-    req.on('timeout', () => { req.destroy(); resolve(false) })
-  })
+    if (ok) return true
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 300))
+  }
+  return false
 }
 
 function killEngine(): void {
-  try { execSync('taskkill /IM llama-server.exe /F', { stdio: 'ignore' }) } catch { /* ignore */ }
+  // 只杀「本进程受管的引擎」，绝不用 `taskkill /IM llama-server.exe /F` 误杀全机所有 llama 进程
+  // （旧写法会连用户其它应用的 llama 引擎一起杀掉，见 HANDOVER §17 bug #2）。
   if (engineProcess) {
-    try { engineProcess.kill() } catch { /* ignore */ }
+    try { engineProcess.kill() } catch { /* 已退出 */ }
+    // Windows 上 SIGTERM 不一定生效，按受管 PID 精准强杀（仅这一个进程）
+    try {
+      if (engineProcess.pid) execSync(`taskkill /PID ${engineProcess.pid} /F`, { stdio: 'ignore' })
+    } catch { /* 已退出 */ }
     engineProcess = null
   }
   currentEngineModel = ''
@@ -215,9 +227,13 @@ function killEngine(): void {
 export async function startLlamaEngine(modelFile?: string): Promise<{ success: boolean; error?: string; model?: string }> {
   // 引擎已在跑就复用：不能一调就 killEngine 重启 ——
   // 「自动接上上次用的模型」会让这个函数被调两次，第二次会把用户正在跑的实例杀掉重开。
+  // 复用判定以「传入的模型 id」为准（与 spawn 时记录的 currentEngineModel 对齐），
+  // 同时兼容 modelFile 直接是文件名的情况（basename 命中也算同一模型），
+  // 避免「id 与文件名永不等」导致每发一条消息都 kill+重启引擎（见 HANDOVER §17 bug #1）。
   if (await isEngineRunning()) {
     const running = getRunningModel()
-    if (!modelFile || !running || running === modelFile) {
+    const sameModel = !modelFile || !running || running === modelFile || path.basename(modelFile || '') === running
+    if (sameModel) {
       if (modelFile) currentEngineModel = modelFile
       return { success: true, model: currentEngineModel || modelFile }
     }
@@ -271,7 +287,8 @@ export async function startLlamaEngine(modelFile?: string): Promise<{ success: b
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1000))
     if (await isEngineRunning()) {
-      currentEngineModel = path.basename(modelPath)
+      // 记录启动该引擎时用的模型 id（优先），便于后续复用判定命中、不再重复重启
+      currentEngineModel = modelFile || path.basename(modelPath)
       return { success: true, model: currentEngineModel }
     }
   }

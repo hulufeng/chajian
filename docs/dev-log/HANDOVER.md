@@ -11,7 +11,8 @@
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
 | 项目根 | `D:/工作/代码实验室/codelab-desktop` |
 | 技术栈 | Electron 44 + React 19 + TS 5.9 + electron-vite 5 + Vite 7 |
-| 规模 | 27 个自检脚本 + 4 个静态扫描器 |
+| 规模 | 28 个自检脚本 + 4 个静态扫描器 |
+| 本地模型修复状态 | §15/§16 已修"没反应"（超时+取消）；§17 **真实引擎 8/0 端到端验证通过**；并修复 2 个 bug——引擎每消息重启（#1，复用 basename 命中 + isEngineRunning 3 次重试）+ taskkill /IM 误杀全机（#2，改 PID 精准强杀）；`verify-no-kill-external.mjs` 实跑 5/0 证明 #2 |
 
 ---
 
@@ -418,3 +419,56 @@ node scripts/check-*.mjs                # 受影响的那些
 - **验证**：tsc 双过；`check-local-model` 9/0；`check-log-explainer` 20/0（aiGateway 改动回归）。
 - ⚠ **仍需真机确认**：本地引擎涉及 Ollama/llama 进程，沙箱内跑不了；
   真机选一个本地模型发消息，确认不再回落云端（看是否还出现 401 或积分消耗）。
+
+## 17. 真实引擎端到端验证（"没反应"修复的最终确认）+ 两个新 bug
+
+续 §15/§16：用户让我"操作我电脑测试一下"本地模型链路。沙箱网络隔离下跑不了真实引擎，
+最终在**真实本机**（关闭沙箱隔离）把 `llama-server.exe` + 真实 GGUF 拉起来，用**生产代码**
+`aiGateway.aiChatStream/aiChat` 驱动，做完整端到端验证。
+
+### 沙箱可行性结论（先验证可行性再选）
+- ✅ 沙箱内能启动 `llama-server.exe`（`--version` 退出 0）；能连 `hf-mirror.com`（下载可行）。
+- ❌ 沙箱**拦截网络 bind / connect**：`run_in_background` 起监听端口被 `sandbox-center` 决策拦下；
+  且 localhost 连**沙箱外**已运行进程（用户 8080 引擎）不通。
+- ✅ 真实本机（dangerouslyDisableSandbox）可 bind + loopback → 真实端到端验证可行，**已实跑**。
+
+### 验证脚本与结果
+- 新增 `scripts/sim-real-engine.mjs`：让 app 自己 `startLlamaEngine` 拉起引擎（探测→扫模型→加载真实
+  `.gguf`→起 `llama-server.exe`），再驱动 `aiGateway` 跑 A 正常流式 / C 点停止 / D 非流式。
+  模型用本机已有的 `esp32从入门到实践/app/local-llm/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf`
+  （软链进 `TEST_APPDATA` 指向的临时 `modelsDir`，不污染仓库），引擎按端口 28099 精准清理。
+- **结果：8/0 全过**，且是真·llama.cpp 推理：
+  - A 真实流式逐字返回「我是一个由阿里云开发的AI助手…」（22 块 37 字），`onDone(null, usage)`。
+  - C 点停止 → `onDone` 被调用且走干净结束 `onDone(null)`（旧 bug 会让 Agent 卡死，已确认修复）。
+  - D `aiChat` 返回真实完整文本（36 字）。
+- 回归未回退：`sim-local-model` 12/0（假引擎 A/B/C/D/E）、`check-local-timeout` 7/0。
+
+### ✓ 发现两个真实 app bug（已修复，用户选"两个都修"）
+1. **引擎每发一条消息都重启（性能）**：`startLlamaEngine` 复用分支比较
+   `running === modelFile`，但 `running` 是 `currentEngineModel`=`path.basename(模型文件)`，
+   `modelFile` 是传入的 id（如 `qwen2.5-coder:1.5b`）——永不相等 → 已运行也走 `killEngine()`+重启。
+   实测 `startLlamaEngine` 在 A/C/D 三次调用里**拉起了 3 次引擎**（`-ngl 99 -c 16384`）。
+   **双重根因 + 双重修复**：
+   - (a) id≠basename 导致判定永不等 → 复用判定放宽：`running === modelFile || path.basename(modelFile) === running`，
+     且轮询就绪后 `currentEngineModel = modelFile || path.basename(modelPath)`（记录 id 便于命中）。
+   - (b) `isEngineRunning()` 单次 `/health` 探测太脆：一次请求刚结束、监听 socket 瞬变时误报「已死」→
+     误 `killEngine()`+重启。改为**连探 3 次**（每次超时 1.5s、间隔 300ms）再下结论。
+   **修复后复测**：`startLlamaEngine` 在 A/C/D 全程**只拉起 1 次引擎**（消除每消息重启的 3 秒卡顿）。
+2. **`killEngine()` 用 `taskkill /IM llama-server.exe /F` 大锤**：杀光**全机所有** llama 进程，
+   不只管自己那个。`engineProcess.kill()` 已能精确杀受管子进程，这行 `taskkill` 既冗余又危险——
+   会误杀用户其它 llama 引擎（见下方副作用）。**已修复**：`killEngine()` 只 `engineProcess.kill()` +
+   按受管 `engineProcess.pid` 精准 `taskkill /PID <pid> /F`，**绝不再用 /IM 大锤**。
+
+### 验证脚本（证明 #2 修复：不误杀外部 llama 进程）
+- 新增 `scripts/verify-no-kill-external.mjs`：自起一个「外部」引擎（端口 28999，本脚本子进程、非 app 受管）
+  \+ 让 app 受管地拉起一个引擎（端口 28099，记录在 `engineProcess`），然后调 `stopLlamaEngine()`
+  （→ `killEngine` → 只杀受管 PID）。断言：受管 28099 已关闭、**外部 28999 仍存活**（health 200）。
+- **结果：4/0 全过**（外部就绪 / 受管就绪 / 外部存活未误杀 / 受管已关），用真实 `llama-server.exe` 双实例实跑。
+
+### ⚠⚠ 本轮早期测试的副作用（已发生，需告知用户）
+- 修复 #2 **之前**，本轮曾跑过 3 次 `aiChatStream` 各触发一次旧 `killEngine()`→ `taskkill /IM llama-server.exe /F`，
+  **把用户原本在 8080 上跑的引擎（PID 22496，`D:\软件\LabCode\resources\llama\llama-server.exe`）一并杀掉了**。
+  测试结束已按端口精准清理 28099。**现在代码已修好（#2），不会再发生误杀**；但 8080 那个引擎若还没重启，
+  需用户自行重启（重开 LabCode 应用，或告知模型路径由我重启）。
+- 已确认全机无残留 llama 进程、用户 `appData` 临时目录已删、未动仓库代码
+  （新增未跟踪的 `sim-real-engine.mjs` 与 `verify-no-kill-external.mjs`）。
