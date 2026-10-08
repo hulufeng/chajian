@@ -35,9 +35,10 @@ const SERVER = `http://127.0.0.1:${PORT}`
 
 // ── 内置模型（必须含 id:"deepseek-flash"，即客户端默认 modelId）──
 const MODELS = [
-  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速、便宜（演示后端默认）', available: true },
-  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 2, desc: '标准对话', available: true },
-  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '阿里云通义', available: true }
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速、便宜，日常问答首选', available: true },
+  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', baseUrl: '', model: 'deepseek-coder', costPerCall: 2, desc: '代码专用，写 ESP32 程序推荐', available: true },
+  { id: 'qwen-coder', name: '通义千问 Coder', provider: 'qwen', baseUrl: '', model: 'qwen2.5-coder-32b', costPerCall: 2, desc: '阿里代码模型，中文注释友好', available: true },
+  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '最强通用，复杂问题', available: true }
 ]
 
 // ── 持久化（单进程 JSON，足够开发/演示）──
@@ -148,6 +149,40 @@ const server = createServer(async (req, res) => {
       db.users[email] = u; saveDb(db)
       logReq(method, path, 200, `email=${email}`)
       return sendJson(res, 200, { token: t, user: publicUser(u) })
+    }
+
+    // 1.5) 匿名试用：不需要邮箱密码，自动创建 guest 用户，送免费额度
+    if (req.method === 'POST' && path === '/api/guest') {
+      const ip = req.socket.remoteAddress || 'unknown'
+      if (!rateLimit(`guest:${ip}`, 5)) return sendJson(res, 429, { error: '创建试用名额过于频繁,请稍后再试' })
+      // 机器指纹（客户端传 deviceId），同一设备只送一次免费额度
+      const { deviceId } = await readBody(req).catch(() => ({}))
+      const id = typeof deviceId === 'string' && deviceId.length >= 8 ? deviceId : randomUUID()
+      // 已有 guest 就直接返回 token，不重复送
+      const existing = db.guests && db.guests[id]
+      if (existing) {
+        const t = existing.token
+        if (!existing.tokens[t]) existing.tokens[t] = true
+        logReq(method, path, 200, `guest=${id.slice(0,8)} 续用`)
+        return sendJson(res, 200, { token: t, user: publicUser(existing) })
+      }
+      const u = {
+        email: `guest_${id.slice(0,8)}@labcode.local`,
+        salt: randomBytes(16).toString('hex'),
+        pwHash: '',
+        planCredits: Number(process.env.GUEST_FREE_CREDITS || 50),
+        rechargeCredits: 0,
+        totalCredits: Number(process.env.GUEST_FREE_CREDITS || 50),
+        planMonth: 'trial',
+        tokens: {}
+      }
+      const t = randomUUID()
+      u.tokens[t] = true
+      if (!db.guests) db.guests = {}
+      db.guests[id] = u
+      saveDb(db)
+      logReq(method, path, 200, `guest=${id.slice(0,8)} 新建 送${u.totalCredits}次`)
+      return sendJson(res, 200, { token: t, user: publicUser(u), isGuest: true })
     }
 
     // 2) 登录

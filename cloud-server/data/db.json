@@ -1,0 +1,17 @@
+{
+  "users": {},
+  "guests": {
+    "test-device-123456": {
+      "email": "guest_test-dev@labcode.local",
+      "salt": "d3c707555a4917afc52b44c03b24dba2",
+      "pwHash": "",
+      "planCredits": 50,
+      "rechargeCredits": 0,
+      "totalCredits": 50,
+      "planMonth": "trial",
+      "tokens": {
+        "df91db25-6c19-4357-86ba-a8a7d66dab06": true
+      }
+    }
+  }
+}

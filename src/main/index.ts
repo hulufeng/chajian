@@ -11,7 +11,7 @@ import {
   ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
 } from './services/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1980,6 +1980,15 @@ app.whenReady().then(() => {
   initDiag()
   initPlugins()
   createWindow()
+
+  // ── 匿名试用：首次打开自动登录，不用注册就能用云端模型（对齐 TrieCode）──
+  // 不阻塞窗口创建，后台默默拿 token；失败也不影响本地模型使用。
+  guestLogin()
+    .then((s) => {
+      if (s.token) console.log('[ai] 试用登录成功，剩余额度:', s.totalCredits)
+    })
+    .catch((e) => console.warn('[ai] 试用登录失败（可后到设置里登录）:', e.message))
+
   // 语言服务器可执行探测：告诉 lspService 用户数据目录，
   // 这样「装了 LLVM 但没加 PATH」的机器也能找到 clangd（与 arduino-cli 同惯例的目录）。
   try {

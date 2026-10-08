@@ -537,3 +537,30 @@ node scripts/check-*.mjs                # 受影响的那些
 - 这是**开发/演示**后端：数据为本地明文 JSON、无防爆破/限流。生产请换正式鉴权与数据库。
 - 演示模式不接真实模型；要真模型就设 `AI_UPSTREAM_URL`/`AI_UPSTREAM_KEY`。
 - 真机验收：起服务 → `set CODELAB_AI_SERVER=http://127.0.0.1:8787` → `npm run dev` → 设置→模型→官方账户 注册/登录/对话。
+---
+
+## §20 2026-10-08 收尾：清理 + 示例扩充 + 后端加固
+
+### 本轮完成
+1. **清理**：删 47 个旧 pkgout/out_bad/out_prev 目录 + 136 个根目录调试残留 + 27 个日志/探针文件，释放约 25 GB。保留 pkgout36 最新包和备份 bundle。
+2. **自检**：tsc node+web 双过 exit 0；4 个静态扫描（IPC/crash/JSON/unhandled-rejection）全绿；20+ check 脚本全过；cloud-server e2e 14/0。
+3. **课程示例扩充**：examples/ 从 13 个 .ino 扩到 28 个（新增 Wi-Fi 连接/Web 服务器/舵机/深度睡眠/FreeRTOS/NVS/触摸/超声波/继电器/UART2/内置温度/BLE 信标/RGB PWM/UDP/DHT11）。风格统一：中文注释 + Serial 输出 + 接线说明。
+4. **云端后端加固**（cloud-server/server.mjs）：
+   - 内存版限流：注册 10次/分/IP，登录 20次/分/IP
+   - 邮箱格式正则校验 + 密码至少 6 位
+   - 请求日志 logReq（method/path/status/extra）
+   - 积分预检查：对话前 totalCredits < cost 直接 402
+5. **build + 启动**：electron-vite build 17.27s 成功；copy-runtime-assets 完成；dev electron 启动正常（插件加载 2 个、llama.cpp 加载 qwen2.5-coder-1.5b 监听 8080）。
+6. **git 提交**：81b9c70 feat(examples): 扩充 ESP32 教学示例至 28 个 + 云端后端加固。
+
+### 已知问题 / 待办
+- 14 个旧 pkgout 目录（pkgout, pkgout01, pkgout02, pkgout10-19, pkg113）被 electron 进程的 app.asar 锁住，需完全关闭 electron/LabCode 后再删（约 2 GB）。
+- dev electron 窗口启动后不在前台显示（日志正常、进程正常），可能是 window-state.json 残留屏幕外坐标。删 %APPDATA%\codelab-desktop 里的 window-state 相关文件可恢复。
+- GitHub 远程 hulufeng/chajian 仍有 71+ 提交未推（缺 PAT）。
+- 仿真外设 UI（SimulatorPanel/SimBurnView）在之前简化中已移除，wiringService 只剩接线建议，属暂缓项。
+- 云电脑主教材距 100 万字差约 73 万字（Linux 环境，本机不访问）。
+
+### 下次开工第一件事
+1. 关掉所有 electron/LabCode 进程，删 14 个锁目录
+2. 删 window-state.json 解决 dev 窗口不显示
+3. 真机烧录/板卡纠正/增量编译需插板子测

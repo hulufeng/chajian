@@ -286,6 +286,38 @@ function applyAccount(s: AiState, token: string, user: UserInfo): AiState {
   }
 }
 
+/**
+ * 匿名试用登录：首次打开软件自动调，不需要邮箱密码。
+ * 后端按设备指纹发免费额度（默认 50 次）。
+ * 已有 token 则直接返回当前状态，不重复创建。
+ */
+export async function guestLogin(): Promise<AiState> {
+  const s = getAiState()
+  if (s.token) return s // 已登录，不用 guest
+  // 生成/读取设备指纹（本地持久化，同一台机器复用）
+  const fpFile = join(app.getPath('userData'), 'device-id.txt')
+  let deviceId = ''
+  try {
+    if (existsSync(fpFile)) deviceId = readFileSync(fpFile, 'utf-8').trim()
+  } catch { /* ignore */ }
+  if (!deviceId) {
+    deviceId = require('node:crypto').randomUUID()
+    try { writeFileSync(fpFile, deviceId, 'utf-8') } catch { /* ignore */ }
+  }
+  try {
+    const data = await postApi<{ token: string; user: UserInfo; isGuest?: boolean }>(
+      '/api/guest',
+      { deviceId }
+    )
+    const next = applyAccount(getAiState(), data.token, data.user)
+    saveAiState(next)
+    return next
+  } catch (e) {
+    noteChannelError(`试用登录失败：${(e as Error).message}`)
+    return s
+  }
+}
+
 /** 登录：拿到 token + 账户信息后写入本地 AiState，返回最新状态 */
 export async function login(email: string, password: string): Promise<AiState> {
   const { token, user } = await authLogin(email, password)
