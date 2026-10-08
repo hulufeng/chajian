@@ -265,6 +265,24 @@ export async function authLogin(email: string, password: string): Promise<{ toke
   return postApi('/api/auth/login', { email, password })
 }
 
+/** 发送邮箱验证码 */
+export async function sendLoginCode(email: string): Promise<{ ok: boolean; devMode?: boolean }> {
+  return postApi<{ ok: boolean; devMode?: boolean }>('/api/auth/send-code', { email })
+}
+
+/** 验证码登录/注册（自动注册） */
+export async function verifyLoginCode(email: string, code: string): Promise<{ token: string; user: UserInfo; isNew?: boolean }> {
+  return postApi<{ token: string; user: UserInfo; isNew?: boolean }>('/api/auth/verify-code', { email, code })
+}
+
+/** 验证码登录：拿到 token 后写入本地状态 */
+export async function loginWithCode(email: string, code: string): Promise<AiState> {
+  const { token, user } = await verifyLoginCode(email, code)
+  const next = applyAccount(getAiState(), token, user)
+  saveAiState(next)
+  return next
+}
+
 export async function refreshMe(token: string): Promise<UserInfo> {
   const res = await fetch(`${getServer()}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
   const data = (await res.json().catch(() => ({}))) as { user?: UserInfo; error?: string }

@@ -11,7 +11,7 @@ import {
   ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
 } from './services/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, sendLoginCode, loginWithCode, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1136,6 +1136,8 @@ ipcMain.handle('ai:byokActivate', (_e, id: string | null) => setActiveByok(id))
 // 网络请求本身在 aiGateway.ts 的 authLogin/authRegister/refreshMe 内完成。
 ipcMain.handle('ai:login', (_e, email: string, password: string) => login(email, password))
 ipcMain.handle('ai:register', (_e, email: string, password: string) => register(email, password))
+ipcMain.handle('ai:send-code', (_e, email: string) => sendLoginCode(email))
+ipcMain.handle('ai:login-with-code', (_e, email: string, code: string) => loginWithCode(email, code))
 ipcMain.handle('ai:logout', () => logout())
 ipcMain.handle('ai:refreshMe', () => refreshAccount())
 

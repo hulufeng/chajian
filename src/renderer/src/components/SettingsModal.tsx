@@ -126,9 +126,9 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
     totalCredits: null, planMonth: null, modelId: 'deepseek-flash'
   })
   const [officialModels, setOfficialModels] = useState<OfficialModel[]>([])
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [authEmail, setAuthEmail] = useState('')
-  const [authPassword, setAuthPassword] = useState('')
+  const [authCode, setAuthCode] = useState('')
+  const [codeCountdown, setCodeCountdown] = useState(0)
   const [authBusy, setAuthBusy] = useState(false)
   const [authErr, setAuthErr] = useState('')
   const [authMsg, setAuthMsg] = useState('')
@@ -406,34 +406,47 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                         <input className="settings-input" type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="you@example.com" />
                       </div>
                       <div className="settings-row">
-                        <span>密码</span>
-                        <input className="settings-input" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" />
+                        <span>验证码</span>
+                        <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                          <input className="settings-input" value={authCode} onChange={(e) => setAuthCode(e.target.value)} placeholder="6位验证码" maxLength={6} style={{ flex: 1 }} />
+                          <button
+                            className="settings-btn"
+                            disabled={codeCountdown > 0 || authBusy || !authEmail.includes('@')}
+                            onClick={async () => {
+                              setAuthBusy(true); setAuthErr(''); setAuthMsg('')
+                              try {
+                                await window.api.ai.sendCode(authEmail.trim())
+                                setAuthMsg('验证码已发送（10分钟有效）')
+                                setCodeCountdown(60)
+                                const timer = setInterval(() => {
+                                  setCodeCountdown((c) => { if (c <= 1) { clearInterval(timer); return 0 } return c - 1 })
+                                }, 1000)
+                              } catch (e) { setAuthErr((e as Error).message) } finally { setAuthBusy(false) }
+                            }}
+                          >{codeCountdown > 0 ? `${codeCountdown}s` : '发送验证码'}</button>
+                        </div>
                       </div>
                       <div className="settings-actions" style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button
                           className="byok-primary-btn"
-                          disabled={authBusy}
+                          disabled={authBusy || !authCode || !authEmail}
                           onClick={async () => {
                             setAuthBusy(true); setAuthErr(''); setAuthMsg('')
                             try {
-                              const s = authMode === 'login'
-                                ? await window.api.ai.login(authEmail.trim(), authPassword)
-                                : await window.api.ai.register(authEmail.trim(), authPassword)
+                              const s = await window.api.ai.loginWithCode(authEmail.trim(), authCode.trim())
                               setOfficialState({
                                 token: s.token, email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits,
                                 totalCredits: s.totalCredits, planMonth: s.planMonth, modelId: s.modelId
                               })
-                              setAuthPassword('')
+                              setAuthCode('')
                               const ms = await window.api.ai.models().catch(() => [] as OfficialModel[])
                               setOfficialModels(ms)
-                              setAuthMsg(authMode === 'login' ? '登录成功' : '注册成功，已自动登录')
+                              setAuthMsg('登录成功，已送 100 次免费额度')
                             } catch (e) { setAuthErr((e as Error).message) } finally { setAuthBusy(false) }
                           }}
-                        >{authBusy ? '处理中…' : (authMode === 'login' ? '登录' : '注册')}</button>
-                        <button className="settings-btn" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthErr(''); setAuthMsg('') }}>
-                          {authMode === 'login' ? '去注册' : '去登录'}
-                        </button>
+                        >{authBusy ? '处理中…' : '登录 / 注册'}</button>
                       </div>
+                      <p className="settings-desc" style={{ marginTop: 8, fontSize: 11 }}>首次登录自动注册，无需密码。验证码发送到邮箱，10 分钟有效。</p>
                       {authErr && <div className="svd-msg err" style={{ marginTop: 8 }}>{authErr}</div>}
                       {authMsg && <div className="svd-msg ok" style={{ marginTop: 8 }}>{authMsg}</div>}
                     </div>

@@ -459,9 +459,11 @@ const api = {
     byokSave: (profile: ByokProfile): Promise<AiState> => ipcRenderer.invoke('ai:byokSave', profile),
     byokDelete: (id: string): Promise<AiState> => ipcRenderer.invoke('ai:byokDelete', id),
     byokActivate: (id: string | null): Promise<AiState> => ipcRenderer.invoke('ai:byokActivate', id),
-    // 官方通道账号（照 aiGateway.ts 契约：/api/auth/login|register、/api/me）
+    // 官方通道账号
     login: (email: string, password: string): Promise<AiState> => ipcRenderer.invoke('ai:login', email, password),
     register: (email: string, password: string): Promise<AiState> => ipcRenderer.invoke('ai:register', email, password),
+    sendCode: (email: string): Promise<{ ok: boolean; devMode?: boolean }> => ipcRenderer.invoke('ai:send-code', email),
+    loginWithCode: (email: string, code: string): Promise<AiState> => ipcRenderer.invoke('ai:login-with-code', email, code),
     logout: (): Promise<AiState> => ipcRenderer.invoke('ai:logout'),
     refreshMe: (): Promise<AiState> => ipcRenderer.invoke('ai:refreshMe')
   },

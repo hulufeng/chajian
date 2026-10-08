@@ -31,7 +31,52 @@ const DB_FILE = join(DATA_DIR, 'db.json')
 const PORT = Number(process.env.PORT || 8787)
 const UPSTREAM_URL = process.env.AI_UPSTREAM_URL || ''      // 如 https://api.deepseek.com/v1
 const UPSTREAM_KEY = process.env.AI_UPSTREAM_KEY || ''      // Bearer token
+// SMTP 发邮件（验证码登录用）：用户自己配
+const SMTP_HOST = process.env.SMTP_HOST || ''       // 如 smtp.qq.com
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465)
+const SMTP_USER = process.env.SMTP_USER || ''       // 发件邮箱
+const SMTP_PASS = process.env.SMTP_PASS || ''       // 授权码（不是邮箱密码）
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER
 const SERVER = `http://127.0.0.1:${PORT}`
+
+// ── 验证码存储：email -> { code, expiresAt } ──
+const codeStore = new Map()
+
+// ── 发邮件（零依赖，用 Node 原生 net/tls 写 SMTP）──
+async function sendEmail(toEmail, subject, text) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('[smtp] 未配置 SMTP，验证码不真发（开发模式）:', toEmail, 'code=', text.match(/\d{6}/)?.[0])
+    return { ok: true, devMode: true }
+  }
+  // 用基础 SMTP（SSL/465）
+  const tls = await import('node:tls')
+  return new Promise((resolve, reject) => {
+    const sock = tls.connect(SMTP_PORT, SMTP_HOST, { rejectUnauthorized: false }, () => {
+      const lines = []
+      let step = 0
+      const writeln = (s) => sock.write(s + '\r\n')
+      sock.on('data', (d) => {
+        const resp = d.toString()
+        lines.push(resp)
+        if (resp.startsWith('220') && step === 0) { writeln(`EHLO labcode`); step = 1 }
+        else if (resp.startsWith('235') && step === 3) {
+          writeln(`MAIL FROM: <${SMTP_FROM}>`); step = 4
+        } else if (resp.startsWith('250') && step === 1) { writeln(`AUTH LOGIN`); step = 2 }
+        else if (resp.startsWith('334') && step === 2) { writeln(Buffer.from(SMTP_USER).toString('base64')); step = 3 }
+        else if (resp.startsWith('334') && step === 3) { writeln(Buffer.from(SMTP_PASS).toString('base64')); step = 3 }
+        else if (resp.startsWith('250') && step === 4) { writeln(`RCPT TO: <${toEmail}>`); step = 5 }
+        else if (resp.startsWith('250') && step === 5) { writeln(`DATA`); step = 6 }
+        else if (resp.startsWith('354') && step === 6) {
+          const body = `From: LabCode <${SMTP_FROM}>\r\nTo: <${toEmail}>\r\nSubject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${text}\r\n.`
+          writeln(body); step = 7
+        } else if (resp.startsWith('250') && step === 7) { writeln('QUIT'); sock.end(); resolve({ ok: true }) }
+        else if (resp.startsWith('5')) { sock.end(); reject(new Error('SMTP 错误: ' + resp.trim())) }
+      })
+    })
+    sock.on('error', (e) => reject(e))
+    setTimeout(() => { sock.destroy(); reject(new Error('SMTP 超时')) }, 10000)
+  })
+}
 
 // ── 内置模型（必须含 id:"deepseek-flash"，即客户端默认 modelId）──
 const MODELS = [
@@ -183,6 +228,57 @@ const server = createServer(async (req, res) => {
       saveDb(db)
       logReq(method, path, 200, `guest=${id.slice(0,8)} 新建 送${u.totalCredits}次`)
       return sendJson(res, 200, { token: t, user: publicUser(u), isGuest: true })
+    }
+
+    // 2.5) 发邮箱验证码
+    if (req.method === 'POST' && path === '/api/auth/send-code') {
+      const ip = req.socket.remoteAddress || 'unknown'
+      if (!rateLimit(`sendcode:${ip}`, 5)) return sendJson(res, 429, { error: '发送过于频繁,请稍后再试' })
+      const { email } = await readBody(req)
+      if (!isValidEmail(email)) return sendJson(res, 400, { error: '邮箱格式不正确' })
+      const code = String(Math.floor(100000 + Math.random() * 900000))
+      codeStore.set(email.toLowerCase(), { code, expiresAt: Date.now() + 10 * 60 * 1000 })
+      try {
+        await sendEmail(email, 'LabCode 登录验证码', `您的验证码是 ${code}，10 分钟内有效。\n\n如非本人操作请忽略。`)
+        logReq(method, path, 200, `email=${email}`)
+        return sendJson(res, 200, { ok: true, devMode: !SMTP_HOST })
+      } catch (e) {
+        logReq(method, path, 500, `email=${email} err=${e.message}`)
+        return sendJson(res, 500, { error: '邮件发送失败: ' + e.message })
+      }
+    }
+
+    // 2.6) 验证码登录/注册（自动注册）
+    if (req.method === 'POST' && path === '/api/auth/verify-code') {
+      const ip = req.socket.remoteAddress || 'unknown'
+      if (!rateLimit(`verify:${ip}`, 10)) return sendJson(res, 429, { error: '尝试过于频繁' })
+      const { email, code } = await readBody(req)
+      if (!isValidEmail(email)) return sendJson(res, 400, { error: '邮箱格式不正确' })
+      if (!code || !/^\d{6}$/.test(code)) return sendJson(res, 400, { error: '验证码为6位数字' })
+      const saved = codeStore.get(email.toLowerCase())
+      if (!saved || saved.code !== code || Date.now() > saved.expiresAt) {
+        return sendJson(res, 400, { error: '验证码错误或已过期' })
+      }
+      codeStore.delete(email.toLowerCase())
+      // 已有用户就登录，没有就注册（送 100 积分）
+      let u = db.users[email.toLowerCase()]
+      if (!u) {
+        u = {
+          email: email.toLowerCase(),
+          salt: randomBytes(16).toString('hex'),
+          pwHash: '', // 验证码登录不需要密码
+          planCredits: 100, rechargeCredits: 0, totalCredits: 100,
+          planMonth: new Date().toISOString().slice(0, 7), tokens: {}
+        }
+        db.users[email.toLowerCase()] = u
+        logReq(method, path, 200, `注册 email=${email}`)
+      } else {
+        logReq(method, path, 200, `登录 email=${email}`)
+      }
+      const t = randomUUID()
+      u.tokens[t] = true
+      saveDb(db)
+      return sendJson(res, 200, { token: t, user: publicUser(u), isNew: !db.users[email.toLowerCase()].pwHash })
     }
 
     // 2) 登录
