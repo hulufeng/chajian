@@ -63,6 +63,34 @@ function sendJson(res, status, obj) {
   })
   res.end(body)
 }
+
+// ── 请求日志 ──
+function logReq(method, path, status, extra = '') {
+  const ts = new Date().toISOString()
+  console.log(`[${ts}] ${method} ${path} -> ${status} ${extra}`)
+}
+
+// ── 简单限流（内存版,单进程足够）──
+// key -> { count, resetAt }
+const rateBuckets = new Map()
+function rateLimit(key, maxPerMinute = 20) {
+  const now = Date.now()
+  const bucket = rateBuckets.get(key)
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + 60000 })
+    return true
+  }
+  bucket.count++
+  return bucket.count <= maxPerMinute
+}
+
+// ── 输入校验 ──
+function isValidEmail(email) {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254
+}
+function isValidPassword(pw) {
+  return typeof pw === 'string' && pw.length >= 6 && pw.length <= 128
+}
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = ''
@@ -97,14 +125,18 @@ const server = createServer(async (req, res) => {
 
   const url = new URL(req.url, SERVER)
   const path = url.pathname
+  const method = req.method
   const auth = req.headers['authorization'] || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
 
   try {
     // 1) 注册
     if (req.method === 'POST' && path === '/api/auth/register') {
+      const ip = req.socket.remoteAddress || 'unknown'
+      if (!rateLimit(`reg:${ip}`, 10)) return sendJson(res, 429, { error: '尝试过于频繁,请稍后再试' })
       const { email, password } = await readBody(req)
-      if (!email || !password) return sendJson(res, 400, { error: '邮箱和密码不能为空' })
+      if (!isValidEmail(email)) return sendJson(res, 400, { error: '邮箱格式不正确' })
+      if (!isValidPassword(password)) return sendJson(res, 400, { error: '密码至少 6 位' })
       if (db.users[email]) return sendJson(res, 409, { error: '该邮箱已注册' })
       const salt = randomBytes(16).toString('hex')
       const u = {
@@ -114,16 +146,23 @@ const server = createServer(async (req, res) => {
       const t = randomUUID()
       u.tokens[t] = true
       db.users[email] = u; saveDb(db)
+      logReq(method, path, 200, `email=${email}`)
       return sendJson(res, 200, { token: t, user: publicUser(u) })
     }
 
     // 2) 登录
     if (req.method === 'POST' && path === '/api/auth/login') {
+      const ip = req.socket.remoteAddress || 'unknown'
+      if (!rateLimit(`login:${ip}`, 20)) return sendJson(res, 429, { error: '尝试过于频繁,请稍后再试' })
       const { email, password } = await readBody(req)
       const u = db.users[email]
-      if (!u || u.pwHash !== hashPassword(password, u.salt)) return sendJson(res, 401, { error: '邮箱或密码错误' })
+      if (!u || u.pwHash !== hashPassword(password, u.salt)) {
+        logReq(method, path, 401, `email=${email}`)
+        return sendJson(res, 401, { error: '邮箱或密码错误' })
+      }
       const t = randomUUID()
       u.tokens[t] = true; saveDb(db)
+      logReq(method, path, 200, `email=${email}`)
       return sendJson(res, 200, { token: t, user: publicUser(u) })
     }
 
@@ -145,8 +184,10 @@ const server = createServer(async (req, res) => {
       if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
       const { model, messages } = await readBody(req)
       const cost = costOf(model)
+      if (u.totalCredits < cost) return sendJson(res, 402, { error: '积分不足,请充值' })
       const content = await generateContent(UPSTREAM_URL, UPSTREAM_KEY, model, messages, false)
       deduct(u, cost)
+      logReq(method, path, 200, `user=${u.email} model=${model} cost=${cost}`)
       return sendJson(res, 200, { content, creditsLeft: u.totalCredits, cost })
     }
 
@@ -156,6 +197,8 @@ const server = createServer(async (req, res) => {
       if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
       const { model, messages } = await readBody(req)
       const cost = costOf(model)
+      if (u.totalCredits < cost) return sendJson(res, 402, { error: '积分不足,请充值' })
+      logReq(method, path, 200, `user=${u.email} model=${model} stream`)
       if (UPSTREAM_URL && UPSTREAM_KEY) {
         return await proxyStream(res, UPSTREAM_URL, UPSTREAM_KEY, model, messages, () => { deduct(u, cost); return u.totalCredits })
       }
