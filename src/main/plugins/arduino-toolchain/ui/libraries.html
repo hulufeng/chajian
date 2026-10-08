@@ -195,6 +195,11 @@
   </div>
 
 <script>
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function callHost(method, args) {
     return new Promise((resolve, reject) => {
       const id = Date.now() + Math.random();
@@ -226,7 +231,7 @@
       installedLibraries = result.libraries || [];
       renderInstalled();
     } catch (e) {
-      list.innerHTML = '<div class="empty">加载失败: ' + e.message + '</div>';
+      list.innerHTML = '<div class="empty">加载失败: ' + escapeHtml(e.message) + '</div>';
     }
   }
 
@@ -241,7 +246,7 @@
       searchResults = result.libraries || [];
       renderSearch();
     } catch (e) {
-      list.innerHTML = '<div class="empty">搜索失败: ' + e.message + '</div>';
+      list.innerHTML = '<div class="empty">搜索失败: ' + escapeHtml(e.message) + '</div>';
     }
   }
 
@@ -263,16 +268,16 @@
       <div class="library-item">
         <div class="library-header">
           <div>
-            <span class="library-name">${lib.name}</span>
-            <span class="badge badge-installed">v${lib.version || '?'}</span>
+            <span class="library-name">${escapeHtml(lib.name)}</span>
+            <span class="badge badge-installed">v${escapeHtml(lib.version || '?')}</span>
           </div>
           <div class="library-actions">
-            ${lib.updateAvailable ? `<button class="btn btn-success" onclick="installLibrary('${lib.name}')">更新</button>` : ''}
-            <button class="btn btn-danger" onclick="uninstallLibrary('${lib.name}')">卸载</button>
+            ${lib.updateAvailable ? `<button class="btn btn-success" onclick="installLibrary('${escapeHtml(lib.name)}')">更新</button>` : ''}
+            <button class="btn btn-danger" onclick="uninstallLibrary('${escapeHtml(lib.name)}')">卸载</button>
           </div>
         </div>
-        ${lib.author ? `<div class="library-meta">作者: ${lib.author}</div>` : ''}
-        ${lib.sentence ? `<div class="library-desc">${lib.sentence}</div>` : ''}
+        ${lib.author ? `<div class="library-meta">作者: ${escapeHtml(lib.author)}</div>` : ''}
+        ${lib.sentence ? `<div class="library-desc">${escapeHtml(lib.sentence)}</div>` : ''}
       </div>
     `).join('');
   }
@@ -288,17 +293,17 @@
       <div class="library-item">
         <div class="library-header">
           <div>
-            <span class="library-name">${lib.name}</span>
+            <span class="library-name">${escapeHtml(lib.name)}</span>
             ${installedNames.has(lib.name) ? '<span class="badge badge-installed">已安装</span>' : ''}
           </div>
           <div class="library-actions">
-            <button class="btn btn-primary" onclick="installLibrary('${lib.name}')">
+            <button class="btn btn-primary" onclick="installLibrary('${escapeHtml(lib.name)}')">
               ${installedNames.has(lib.name) ? '重新安装' : '安装'}
             </button>
           </div>
         </div>
-        ${lib.author ? `<div class="library-meta">作者: ${lib.author} · v${lib.latestVersion || lib.version || '?'}</div>` : ''}
-        ${lib.sentence ? `<div class="library-desc">${lib.sentence}</div>` : ''}
+        ${lib.author ? `<div class="library-meta">作者: ${escapeHtml(lib.author)} · v${escapeHtml(lib.latestVersion || lib.version || '?')}</div>` : ''}
+        ${lib.sentence ? `<div class="library-desc">${escapeHtml(lib.sentence)}</div>` : ''}
       </div>
     `).join('');
   }
