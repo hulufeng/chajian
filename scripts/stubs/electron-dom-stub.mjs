@@ -4,7 +4,9 @@ import { join } from 'node:path'
 // 供 shareCard / burnHistory / browser-automation 在 node 真跑。
 export const app = {
   getPath: (name) => {
-    if (name === 'appData') return process.env.TEST_APPDATA || join(tmpdir(), 'codelab-test-appdata')
+    // 测试桩：appData 与 userData 都重定向到 TEST_APPDATA，保证自检脚本互相不污染
+    // （aiGateway 的 ai-settings.json 走 userData；此前只重定向 appData 导致共享目录串味）。
+    if (name === 'appData' || name === 'userData') return process.env.TEST_APPDATA || join(tmpdir(), 'codelab-test-appdata')
     return join(tmpdir(), 'codelab-test', name)
   },
   // 版本号：诊断日志 / 分享卡片会读它。桩给固定值，断言才有确定性

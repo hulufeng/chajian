@@ -209,6 +209,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **根治「发消息没反应」（本地模型 chat 请求挂死 + 真取消）** | 本轮 | 见 §15 |
 | **修 Agent 模式点停止卡死 + 真机模拟** | 本轮 | 见 §16 |
 | **补全官方通道（云端）UI（登录/注册/积分/内置模型选择）** | 本轮 | 见 §18 |
+| **官方通道真实后端（零依赖 Node，6 端点 + 积分 + SSE）** | 本轮 | 见 §19 |
 
 ---
 
@@ -502,3 +503,37 @@ node scripts/check-*.mjs                # 受影响的那些
 - **客户端已接好，后端由用户自建**；契约以 `aiGateway.ts` 为准，未改任何后端字段名。
 - 后端上线前，UI 里点「登录/拉模型」会抛网络错误（被 catch 成提示），属预期——不是客户端 bug。
 - 内置模型 id（如默认 `deepseek-flash`）须由后端 `/api/models` 真实返回，客户端原样 `setModel(id)` 透传给 `/api/chat` 的 `model` 字段。
+
+## 19. 官方通道真实后端（零依赖 Node，真·接入）
+
+用户追加："你给我真实接入吧" —— 不再只给契约文档，直接落地一个**可运行、可真联通**的后端。
+
+### 交付物（`cloud-server/`）
+- `server.mjs`：纯 Node ESM、**零运行时依赖**。实现契约全部 6 端点：
+  `POST /api/auth/{register,login}`（scrypt 哈希密码 + 随机 UUID token）、`GET /api/me`、
+  `GET /api/models`（含 `id:"deepseek-flash"` 默认模型）、`POST /api/chat`（非流式，扣积分）、
+  `POST /api/chat/stream`（SSE，分块吐字 + `event: credits` + `[DONE]`）。
+- 两种模式：① **演示模式**（默认，无 key）返回确定性回复并真实扣积分；② **真实 LLM 代理**——设
+  `AI_UPSTREAM_URL`（如 `https://api.deepseek.com/v1`）+ `AI_UPSTREAM_KEY` 后，原样代理到
+  OpenAI 兼容端点（透传 `model`/`messages`/`stream`），积分仍在本服务扣减。
+- CORS：`Access-Control-Allow-Origin: *` + 处理 `OPTIONS` 预检（Electron 渲染进程 fetch 必须过 CORS，否则连不上）。
+- 持久化：`cloud-server/data/db.json`（单进程 JSON，用户含 scrypt 盐/hash + tokens + 三类积分）。
+- `package.json`（`"start": "node server.mjs"`）、`README.md`（运行 + 如何 `CODELAB_AI_SERVER` 指向它）。
+- 客户端指向机制：网关地址 = `process.env.CODELAB_AI_SERVER || 'https://bluebubai.work'`；
+  启动 Electron 前 `set CODELAB_AI_SERVER=http://127.0.0.1:8787` 即连本服务。
+
+### 验证：`scripts/e2e-cloud-server.mjs`（**14/0 全过**）
+真实启动 `cloud-server/server.mjs`（端口 8799），**用真实客户端代码** `aiGateway` 跑完整链路：
+注册（积分 100）→ 拉模型（含 deepseek-flash）→ 刷新账户（/api/me）→ 非流式对话（100→99）→
+流式对话（逐字 70 块，99→98）→ 登录（积分不变）。证明客户端契约与真实后端对齐、可真实接入。
+
+### 顺带修的坑（自检脚本串味）
+- `scripts/stubs/electron-dom-stub.mjs` 此前只把 `appData` 重定向到 `TEST_APPDATA`，而 `aiGateway`
+  的 `ai-settings.json` 走 **`userData`** → 状态文件落在共享 `tmpdir()/codelab-test/userData`，被
+  `check-cloud-official.mjs` 留下的 `byok:abc` 夹具污染，导致 e2e 误入 BYOK 分支。已将 `userData`
+  一并重定向到 `TEST_APPDATA`，所有自检脚本从此互相隔离（重跑 `check-cloud-official` 仍 32/0）。
+
+### ⚠ 交付边界（重要）
+- 这是**开发/演示**后端：数据为本地明文 JSON、无防爆破/限流。生产请换正式鉴权与数据库。
+- 演示模式不接真实模型；要真模型就设 `AI_UPSTREAM_URL`/`AI_UPSTREAM_KEY`。
+- 真机验收：起服务 → `set CODELAB_AI_SERVER=http://127.0.0.1:8787` → `npm run dev` → 设置→模型→官方账户 注册/登录/对话。

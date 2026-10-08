@@ -1,0 +1,13 @@
+{
+  "name": "codelab-cloud-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "codelab-desktop 官方通道（云端）最小可用后端：零依赖 Node ESM，实现登录/注册/账户/模型/对话/流式 6 端点",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

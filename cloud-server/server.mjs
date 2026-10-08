@@ -1,0 +1,238 @@
+/**
+ * codelab-desktop 官方通道（云端）后端 · 最小可用实现（零运行时依赖，纯 Node ESM）
+ *
+ * 严格实现客户端契约 docs/dev-log/CLOUD-BACKEND-CONTRACT.md（取自 src/main/services/aiGateway.ts）：
+ *   POST /api/auth/register  {email,password}            -> {token,user}
+ *   POST /api/auth/login     {email,password}            -> {token,user}
+ *   GET  /api/me             (Bearer)                    -> {user}
+ *   GET  /api/models                                     -> {models:[AiModel]}
+ *   POST /api/chat           {model,messages} (Bearer)   -> {content,creditsLeft,cost}
+ *   POST /api/chat/stream    SSE (Bearer)                -> data:{...} + event:credits
+ *
+ * 两种运行模式（用环境变量切换）：
+ *   1) 演示模式（默认，无需任何 key）：/api/chat 与 /api/chat/stream 返回确定性演示回复，
+ *      并真实扣减积分 —— 足以让客户端「设置→模型→官方账户」整链路跑通。
+ *   2) 真实 LLM 代理：设置 AI_UPSTREAM_URL（如 https://api.deepseek.com/v1）与
+ *      AI_UPSTREAM_KEY 后，/api/chat 与 /api/chat/stream 会原样代理到该 OpenAI 兼容端点
+ *      （透传 model + messages + stream），实现真正的模型输出。积分仍在本服务扣减。
+ *
+ * 运行：node server.mjs  （端口 PORT，默认 8787；数据落 cloud-server/data/db.json）
+ * 客户端指向本服务：启动 Electron 前设 CODELAB_AI_SERVER=http://127.0.0.1:8787
+ */
+import { createServer } from 'node:http'
+import { scryptSync, randomBytes, randomUUID } from 'node:crypto'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DATA_DIR = process.env.CODELAB_DATA_DIR || join(__dirname, 'data')
+const DB_FILE = join(DATA_DIR, 'db.json')
+const PORT = Number(process.env.PORT || 8787)
+const UPSTREAM_URL = process.env.AI_UPSTREAM_URL || ''      // 如 https://api.deepseek.com/v1
+const UPSTREAM_KEY = process.env.AI_UPSTREAM_KEY || ''      // Bearer token
+const SERVER = `http://127.0.0.1:${PORT}`
+
+// ── 内置模型（必须含 id:"deepseek-flash"，即客户端默认 modelId）──
+const MODELS = [
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速、便宜（演示后端默认）', available: true },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 2, desc: '标准对话', available: true },
+  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '阿里云通义', available: true }
+]
+
+// ── 持久化（单进程 JSON，足够开发/演示）──
+function loadDb() {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
+  if (!existsSync(DB_FILE)) return { users: {} }
+  try { return JSON.parse(readFileSync(DB_FILE, 'utf-8')) } catch { return { users: {} } }
+}
+function saveDb(db) { writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8') }
+let db = loadDb()
+
+// ── 密码哈希（scrypt）──
+function hashPassword(pw, salt) { return scryptSync(pw, salt, 64).toString('hex') }
+
+// ── 工具 ──
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj)
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+  })
+  res.end(body)
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = ''
+    req.on('data', (c) => { data += c; if (data.length > 1e6) req.destroy() })
+    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}) } catch (e) { reject(new Error('请求体不是合法 JSON')) } })
+    req.on('error', reject)
+  })
+}
+function getUserByToken(token) {
+  if (!token) return null
+  for (const u of Object.values(db.users)) if (u.tokens && u.tokens[token]) return u
+  return null
+}
+function publicUser(u) {
+  return { email: u.email, planCredits: u.planCredits, rechargeCredits: u.rechargeCredits, totalCredits: u.totalCredits, planMonth: u.planMonth }
+}
+function costOf(modelId) {
+  const m = MODELS.find((x) => x.id === modelId)
+  return m ? m.costPerCall : 1
+}
+/** 扣积分：先用套餐分，再用充值分；total = plan + recharge */
+function deduct(u, cost) {
+  if (u.planCredits >= cost) u.planCredits -= cost
+  else { const r = cost - u.planCredits; u.planCredits = 0; u.rechargeCredits = Math.max(0, u.rechargeCredits - r) }
+  u.totalCredits = u.planCredits + u.rechargeCredits
+  saveDb(db)
+}
+
+const server = createServer(async (req, res) => {
+  // CORS 预检
+  if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' }); return res.end() }
+
+  const url = new URL(req.url, SERVER)
+  const path = url.pathname
+  const auth = req.headers['authorization'] || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+
+  try {
+    // 1) 注册
+    if (req.method === 'POST' && path === '/api/auth/register') {
+      const { email, password } = await readBody(req)
+      if (!email || !password) return sendJson(res, 400, { error: '邮箱和密码不能为空' })
+      if (db.users[email]) return sendJson(res, 409, { error: '该邮箱已注册' })
+      const salt = randomBytes(16).toString('hex')
+      const u = {
+        email, salt, pwHash: hashPassword(password, salt),
+        planCredits: 100, rechargeCredits: 0, totalCredits: 100, planMonth: '2099-12', tokens: {}
+      }
+      const t = randomUUID()
+      u.tokens[t] = true
+      db.users[email] = u; saveDb(db)
+      return sendJson(res, 200, { token: t, user: publicUser(u) })
+    }
+
+    // 2) 登录
+    if (req.method === 'POST' && path === '/api/auth/login') {
+      const { email, password } = await readBody(req)
+      const u = db.users[email]
+      if (!u || u.pwHash !== hashPassword(password, u.salt)) return sendJson(res, 401, { error: '邮箱或密码错误' })
+      const t = randomUUID()
+      u.tokens[t] = true; saveDb(db)
+      return sendJson(res, 200, { token: t, user: publicUser(u) })
+    }
+
+    // 3) 查账户
+    if (req.method === 'GET' && path === '/api/me') {
+      const u = getUserByToken(token)
+      if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
+      return sendJson(res, 200, { user: publicUser(u) })
+    }
+
+    // 4) 模型列表（客户端不带头，故不需鉴权）
+    if (req.method === 'GET' && path === '/api/models') {
+      return sendJson(res, 200, { models: MODELS })
+    }
+
+    // 5) 非流式对话
+    if (req.method === 'POST' && path === '/api/chat') {
+      const u = getUserByToken(token)
+      if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
+      const { model, messages } = await readBody(req)
+      const cost = costOf(model)
+      const content = await generateContent(UPSTREAM_URL, UPSTREAM_KEY, model, messages, false)
+      deduct(u, cost)
+      return sendJson(res, 200, { content, creditsLeft: u.totalCredits, cost })
+    }
+
+    // 6) 流式对话（SSE）
+    if (req.method === 'POST' && path === '/api/chat/stream') {
+      const u = getUserByToken(token)
+      if (!u) return sendJson(res, 401, { error: '未登录或登录已过期' })
+      const { model, messages } = await readBody(req)
+      const cost = costOf(model)
+      if (UPSTREAM_URL && UPSTREAM_KEY) {
+        return await proxyStream(res, UPSTREAM_URL, UPSTREAM_KEY, model, messages, () => { deduct(u, cost); return u.totalCredits })
+      }
+      // 演示流式：分块吐字 + 末尾发积分事件
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' })
+      const demo = `（bluebubai 云端演示后端）已收到你的消息，当前模型 ${model}。这是联通测试回复——真实接入时此处会是模型输出。`
+      const chunks = demo.match(/./gu) ? Array.from(demo) : [demo]
+      let i = 0
+      const timer = setInterval(() => {
+        if (i >= chunks.length) {
+          clearInterval(timer)
+          const remaining = (() => { deduct(u, cost); return u.totalCredits })()
+          res.write(`event: credits\ndata: ${JSON.stringify({ remaining })}\n\n`)
+          res.write('data: [DONE]\n\n')
+          return res.end()
+        }
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunks[i++] } }] })}\n\n`)
+      }, 12)
+      req.on('close', () => clearInterval(timer))
+      return
+    }
+
+    return sendJson(res, 404, { error: 'Not Found' })
+  } catch (e) {
+    return sendJson(res, 400, { error: e.message || '请求处理失败' })
+  }
+})
+
+// ── 生成内容：真实代理 or 演示 ──
+async function generateContent(upstreamUrl, upstreamKey, model, messages, _stream) {
+  if (upstreamUrl && upstreamKey) {
+    const r = await fetch(`${upstreamUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstreamKey}` },
+      body: JSON.stringify({ model: MODELS.find((m) => m.id === model)?.model || model, messages, stream: false })
+    })
+    const data = await r.json().catch(() => ({}))
+    return data.choices?.[0]?.message?.content || '（上游返回为空）'
+  }
+  const last = [...(messages || [])].reverse().find((m) => m.role === 'user')
+  return `（演示后端·无 LLM key）你问的是：「${last ? last.content : ''}」。设置 AI_UPSTREAM_URL / AI_UPSTREAM_KEY 即可接入真实模型。`
+}
+
+// ── 真实 LLM 流式代理：把上游 SSE 透传，结束后补发积分事件 ──
+async function proxyStream(res, upstreamUrl, upstreamKey, model, messages, onEnd) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' })
+  try {
+    const r = await fetch(`${upstreamUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstreamKey}`, Accept: 'text/event-stream' },
+      body: JSON.stringify({ model: MODELS.find((m) => m.id === model)?.model || model, messages, stream: true })
+    })
+    if (!r.ok) { res.write(`data: ${JSON.stringify({ error: `上游错误 ${r.status}` })}\n\n`); res.end(); return }
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n'); buf = lines.pop() || ''
+      for (const line of lines) {
+        const t = line.trim()
+        if (t.startsWith('data:')) res.write(t + '\n\n')
+      }
+    }
+  } catch (e) {
+    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`)
+  }
+  const remaining = onEnd()
+  res.write(`event: credits\ndata: ${JSON.stringify({ remaining })}\n\n`)
+  res.write('data: [DONE]\n\n')
+  res.end()
+}
+
+server.listen(PORT, () => {
+  console.log(`[cloud-server] 监听 ${SERVER}`)
+  console.log(`[cloud-server] 客户端指向：CODELAB_AI_SERVER=${SERVER}`)
+  console.log(`[cloud-server] 真实 LLM 代理：${UPSTREAM_URL ? '已启用 (' + UPSTREAM_URL + ')' : '未启用（演示模式）'}`)
+})
