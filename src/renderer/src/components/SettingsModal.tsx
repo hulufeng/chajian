@@ -103,6 +103,60 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   /** 模型页自己的一处错误提示（删除/保存失败）。不复用 mcpMsg —— 那是 MCP 页的 */
   const [byokErr, setByokErr] = useState('')
 
+  // ── 官方通道（内置模型 / 积分）：登录态 + 模型列表 + 登录表单 ──
+  interface OfficialState {
+    token: string | null
+    email: string | null
+    planCredits: number | null
+    rechargeCredits: number | null
+    totalCredits: number | null
+    planMonth: string | null
+    modelId: string
+  }
+  interface OfficialModel {
+    id: string
+    name: string
+    provider: string
+    desc: string
+    costPerCall: number
+    available: boolean
+  }
+  const [officialState, setOfficialState] = useState<OfficialState>({
+    token: null, email: null, planCredits: null, rechargeCredits: null,
+    totalCredits: null, planMonth: null, modelId: 'deepseek-flash'
+  })
+  const [officialModels, setOfficialModels] = useState<OfficialModel[]>([])
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authErr, setAuthErr] = useState('')
+  const [authMsg, setAuthMsg] = useState('')
+
+  /** 拉官方通道状态；已登录则顺带拉内置模型列表 */
+  const refreshOfficial = useCallback(async (): Promise<void> => {
+    try {
+      const s = await window.api.ai.state()
+      const st: OfficialState = {
+        token: s.token, email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits,
+        totalCredits: s.totalCredits, planMonth: s.planMonth, modelId: s.modelId
+      }
+      setOfficialState(st)
+      if (st.token) {
+        const ms = await window.api.ai.models().catch(() => [] as OfficialModel[])
+        setOfficialModels(ms)
+      } else {
+        setOfficialModels([])
+      }
+    } catch {
+      /* 读取失败不阻塞其它设置页 */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (active === 'models') void refreshOfficial()
+  }, [active, refreshOfficial])
+
   // ── 寄存器数据（CMSIS-SVD）──
   interface SvdChip { chip: string; bytes: number; mtime: number }
   const [svdList, setSvdList] = useState<{ dir: string; installed: SvdChip[]; known: string[] } | null>(null)
@@ -339,6 +393,114 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
             {active === 'models' && (
               <div className="settings-section">
                 <h3>模型</h3>
+
+                {/* ── 官方通道：登录 / 注册 / 积分 / 内置模型选择 ── */}
+                <div style={{ marginBottom: 18, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+                  <h4 style={{ margin: '0 0 4px', fontSize: 13 }}>官方账户（内置模型 · 消耗积分）</h4>
+                  <p className="settings-desc">登录后可选官方内置模型（如 DeepSeek 等），由官方服务器提供、按次消耗积分。未登录时请改用下方「自定义模型 / 本地引擎」。</p>
+
+                  {!officialState.token ? (
+                    <div className="byok-form">
+                      <div className="settings-row">
+                        <span>邮箱</span>
+                        <input className="settings-input" type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="you@example.com" />
+                      </div>
+                      <div className="settings-row">
+                        <span>密码</span>
+                        <input className="settings-input" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" />
+                      </div>
+                      <div className="settings-actions" style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button
+                          className="byok-primary-btn"
+                          disabled={authBusy}
+                          onClick={async () => {
+                            setAuthBusy(true); setAuthErr(''); setAuthMsg('')
+                            try {
+                              const s = authMode === 'login'
+                                ? await window.api.ai.login(authEmail.trim(), authPassword)
+                                : await window.api.ai.register(authEmail.trim(), authPassword)
+                              setOfficialState({
+                                token: s.token, email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits,
+                                totalCredits: s.totalCredits, planMonth: s.planMonth, modelId: s.modelId
+                              })
+                              setAuthPassword('')
+                              const ms = await window.api.ai.models().catch(() => [] as OfficialModel[])
+                              setOfficialModels(ms)
+                              setAuthMsg(authMode === 'login' ? '登录成功' : '注册成功，已自动登录')
+                            } catch (e) { setAuthErr((e as Error).message) } finally { setAuthBusy(false) }
+                          }}
+                        >{authBusy ? '处理中…' : (authMode === 'login' ? '登录' : '注册')}</button>
+                        <button className="settings-btn" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthErr(''); setAuthMsg('') }}>
+                          {authMode === 'login' ? '去注册' : '去登录'}
+                        </button>
+                      </div>
+                      {authErr && <div className="svd-msg err" style={{ marginTop: 8 }}>{authErr}</div>}
+                      {authMsg && <div className="svd-msg ok" style={{ marginTop: 8 }}>{authMsg}</div>}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="settings-row">
+                        <span>账户</span>
+                        <span className="settings-val">{officialState.email}</span>
+                      </div>
+                      <div className="settings-row">
+                        <span>积分</span>
+                        <span className="settings-val">
+                          {officialState.totalCredits == null
+                            ? '—'
+                            : `共 ${officialState.totalCredits}（套餐 ${officialState.planCredits ?? 0} · 充值 ${officialState.rechargeCredits ?? 0}）`}
+                          {officialState.planMonth ? ` · 有效期至 ${officialState.planMonth}` : ''}
+                        </span>
+                      </div>
+                      <div className="settings-actions" style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button className="settings-btn" onClick={async () => {
+                          const s = await window.api.ai.refreshMe().catch(() => null)
+                          if (s) setOfficialState({
+                            token: s.token, email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits,
+                            totalCredits: s.totalCredits, planMonth: s.planMonth, modelId: s.modelId
+                          })
+                        }}>刷新积分</button>
+                        <button className="settings-btn" onClick={async () => {
+                          try {
+                            const s = await window.api.ai.logout()
+                            setOfficialState({
+                              token: s.token, email: s.email, planCredits: s.planCredits, rechargeCredits: s.rechargeCredits,
+                              totalCredits: s.totalCredits, planMonth: s.planMonth, modelId: s.modelId
+                            })
+                            setOfficialModels([])
+                          } catch (e) { setAuthErr((e as Error).message) }
+                        }}>退出登录</button>
+                      </div>
+
+                      <div className="svd-block-title" style={{ marginTop: 12 }}>选择内置模型（官方通道）</div>
+                      {officialModels.length === 0 ? (
+                        <div className="svd-empty">暂无可用的内置模型（拉取失败或服务不可用）。请确认后端已上线 /api/models。</div>
+                      ) : (
+                        <div className="engine-model-list">
+                          {officialModels.map((m) => (
+                            <div
+                              key={m.id}
+                              className={`engine-model ${officialState.modelId === m.id ? 'active' : ''}`}
+                              onClick={async () => {
+                                const s = await window.api.ai.setModel(m.id).catch(() => null)
+                                if (s) setOfficialState((prev) => ({ ...prev, modelId: s.modelId }))
+                              }}
+                            >
+                              <div className="engine-model-main">
+                                <span className="engine-model-name">{m.name}</span>
+                                <span className="engine-model-meta">
+                                  {m.provider}{m.desc ? ` · ${m.desc}` : ''}{m.costPerCall ? ` · ${m.costPerCall} 积分/次` : ''}
+                                </span>
+                              </div>
+                              {officialState.modelId === m.id && <span className="byok-badge-active">使用中</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <p className="settings-desc">添加自己的 API Key 调用 DeepSeek、通义、Kimi、OpenAI 等模型。Key 仅保存在本地，不上传服务器。</p>
 
                 {/* profile 卡片列表 */}

@@ -11,7 +11,7 @@ import {
   ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
 } from './services/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
+import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1126,6 +1126,18 @@ ipcMain.handle('ai:byokProfiles', () => listByokProfiles())
 ipcMain.handle('ai:byokSave', (_e, profile: ByokProfile) => saveByokProfile(profile))
 ipcMain.handle('ai:byokDelete', (_e, id: string) => deleteByokProfile(id))
 ipcMain.handle('ai:byokActivate', (_e, id: string | null) => setActiveByok(id))
+
+// ---------- 官方通道：登录 / 注册 / 登出 / 刷新账户 ----------
+// 后端契约（由用户自建，客户端严格照 aiGateway.ts 既有定义）：
+//   POST /api/auth/login    {email,password}      -> {token,user}
+//   POST /api/auth/register {email,password}      -> {token,user}
+//   GET  /api/me            (Bearer token)        -> {user}
+// 这四个 handler 只负责把账号信息落地到本地 ai-settings.json（AiState），
+// 网络请求本身在 aiGateway.ts 的 authLogin/authRegister/refreshMe 内完成。
+ipcMain.handle('ai:login', (_e, email: string, password: string) => login(email, password))
+ipcMain.handle('ai:register', (_e, email: string, password: string) => register(email, password))
+ipcMain.handle('ai:logout', () => logout())
+ipcMain.handle('ai:refreshMe', () => refreshAccount())
 
 // ---------- 本地模型列表（供 AiPanel 选择本地 llama 通道） ----------
 ipcMain.handle('model:local', async () => {

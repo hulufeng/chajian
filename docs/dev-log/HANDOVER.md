@@ -208,6 +208,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | **修复「选着本地模型却走云端」（本地模型被 Agent run 清空）** | 本轮 | 见 §14 |
 | **根治「发消息没反应」（本地模型 chat 请求挂死 + 真取消）** | 本轮 | 见 §15 |
 | **修 Agent 模式点停止卡死 + 真机模拟** | 本轮 | 见 §16 |
+| **补全官方通道（云端）UI（登录/注册/积分/内置模型选择）** | 本轮 | 见 §18 |
 
 ---
 
@@ -472,3 +473,32 @@ node scripts/check-*.mjs                # 受影响的那些
   需用户自行重启（重开 LabCode 应用，或告知模型路径由我重启）。
 - 已确认全机无残留 llama 进程、用户 `appData` 临时目录已删、未动仓库代码
   （新增未跟踪的 `sim-real-engine.mjs` 与 `verify-no-kill-external.mjs`）。
+
+## 18. 补全官方通道（云端）UI ——「加上云端功能，后台自己搭」
+
+用户原话："加上云端功能，我自己后台添加"。澄清后确认范围 = **补全官方通道 UI**（登录/注册/积分显示/内置模型选择 + 选官方通道），
+后端契约**严格照 aiGateway.ts 既有定义**（不臆造字段）。用户自建后端需实现：`POST /api/auth/login`、`POST /api/auth/register`、
+`GET /api/me`、`GET /api/models`、`POST /api/chat`、`POST /api/chat/stream`（SSE，`event: credits` + `data:{remaining}`），Bearer `Authorization`。
+
+### 改动清单
+- **`src/main/services/aiGateway.ts`**：新增 4 个落地函数（账号信息写入本地 `ai-settings.json`）：
+  - `login(email,pwd)` / `register(email,pwd)`：调既有 `authLogin` / `authRegister`，把 `token` + `UserInfo`（email/积分/套餐有效期）写回 `AiState`。
+  - `refreshAccount()`：用本地 token 调 `refreshMe` 刷新积分。
+  - `logout()`：**只清 token/email/积分/套餐字段，保留 BYOK profile、本地引擎、模型选择**（不能用 `clearAiState`，那会重置 modelId 并清空 BYOK——退出登录不该有这种副作用）。
+- **`src/main/index.ts`**：`import` 这 4 个函数，注册 `ipcMain.handle('ai:login'|'ai:register'|'ai:logout'|'ai:refreshMe')`。
+- **`src/preload/index.ts`**：`api.ai` 新增 `login` / `register` / `logout` / `refreshMe`（`ipcRenderer.invoke` 对应通道）。`Api = typeof api` 自动带类型。
+- **`src/renderer/src/components/SettingsModal.tsx`**：「模型」页顶部新增**官方账户**区块：
+  - 未登录 → 邮箱/密码表单 + 登录/注册切换；成功后拉 `models()` 列表。
+  - 已登录 → 账户 + 积分（套餐/充值/总计 + 有效期）+ 刷新积分 + 退出登录 + 内置模型单选列表（`setModel(id)` 即切到官方通道）。
+  - 严格只用 `var(--token)` 主题变量，复用既有 `byok-form` / `settings-input` / `engine-model-list` 等样式类。
+
+### 验证
+- tsc 双过（`typecheck:node` + `typecheck:web`）全清。
+- `scan-ipc-handlers`：渲染层 212 个 invoke 全部有主进程 handler（含 4 个新通道），命中需人工复核 0。
+- 静态扫描四件套（`scan-ui-crash` / `scan-json-parse` / `scan-unhandled-rejection`）无新增 CRITICAL；`logout` 的 `await` 已加 try/catch 兜底。
+- 新增 `scripts/check-cloud-official.mjs`：**32/0 全过**——静态接线（preload invoke↔main handle 4 通道闭合）+ 网关导出 + 渲染层调用 + **真跑** login/register/refresh 落地积分、logout 只清账号保留 BYOK/模型选择。
+
+### ⚠ 交付边界（重要）
+- **客户端已接好，后端由用户自建**；契约以 `aiGateway.ts` 为准，未改任何后端字段名。
+- 后端上线前，UI 里点「登录/拉模型」会抛网络错误（被 catch 成提示），属预期——不是客户端 bug。
+- 内置模型 id（如默认 `deepseek-flash`）须由后端 `/api/models` 真实返回，客户端原样 `setModel(id)` 透传给 `/api/chat` 的 `model` 字段。

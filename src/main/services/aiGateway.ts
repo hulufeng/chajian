@@ -273,6 +273,64 @@ export async function refreshMe(token: string): Promise<UserInfo> {
   return data.user
 }
 
+// ---------- 账号：登录 / 注册 / 登出 / 刷新（落地到本地 AiState） ----------
+function applyAccount(s: AiState, token: string, user: UserInfo): AiState {
+  return {
+    ...s,
+    token,
+    email: user.email,
+    planCredits: user.planCredits,
+    rechargeCredits: user.rechargeCredits,
+    totalCredits: user.totalCredits,
+    planMonth: user.planMonth
+  }
+}
+
+/** 登录：拿到 token + 账户信息后写入本地 AiState，返回最新状态 */
+export async function login(email: string, password: string): Promise<AiState> {
+  const { token, user } = await authLogin(email, password)
+  const next = applyAccount(getAiState(), token, user)
+  saveAiState(next)
+  return next
+}
+
+/** 注册：后端返回结构与登录一致（{token, user}），注册后自动登录 */
+export async function register(email: string, password: string): Promise<AiState> {
+  const { token, user } = await authRegister(email, password)
+  const next = applyAccount(getAiState(), token, user)
+  saveAiState(next)
+  return next
+}
+
+/** 用本地 token 拉取最新账户信息（积分 / 套餐），写回本地状态 */
+export async function refreshAccount(): Promise<AiState> {
+  const s = getAiState()
+  if (!s.token) return s
+  const user = await refreshMe(s.token)
+  const next = applyAccount(s, s.token, user)
+  saveAiState(next)
+  return next
+}
+
+/**
+ * 退出登录：只清 token 与账户字段，保留 BYOK profile、本地引擎、模型选择等设置
+ * （clearAiState 会重置 modelId 并清空 BYOK，退出登录不该有这种副作用）。
+ */
+export function logout(): AiState {
+  const s = getAiState()
+  const next: AiState = {
+    ...s,
+    token: null,
+    email: null,
+    planCredits: null,
+    rechargeCredits: null,
+    totalCredits: null,
+    planMonth: null
+  }
+  saveAiState(next)
+  return next
+}
+
 // ---------- 聊天 ----------
 async function chatByok(messages: ChatMessage[], byok: { baseUrl: string; apiKey: string; model: string }): Promise<string> {
   if (!byok.apiKey || !byok.baseUrl) throw new Error('自定义模型未配置完整（需 Base URL / API Key / 模型名）')
