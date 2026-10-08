@@ -5,7 +5,7 @@
 
 | 速查项 | 当前值 |
 |---|---|
-| 最新提交 | `a04142f`（对齐 TrieCode：UI diff 可视化 + MCP 预设 + Anthropic(BYOK)通道 + 长上下文预算；tsc 双过 + 4 扫描 + 两新 check + build 全绿） |
+| 最新提交 | `d11d0e8`（扩充官方云端模型清单：GPT-4o / Gemini，按 provider 分派；新增 check-cloud-models 19/0；e2e 14/0 未退化） |
 | 应用版本 | `1.1.3` |
 | **最新可测包** | **`pkgout36\LabCode-Setup-1.1.3.exe`**（2026-10-08 00:00，152MB） |
 | 当前测试板卡 | ESP32-C3（VID:PID `303a:1001`） |
@@ -633,4 +633,4 @@ TrieCode 对比里「云端模型 弱一档」。对齐方案 §21 的交付边�
 - 真实可用**依赖你在这台服务上配 `OPENAI_API_KEY` / `GEMINI_API_KEY`**，否则这些模型只返回演示回复。**Key 是服务端密钥，用户不感知、不加价前提由你定 `costPerCall`**（已给相对定价：gpt-4o=6 / gpt-4o-mini=3 / gemini-1.5-pro=5 / gemini-2.0-flash=3）。
 - 仍遵守红线：云端走我们自建后端统一计费，不碰用户 BYOK Key。
 - 真机 UI 验证（新模型出现在官方账户下拉、流式输出）需真机 `start-labcode.bat` 跑 `out\`；沙箱起不了 Electron GUI。
-- 提交：`<commit>`，见下。
+- 提交：`d11d0e8`。
