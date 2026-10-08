@@ -256,9 +256,34 @@ function ToolCallCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_call' 
   )
 }
 
+function DiffBlock({ text }: { text: string }): React.JSX.Element {
+  const lines = text.split('\n')
+  return (
+    <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, overflow: 'auto' }}>
+      {lines.map((line, i) => {
+        const isDel = line.startsWith('- ')
+        const isAdd = line.startsWith('+ ')
+        const isCtx = line.startsWith('  ')
+        const bg = isDel ? 'rgba(255,80,80,0.12)' : isAdd ? 'rgba(80,200,120,0.12)' : 'transparent'
+        const color = isDel ? '#ff6b6b' : isAdd ? '#51cf8a' : isCtx ? 'var(--text-muted)' : 'inherit'
+        return (
+          <div key={i} style={{ background: bg, color, padding: '0 8px', whiteSpace: 'pre' }}>
+            {line || ' '}
+          </div>
+        )
+      })}
+    </pre>
+  )
+}
+
 function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_result' }> }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const ok = msg.result.ok && !msg.rejected
+  // 识别 diff 块：```diff ... ```
+  const content = msg.result.content || ''
+  const diffMatch = content.match(/```diff\n([\s\S]*?)```/)
+  const beforeDiff = diffMatch ? content.slice(0, diffMatch.index).trim() : ''
+  const afterDiff = diffMatch ? content.slice((diffMatch.index || 0) + diffMatch[0].length).trim() : ''
   return (
     <div className="agent-tool-result" style={{ borderLeft: `3px solid ${ok ? 'var(--success)' : 'var(--danger)'}` }}>
       <div className="agent-tool-head" onClick={() => setExpanded((v) => !v)}>
@@ -275,10 +300,18 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
         </span>
         <span className="agent-tool-toggle">{expanded ? '▲' : '▼'}</span>
       </div>
+      {!expanded && diffMatch && (
+        <div style={{ padding: '4px 12px', fontSize: 11 }}>
+          <DiffBlock text={diffMatch[1]} />
+        </div>
+      )}
       {expanded && (
         <div className="agent-tool-output">
           {msg.result.error && <div className="agent-tool-error">{msg.result.error}</div>}
-          <pre>{msg.result.content}</pre>
+          {beforeDiff && <pre>{beforeDiff}</pre>}
+          {diffMatch && <DiffBlock text={diffMatch[1]} />}
+          {afterDiff && <pre>{afterDiff}</pre>}
+          {!diffMatch && <pre>{content}</pre>}
         </div>
       )}
     </div>

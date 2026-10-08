@@ -80,10 +80,11 @@ async function sendEmail(toEmail, subject, text) {
 
 // ── 内置模型（必须含 id:"deepseek-flash"，即客户端默认 modelId）──
 const MODELS = [
-  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速、便宜，日常问答首选', available: true },
-  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', baseUrl: '', model: 'deepseek-coder', costPerCall: 2, desc: '代码专用，写 ESP32 程序推荐', available: true },
-  { id: 'qwen-coder', name: '通义千问 Coder', provider: 'qwen', baseUrl: '', model: 'qwen2.5-coder-32b', costPerCall: 2, desc: '阿里代码模型，中文注释友好', available: true },
-  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '最强通用，复杂问题', available: true }
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', provider: 'deepseek', baseUrl: '', model: 'deepseek-chat', costPerCall: 1, desc: '快速日常问答', available: true },
+  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', baseUrl: '', model: 'deepseek-coder', costPerCall: 2, desc: '代码专用', available: true },
+  { id: 'deepseek-r1', name: 'DeepSeek R1 推理', provider: 'deepseek', baseUrl: '', model: 'deepseek-reasoner', costPerCall: 4, desc: '深度推理/复杂调试', available: true },
+  { id: 'qwen-coder', name: '通义千问 Coder', provider: 'qwen', baseUrl: '', model: 'qwen2.5-coder-32b', costPerCall: 2, desc: '中文代码友好', available: true },
+  { id: 'qwen-max', name: '通义千问 Max', provider: 'qwen', baseUrl: '', model: 'qwen-max', costPerCall: 3, desc: '通用强模型', available: true }
 ]
 
 // ── 持久化（单进程 JSON，足够开发/演示）──
