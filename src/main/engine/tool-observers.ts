@@ -61,7 +61,8 @@ export function makeTimingAuditMiddleware(getTiming: () => ToolTiming): PostMidd
     }
   }
   // name 用于幂等注册：toolRegistry 是单例，多 Agent 实例会各自 new 一次 AgentRunner
-  mw.name = 'timing-audit'
+  // 注意：箭头函数的 .name 在严格模式下只读，直接赋值会抛 TypeError，用 defineProperty 兜底
+  try { Object.defineProperty(mw, 'name', { value: 'timing-audit', configurable: true }) } catch { /* ignore */ }
   return mw
 }
 
@@ -84,6 +85,6 @@ export function makeSlowToolMiddleware(onSlow?: (name: string, ms: number) => vo
     }
     return result
   }
-  mw.name = 'slow-tool'
+  try { Object.defineProperty(mw, 'name', { value: 'slow-tool', configurable: true }) } catch { /* ignore */ }
   return mw
 }
