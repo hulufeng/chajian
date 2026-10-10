@@ -10,20 +10,23 @@ import { spawn } from 'node:child_process'
 //  强制更新 / 自动更新服务（零依赖：原生 fetch + 静默 NSIS 安装）
 // ───────────────────────────────────────────────────────────
 //
-//  ★ 发布渠道：自建静态 HTTP 服务 ★
-//  把下面 UPDATE_BASE_URL 改成你自己的静态托管根地址（结尾必须带 /）。
-//  该目录下需放置两个文件：
-//    1) update.json              —— 版本元数据（格式见下方 UpdateInfo）
-//    2) LabCode-Setup-x.y.z.exe  —— 与 package.json 的 artifactName 一致的安装包
+//  ★ 发布渠道：自建静态 HTTP 服务（https://bluebubai.work/updates/）★
+//  两套元数据都支持，统一到一个入口：
+//    1) update.json —— 可选，人工写的版本元数据（格式见下方 UpdateInfo）。
+//       它的唯一价值是能带 forceUpdate / notes，需要「强制更新」时才放。
+//    2) latest.yml  —— electron-builder 出包自动生成，**线上真实存在的源**。
+//       只要目录里有它，即使没有 update.json 也能正常检查更新。
+//  优先级：update.json 存在时以它为准（可覆盖安装包直链），否则回退解析 latest.yml。
 //
-//  app 启动后（仅打包态）会拉取 update.json 比对版本：
+//  app 启动后（仅打包态）会拉取元数据比对版本：
 //    - 非强制更新：弹原生对话框「立即更新 / 稍后」
 //    - 强制更新（forceUpdate=true）：弹只读提示后自动下载并以 /S 静默安装、重启
 //  安装包下载后会以 `LabCode-Setup-x.y.z.exe /S` 静默运行并替换旧文件，随后 app 退出。
 // ───────────────────────────────────────────────────────────
-export const UPDATE_BASE_URL = 'https://your-host.example.com/labcode/'
+export const UPDATE_BASE_URL = 'https://bluebubai.work/updates/'
 
 const UPDATE_INFO_URL = `${UPDATE_BASE_URL}update.json`
+const UPDATE_LATEST_YML_URL = `${UPDATE_BASE_URL}latest.yml`
 const PLACEHOLDER_HOST = 'your-host.example.com'
 
 export interface UpdateInfo {
@@ -99,6 +102,49 @@ async function fetchJson<T>(url: string, timeoutMs = 8000): Promise<T | null> {
   }
 }
 
+async function fetchText(url: string, timeoutMs = 8000): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' })
+    if (!res.ok) return null
+    return await res.text()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 极简 latest.yml 解析（electron-builder 产出）。
+ *
+ * 为什么要自己解析而不引 yaml 包：这里只需要 version / path / files[0].url / releaseDate
+ * 四个字段，auri 那份 yml 结构十年没变过；为零依赖目标（本项目主进程刻意不引三方解析库），
+ * 用逐行匹配足够，且**解析不出来一律返回 null**，由调用方按「无更新」处理，不会误升级。
+ */
+export function parseLatestYml(text: string): UpdateInfo | null {
+  const pick = (re: RegExp): string | null => {
+    const m = text.match(re)
+    return m ? m[1].trim() : null
+  }
+  const version = pick(/^version:\s*(.+)$/m)
+  if (!version) return null
+  // files: 列表里的 url 优先（多文件分发时它才是真实文件名），没有就用顶层 path
+  const fileUrl = pick(/^\s*-\s*url:\s*(.+)$/m) || pick(/^path:\s*(.+)$/m)
+  const info: UpdateInfo = {
+    version,
+    pubDate: pick(/^releaseDate:\s*(.+)$/m) ?? undefined,
+  }
+  if (fileUrl) info.url = new URL(fileUrl, UPDATE_BASE_URL).toString()
+  return info
+}
+
+/** 取版本元数据：update.json 优先（可带 forceUpdate/notes），缺失则回退 latest.yml */
+async function fetchUpdateInfo(): Promise<UpdateInfo | null> {
+  const json = await fetchJson<UpdateInfo>(UPDATE_INFO_URL)
+  if (json && json.version) return json
+  const yml = await fetchText(UPDATE_LATEST_YML_URL)
+  if (!yml) return null
+  return parseLatestYml(yml)
+}
+
 function downloadTo(
   url: string,
   dest: string,
@@ -171,7 +217,7 @@ export async function checkForUpdates(opts: { interactive?: boolean } = {}): Pro
   checking = true
   try {
     sendStatus({ state: 'checking' })
-    const info = await fetchJson<UpdateInfo>(UPDATE_INFO_URL)
+    const info = await fetchUpdateInfo()
     if (!info || !info.version) {
       if (opts.interactive) sendStatus({ state: 'up-to-date', message: '无更新信息' })
       else sendStatus({ state: 'up-to-date' })
