@@ -554,8 +554,8 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
           </div>
 
           {menuconfig && (
-            <div style={{ marginTop: 8, border: '1px solid var(--border, #333)', borderRadius: 6, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: 'var(--panel, #1e1e1e)', color: 'var(--text, #ddd)', fontSize: 12 }}>
+            <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: 'var(--surface-1)', color: 'var(--text)', fontSize: 12 }}>
                 <span>ESP-IDF menuconfig（交互终端 · 方向键/空格/Esc 操作）</span>
                 <button className="device-action-btn" onClick={() => setMenuconfig(null)}>✕ 关闭</button>
               </div>

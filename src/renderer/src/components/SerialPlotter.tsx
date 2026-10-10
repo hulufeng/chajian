@@ -13,10 +13,18 @@ type ChannelState = {
   count: number
 }
 
-const CHANNEL_COLORS = [
-  '#e6194b', '#3cb44b', '#4363d8', '#f58231',
-  '#911eb4', '#46c4f0', '#f032e6', '#bcf60c'
+const CAT_FALLBACKS = [
+  '#2f9e6f', '#b5762a', '#5b6fbf', '#a4578c',
+  '#4f8f4f', '#9a9130', '#3f8aa8', '#a05a5a'
 ]
+/**
+ * 通道配色走 --cat-N 令牌（与分区表同一套分类色），深浅主题自动跟随。
+ * CAT_FALLBACKS 只是「getComputedStyle 取不到时」的兜底真值 —— Canvas 2D 不认 var()，
+ * 必须给一个能直接用的颜色，所以这里的 hex 是刻意的、唯一的例外。
+ */
+function channelColor(i: number): string {
+  return cssColor(`--cat-${(i % 8) + 1}`, CAT_FALLBACKS[i % CAT_FALLBACKS.length])
+}
 
 /** Canvas 2D 不认 CSS 变量：绘制前把令牌解析成真实颜色（主题切换后下次重绘自动跟随） */
 function cssColor(varName: string, fallback: string): string {
@@ -206,7 +214,7 @@ export default function SerialPlotter({
     channels.forEach((ch, ci) => {
       if (ch.length < 2) return
       ctx.beginPath()
-      ctx.strokeStyle = CHANNEL_COLORS[ci % CHANNEL_COLORS.length]
+      ctx.strokeStyle = channelColor(ci)
       ctx.lineWidth = 1.6
       for (let i = 0; i < ch.length; i++) {
         const x = pad + (w - pad * 2) * (i / (n - 1))
@@ -224,7 +232,7 @@ export default function SerialPlotter({
     let lx = 48
     channels.forEach((_, ci) => {
       const label = `CH${ci + 1}`
-      ctx.fillStyle = CHANNEL_COLORS[ci % CHANNEL_COLORS.length]
+      ctx.fillStyle = channelColor(ci)
       ctx.fillRect(lx, legendY + 2, 10, 10)
       ctx.fillStyle = textColor(theme)
       ctx.fillText(label, lx + 14, legendY)

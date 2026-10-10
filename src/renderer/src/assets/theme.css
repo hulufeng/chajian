@@ -58,6 +58,7 @@
   --accent-soft: rgba(37, 99, 235, 0.10);     /* 强调色淡底（hover / 选中底色） */
   --accent-glow: rgba(37, 99, 235, 0.15);     /* 强调色更淡底（旧 --accent-soft-weak） */
   --accent-text: var(--accent-hover);         /* 浅底上够深的强调文字 */
+  --on-accent: #ffffff;            /* 强调色底上的文字（主按钮） */
 
   --accent-2: #22c55e;             /* 次强调：成功按钮、次要高亮 */
   --violet: #8b5cf6;               /* 紫：多智能体 / 协作类标识 */
@@ -97,6 +98,16 @@
   --file-code: #6a9955;            /* 代码文本 */
   --file-string: #ce9178;          /* 字符串 */
   --file-func: #dcdcaa;            /* 函数/关键字 */
+
+  /* ---------- ⑥b 分类色（分区表 / 图例等数据可视化，8 色循环） ---------- */
+  --cat-1: #2f9e6f;
+  --cat-2: #b5762a;
+  --cat-3: #5b6fbf;
+  --cat-4: #a4578c;
+  --cat-5: #4f8f4f;
+  --cat-6: #9a9130;
+  --cat-7: #3f8aa8;
+  --cat-8: #a05a5a;
 
   /* ---------- ⑦ 覆盖层与阴影（TrieCode 用 16,24,40 中性阴影） ---------- */
   --overlay: rgba(0, 0, 0, 0.38);  /* 模态遮罩 */
@@ -230,6 +241,16 @@
   --file-code: #56b6c2;
   --file-string: #ce9178;
   --file-func: #e1c07b;
+
+  /* 深色底上分类色要提亮，否则压在 --surface-1 上看不清 */
+  --cat-1: #3fbf87;
+  --cat-2: #d99a3c;
+  --cat-3: #7d93e8;
+  --cat-4: #cf76b4;
+  --cat-5: #6cb86c;
+  --cat-6: #cdc247;
+  --cat-7: #5bb0d0;
+  --cat-8: #d17878;
 
   --overlay: rgba(0, 0, 0, 0.62);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);

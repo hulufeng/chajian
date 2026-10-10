@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { btnPrimary, btnStyle, catColor, footerBar, headerBar, input, modalPanel, overlay, td, th, toneColor, toneSoft } from './modalStyles'
 
 interface PartitionRow {
   name: string
@@ -14,43 +15,12 @@ interface Props {
   onClose: () => void
 }
 
-const overlay: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000
-}
-const panel: CSSProperties = {
-  background: 'var(--bg, #1e1e1e)',
-  color: 'var(--text, #ddd)',
-  width: 'min(920px, 94vw)',
-  maxHeight: '88vh',
-  display: 'flex',
-  flexDirection: 'column',
-  borderRadius: 8,
-  border: '1px solid #333',
-  overflow: 'hidden'
-}
-const headerBar: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '10px 14px',
-  borderBottom: '1px solid #333'
-}
-const footerBar: CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid #333' }
-const btnStyle: CSSProperties = { background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }
-const th: CSSProperties = { textAlign: 'left', padding: '4px 6px', borderBottom: '1px solid #444' }
-const td: CSSProperties = { padding: '3px 6px', borderBottom: '1px solid #2a2a2a' }
-const input: CSSProperties = { width: '100%', background: '#151515', color: '#ddd', border: '1px solid #444', borderRadius: 3, padding: '3px 5px', fontSize: 12 }
-
-const PALETTE = ['#3a7', '#a73', '#77a', '#a57', '#7a7', '#aa7', '#7aa', '#a7a']
+/** 本弹窗比通用宽度略窄一点，其余外观全部复用 modalStyles */
+const panel: CSSProperties = { ...modalPanel, width: 'min(920px, 94vw)' }
+const cellInput: CSSProperties = { ...input, width: '100%', padding: '3px 5px' }
 
 function colorFor(i: number): string {
-  return PALETTE[i % PALETTE.length]
+  return catColor(i)
 }
 
 function parseSize(s: string): number | null {
@@ -203,6 +173,8 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
 
   const segs = rows.map((r) => ({ name: r.name, bytes: parseSize(r.size) }))
   const hasRemaining = rows.some((r) => (r.size || '').trim() === 'remaining')
+  // 顶部状态条的整体语气：有错是错、其次警告、否则正常
+  const level: 'ok' | 'warn' | 'err' = validation.errs ? 'err' : validation.warns ? 'warn' : 'ok'
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -213,17 +185,17 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
         </div>
         <div style={{ padding: 12, overflow: 'auto' }}>
           {loading && <div>读取中…</div>}
-          {error && <div style={{ color: '#f88' }}>{error}</div>}
+          {error && <div style={{ color: 'var(--error)' }}>{error}</div>}
           {!loading && !error && (
             <>
               <div
                 style={{
                   padding: '6px 10px',
-                  borderRadius: 4,
+                  borderRadius: 'var(--radius-2xs)',
                   marginBottom: 10,
                   fontSize: 13,
-                  background: validation.errs ? '#3a1a1a' : validation.warns ? '#3a331a' : '#1a2a1a',
-                  border: `1px solid ${validation.errs ? '#a44' : validation.warns ? '#aa4' : '#4a4'}`
+                  background: toneSoft(level),
+                  border: `1px solid ${toneColor(level)}`
                 }}
               >
                 {validation.errs
@@ -232,7 +204,7 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
                     ? `⚠ ${validation.warns} 处布局提示（可保存）`
                     : '✓ 分区表布局合法（无重叠 / 对齐正确）'}
               </div>
-              <div style={{ display: 'flex', height: 26, borderRadius: 4, overflow: 'hidden', marginBottom: 10, border: '1px solid #333' }}>
+              <div style={{ display: 'flex', height: 26, borderRadius: 'var(--radius-2xs)', overflow: 'hidden', marginBottom: 10, border: '1px solid var(--border)' }}>
                 {segs.map((s, i) => (
                   <div
                     key={i}
@@ -244,7 +216,7 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: 11,
-                      color: '#fff',
+                      color: 'var(--on-accent)',
                       minWidth: 0,
                       overflow: 'hidden',
                       whiteSpace: 'nowrap'
@@ -256,7 +228,7 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ color: '#9ad' }}>
+                  <tr style={{ color: 'var(--accent)' }}>
                     <th style={th}>Name</th>
                     <th style={th}>Type</th>
                     <th style={th}>SubType</th>
@@ -270,15 +242,15 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
                 <tbody>
                   {rows.map((r, i) => {
                     const st = validation.per[i]
-                    const mark = st.level === 'ok' ? { c: '✓', col: '#6c6' } : st.level === 'warn' ? { c: '!', col: '#dd6' } : { c: '×', col: '#e66' }
+                    const mark = { c: st.level === 'ok' ? '✓' : st.level === 'warn' ? '!' : '×', col: toneColor(st.level) }
                     return (
                       <tr key={i}>
-                        <td style={td}><input style={input} value={r.name} onChange={(e) => update(i, 'name', e.target.value)} /></td>
-                        <td style={td}><input style={input} value={r.type} onChange={(e) => update(i, 'type', e.target.value)} /></td>
-                        <td style={td}><input style={input} value={r.subtype} onChange={(e) => update(i, 'subtype', e.target.value)} /></td>
-                        <td style={td}><input style={input} value={r.offset} onChange={(e) => update(i, 'offset', e.target.value)} placeholder="0x1000" /></td>
-                        <td style={td}><input style={input} value={r.size} onChange={(e) => update(i, 'size', e.target.value)} placeholder="1M / 0x1000 / remaining" /></td>
-                        <td style={td}><input style={input} value={r.flags} onChange={(e) => update(i, 'flags', e.target.value)} placeholder="encrypted" /></td>
+                        <td style={td}><input style={cellInput} value={r.name} onChange={(e) => update(i, 'name', e.target.value)} /></td>
+                        <td style={td}><input style={cellInput} value={r.type} onChange={(e) => update(i, 'type', e.target.value)} /></td>
+                        <td style={td}><input style={cellInput} value={r.subtype} onChange={(e) => update(i, 'subtype', e.target.value)} /></td>
+                        <td style={td}><input style={cellInput} value={r.offset} onChange={(e) => update(i, 'offset', e.target.value)} placeholder="0x1000" /></td>
+                        <td style={td}><input style={cellInput} value={r.size} onChange={(e) => update(i, 'size', e.target.value)} placeholder="1M / 0x1000 / remaining" /></td>
+                        <td style={td}><input style={cellInput} value={r.flags} onChange={(e) => update(i, 'flags', e.target.value)} placeholder="encrypted" /></td>
                         <td style={{ ...td, color: mark.col, cursor: 'help' }} title={st.msg || '合法'}>{mark.c}</td>
                         <td style={td}><button style={btnStyle} onClick={() => delRow(i)}>删</button></td>
                       </tr>
@@ -288,14 +260,14 @@ export default function PartitionEditor({ projectRoot, onClose }: Props) {
               </table>
               <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
                 <button style={btnStyle} onClick={addRow}>+ 新增分区</button>
-                <button style={{ ...btnStyle, background: '#355' }} onClick={() => setRows(autoLayout(rows))}>自动排布 offset</button>
+                <button style={btnStyle} onClick={() => setRows(autoLayout(rows))}>自动排布 offset</button>
               </div>
             </>
           )}
         </div>
         <div style={footerBar}>
           <button style={btnStyle} onClick={onClose}>取消</button>
-          <button style={{ ...btnStyle, background: '#2a7' }} onClick={save}>保存分区表</button>
+          <button style={btnPrimary} onClick={save}>保存分区表</button>
         </div>
       </div>
     </div>
