@@ -178,7 +178,11 @@ OpenAI 兼容档（openai / deepseek / qwen）直连 `/chat/completions`；**Gem
   那个仓库是**另一条线**（main = `f1ceafb`，内容含 codelab-site 映射到 `website/`，另有 `tmp-layout-sync`/`tmp-sync3` 分支与 `v1.1.0`/`v1.1.1` tag），
   现已保留为独立 remote `labcode`，**不要往它 push 桌面端历史**（会非快进冲突）。
 - 注意：推送**必须走系统代理**（端口会变，用 `GIT_CURL_VERBOSE=1` 看实际端口）；清空代理环境变量会导致推送必败；代理偶发 502 需忽略重试
-- 一次性带 token 推送（不落盘、不写 config）：`git push https://<PAT>@github.com/hulufeng/chajian.git main:main`，推完即到 GitHub 页面撤销该 token
+- **推送方式：SSH（免令牌）**。`origin = git@github.com:hulufeng/chajian.git`，
+  本机 `~/.ssh/id_ed25519` 已授权（`ssh -T git@github.com` → `Hi hulufeng!`，22 端口通）。
+  直接 `git push origin main` 即可，**不再需要 PAT、也不用往配置里塞凭据**。
+  ⚠️ ssh/ssh-keygen 不在 PATH，可执行文件在 `D:\软件\Git\usr\bin\`（需调试连通性时用全路径）。
+- 历史兜底：一次性带 token 推送（不落盘、不写 config）：`git push https://<PAT>@github.com/hulufeng/chajian.git main:main`，推完即到 GitHub 页面撤销该 token
 - 官网（codelab-site）是**独立 git 仓库**，不在此仓库内（见第 9 节）
 
 ---
