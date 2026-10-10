@@ -122,6 +122,10 @@ src/
 
 | 日期 | Bug | 修复 |
 |---|---|---|
+| 2026-10-10 | 更新功能等于没接：代码只认 `update.json`，线上源只有 `latest.yml`（实测 404 / 200） | updateService 统一入口：`update.json` 优先，缺失回退极简解析 `latest.yml`；地址从占位符改成 `bluebubai.work/updates/` |
+| 2026-10-10 | T4 并发上限是死代码（无工具声明 `concurrencySafe`） | `isConcurrencySafe()` 默认按 category 推导，保留显式 `false` 否决权 |
+| 2026-10-10 | T3 首次超水位直接破坏性折叠，跳过了无损剪裁 | 先 `trimOldToolOutputs()`，压不下去才 `compressContext()`；token 估算补 `tool_calls.arguments` |
+| 2026-10-10 | hooks「项目覆盖全局」实现成了拼接 | 改成按事件粒度覆盖；PostToolUse 并发跑；超时用 `taskkill /T /F` 带树杀（防孤儿 node） |
 | 2026-10-10 | `check-anthropic-adapter` 断言 35/35 全过却返回 0xC0000409 | `server.close()` 异步未完成就 `process.exit()` → libuv 二次关闭 async handle；改为 await 关闭 + 只设 `exitCode` |
 | 2026-10-10 | `check-cloud-official` 断言「渲染层调用 `ai.register`」误报 | 官方通道早已改为邮箱验证码登录、首次自动注册；断言改查 `sendCode`/`loginWithCode` |
 | 2026-10-08 | tool-observers.ts 给箭头函数设 .name 报错 | Object.defineProperty + try-catch |
@@ -184,11 +188,14 @@ OpenAI 兼容档（openai / deepseek / qwen）直连 `/chat/completions`；**Gem
 - [x] 全量代码推到 GitHub（已完成 → hulufeng/chajian）
 - [x] debug 相关文件合并成目录（→ `services/debug/`，7 文件）
 - [x] LSP 相关文件合并成目录（→ `services/lsp/`，4 文件）
+- [x] 更新器接真实源（`https://bluebubai.work/updates/`，`update.json` 缺失时回退 `latest.yml`）
 - [ ] SMTP 配置（生产环境需要用户提供 SMTP_HOST/PORT/USER/PASS）
 - [ ] 线上 cloud-server 部署最新代码（含 GPT-4o / Gemini 模型）
 - [ ] 服务端配 `OPENAI_API_KEY` / `GEMINI_API_KEY`（未配则对应模型走演示回复）
 - [ ] ESP-IDF 工具链真机实测（menuconfig 内嵌终端 / 分区表 / Kconfig 三块只有静态自检，没跑过真板）
-- [ ] Agent 并发调度与自动记忆的真机回归（T1~T4 自检 16/0、15/0，未上真模型）
+- [ ] Agent 并发调度与自动记忆的真机回归（T1~T4 自检 20/0、18/0，未上真模型）
+- [ ] `KconfigEditor.tsx` / `PartitionEditor.tsx` 硬编码 hex 改走 theme.css 令牌（违反 §13「唯一颜色源」，code-review 查出；`SerialPlotter.tsx` 的 `cssColor()` 是可复用范式）
+- [ ] 两编辑器重复的 overlay/panel/btn 样式抽成共享 modal 样式表
 
 ---
 
@@ -357,4 +364,7 @@ node scripts/check-*.mjs                # 受影响的那些
 | `start-labcode.bat` | 一键跑 `out/` 真实产物做真机测试（免打包） |
 | `docs/插件架构/plugin-schema-draft.md` | plugin.json schema 草案（skills/tools/transports；7 通道含 mqtt；信任模型；元插件契约） |
 | `scripts/check-*.mjs` | 各自检脚本（改完跑受影响的那几个） |
+| `scripts/check-updater.mjs` | 更新器：占位地址 / latest.yml 解析 / 坏数据降级 / 版本比较方向（含一次真实线上拉取） |
+| `scripts/check-agent-context.mjs` | `isConcurrencySafe` 默认值推导、上下文治理「先无损后破坏性」顺序、token 估算含 tool_calls |
+| `src/main/services/updateService.ts` | 强制/普通更新：元数据取 `update.json`（可带 forceUpdate），缺失回退解析 `latest.yml`，`/S` 静默安装 |
 | `scripts/scan-ipc-handlers.mjs` 等扫描四件套 | 改 preload/main 通道后必跑，期望 0 命中 |
