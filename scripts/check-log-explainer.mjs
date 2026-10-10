@@ -17,8 +17,8 @@ const outfile = 'scripts/.tmp/logExplainer.bundle.mjs'
 const stubPlugin = {
   name: 'stub',
   setup(build) {
-    build.onResolve({ filter: /^\.\/aiGateway$/ }, () => ({ path: resolve('scripts/.tmp/aiGateway-stub.mjs') }))
-    build.onResolve({ filter: /^electron$/ }, () => ({ path: resolve('scripts/.tmp/electron-stub.mjs') }))
+    build.onResolve({ filter: /^\.\/aiGateway$/ }, () => ({ path: resolve('scripts/stubs/aiGateway-stub.mjs') }))
+    build.onResolve({ filter: /^electron$/ }, () => ({ path: resolve('scripts/stubs/electron-dom-stub.mjs') }))
   }
 }
 await build({

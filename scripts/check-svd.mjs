@@ -24,7 +24,7 @@ buildSync({
   format: 'esm',
   platform: 'node',
   outfile,
-  alias: { electron: resolve('scripts/.tmp/electron-stub.mjs') }
+  alias: { electron: resolve('scripts/stubs/electron-dom-stub.mjs') }
 })
 const mod = await import('file://' + process.cwd().replace(/\\/g, '/') + '/' + outfile.replace(/\\/g, '/'))
 const { parseSvd, normalizeChip, suggestChipByFqbn, loadSvd, looksLikeSvd, findRegister, hex, formatRegister, getSvdDir } = mod
