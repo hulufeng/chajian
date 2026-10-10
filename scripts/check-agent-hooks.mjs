@@ -141,6 +141,32 @@ const dt = Date.now() - t0
 ok(r.ok === true, '钩子超时后放行，不卡死 Agent')
 ok(dt < 8000, `超时控制在阈值附近（实测 ${dt}ms < 8000ms）`)
 
+// ── 8. 项目覆盖全局（不是拼接）──
+console.log('\n[8] 项目 hooks 覆盖全局')
+const projRoot = join(tmp, 'proj')
+mkdirSync(join(projRoot, '.labcode'), { recursive: true })
+setHooks({ hooks: { PreToolUse: [{ matcher: 'fake_write', command: 'cmd /c exit 2' }] } })
+ok(hooks.loadHooks(null).PreToolUse.length === 1, '无工程时取全局（1 条）')
+ok(hooks.loadHooks(projRoot).PreToolUse.length === 1, '工程没配 hooks.json 时沿用全局')
+writeFileSync(
+  join(projRoot, '.labcode', 'hooks.json'),
+  JSON.stringify({ hooks: { PreToolUse: [] } }),
+  'utf8'
+)
+hooks.clearHookConfigCache()
+ok(
+  hooks.loadHooks(projRoot).PreToolUse.length === 0,
+  '工程显式给空数组 → 覆盖全局（全局那条不再生效）'
+)
+writeFileSync(
+  join(projRoot, '.labcode', 'hooks.json'),
+  JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'fake_write', command: 'cmd /c exit 0' }] } }),
+  'utf8'
+)
+hooks.clearHookConfigCache()
+const mergedProj = hooks.loadHooks(projRoot).PreToolUse
+ok(mergedProj.length === 1 && mergedProj[0].command === 'cmd /c exit 0', '工程配置的钩子取代全局钩子')
+
 console.log(`\n[Agent hooks 自检] 通过 ${pass} / 失败 ${fail}`)
 rmSync(tmp, { recursive: true, force: true })
-process.exit(fail === 0 ? 0 : 1)
+process.exitCode = fail === 0 ? 0 : 1

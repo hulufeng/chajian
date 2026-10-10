@@ -63,6 +63,23 @@ const SERIAL_EXCLUDES = new Set([
   'create_project_wizard'
 ])
 
+/**
+ * 某个工具能否进并发批（对齐 TrieCode，但默认值按 category 推）。
+ *
+ * 为什么不全靠 `concurrencySafe` 显式声明：实测下来全仓没有工具声明过这个字段，
+ * 结果 canParallel 恒 false、PARALLEL_LIMIT 形同虚设。改成
+ * 「未显式声明时，read/query 类默认可并发；写类/交互类一律串行」，
+ * 既让限流真正生效，又保留 `concurrencySafe: false` 的显式否决权，
+ * 并且 SERIAL_EXCLUDES 仍然是不管怎么声明都必须串行的硬名单。
+ */
+export function isConcurrencySafe(name: string): boolean {
+  if (SERIAL_EXCLUDES.has(name)) return false
+  const def = toolRegistry.get(name)
+  if (!def) return false // 未知工具保守串行
+  if (def.concurrencySafe !== undefined) return def.concurrencySafe === true
+  return def.category === 'read' || def.category === 'query'
+}
+
 // ── 教学问答模式（知识库命中 + 纯疑问句）───────────────────
 // 与 detectRequiredTools 的疑问句豁免同口径：疑问句特征词，且无"帮我/请/现在"等祈使操作词
 const TEACHING_QUESTION_RE = /(是什么|为什么|怎么办|怎么读|怎么做|怎么用|如何|区别|介绍|讲讲|说明|吗$|呢$|？$|\?$)/
@@ -369,7 +386,10 @@ export class AgentRunner {
           }
         }
 
-        // ── 上下文压缩：消息数超阈值 **或** token 水位超 65% 时折叠早期轮次 ──
+        // ── 上下文治理：先无损、后破坏性（顺序不能反）──
+        // trimOldToolOutputs 不丢轮次、可重复执行，先靠它把水位压回去；
+        // 压不下去（或消息条数本身就超了）才允许破坏性的 compressContext。
+        if (this.isOverContextWatermark()) this.trimOldToolOutputs()
         if (this.messages.length > MAX_MESSAGES_BEFORE_COMPRESS || this.isOverContextWatermark()) {
           this.compressContext()
         }
@@ -618,7 +638,15 @@ export class AgentRunner {
   /** 粗估当前上下文 token 数（字符数 / 系数，够用于水位判断，不追求精确） */
   private estimateContextTokens(): number {
     let chars = 0
-    for (const m of this.messages) chars += String(m.content || '').length
+    for (const m of this.messages) {
+      chars += String(m.content || '').length
+      // assistant 侧的 tool_calls.arguments 也要算：write_file 的大 payload 全在这里，
+      // 只统计 content 会让水位永远不触发（长会话直接爆上下文）。
+      const calls = (m as unknown as { tool_calls?: Array<{ function?: { arguments?: string } }> }).tool_calls
+      if (Array.isArray(calls)) {
+        for (const c of calls) chars += String(c?.function?.arguments || '').length
+      }
+    }
     return Math.ceil(chars / CHARS_PER_TOKEN)
   }
 
@@ -1512,12 +1540,7 @@ ${blocks.join('\n\n')}`
     const batches: Array<Array<{ id: string; type: string; function: { name: string; arguments: string } }>> = []
     let currentParallel: Array<{ id: string; type: string; function: { name: string; arguments: string } }> | null = null
 
-    const canParallel = (name: string): boolean => {
-      if (SERIAL_EXCLUDES.has(name)) return false
-      const def = toolRegistry.get(name)
-      if (!def) return false // 未知工具保守串行
-      return def.concurrencySafe === true && (def.category === 'read' || def.category === 'query')
-    }
+    const canParallel = (name: string): boolean => isConcurrencySafe(name)
 
     for (const tc of toolCalls) {
       const name = tc.function?.name || ''

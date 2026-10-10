@@ -26,7 +26,9 @@ export interface ToolDefinition {
   }
   category: ToolCategory
   /** 并发安全（对齐 TrieCode concurrencySafe）：为 true 时，同轮多个 read/query 类工具可以并行执行；
-   *  不声明或为 false 时，必须串行排队，避免读-写/写-写竞争（如 terminal/read_file/write_file/confirm/ask_user 都不能并发）。 */
+   *  不声明或为 false 时，必须串行排队，避免读-写/写-写竞争（如 terminal/read_file/write_file/confirm/ask_user 都不能并发）。
+   *  未声明时的默认值由 category 推导：read/query → 可并发，其余 → 串行（见 agent-runner 的 isConcurrencySafe）。
+   *  本字段只用于**否决**默认推导：不想并发的只读工具显式写 `concurrencySafe: false`。 */
   concurrencySafe?: boolean
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
 }

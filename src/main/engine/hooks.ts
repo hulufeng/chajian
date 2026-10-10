@@ -78,19 +78,27 @@ function globalHookPath(): string {
   }
 }
 
-/** 全局 + 项目合并：同名事件下项目配置排在后面（后注册的后执行，便于覆盖语义） */
+/**
+ * 全局 + 项目合并：**项目覆盖全局**（按事件粒度）。
+ *
+ * 规格（docs/AGENT-对齐TrieCode-任务规划.md §二.2）写的是「项目覆盖全局」，
+ * 不是拼接。早先实现是拼接，导致全局钩子仍能拒绝/改参——项目里明明写了自己的
+ * 红线规则，却拦不住全局那条，语义与文档不符。这里改成：某个事件只要项目配置了
+ * （哪怕是空数组，表示「本工程明确不需要这类钩子」），就完全采用项目的。
+ */
 export function loadHooks(projectRoot: string | null): Record<HookEvent, HookDef[]> {
   const merged: Record<HookEvent, HookDef[]> = { PreToolUse: [], PostToolUse: [] }
   const globalPath = globalHookPath()
-  if (globalPath) {
-    const g = readConfigFile(globalPath).hooks || {}
-    merged.PreToolUse.push(...(g.PreToolUse || []))
-    merged.PostToolUse.push(...(g.PostToolUse || []))
-  }
-  if (projectRoot) {
-    const p = readConfigFile(join(projectRoot, PROJECT_HOOK_DIR, HOOK_FILE_NAME)).hooks || {}
-    merged.PreToolUse.push(...(p.PreToolUse || []))
-    merged.PostToolUse.push(...(p.PostToolUse || []))
+  const globalCfg = globalPath ? readConfigFile(globalPath).hooks || {} : {}
+  const projectCfg = projectRoot
+    ? readConfigFile(join(projectRoot, PROJECT_HOOK_DIR, HOOK_FILE_NAME)).hooks || {}
+    : null
+
+  for (const ev of ['PreToolUse', 'PostToolUse'] as HookEvent[]) {
+    const fromProject = projectCfg ? (projectCfg[ev] as HookDef[] | undefined) : undefined
+    const fromGlobal = (globalCfg[ev] as HookDef[] | undefined) || []
+    // 项目显式给了该事件（含空数组）→ 覆盖全局；没给 → 继续用全局
+    merged[ev] = fromProject ? [...fromProject] : [...fromGlobal]
   }
   return merged
 }
@@ -129,6 +137,26 @@ function parseOutcome(stdout: string): HookOutcome | null {
   }
 }
 
+/**
+ * 杀掉钩子进程及其子进程树。
+ *
+ * 为什么不能只 `child.kill()`：spawn 用了 `shell: true`，child 是 cmd.exe，
+ * 杀它只会让壳退出，真正的 `node guard.js` 变成孤儿继续跑（还会占着 stdin/管道）。
+ * Windows 上用 `taskkill /T /F` 带树杀；其它平台退回 SIGKILL，失败一律忽略——
+ * 钩子杀不干净也不能把 Agent 卡住。
+ */
+function killTree(child: ReturnType<typeof spawn>): void {
+  const pid = child?.pid
+  if (!pid) return
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+    } else {
+      child.kill('SIGKILL')
+    }
+  } catch { /* 已退出 */ }
+}
+
 function runHook(hook: HookDef, event: HookEvent, payload: Record<string, unknown>): Promise<HookOutcome> {
   return new Promise((resolve) => {
     let settled = false
@@ -153,7 +181,7 @@ function runHook(hook: HookDef, event: HookEvent, payload: Record<string, unknow
 
     const timer = setTimeout(() => {
       console.warn(`[hooks] ${event} 钩子超时 ${timeoutMs}ms，放行：${hook.command}`)
-      try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+      killTree(child)
       done({ decision: 'allow' })
     }, timeoutMs)
 
@@ -240,17 +268,20 @@ export function makePostToolUseHookMiddleware(getProjectRoot: () => string | nul
     const root = p.ctx?.projectRoot ?? getProjectRoot()
     const hooks = loadHooks(root).PostToolUse
     if (hooks.length === 0) return
-    for (const hook of hooks) {
-      if (!hook.command) continue
-      if (!matchTool(hook.matcher, p.toolName)) continue
-      const payload = buildPayload('PostToolUse', p, root)
-      payload.result = {
-        ok: result.ok,
-        error: result.error || '',
-        content: String(result.content || '').slice(0, MAX_RESULT_CHARS)
-      }
-      await runHook(hook, 'PostToolUse', payload)
-    }
+    // 观测型钩子并发跑：结果一律不影响工具执行，串行 await 会让
+    // 「N 个钩子 × 各自超时上限」全部叠加到每一次工具调用上（N=5 时最多白等 25s）。
+    const jobs = hooks
+      .filter((hook) => hook.command && matchTool(hook.matcher, p.toolName))
+      .map((hook) => {
+        const payload = buildPayload('PostToolUse', p, root)
+        payload.result = {
+          ok: result.ok,
+          error: result.error || '',
+          content: String(result.content || '').slice(0, MAX_RESULT_CHARS)
+        }
+        return runHook(hook, 'PostToolUse', payload)
+      })
+    await Promise.allSettled(jobs)
   }
   try {
     Object.defineProperty(mw, 'name', { value: 'hooks-post', configurable: true })
