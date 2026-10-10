@@ -1,5 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import DeviceDiagnosticsModal from './DeviceDiagnosticsModal'
+import TerminalView from './TerminalView'
+import PartitionEditor from './PartitionEditor'
+import KconfigEditor from './KconfigEditor'
 
 interface DevicePanelInfo {
   plugin: string
@@ -80,6 +83,11 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
   const [deviceCtx, setDeviceCtx] = useState<{ board: string; port: string }>({ board: '', port: '' })
   const [boardSearch, setBoardSearch] = useState('')
   const [boardMenuOpen, setBoardMenuOpen] = useState(false)
+  const [targets, setTargets] = useState<Array<{ target: string; name: string }>>([])
+  const [selectedTarget, setSelectedTarget] = useState('')
+  const [menuconfig, setMenuconfig] = useState<{ args: string[]; cwd: string; env: Record<string, string> } | null>(null)
+  const [partitionOpen, setPartitionOpen] = useState(false)
+  const [kconfigOpen, setKconfigOpen] = useState(false)
   const [loadingBoards, setLoadingBoards] = useState(false)
   const [boardOptions, setBoardOptions] = useState<Array<{ option: string; label: string; values: Array<{ value: string; label: string }> }>>([])
   const [optionValues, setOptionValues] = useState<Record<string, Record<string, string>>>(() => {
@@ -168,6 +176,7 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
     }).catch(() => undefined)
     // 启动即加载板卡列表（默认按 ESP32 平台过滤，避免无关 AVR 老板卡刷屏；对齐 TrieCode 默认展示 ESP32-C3 系列）
     loadBoards('esp32')
+    loadTargets()
     // 加载端口
     window.api.serial.list().then((p) => setPorts(p as Array<{ path: string; manufacturer?: string }>)).catch(() => undefined)
     // 检测工具链
@@ -213,6 +222,12 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
       .then((b) => { if (seq === boardSeqRef.current) setBoards(b) })
       .catch(() => { if (seq === boardSeqRef.current) setBoards([]) })
       .finally(() => { if (seq === boardSeqRef.current) setLoadingBoards(false) })
+  }
+
+  const loadTargets = (): void => {
+    window.api.espIdf.listTargets()
+      .then((t) => setTargets(t || []))
+      .catch(() => setTargets([]))
   }
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -287,6 +302,30 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
       onGenerateWiring?.()
       return
     }
+    // 交互式 menuconfig → 打开内嵌 pty 终端（idf.py menuconfig）
+    if (action.id === 'open_menuconfig') {
+      window.api.espIdf
+        .menuconfigCmd()
+        .then((res) => {
+          if ('error' in res) {
+            window.alert(`menuconfig 启动失败：${(res as { error: string }).error}`)
+          } else {
+            setMenuconfig(res as { args: string[]; cwd: string; env: Record<string, string> })
+          }
+        })
+        .catch(() => undefined)
+      return
+    }
+    // 分区表图形编辑
+    if (action.id === 'edit_partitions') {
+      setPartitionOpen(true)
+      return
+    }
+    // Kconfig 图形编辑
+    if (action.id === 'edit_kconfig') {
+      setKconfigOpen(true)
+      return
+    }
     // 其他 action → 通过 capability 路由执行
     const capId = action.id.replace(/^.*?\./, '')
     try {
@@ -358,6 +397,7 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
             // 兼容两种 manifest 写法：插件注册的是 backend `serial.list`，
             // manifest 里可能写 service:"serialport" 或 "serial"，两者都识别为端口选择器
             const isPort = (sel.source?.service === 'serialport' || sel.source?.service === 'serial') && sel.source?.method === 'list'
+    const isTarget = sel.source?.service === 'espIdf' && sel.source?.method === 'listTargets'
 
             if (isBoard) {
               const selectedName = boards.find((b) => b.fqbn === deviceCtx.board)?.name || deviceCtx.board || ''
@@ -464,6 +504,31 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
               )
             }
 
+            if (isTarget) {
+              return (
+                <div key={sel.id} className="device-field">
+                  <label>{sel.title}</label>
+                  <div className="device-port-row">
+                    <select
+                      className="device-select"
+                      value={selectedTarget}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setSelectedTarget(v)
+                        window.api.espIdf.setTarget(v).catch(() => undefined)
+                      }}
+                    >
+                      <option value="">未选择</option>
+                      {targets.map((t) => (
+                        <option key={t.target} value={t.target}>{t.name}</option>
+                      ))}
+                    </select>
+                    <button className="device-refresh" onClick={loadTargets}>↻</button>
+                  </div>
+                </div>
+              )
+            }
+
             return null
           })}
 
@@ -487,6 +552,29 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
               🔧 诊断与回滚
             </button>
           </div>
+
+          {menuconfig && (
+            <div style={{ marginTop: 8, border: '1px solid var(--border, #333)', borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: 'var(--panel, #1e1e1e)', color: 'var(--text, #ddd)', fontSize: 12 }}>
+                <span>ESP-IDF menuconfig（交互终端 · 方向键/空格/Esc 操作）</span>
+                <button className="device-action-btn" onClick={() => setMenuconfig(null)}>✕ 关闭</button>
+              </div>
+              <div style={{ height: 380 }}>
+                <TerminalView
+                  args={menuconfig.args}
+                  cwd={menuconfig.cwd}
+                  env={menuconfig.env}
+                  theme="dark"
+                  postExit={{
+                    args: [menuconfig.args[0], menuconfig.args[1], 'reconfigure'],
+                    cwd: menuconfig.cwd,
+                    env: menuconfig.env,
+                    label: 'idf.py reconfigure（menuconfig 保存后自动重新配置工程）'
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -499,6 +587,9 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
           onOpenFile={onOpenFile}
         />
       )}
+
+      {partitionOpen && <PartitionEditor projectRoot={projectRoot || ''} onClose={() => setPartitionOpen(false)} />}
+      {kconfigOpen && <KconfigEditor projectRoot={projectRoot || ''} onClose={() => setKconfigOpen(false)} />}
     </div>
   )
 }

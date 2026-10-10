@@ -26,7 +26,10 @@ const outDir = join(projectRoot, 'out', 'main')
  *
  * [源（相对项目根）, 目标（相对 out/main）]
  */
-const ASSETS = [['src/main/plugins/arduino-toolchain/ui', 'plugins/arduino-toolchain/ui']]
+const ASSETS = [
+  ['src/main/plugins/arduino-toolchain/ui', 'plugins/arduino-toolchain/ui'],
+  ['src/main/plugins/esp-idf-toolchain/ui', 'plugins/esp-idf-toolchain/ui']
+]
 
 /**
  * 逐文件读改写，不用 fs.cpSync：目标是上一次构建留下的同名文件时会触发 cpSync 的 unlink 重名处理，

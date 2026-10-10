@@ -403,7 +403,7 @@ const api = {
 
   // 真终端（node-pty）
   pty: {
-    start: (opts: { shell?: string; cwd?: string; cols?: number; rows?: number }): Promise<{ id: string; error?: string }> =>
+    start: (opts: { shell?: string; cwd?: string; cols?: number; rows?: number; command?: string; args?: string[]; env?: Record<string, string> }): Promise<{ id: string; error?: string }> =>
       ipcRenderer.invoke('pty:start', opts),
     write: (opts: { id: string; data: string }): Promise<boolean> => ipcRenderer.invoke('pty:write', opts),
     resize: (opts: { id: string; cols: number; rows: number }): Promise<boolean> => ipcRenderer.invoke('pty:resize', opts),
@@ -413,8 +413,8 @@ const api = {
       ipcRenderer.on('pty:data', listener)
       return () => ipcRenderer.removeListener('pty:data', listener)
     },
-    onExit: (cb: (d: { id: string }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, d: { id: string }): void => cb(d)
+    onExit: (cb: (d: { id: string; code?: number }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, d: { id: string; code?: number }): void => cb(d)
       ipcRenderer.on('pty:exit', listener)
       return () => ipcRenderer.removeListener('pty:exit', listener)
     }
@@ -586,6 +586,39 @@ const api = {
       ipcRenderer.on('upload:chip-mismatch', listener)
       return () => ipcRenderer.removeListener('upload:chip-mismatch', listener)
     }
+  },
+
+  // ESP-IDF 工具链
+  espIdf: {
+    listTargets: (): Promise<Array<{ target: string; name: string }>> => ipcRenderer.invoke('espIdf:listTargets'),
+    setTarget: (target: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('espIdf:setTarget', target),
+    status: (): Promise<unknown> => ipcRenderer.invoke('espIdf:status'),
+    menuconfigCmd: (): Promise<{ args: string[]; cwd: string; env: Record<string, string> } | { error: string }> =>
+      ipcRenderer.invoke('espIdf:menuconfigCmd'),
+    readPartitions: (
+      projectPath: string
+    ): Promise<{ ok: boolean; path?: string; rows?: Array<{ name: string; type: string; subtype: string; offset: string; size: string; flags: string }>; header?: string; isNew?: boolean; error?: string }> =>
+      ipcRenderer.invoke('espIdf:readPartitions', projectPath),
+    writePartitions: (
+      csvPath: string,
+      rows: Array<{ name: string; type: string; subtype: string; offset: string; size: string; flags: string }>
+    ): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('espIdf:writePartitions', csvPath, rows),
+    readSdkconfig: (
+      projectPath: string
+    ): Promise<{ ok: boolean; path?: string; items?: Array<{ key: string; value: string }>; error?: string }> =>
+      ipcRenderer.invoke('espIdf:readSdkconfig', projectPath),
+    writeSdkconfig: (
+      cfgPath: string,
+      items: Array<{ key: string; value: string }>
+    ): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('espIdf:writeSdkconfig', cfgPath, items),
+    kconfigSchema: (
+      projectPath: string
+    ): Promise<{ ok: boolean; tree?: Array<{ kind: string; name?: string; prompt?: string; type?: string; help?: string; depends?: string; defaults?: string[]; ranges?: string[]; select?: string[]; visibleIf?: string; children?: unknown[] }>; covered?: string; error?: string }> =>
+      ipcRenderer.invoke('espIdf:kconfigSchema', projectPath),
+    kconfigVisibility: (
+      projectPath: string
+    ): Promise<{ ok: boolean; map?: Record<string, { visible: boolean; default?: string }>; error?: string }> =>
+      ipcRenderer.invoke('espIdf:kconfigVisibility', projectPath)
   },
 
   // 开发板列表

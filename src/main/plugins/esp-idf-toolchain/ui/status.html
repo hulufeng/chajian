@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>ESP-IDF 状态</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 16px; color: #ddd; background: #1e1e1e; line-height: 1.6; }
+    h3 { margin: 0 0 12px; color: #4ec9b0; }
+    pre { white-space: pre-wrap; background: #252526; padding: 10px; border-radius: 6px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h3>ESP-IDF 目标与工具链</h3>
+  <div id="status">加载中…</div>
+  <script>
+    try {
+      window.api?.espIdf?.status?.().then(function (s) {
+        if (s && s.available) {
+          document.getElementById('status').innerHTML =
+            '<pre>状态: 已就绪\n版本: ' + (s.version || '未知') +
+            '\nIDF_PATH: ' + (s.path || '-') +
+            '\nTOOLS_PATH: ' + (s.toolsPath || '-') +
+            '\nPython: ' + (s.pythonEnvPath || '-') + '</pre>';
+        } else {
+          document.getElementById('status').textContent = '未检测到 ESP-IDF，请在设置中安装或用 IDF_PATH 指定。';
+        }
+      }).catch(function () { document.getElementById('status').textContent = '未检测到 ESP-IDF'; });
+    } catch (e) {
+      document.getElementById('status').textContent = '未检测到 ESP-IDF';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,358 @@
+{
+  "id": "esp-idf-toolchain",
+  "name": "ESP-IDF 工具链",
+  "displayName": "ESP-IDF 工具链",
+  "version": "0.2.0",
+  "description": "ESP-IDF 嵌入式工具链：图形化 Kconfig 配置、编译/烧录/目标芯片、串口日志、AI 工具。检测复用本机已装 ESP-IDF（可一键下载官方安装器）。",
+  "developer": "LabCode",
+  "icon": "espressif",
+  "category": "嵌入式工具链",
+  "minAppVersion": "0.1.0",
+  "entry": "./index.ts",
+  "channels": {
+    "cli": [],
+    "backend": ["espIdf.compile", "espIdf.flash", "espIdf.setTarget", "espIdf.clean", "espIdf.eraseFlash", "espIdf.menuconfig", "espIdf.createComponent", "espIdf.listTargets", "espIdf.configGet", "espIdf.configSet", "espIdf.partitionGet", "espIdf.partitionSet"],
+    "internal": ["espIdf.status", "espIdf.install"],
+    "http": [],
+    "grpc": [],
+    "mcp": [],
+    "mqtt": []
+  },
+  "capabilities": {
+    "compile": { "transport": "backend", "service": "espIdf", "method": "compile" },
+    "upload": { "transport": "backend", "service": "espIdf", "method": "flash" },
+    "flash": { "transport": "backend", "service": "espIdf", "method": "flash" },
+    "board-select": { "transport": "backend", "service": "espIdf", "method": "setTarget" },
+    "board-manage": { "transport": "backend", "service": "espIdf", "method": "listTargets" }
+  },
+  "detection": {
+    "envVars": ["IDF_PATH"],
+    "installerJson": {
+      "paths": [
+        "$USERPROFILE/.espressif/idf-env.json",
+        "~/.espressif/idf-env.json",
+        "C:/Espressif/idf-env.json",
+        "D:/Espressif/idf-env.json"
+      ],
+      "selectedKey": "idfSelectedId",
+      "entriesKey": "idfInstalled",
+      "pathField": "path",
+      "pythonField": "python",
+      "toolsPathField": "espressif.idfToolsPath"
+    },
+    "pathGlobs": [
+      "<toolsPath>/frameworks/esp-idf-v*",
+      "C:/Espressif/frameworks/esp-idf-v*",
+      "D:/Espressif/frameworks/esp-idf-v*",
+      "$USERPROFILE/esp",
+      "~/.espressif",
+      "C:/esp-idf"
+    ],
+    "validateFile": "tools/idf.py",
+    "derive": {
+      "toolsPath": "parent(frameworks)",
+      "pythonEnv": "glob(python_env/idf*_py*_env)",
+      "exportPathFrom": "tools/tools.json"
+    }
+  },
+  "installer": {
+    "url": "https://dl.espressif.cn/dl/idf-installer/esp-idf-tools-setup-online-2.4.1.exe",
+    "fileName": "idf-installer.exe"
+  },
+  "projectDetection": {
+    "markers": [
+      { "file": "CMakeLists.txt", "contains": "project.cmake" }
+    ],
+    "type": "esp-idf"
+  },
+  "devicePanel": {
+    "id": "esp-idf-device",
+    "title": "ESP-IDF 设备",
+    "selectors": [
+      {
+        "id": "target",
+        "title": "目标芯片",
+        "source": { "transport": "backend", "service": "espIdf", "method": "listTargets" },
+        "searchable": true,
+        "key": "target",
+        "placeholder": "esp32 / s3 / c3 …"
+      },
+      {
+        "id": "port",
+        "title": "串口",
+        "source": { "transport": "internal", "service": "serialport", "method": "list" },
+        "key": "port"
+      }
+    ],
+    "actions": [
+      {
+        "id": "set_target",
+        "title": "应用目标芯片",
+        "icon": "cpu",
+        "kind": "action",
+        "placement": "device-panel.action",
+        "transport": "backend",
+        "backend": { "backendId": "espIdf", "method": "setTarget" }
+      },
+      {
+        "id": "open_menuconfig",
+        "title": "menuconfig 终端",
+        "icon": "terminal",
+        "kind": "action",
+        "placement": "device-panel.action",
+        "transport": "backend",
+        "backend": { "backendId": "espIdf", "method": "menuconfig" }
+      },
+      {
+        "id": "edit_partitions",
+        "title": "编辑分区表",
+        "icon": "table",
+        "kind": "action",
+        "placement": "device-panel.action",
+        "transport": "backend",
+        "backend": { "backendId": "espIdf", "method": "editPartitions" }
+      },
+      {
+        "id": "edit_kconfig",
+        "title": "编辑 Kconfig",
+        "icon": "sliders",
+        "kind": "action",
+        "placement": "device-panel.action",
+        "transport": "backend",
+        "backend": { "backendId": "espIdf", "method": "editKconfig" }
+      }
+    ]
+  },
+  "views": [
+    { "id": "status", "title": "目标与工具链", "icon": "espressif", "slot": "sidebar", "type": "webview", "entry": "ui/status.html" },
+    { "id": "config", "title": "Kconfig 配置", "icon": "espressif", "slot": "sidebar", "type": "webview", "entry": "ui/config.html" }
+  ],
+  "projectTypes": [
+    {
+      "id": "esp-idf",
+      "title": "ESP-IDF 项目",
+      "icon": "espressif",
+      "description": "标准 ESP-IDF CMake 工程（app_main + Kconfig 配置）",
+      "capabilities": ["compile", "upload", "flash", "board-select", "board-manage"],
+      "scaffold": [
+        { "file": "CMakeLists.txt", "content": "cmake_minimum_required(VERSION 3.16)\ninclude($ENV{IDF_PATH}/tools/cmake/project.cmake)\nproject({name})\n" },
+        { "file": "main/CMakeLists.txt", "content": "idf_component_register(SRCS \"main.c\" INCLUDE_DIRS \".\")\n" },
+        { "file": "main/main.c", "content": "#include <stdio.h>\n#include \"freertos/FreeRTOS.h\"\n#include \"freertos/task.h\"\n#include \"esp_log.h\"\n\nstatic const char *TAG = \"{name}\";\n\nvoid app_main(void)\n{\n    ESP_LOGI(TAG, \"{name} 启动\");\n    while (1) {\n        vTaskDelay(pdMS_TO_TICKS(1000));\n    }\n}\n" },
+        { "file": "sdkconfig.defaults", "content": "CONFIG_IDF_TARGET=\"esp32\"\n" },
+        { "file": ".gitignore", "content": "build/\nsdkconfig\nsdkconfig.old\n" }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "build",
+      "description": "编译当前 ESP-IDF 项目（idf.py build）。",
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "compile" },
+      "stream": true,
+      "timeoutMs": 600000
+    },
+    {
+      "name": "flash",
+      "description": "编译并烧录到当前目标与串口（自动暂停串口日志）。",
+      "parameters": {
+        "type": "object",
+        "properties": { "port": { "type": "string", "description": "可选，缺省用选中串口" } }
+      },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "flash" },
+      "stream": true,
+      "pauseSerialPort": true,
+      "timeoutMs": 600000
+    },
+    {
+      "name": "set_target",
+      "description": "设置目标芯片（esp32/esp32s2/esp32s3/esp32c2/esp32c3/esp32c6/esp32h2/esp32p4/esp32c5/esp32c61）。",
+      "parameters": { "type": "object", "properties": { "target": { "type": "string" } }, "required": ["target"] },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "modify",
+      "backend": { "backendId": "espIdf", "method": "setTarget" },
+      "stream": true,
+      "timeoutMs": 300000
+    },
+    {
+      "name": "get_targets",
+      "description": "列出当前 IDF 版本支持的目标芯片。",
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "backend": { "backendId": "espIdf", "method": "listTargets" }
+    },
+    {
+      "name": "get_status",
+      "description": "ESP-IDF 检测状态（路径/版本/是否就绪）。",
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "internal": { "service": "espIdf", "method": "status" }
+    },
+    {
+      "name": "clean",
+      "description": "fullclean 清理构建产物。",
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "clean" },
+      "stream": true,
+      "timeoutMs": 120000
+    },
+    {
+      "name": "erase_flash",
+      "description": "擦除整个 flash（不可逆）。",
+      "parameters": { "type": "object", "properties": { "port": { "type": "string" } } },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "eraseFlash" },
+      "stream": true,
+      "timeoutMs": 120000
+    },
+    {
+      "name": "open_menuconfig",
+      "description": "在终端打开 idf.py menuconfig（交互式 Kconfig 配置）。",
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "menuconfig" },
+      "stream": true
+    },
+    {
+      "name": "config_get",
+      "description": "读取 Kconfig 符号当前值（符号名可带或不带 CONFIG_ 前缀）。",
+      "parameters": { "type": "object", "properties": { "symbol": { "type": "string" } }, "required": ["symbol"] },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "backend": { "backendId": "espIdf", "method": "configGet" }
+    },
+    {
+      "name": "config_set",
+      "description": "设置 Kconfig 符号并保存到 sdkconfig。",
+      "parameters": { "type": "object", "properties": { "symbol": { "type": "string" }, "value": { "type": "string" } }, "required": ["symbol", "value"] },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "modify",
+      "backend": { "backendId": "espIdf", "method": "configSet" }
+    },
+    {
+      "name": "partition_table_get",
+      "description": "读取分区表 CSV。",
+      "parameters": { "type": "object", "properties": { "file": { "type": "string" } } },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "backend": { "backendId": "espIdf", "method": "partitionGet" }
+    },
+    {
+      "name": "partition_table_set",
+      "description": "写入分区表 CSV。",
+      "parameters": { "type": "object", "properties": { "file": { "type": "string" }, "csv": { "type": "string" } }, "required": ["csv"] },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "modify",
+      "backend": { "backendId": "espIdf", "method": "partitionSet" }
+    },
+    {
+      "name": "component_create",
+      "description": "在 main 下创建新组件（idf.py create-component）。",
+      "parameters": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
+      "transport": "backend",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "backend": { "backendId": "espIdf", "method": "createComponent" },
+      "stream": true
+    },
+    {
+      "name": "serial_monitor_open",
+      "description": "打开后台串口日志（默认 115200）。",
+      "parameters": { "type": "object", "properties": { "port": { "type": "string" }, "baud": { "type": "integer" } } },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "internal": { "service": "serialLog", "method": "open" }
+    },
+    {
+      "name": "serial_monitor_tail",
+      "description": "读取最近串口日志。",
+      "parameters": { "type": "object", "properties": { "port": { "type": "string" }, "line": { "type": "integer" } } },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "internal": { "service": "serialLog", "method": "tail" }
+    },
+    {
+      "name": "serial_monitor_grep",
+      "description": "检索串口日志关键字。",
+      "parameters": { "type": "object", "properties": { "pattern": { "type": "string" }, "max": { "type": "integer" } }, "required": ["pattern"] },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "internal": { "service": "serialLog", "method": "grep" }
+    },
+    {
+      "name": "serial_monitor_send",
+      "description": "向串口发送数据。",
+      "parameters": { "type": "object", "properties": { "data": { "type": "string" } }, "required": ["data"] },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "internal": { "service": "serialLog", "method": "send" }
+    },
+    {
+      "name": "serial_monitor_close",
+      "description": "关闭后台串口日志。",
+      "parameters": { "type": "object", "properties": { "port": { "type": "string" } } },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "internal": { "service": "serialLog", "method": "close" }
+    },
+    {
+      "name": "analyze_crash",
+      "description": "分析串口日志崩溃特征（Guru Meditation / Backtrace）。",
+      "parameters": { "type": "object", "properties": { "port": { "type": "string" } } },
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "query",
+      "internal": { "service": "serialLog", "method": "analyzeCrash" }
+    },
+    {
+      "name": "install",
+      "description": "一键下载并启动官方 ESP-IDF 安装器。",
+      "transport": "internal",
+      "projectTypes": ["esp-idf"],
+      "category": "execute",
+      "internal": { "service": "espIdf", "method": "install" }
+    }
+  ],
+  "skills": [
+    {
+      "name": "ESP-IDF 烧录前检查",
+      "description": "编译 + 检查目标/串口后再烧录",
+      "prompt": "1. 用 get_status 确认 ESP-IDF 已检测、项目目标芯片已设置\n2. read_file 当前项目 {sketchName} 的 main/main.c 等源码，检查明显错误\n3. 用 plugin_esp-idf-toolchain_build 编译，确保无 error\n4. 向用户确认后，用 plugin_esp-idf-toolchain_flash 烧录到 {port}\n5. 烧录后用 serial_monitor_open/serial_monitor_tail 确认启动正常"
+    },
+    {
+      "name": "ESP-IDF 串口日志分析",
+      "description": "后台串口日志读取与检索",
+      "prompt": "1. 用 serial_monitor_open 打开当前串口（{port}，115200）\n2. 用 serial_monitor_tail 读取最近日志，serial_monitor_grep 检索 error/assert 等\n3. 结合 ESP-IDF 日志等级分析问题根因\n4. 完成后 serial_monitor_close 释放串口"
+    },
+    {
+      "name": "ESP-IDF 崩溃分析",
+      "description": "Guru Meditation / Backtrace 定位崩溃",
+      "prompt": "1. 用 serial_monitor_open 打开串口，复现崩溃\n2. 用 serial_monitor_tail 取崩溃前后日志，或 analyze_crash 自动识别 Guru Meditation/Backtrace\n3. 对 Backtrace 地址建议用 idf.py addr2line 反解到函数\n4. 修复代码，重新 build + flash，再 serial_monitor_tail 验证"
+    }
+  ],
+  "commands": [],
+  "dependencies": [],
+  "activation": { "projectTypes": ["esp-idf"] }
+}

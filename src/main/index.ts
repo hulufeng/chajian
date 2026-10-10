@@ -16,6 +16,8 @@ import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
 import { load as loadHostAdapter, hostManifest as hostAdapterManifest } from './plugins/hostAdapter'
+import { load as loadEspIdfPlugin, manifest as espIdfManifest } from './plugins/esp-idf-toolchain'
+import { listTargetsSync as espIdfListTargets, setTargetSync as espIdfSetTarget, detectEspIdf as espIdfDetect, menuconfigCmd as espIdfMenuconfigCmd, readPartitions as espIdfReadPartitions, writePartitions as espIdfWritePartitions, readSdkconfig as espIdfReadSdkconfig, writeSdkconfig as espIdfWriteSdkconfig, kconfigSchema as espIdfKconfigSchema, kconfigVisibility as espIdfKconfigVisibility } from './services/espIdf'
 import {
   installPlugin,
   uninstallPlugin,
@@ -295,6 +297,7 @@ function createWindow(): void {
 function initPlugins(): void {
   // 内置官方插件：Arduino CLI 工具链（ESP32 烧录硬链路）
   pluginManager.registerBuiltin(arduinoManifest, loadArduinoPlugin)
+  pluginManager.registerBuiltin(espIdfManifest, loadEspIdfPlugin)
   // 宿主能力：把串口会话等宿主接口暴露成命令，供已安装插件通过通道调用
   pluginManager.registerBuiltin(hostAdapterManifest, loadHostAdapter)
   // 已装插件（userData/plugins/*）：装完即接入命令面板 / 设备面板 / Agent 工具集
@@ -306,6 +309,18 @@ function initPlugins(): void {
 
 // ---------- IPC 注册 ----------
 ipcMain.handle('ping', () => 'pong（来自主进程）')
+
+// ESP-IDF 工具链：供 DevicePanel 目标芯片选择器与预加载接口调用
+ipcMain.handle('espIdf:listTargets', () => espIdfListTargets())
+ipcMain.handle('espIdf:setTarget', (_e, target: string) => espIdfSetTarget(lastProjectRoot || '', target))
+ipcMain.handle('espIdf:status', () => espIdfDetect())
+ipcMain.handle('espIdf:menuconfigCmd', () => espIdfMenuconfigCmd(lastProjectRoot || ''))
+ipcMain.handle('espIdf:readPartitions', (_e, projectPath: string) => espIdfReadPartitions(projectPath))
+ipcMain.handle('espIdf:writePartitions', (_e, csvPath: string, rows: import('./services/espIdf').PartitionRow[]) => espIdfWritePartitions(csvPath, rows))
+ipcMain.handle('espIdf:readSdkconfig', (_e, projectPath: string) => espIdfReadSdkconfig(projectPath))
+ipcMain.handle('espIdf:writeSdkconfig', (_e, cfgPath: string, items: Array<{ key: string; value: string }>) => espIdfWriteSdkconfig(cfgPath, items))
+ipcMain.handle('espIdf:kconfigSchema', (_e, projectPath: string) => espIdfKconfigSchema(projectPath))
+ipcMain.handle('espIdf:kconfigVisibility', (_e, projectPath: string) => espIdfKconfigVisibility(projectPath))
 
 // 视图：缩放 / 全屏
 ipcMain.handle('view:zoomIn', () => {
@@ -1019,24 +1034,40 @@ const SHELL_MAP: Record<string, string> = {
   bash: 'bash.exe'
 }
 
-ipcMain.handle('pty:start', (event, opts: { shell?: string; cwd?: string; cols?: number; rows?: number }) => {
+ipcMain.handle('pty:start', (event, opts: { shell?: string; cwd?: string; cols?: number; rows?: number; command?: string; args?: string[]; env?: Record<string, string> }) => {
   const id = `pty-${++taskSeq}`
   const sender = event.sender
-  const shell = SHELL_MAP[opts.shell || 'powershell'] || 'powershell.exe'
   const cwd = opts.cwd || process.cwd()
   try {
-    const term = nodePty.spawn(shell, [], {
-      name: 'xterm-color',
-      cols: opts.cols || 80,
-      rows: opts.rows || 24,
-      cwd,
-      env: { ...process.env, TERM: 'xterm-color' } as Record<string, string>
-    })
+    let term: ReturnType<typeof nodePty.spawn>
+    if (opts.command || (opts.args && opts.args.length)) {
+      // 直接运行命令（如 idf.py menuconfig），获得 TTY 交互
+      const file = opts.command || opts.args![0]
+      const cmdArgs = opts.args ? opts.args.slice(1) : []
+      term = nodePty.spawn(file, cmdArgs, {
+        name: 'xterm-color',
+        cols: opts.cols || 80,
+        rows: opts.rows || 24,
+        cwd,
+        env: { ...process.env, ...(opts.env || {}), TERM: 'xterm-color' } as Record<string, string>
+      })
+    } else {
+      const shell = SHELL_MAP[opts.shell || 'powershell'] || 'powershell.exe'
+      term = nodePty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: opts.cols || 80,
+        rows: opts.rows || 24,
+        cwd,
+        env: { ...process.env, TERM: 'xterm-color' } as Record<string, string>
+      })
+    }
     term.onData((data: string) => {
       if (!sender.isDestroyed()) sender.send('pty:data', { id, data })
     })
-    term.onExit(() => {
-      if (!sender.isDestroyed()) sender.send('pty:exit', { id })
+    term.onExit((e: unknown) => {
+      // node-pty 在较新版本中回调 object { exitCode, signal }；旧版直接给 number
+      const code = typeof e === 'object' && e !== null && 'exitCode' in e ? (e as { exitCode: number }).exitCode : typeof e === 'number' ? e : 0
+      if (!sender.isDestroyed()) sender.send('pty:exit', { id, code })
       ptyTerminals.delete(id)
     })
     ptyTerminals.set(id, term)

@@ -53,7 +53,8 @@ export const BOARD_TARGETS: BoardTarget[] = [
     flash: '16MB',
     build: [
       { path: 'arduino-cli', detail: 'esp32:esp32:esp32s3（官方 core，最省事）' },
-      { path: 'platformio', detail: 'espressif32 / esp32-s3-devkitc-1' }
+      { path: 'platformio', detail: 'espressif32 / esp32-s3-devkitc-1' },
+      { path: 'esp-idf', detail: 'ESP-IDF v5.x 原生工具链（menuconfig 图形配置 / JTAG 调试）' }
     ],
     fqbn: 'esp32:esp32:esp32s3',
     pioBoard: 'esp32-s3-devkitc-1',
