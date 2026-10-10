@@ -1,13 +1,13 @@
-// LSP 代码智能工具：定义跳转 / 引用 / 悬停 / 诊断 / 符号结构
+﻿// LSP 代码智能工具：定义跳转 / 引用 / 悬停 / 诊断 / 符号结构
 // 对齐 TrieCode 截图里 agent 调 lsp_definition / lsp_references / lsp_hover / read_diagnostics / code_symbols 的能力。
 // 语言服务器由系统提供（C/C++: clangd, TS/JS: typescript-language-server, Python: pylsp, Go: gopls）。
 import { dirname, extname, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 // 扩展名/服务器映射改由 lspService 单一提供（编辑器与 Agent 共用同一份，避免两处漂移）
-import { LspClient } from '../../services/lsp-client'
-import { EXT_LANGUAGE, LANG_SERVERS, ensureCompileDb, getServerSearchDir } from '../../services/lspService'
-import { locateServerCommand } from '../../services/lsp-server-path'
+import { LspClient } from '../../services/lsp/lsp-client'
+import { EXT_LANGUAGE, LANG_SERVERS, ensureCompileDb, getServerSearchDir } from '../../services/lsp/lspService'
+import { locateServerCommand } from '../../services/lsp/lsp-server-path'
 import { findToolchain, listConnectedBoardsWithSerial } from '../../services/toolchain'
 import { readTextFile } from '../../services/fsService'
 import type { ToolDefinition, ToolContext, ToolResult } from '../types'

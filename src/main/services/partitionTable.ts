@@ -1,4 +1,4 @@
-// 分区表 / NVS 只读查看（对标 wheat-esp-tools 的「分区表 + NVS」）
+﻿// 分区表 / NVS 只读查看（对标 wheat-esp-tools 的「分区表 + NVS」）
 //
 // 数据源：复用片上调试链路（openocd telnet 的 mdb 读内存），不再额外拉 esptool / 原生依赖。
 // 读到的字节按 ESP-IDF 布局解析：
@@ -7,7 +7,7 @@
 //   NVS   ：条目头 16B（ns_index/type/span/reserved/crc16/ts + 8 值域），逐条扫描。
 // ⚠️ NVS 分段是「尽力解析」：不做 CRC 校验、靠类型/跨页合法性过滤，UI 上会标注；
 //    分区表是硬解析（有魔数校验），结果可信。
-import type { RawReader } from './debugService'
+import type { RawReader } from './debug/debugService'
 
 export interface PartitionEntry {
   /** 分区在片内 Flash 上的起始地址（= 分区表项的 offset 字段） */

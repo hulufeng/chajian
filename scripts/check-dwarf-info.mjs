@@ -1,4 +1,4 @@
-/**
+﻿/**
  * .debug_info（DIE 树 + 类型解析 + 局部变量位置）自检。
  * 合成 .debug_abbrev + .debug_info 夹具，验证：
  *   - 缩写表解码、CU/DIE 树解析；
@@ -9,7 +9,7 @@
 import { buildSync } from 'esbuild'
 
 const outfile = 'scripts/.tmp/dwarfInfo.bundle.mjs'
-buildSync({ entryPoints: ['src/main/services/debug-dwarf-info.ts'], bundle: true, format: 'esm', platform: 'node', outfile })
+buildSync({ entryPoints: ['src/main/services/debug/debug-dwarf-info.ts'], bundle: true, format: 'esm', platform: 'node', outfile })
 const M = await import('file://' + process.cwd().replace(/\\/g, '/') + '/' + outfile.replace(/\\/g, '/'))
 
 // ── 字节构造器 ────────────────────────────────────────────────────────

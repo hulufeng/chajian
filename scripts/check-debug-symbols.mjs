@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 源码级调试符号解析自检（合成 ELF/DWARF 夹具 + 真函数，不依赖 Electron）。
  *
  * 盯的是 Phase 1 地基的正确性：
@@ -15,7 +15,7 @@ import { buildSync } from 'esbuild'
 
 const outfile = 'scripts/.tmp/debugSymbols.bundle.mjs'
 buildSync({
-  entryPoints: ['src/main/services/debug-symbols.ts'],
+  entryPoints: ['src/main/services/debug/debug-symbols.ts'],
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -299,7 +299,7 @@ let idx = null
 // ── ⑨ 调用栈帧指针回溯（纯逻辑，合成栈内存） ──────────────────────────
 {
   const csOut = 'scripts/.tmp/debugCallstack.bundle.mjs'
-  buildSync({ entryPoints: ['src/main/services/debug-callstack.ts'], bundle: true, format: 'esm', platform: 'node', outfile: csOut })
+  buildSync({ entryPoints: ['src/main/services/debug/debug-callstack.ts'], bundle: true, format: 'esm', platform: 'node', outfile: csOut })
   const cs = await import('file://' + process.cwd().replace(/\\/g, '/') + '/' + csOut.replace(/\\/g, '/'))
 
   // 寄存器角色解析：ARM(Cortex-M) / RISC-V / 无帧指针
@@ -334,7 +334,7 @@ let idx = null
 // ── ⑩ 变量 Watch：数值解释（纯函数） + 全局变量列举 ─────────────────
 {
   const vOut = 'scripts/.tmp/debugVariables.bundle.mjs'
-  buildSync({ entryPoints: ['src/main/services/debug-variables.ts'], bundle: true, format: 'esm', platform: 'node', outfile: vOut })
+  buildSync({ entryPoints: ['src/main/services/debug/debug-variables.ts'], bundle: true, format: 'esm', platform: 'node', outfile: vOut })
   const dv = await import('file://' + process.cwd().replace(/\\/g, '/') + '/' + vOut.replace(/\\/g, '/'))
 
   // 4 字节：既可能是 int32 也可能是 float32，两个解释都要给出

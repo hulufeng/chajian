@@ -1,4 +1,4 @@
-// 硬件目标工具（第四批②）：让 Agent 能查板卡能力、选构建路径、生成 platformio.ini
+﻿// 硬件目标工具（第四批②）：让 Agent 能查板卡能力、选构建路径、生成 platformio.ini
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { ToolDefinition, ToolResult } from '../types'
@@ -12,7 +12,7 @@ import {
   buildPlatformioIni,
   primaryBuild
 } from '../../services/boardRegistry'
-import { familyOf } from '../../services/debugService'
+import { familyOf } from '../../services/debug/debugService'
 
 const LINK_LABEL: Record<string, string> = {
   'builtin-usb-jtag': '板载 USB-JTAG',

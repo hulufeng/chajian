@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+﻿import { useEffect, useRef, useState, useMemo } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { type EditorSettings } from './editorSettings'
 import { matchSnippets, toSuggestions } from './hardwareSnippets'
@@ -103,7 +103,7 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
   const registerProviders = (monaco: any): void => {
     // 只登记一次：本组件是无 key 的长实例，重复 register 会堆重复 provider。
     const langs = ['cpp', 'c']
-    // ESP32 重头文件首次建 preamble 可能 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp-client.ts）。
+    // ESP32 重头文件首次建 preamble 可能 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp/lsp-client.ts）。
     // 编辑器侧放大到 60s，避免打开重文件后首次补全/悬停被 30s 掐断拿到空（background-index 预热完则很快）。
     const LSP_TIMEOUT_MS = 60000
 

@@ -1,4 +1,4 @@
-// 一键硬件自检（让「插板就能跑」不依赖手工排查）
+﻿// 一键硬件自检（让「插板就能跑」不依赖手工排查）
 //
 // 为什么要单独做：调试链路横跨 固件工具链 / 调试器 / USB 驱动 / 串口占用 四层，
 // 任何一层没到位，报错都长成 openocd 的 `could not find or open device!`，
@@ -9,7 +9,7 @@
 // 如果一律报「未安装」，用户会反复点安装却永远装不上。
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { getOpenocdInfo } from './debugService'
+import { getOpenocdInfo } from './debug/debugService'
 import { locateToolchain } from './toolchain'
 import { findPio } from './platformio'
 import { listSerialSessions, listPorts } from './serialService'

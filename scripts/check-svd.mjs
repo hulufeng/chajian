@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SVD 解析 / 查询自检（esbuild 把 electron 顶成 stub，node 真跑 parseSvd/loadSvd/findRegister）。
  *
  * 盯的是「降幻觉」红线：寄存器地址/位域必须和官方 SVD 逐字一致，解析错一位都害人。
@@ -19,7 +19,7 @@ process.env.SVD_TEST_APPDATA = svdTmp
 
 const outfile = 'scripts/.tmp/svdService.bundle.mjs'
 buildSync({
-  entryPoints: ['src/main/services/svdService.ts'],
+  entryPoints: ['src/main/services/debug/svdService.ts'],
   bundle: true,
   format: 'esm',
   platform: 'node',

@@ -33,8 +33,19 @@ src/
 │   │   ├── serialService # 串口
 │   │   ├── toolchain    # Arduino CLI 编译
 │   │   ├── platformio   # PlatformIO
-│   │   ├── debugService  # SVD 调试
-│   │   ├── lspService    # 代码智能提示
+│   │   ├── debug/       # 片上调试（7 文件）
+│   │   │   ├── debugService        # openocd 会话 / 断点 / 读写内存
+│   │   │   ├── svdService          # SVD 外设寄存器
+│   │   │   ├── debug-symbols       # ELF 符号索引
+│   │   │   ├── debug-symbols-service # 符号服务编排
+│   │   │   ├── debug-dwarf-info    # DWARF 变量解析
+│   │   │   ├── debug-callstack     # 调用栈回溯
+│   │   │   └── debug-variables     # 全局变量读写
+│   │   ├── lsp/         # 代码智能提示（4 文件）
+│   │   │   ├── lspService          # 对外门面
+│   │   │   ├── lsp-client          # JSON-RPC 客户端
+│   │   │   ├── lsp-compile-db      # compile_commands.json
+│   │   │   └── lsp-server-path     # clangd 定位
 │   │   ├── gitService  # Git
 │   │   ├── mcpManager  # MCP 外部协议
 │   │   └── ...

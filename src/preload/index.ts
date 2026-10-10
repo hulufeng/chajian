@@ -1,7 +1,7 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+﻿import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 // ── LSP 结果类型 ──
-// 形状必须与 main/services/lspService.ts 保持一致；preload 刻意不引主进程模块（各 entry 独立打包）。
+// 形状必须与 main/services/lsp/lspService.ts 保持一致；preload 刻意不引主进程模块（各 entry 独立打包）。
 export interface LspResult<T> { ok: boolean; data?: T; error?: string }
 export interface LspDiag {
   startLine: number

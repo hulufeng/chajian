@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, session } from 'electron'
+﻿import { app, shell, BrowserWindow, ipcMain, dialog, session } from 'electron'
 import { join, resolve } from 'node:path'
 import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -9,7 +9,7 @@ import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from
 import {
   syncDocument, completion, hover as lspHover, definition as lspDefinition,
   ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
-} from './services/lspService'
+} from './services/lsp/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
 import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, sendLoginCode, loginWithCode, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
@@ -73,7 +73,7 @@ import {
   removeBreakpoint,
   debugExec,
   readRawBytes
-} from './services/debugService'
+} from './services/debug/debugService'
 import {
   loadDebugSymbols,
   addrToSource as debugAddrToSource,
@@ -85,7 +85,7 @@ import {
   locals as debugLocals,
   readLocalVarByName as debugReadLocal,
   toggleSourceBreakpoint
-} from './services/debug-symbols-service'
+} from './services/debug/debug-symbols-service'
 import {
   findPio,
   installPio,
@@ -148,7 +148,7 @@ import {
   getSvdDir as getSvdCacheDir,
   suggestChipByFqbn,
   KNOWN_SVD_CHIPS
-} from './services/svdService'
+} from './services/debug/svdService'
 
 /** 编译/烧录失败时补发的结构化诊断块（供输出面板与「一键 AI 诊断」使用）。 */
 function buildDiagnosticChunk(log: string): string {

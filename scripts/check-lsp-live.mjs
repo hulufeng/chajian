@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LSP 端到端实测（需要环境：clangd + 已装 arduino core；缺任一则 SKIP 不算失败）。
  *
  * 与其它 check 脚本的区别：这不是纯函数自检，而是**真跑一次语言服务器**，
@@ -25,11 +25,11 @@ const tmp = mkdtempSync(join(tmpdir(), 'lsplive-'))
 
 // node 不能直接 import .ts，两个模块各自 bundle 成 mjs 再 import
 const outfile = join(tmp, 'lspService.mjs')
-buildSync({ entryPoints: [join(root, 'src/main/services/lspService.ts')], bundle: true, format: 'esm', platform: 'node', outfile })
+buildSync({ entryPoints: [join(root, 'src/main/services/lsp/lspService.ts')], bundle: true, format: 'esm', platform: 'node', outfile })
 const svc = await import('file://' + outfile.replace(/\\/g, '/'))
 
 const pathOut = join(tmp, 'lspPath.mjs')
-buildSync({ entryPoints: [join(root, 'src/main/services/lsp-server-path.ts')], bundle: true, format: 'esm', platform: 'node', outfile: pathOut })
+buildSync({ entryPoints: [join(root, 'src/main/services/lsp/lsp-server-path.ts')], bundle: true, format: 'esm', platform: 'node', outfile: pathOut })
 const { locateServerCommand } = await import('file://' + pathOut.replace(/\\/g, '/'))
 
 const SKIP = (why) => {
@@ -50,7 +50,7 @@ console.log(`[LSP 实测] 使用 clangd：${clangd}`)
 const proj = mkdtempSync(join(tmpdir(), 'ardproj-'))
 const ino = join(proj, 'sketch.ino')
 // 只 include Arduino.h（不 include WiFi.h）：WiFi.h 这套 ESP32 大头文件首建 preamble
-// 要 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp-client.ts），
+// 要 >30s，而 lsp-client 默认请求超时是 30s（见 src/main/services/lsp/lsp-client.ts），
 // 首补全会被客户端掐断。去掉 WiFi.h 后 preamble 小很多，首补全能进超时窗口。
 // 库 include 的发现能力不靠本文件验证：ensureCompileDb 生成的编译数据库里仍含
 // WiFi/Wire/SPI 等库路径（8 个 -I），那条链路由 check-lsp-compiledb 覆盖。
@@ -157,7 +157,7 @@ await svc.syncDocument({ file: ino, text: readIno(), delayMs: 300 })
 
 // 成员补全轮询预热（mySerial.）：
 //   clangd 首次解析 ESP32 重头文件时，建 preamble 要 >30s，而 lsp-client 默认请求超时是 30s
-//   （见 src/main/services/lsp-client.ts），会在这之前掐断请求、拿到空。
+//   （见 src/main/services/lsp/lsp-client.ts），会在这之前掐断请求、拿到空。
 //   这里给单次请求传 timeoutMs: 60000，让它能等到 clangd 把 preamble 建完再应答；
 //   外层轮询几次作为兜底（偶发超时重试）。
 const REQ_TIMEOUT = 60000

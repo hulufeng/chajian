@@ -1,4 +1,4 @@
-// SVD 寄存器精确查询工具（P1-7）
+﻿// SVD 寄存器精确查询工具（P1-7）
 // 让 Agent 从官方 CMSIS-SVD（espressif/svd）查寄存器/位域/绝对地址，替掉"凭记忆写寄存器"的幻觉来源。
 import type { ToolDefinition, ToolResult } from '../types'
 import {
@@ -14,7 +14,7 @@ import {
   formatRegister,
   getSvdDir,
   hex
-} from '../../services/svdService'
+} from '../../services/debug/svdService'
 
 const svdQuery: ToolDefinition = {
   name: 'svd_query',

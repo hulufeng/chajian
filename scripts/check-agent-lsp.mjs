@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 验证 Agent 侧 LSP 修复：lsp_diagnostics 能否在 Arduino 工程里解析到 core 头文件。
  *
  * 背景：修复前 lsp-tools.ts 的 getClient() 不调 ensureCompileDb，
@@ -35,7 +35,7 @@ const tmp = mkdtempSync(join(tmpdir(), 'agentlsp-'))
 const entry = join(tmp, 'entry.mjs')
 writeFileSync(
   entry,
-  `export * from ${JSON.stringify(join(root, 'src/main/services/lspService.ts').replace(/\\/g, '/'))}
+  `export * from ${JSON.stringify(join(root, 'src/main/services/lsp/lspService.ts').replace(/\\/g, '/'))}
 export * as lspToolsMod from ${JSON.stringify(join(root, 'src/main/engine/tools/lsp-tools.ts').replace(/\\/g, '/'))}
 `,
   'utf8'

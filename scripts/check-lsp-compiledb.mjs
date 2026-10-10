@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 编译数据库 / Include 路径推导自检（纯函数，不依赖 Electron / 不依赖真实工具链）。
  * 覆盖：fqbn 解析、候选包含路径、库路径、宏定义、编译条目生成、重复路径去重。
  * 用法：node scripts/check-lsp-compiledb.mjs
@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
-const entry = join(root, 'src/main/services/lsp-compile-db.ts')
+const entry = join(root, 'src/main/services/lsp/lsp-compile-db.ts')
 
 const tmp = mkdtempSync(join(tmpdir(), 'lspdb-'))
 const outfile = join(tmp, 'db.mjs')
@@ -26,7 +26,7 @@ const {
 // lspService 会话层（含 ensureCompileDb 的 force 语义）。它只依赖 lsp-client/lsp-compile-db，
 // 不碰 electron，所以可以直接 bundle 真跑。
 const svcOut = join(tmp, 'lspService.mjs')
-buildSync({ entryPoints: [join(root, 'src/main/services/lspService.ts')], bundle: true, format: 'esm', platform: 'node', outfile: svcOut })
+buildSync({ entryPoints: [join(root, 'src/main/services/lsp/lspService.ts')], bundle: true, format: 'esm', platform: 'node', outfile: svcOut })
 const svc = await import('file://' + svcOut.replace(/\\/g, '/'))
 
 let pass = 0
