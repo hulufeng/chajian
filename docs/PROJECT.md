@@ -1,6 +1,6 @@
 # LabCode 项目文档
 
-> 最后更新：2026-10-08
+> 最后更新：2026-10-10
 > 版本：1.1.3
 > 技术栈：Electron 44 + React 19 + TypeScript 5.9 + electron-vite 5
 
@@ -97,7 +97,7 @@ src/
 
 ### 3.2 ESP32 开发
 
-- **编译：** Arduino CLI / PlatformIO 双工具链
+- **编译：** Arduino CLI / PlatformIO / ESP-IDF 三工具链
 - **烧录：** esptool 一键烧录
 - **串口监视器：** 实时日志 + 波形图
 - **板级仿真：**
@@ -122,6 +122,8 @@ src/
 
 | 日期 | Bug | 修复 |
 |---|---|---|
+| 2026-10-10 | `check-anthropic-adapter` 断言 35/35 全过却返回 0xC0000409 | `server.close()` 异步未完成就 `process.exit()` → libuv 二次关闭 async handle；改为 await 关闭 + 只设 `exitCode` |
+| 2026-10-10 | `check-cloud-official` 断言「渲染层调用 `ai.register`」误报 | 官方通道早已改为邮箱验证码登录、首次自动注册；断言改查 `sendCode`/`loginWithCode` |
 | 2026-10-08 | tool-observers.ts 给箭头函数设 .name 报错 | Object.defineProperty + try-catch |
 | 2026-10-08 | 插件 UI XSS 风险 | 加 escapeHtml 转义 |
 | 2026-10-07 | 串口监视器窗口遮挡 | 串口并入底部 Tab |
@@ -176,11 +178,13 @@ OpenAI 兼容档（openai / deepseek / qwen）直连 `/chat/completions`；**Gem
 ## 8. 待办
 
 - [x] 全量代码推到 GitHub（已完成 → hulufeng/chajian）
+- [x] debug 相关文件合并成目录（→ `services/debug/`，7 文件）
+- [x] LSP 相关文件合并成目录（→ `services/lsp/`，4 文件）
 - [ ] SMTP 配置（生产环境需要用户提供 SMTP_HOST/PORT/USER/PASS）
 - [ ] 线上 cloud-server 部署最新代码（含 GPT-4o / Gemini 模型）
 - [ ] 服务端配 `OPENAI_API_KEY` / `GEMINI_API_KEY`（未配则对应模型走演示回复）
-- [ ] debug 相关文件合并成目录
-- [ ] LSP 相关文件合并成目录
+- [ ] ESP-IDF 工具链真机实测（menuconfig 内嵌终端 / 分区表 / Kconfig 三块只有静态自检，没跑过真板）
+- [ ] Agent 并发调度与自动记忆的真机回归（T1~T4 自检 16/0、15/0，未上真模型）
 
 ---
 
@@ -312,6 +316,9 @@ node scripts/check-*.mjs                # 受影响的那些
 9. **ESP32 `Serial.` 成员补全为空是 core 特性**（全局对象声明在 .cpp），演示要用 `HardwareSerial mySerial(1); mySerial.`。
 10. **不要谎称"新增"**：动手前先 grep 是否已存在。
 11. **误报比漏报更烦人**：新增扫描/断言先自证不误报，再信它。
+12. **本机 Chrome 访问不了本地 http**：`check-render-boot.mjs` 恒定失败是环境限制，不是代码回归。已实证：node 自抓 `http://127.0.0.1:PORT/` 返回 200 且内容正确，而 Chrome `--headless=new` / `--headless`、`--no-proxy-server`、`--disable-extensions` 五种组合全部 dump 出 NTP（`data:` URL 反而正常）。别为它去改渲染层代码。
+13. **`check-ui-assets.mjs` 必须带参**：`node scripts/check-ui-assets.mjs <安装包目录>`，直接跑只是打印用法并返回 1。
+14. **自检脚本别用 `process.exit()` 收尾**：`server.close()` 是异步的，紧跟 `process.exit()` 会让 libuv 二次关闭 async handle（`win/async.c` 断言 → 退出码 0xC0000409），表现为断言全过却判失败。改成 `await` 关闭完成 + 只设 `process.exitCode`。
 
 ---
 
@@ -326,9 +333,16 @@ node scripts/check-*.mjs                # 受影响的那些
 | `src/main/services/diagLog.ts` | 测试信息收集（JSONL + 报告导出） |
 | `src/main/services/crash-signature.ts` | 崩溃签名分析：panic/abort/assert/栈溢出/看门狗/掉电/内存不足 → **稳定签名**（丢弃栈指针）+ 小白可读建议 |
 | `src/main/services/aiGateway.ts` | AI 网关（本地 + 云端 + BYOK） |
+| `src/main/services/debug/` | 片上调试 7 文件：`debugService`(openocd) / `svdService`(外设寄存器) / `debug-symbols`(-service) / `debug-dwarf-info` / `debug-callstack` / `debug-variables` |
+| `src/main/services/lsp/` | 代码智能 4 文件：`lspService`(门面) / `lsp-client`(JSON-RPC) / `lsp-compile-db` / `lsp-server-path` |
+| `src/main/services/espIdf.ts` | ESP-IDF 环境探测、目标芯片切换、分区表 CSV 与 sdkconfig 读写 |
+| `src/main/services/kconfigParse.ts` | Kconfig → menu/config/choice 树（带 depends/ranges/defaults） |
+| `src/main/engine/hooks.ts` | 外部进程钩子：PreToolUse(可 reject/改参) + PostToolUse(纯观测)，配置来自全局 `hooks.json` + 项目 `.labcode/hooks.json` |
+| `src/main/engine/auto-memory.ts` | run 结束自动提炼长期记忆（最多 3 条、去重、不阻塞 done） |
+| `src/main/plugins/esp-idf-toolchain/` | 内置 ESP-IDF 插件（manifest + config/status UI），与 arduino-toolchain 并列注册 |
 | `src/renderer/src/App.tsx` | 渲染层主编排：编译/烧录流程、预检、面板挂载 |
 | `src/renderer/src/featureHints.ts` | 悬停功能介绍文案库 |
-| `src/renderer/src/assets/theme.css` | **唯一颜色源**（渲染层不准出现 hex/rgb 字面量） |
+| `src/renderer/src/assets/theme.css` | **唯一颜色/尺度源**（渲染层不准出现 hex/rgb 字面量）。现行体系对齐 TrieCode：`--surface-0..3` / `--error` / `--radius-*` / `--motion-*`；旧语义名（`--panel`/`--bg`/`--danger`/`--text-dim`）在文件末尾以兼容别名保留 |
 | `src/main/plugins/pluginManager.ts` | 插件运行时核心：`runTool` 七通道统一执行器 + `getSkills`/`getTools` + 声明式工具自动注册 |
 | `src/main/plugins/hostAdapter.ts` | 宿主能力暴露（`app.validateManifest`/`app.reloadPlugins`/`app.analyzeCrash`） |
 | `src/main/plugins/validate-manifest.ts` | manifest 校验器（11 项；7 通道 transport；password 默认不可写死） |
