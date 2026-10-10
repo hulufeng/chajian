@@ -46,9 +46,16 @@ for (const fn of ['login', 'register', 'logout', 'refreshAccount', 'authLogin', 
 }
 
 console.log('\n=== 3. 渲染层使用（SettingsModal.tsx）===')
-for (const m of ['login', 'register', 'logout', 'refreshMe']) {
+// 注意：不能断言 register —— 官方通道已改为「邮箱验证码登录，首次登录自动注册」（无密码），
+// 渲染层实际走 sendCode + loginWithCode；register/login(email,password) 是网关保留能力，
+// 只在上游（preload/main/aiGateway）闭合即可，强求 UI 调用会制造误报。
+for (const m of ['sendCode', 'loginWithCode', 'logout', 'refreshMe']) {
   ok(settings.includes(`window.api.ai.${m}`), `渲染层调用 window.api.ai.${m}`)
 }
+ok(
+  /首次登录自动注册|自动注册/.test(settings),
+  '渲染层明示「首次登录自动注册」（验证码通道覆盖注册入口）'
+)
 
 console.log('\n=== 4. 网关逻辑真跑（login/register/refresh/logout 落地 AiState）===')
 // 用临时 userData，避免污染真机配置

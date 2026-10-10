@@ -219,9 +219,14 @@ let server8
   ok(usage && usage.inputTokens === 7 && usage.outputTokens === 18, `usage 归一化正确（${JSON.stringify(usage)}）`)
 }
 
-server7 && server7.close()
-server8 && server8.close()
+// 等 server 真正关完再退：server.close() 是异步的，紧接着 process.exit() 会在 libuv
+// 正在关闭 async handle 时二次关闭（win/async.c 断言 → 进程退出码 0xC0000409），
+// 表现为「断言 35/35 全过但脚本返回失败」，会被 CI 误判为回归。
+await Promise.all([
+  server7 ? new Promise((r) => server7.close(r)) : Promise.resolve(),
+  server8 ? new Promise((r) => server8.close(r)) : Promise.resolve(),
+])
 
 console.log('')
 console.log(`[Anthropic 适配自检] 通过 ${pass} / 失败 ${fail}`)
-process.exit(fail === 0 ? 0 : 1)
+process.exitCode = fail === 0 ? 0 : 1
