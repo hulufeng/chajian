@@ -89,6 +89,10 @@ class ToolRegistry {
     return this.postMiddlewares.some((m) => m.name === name)
   }
 
+  hasPreMiddleware(name: string): boolean {
+    return this.preMiddlewares.some((m) => m.name === name)
+  }
+
   hasAroundMiddleware(name: string): boolean {
     return this.aroundMiddlewares.some((m) => m.name === name)
   }

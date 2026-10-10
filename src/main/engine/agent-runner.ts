@@ -12,6 +12,8 @@ import { listMemory } from '../services/memoryService'
 import { buildTodosSection as buildTodosSectionFor, loadTodos as loadTodosFor } from './tools/todo-tools'
 import { listSkills } from '../services/skillService'
 import { newToolTiming, makeTimingAuditMiddleware, makeSlowToolMiddleware, type ToolTiming } from './tool-observers'
+import { makePreToolUseHookMiddleware, makePostToolUseHookMiddleware } from './hooks'
+import { autoSaveMemory } from './auto-memory'
 import type {
   AgentRunOptions, AgentStatus, AgentStats, ToolCall, ConfirmRequest, ToolContext, ToolResult, ToolDefinition
 } from './types'
@@ -23,6 +25,7 @@ toolRegistry.registerAll(coreTools)
 const MAX_WALL_TIME_MS = 120 * 60 * 1000 // 120 分钟墙钟上限
 const BUDGET_WARN_RATIO = 0.75 // 75% 时提前提醒收尾
 const STERILE_MAX_REPEAT = 3 // 同工具同参数重复执行上限
+const PARALLEL_LIMIT = 5 // 单个并发批的最大工具数（对齐 TrieCode PARALLEL_LIMIT，防一次性打满 IO/进程）
 
 // ── 工具失败恢复 ──────────────────────────────────────────
 const TRANSIENT_PATTERN = /timeout|超时|timed ?out|econnreset|etimedout|econnrefused|fetch failed|network|网络|rate ?limit|429|temporar|暂时|服务器繁忙|overload|过载|502|503/i
@@ -34,6 +37,31 @@ const RETRY_BACKOFF_MS = 1200
 // 因此同样算"验证动作"——否则主 agent 用 verify 验证后仍会被闸门反复催促。
 const VERIFICATION_TOOLS = new Set(['run_command', 'execute_command', 'terminal', 'run_tests', 'compile', 'upload', 'build', 'test', 'verify', 'closed_loop'])
 const VERIFICATION_COMMANDS = /\b(test|build|compile|run|npm\s+(test|run|build)|pytest|go\s+test|cargo\s+test|python\s+-m\s+pytest|arduino-cli\s+(compile|upload))\b/i
+
+// ── 工具并发调度（对齐 TrieCode）：
+// - SERIAL_EXCLUDES：出现在该名单中的工具，不管是否声明 concurrencySafe，都必须严格串行、一个个来，不能并发
+// - concurrencySafe=true 且不在 SERIAL_EXCLUDES 且 category=read/query 的同类型工具，可以合并一批并发执行
+const SERIAL_EXCLUDES = new Set([
+  'read_file', 'write_file', 'edit_file', 'create_file', 'create_project',
+  'terminal', 'execute_command',
+  'ask_user',
+  'compile', 'build', 'upload', 'closed_loop', 'run_tests', 'test', 'verify',
+  'submit_plan',
+  'board_detect',
+  'todo_write', 'todo_update', 'save_memory', 'create_skill', 'save_skill',
+  'git_commit', 'git_checkout', 'git_merge', 'git_reset', 'git_stash',
+  'browser_navigate', 'browser_click', 'browser_type',
+  'burn_firmware',
+  'set_target',
+  'set_schedule', 'update_schedule',
+  'run_closed_loop',
+  'install_arduino_library', 'uninstall_arduino_library',
+  'create_background_task', 'stop_background_task',
+  'dispatch_task', 'cancel_task',
+  'install_plugin', 'uninstall_plugin',
+  'web_fetch',
+  'create_project_wizard'
+])
 
 // ── 教学问答模式（知识库命中 + 纯疑问句）───────────────────
 // 与 detectRequiredTools 的疑问句豁免同口径：疑问句特征词，且无"帮我/请/现在"等祈使操作词
@@ -62,6 +90,15 @@ const CONFIRM_TIMEOUT_MS = 120 * 1000 // 用户确认弹窗最长等待 120 秒�
 const MAX_MESSAGES_BEFORE_COMPRESS = 40 // 消息数超过此值触发压缩
 const COMPRESS_KEEP_RECENT = 15 // 保留最近 N 条消息
 const MAX_TOOL_RESULT_CHARS = 2000 // 单条工具结果截断长度
+// B3 最近读文件重注入（对齐 TrieCode：压缩后把模型读过/写过的关键文件摘要补回来，防止失忆重读）
+const MAX_RECENT_FILES = 8 // LRU 容量：最多记住最近 N 个文件
+const RECENT_FILE_MAX_BYTES = 8192 // 单文件最多记住前 8KB 完整内容（压缩时只展示前 1200 字符，其余留作潜在复用）
+const RECENT_FILE_REINJECT_CHARS = 1200 // 压缩回填时单文件展示前 N 字符
+// 主动水位（对齐 TrieCode：大窗口在 65% 时提前无损剪裁旧工具输出）
+// 只按消息条数判断不够——一条编译日志就能顶 20 条短消息，条数没到但上下文已经爆了。
+const CONTEXT_TOKEN_BUDGET = 128000 // 上下文预算（token）
+const CONTEXT_WATERMARK = 0.65 // 达到预算的 65% 即触发剪裁/压缩
+const CHARS_PER_TOKEN = 3 // 字符→token 粗估系数（中英混排取保守值）
 
 // 失败分类
 function classifyFailure(text: string): 'transient' | 'deterministic' | 'unknown' {
@@ -121,6 +158,8 @@ export class AgentRunner {
   // ── 验证证据闸门状态 ──
   private lastFileModTurn = -1
   private lastVerifyTurn = -1
+  // 强验证轮次（对齐 TrieCode：只有真的跑了 compile/upload/run_tests 命令才算，ls/pwd/echo/纯占位不能冒充）
+  private lastStrongVerifyTurn = -1
   private verifyPromptCount = 0
   /** wrap-up 收尾总结是否已尝试（对齐 TrieCode：模型空收尾时追加"请总结"并空工具集重调一次） */
   private wrapupTried = false
@@ -154,6 +193,14 @@ export class AgentRunner {
     }
     if (!toolRegistry.hasAroundMiddleware('slow-tool')) {
       toolRegistry.useAround(makeSlowToolMiddleware())
+    }
+    // 外部进程钩子（对齐 TrieCode hooks.js）：PreToolUse 可拒绝/改参，PostToolUse 纯观测。
+    // 没配 hooks.json 时 loadHooks 返回空数组，中间件直接 return，零开销。
+    if (!toolRegistry.hasPreMiddleware('hooks-pre')) {
+      toolRegistry.usePre(makePreToolUseHookMiddleware(() => this.projectRoot))
+    }
+    if (!toolRegistry.hasPostMiddleware('hooks-post')) {
+      toolRegistry.usePost(makePostToolUseHookMiddleware(() => this.projectRoot))
     }
   }
 
@@ -252,6 +299,7 @@ export class AgentRunner {
     this.denialHits.clear()
     this.lastFileModTurn = -1
     this.lastVerifyTurn = -1
+    this.lastStrongVerifyTurn = -1
     this.verifyPromptCount = 0
     this.wrapupTried = false
     this.compressed = false
@@ -304,9 +352,7 @@ export class AgentRunner {
         // ── 预算护栏：墙钟超时 ──
         if (Date.now() - this.wallStart > MAX_WALL_TIME_MS) {
           this.emit('message', { role: 'assistant', content: `（任务已运行超过 ${MAX_WALL_TIME_MS / 60000} 分钟，自动停止。请拆分任务后重试。）` })
-          this.status = 'done'
-          this.emit('status', { status: 'done' })
-          this.emit('done', { stats: this.getStats(), reason: 'wall_time' })
+          this.finishRun('wall_time')
           return
         }
 
@@ -323,8 +369,8 @@ export class AgentRunner {
           }
         }
 
-        // ── 上下文压缩：消息数超阈值时折叠早期轮次 ──
-        if (this.messages.length > MAX_MESSAGES_BEFORE_COMPRESS) {
+        // ── 上下文压缩：消息数超阈值 **或** token 水位超 65% 时折叠早期轮次 ──
+        if (this.messages.length > MAX_MESSAGES_BEFORE_COMPRESS || this.isOverContextWatermark()) {
           this.compressContext()
         }
 
@@ -362,9 +408,7 @@ export class AgentRunner {
           } else {
             if (this.planStore) this.planStore.status = 'rejected'
             this.emit('message', { role: 'assistant', content: '已停止。' })
-            this.status = 'done'
-            this.emit('status', { status: 'done' })
-            this.emit('done', { stats: this.getStats(), reason: 'plan_rejected' })
+            this.finishRun('plan_rejected')
             return
           }
         }
@@ -384,10 +428,20 @@ export class AgentRunner {
             tool_calls: result.toolCalls
           })
 
-          // 逐个执行工具
-          for (const tc of result.toolCalls) {
+          // 工具并发调度（对齐 TrieCode）：按「批次」拆分
+          // 每批 = 要么是 1 个串行互斥工具；要么是 N 个同时满足三个条件的并发安全工具：
+          //   ① 声明 concurrencySafe=true   ② 不在 SERIAL_EXCLUDES 里   ③ category 是 read 或 query
+          // 每批并行执行；批与批之间严格串行（保证互斥工具之间不会和并发批串台）
+          const batches = this.groupToolCallsForConcurrency(result.toolCalls)
+          for (const batch of batches) {
             if (this.stopped) break
-            await this.executeToolCall(tc, turn)
+            // 只有 1 个且是串行工具 → 保持原来单跑（日志和行为一致）
+            if (batch.length === 1) {
+              await this.executeToolCall(batch[0], turn)
+            } else {
+              // 并发批：Promise.all 一起跑；结果按原顺序回填
+              await Promise.all(batch.map((tc) => this.executeToolCall(tc, turn)))
+            }
           }
 
           this.forcedToolRetries = 0 // 模型实际调用了工具 → 重置强制重试计数
@@ -529,16 +583,13 @@ export class AgentRunner {
             this.emit('message', { role: 'assistant', content: fallback })
           }
         }
-        this.status = 'done'
-        this.emit('status', { status: 'done' })
-        this.emit('done', { stats: this.getStats() })
+        this.finishRun()
         return
       }
 
       // 达到最大轮次
-      this.status = 'done'
       this.emit('message', { role: 'assistant', content: `（已达到最大轮次 ${this.maxTurns}，停止执行）` })
-      this.emit('done', { stats: this.getStats(), reason: 'max_turns' })
+      this.finishRun('max_turns')
     } catch (e) {
       this.status = 'error'
       this.emit('error', { message: (e as Error).message })
@@ -546,40 +597,92 @@ export class AgentRunner {
     }
   }
 
-  // ── 上下文压缩：折叠早期轮次，保留系统提示+最近消息+最近读文件摘要 ──
+  // ── run 收口：统一 status/done 事件 + 自动记忆提取 ──
+  // 主循环原本有 4 个出口各自 emit status+done，漏一个就会让「会话级收尾动作」失效。
+  // 收敛到一处后，后续再加收尾（记忆提炼、报告落盘…）只改这里。
+  private finishRun(reason?: string): void {
+    this.status = 'done'
+    this.emit('status', { status: 'done' })
+    this.emit('done', reason ? { stats: this.getStats(), reason } : { stats: this.getStats() })
+    // 自动记忆提取：fire-and-forget，绝不阻塞 done 事件（失败只 warn）
+    if (!this.stopped && this.stats.toolCalls > 0) {
+      void autoSaveMemory({
+        messages: this.messages as unknown as Array<{ role?: string; content?: string; name?: string }>,
+        projectRoot: this.projectRoot,
+        minToolCalls: 1,
+        toolCalls: this.stats.toolCalls
+      })
+    }
+  }
+
+  /** 粗估当前上下文 token 数（字符数 / 系数，够用于水位判断，不追求精确） */
+  private estimateContextTokens(): number {
+    let chars = 0
+    for (const m of this.messages) chars += String(m.content || '').length
+    return Math.ceil(chars / CHARS_PER_TOKEN)
+  }
+
+  /** 是否超过主动水位（预算的 65%） */
+  private isOverContextWatermark(): boolean {
+    return this.estimateContextTokens() >= CONTEXT_TOKEN_BUDGET * CONTEXT_WATERMARK
+  }
+
+  /**
+   * 无损剪裁：把较早的工具结果截断到 MAX_TOOL_RESULT_CHARS。
+   * 与 compressContext 的区别——它不折叠消息、不丢轮次，可重复执行；
+   * 用于「已折叠过一次但仍超水位」的场景（长编译日志把上下文顶爆）。
+   * 最近 COMPRESS_KEEP_RECENT 条一律不动，避免误伤当前轮。
+   */
+  private trimOldToolOutputs(): void {
+    const protectFrom = Math.max(1, this.messages.length - COMPRESS_KEEP_RECENT)
+    let trimmed = 0
+    for (let i = 1; i < protectFrom; i++) {
+      const m = this.messages[i]
+      if (m.role !== 'tool') continue
+      const text = String(m.content || '')
+      if (text.length <= MAX_TOOL_RESULT_CHARS) continue
+      m.content = text.slice(0, MAX_TOOL_RESULT_CHARS) +
+        `\n...(旧工具输出已剪裁：原始 ${text.length} 字符，超出上下文水位)`
+      trimmed++
+    }
+    if (trimmed > 0) {
+      console.log(`[Agent] 上下文水位剪裁：截断 ${trimmed} 条旧工具输出（估算 ${this.estimateContextTokens()} token）`)
+    }
+  }
+
+  // ── 上下文压缩：折叠早期轮次，保留系统提示+最近消息+B3 最近读文件精确重注入 ──
   private compressContext(): void {
-    if (this.compressed) return
+    // 已折叠过一次：折叠是破坏性的（丢轮次），不再重复；
+    // 改为可重复的无损剪裁，靠它把水位压回去。
+    if (this.compressed) {
+      this.trimOldToolOutputs()
+      return
+    }
     this.compressed = true
 
     const systemMsg = this.messages[0] // 保留系统提示
     const recent = this.messages.slice(-COMPRESS_KEEP_RECENT) // 保留最近 N 条
 
-    // 收集被折叠的工具结果中的文件读取内容（用于重注入）
+    // 折叠掉的消息数（用于摘要统计，不重注入只走 recentReadFiles LRU）
     const folded = this.messages.slice(1, -COMPRESS_KEEP_RECENT)
-    for (const msg of folded) {
-      if (msg.role === 'tool' && msg.content) {
-        try {
-          const parsed = JSON.parse(msg.content) as { content?: string; ok?: boolean }
-          if (parsed.ok && parsed.content && parsed.content.length < 5000) {
-            // 简单追踪：工具结果中可能包含文件内容
-            const key = `tool_${msg.name || 'unknown'}`
-            this.recentReadFiles.set(key, parsed.content.slice(0, 500))
-          }
-        } catch {
-          // 非 JSON 工具结果，跳过
-        }
-      }
-    }
+    const foldedCount = Math.max(0, this.messages.length - COMPRESS_KEEP_RECENT - 1)
 
-    // 构建压缩摘要
-    const summary = `[上下文压缩] 已折叠 ${folded.length} 条早期消息（共 ${this.messages.length} 条）。保留最近 ${COMPRESS_KEEP_RECENT} 条。`
-
-    // 重注入最近读文件摘要
+    // B3 重注入：把 recentReadFiles 中最近的 MAX_RECENT_FILES 个文件，以路径+前 N 字符回注回 system 块
+    // 注意：迭代顺序 = 插入序（最新 = 最近访问顺序最前）→ .entries() 只取前 MAX_RECENT_FILES 个即可
     let reinject = ''
-    if (this.recentReadFiles.size > 0) {
-      const files = [...this.recentReadFiles.entries()].slice(0, 5)
-      reinject = '\n\n最近操作摘要：\n' + files.map(([k, v]) => `- ${k}: ${v.slice(0, 200)}`).join('\n')
+    const files = [...this.recentReadFiles.entries()]
+    if (files.length > 0) {
+      const lines = files.map(([p, c]) => {
+        const short = c.length > RECENT_FILE_REINJECT_CHARS
+          ? c.slice(0, RECENT_FILE_REINJECT_CHARS) + `\n...(仅展示前 ${RECENT_FILE_REINJECT_CHARS} 字符，全文需重新 read_file)`
+          : c
+        return `文件: ${p}\n内容摘要:\n${short}`
+      })
+      reinject = `\n\n## 最近读过/写过的文件摘要（B3 压缩回填，防止失忆重读）:\n` + lines.join('\n\n--- 文件分隔 ---\n') + '\n'
     }
+
+    // 构建压缩摘要（先一句话说明折叠的折叠了多少条
+    const summary = `[上下文压缩] 已折叠 ${folded.length} 条早期消息（共 ${this.messages.length} 条）。保留最近 ${COMPRESS_KEEP_RECENT} 条。${foldedCount !== folded.length ? '' : ''}`
 
     this.messages = [
       systemMsg,
@@ -587,19 +690,26 @@ export class AgentRunner {
       ...recent
     ]
 
-    console.log(`[Agent] 上下文压缩: ${this.messages.length} 条消息（原 ${folded.length + COMPRESS_KEEP_RECENT + 1} 条）`)
-    this.emit('thinking', { content: '（上下文已压缩，保留最近对话）', full: '' })
+    console.log(`[Agent] 上下文压缩: ${this.messages.length} 条消息（原 ${folded.length + COMPRESS_KEEP_RECENT + 1} 条），B3 回填 ${files.length} 个文件`)
+    this.emit('thinking', { content: `（上下文已压缩，保留最近对话 + B3 回填 ${files.length} 个文件摘要）`, full: '' })
   }
 
   // ── 验证证据闸门 ──
+  // 对齐 TrieCode：用 strongVerifyTurn 把关，只有「真跑了编译/烧录/测试」的证据才能算验证通过；
+  // 纯 terminal 跑 ls/pwd/echo 或只调 verify/closed_loop 但没有强证据，都不会阻止闸门追问。
   private checkVerificationGate(currentTurn: number): boolean {
     if (this.verifyPromptCount >= MAX_VERIFY_PROMPTS) return false
     if (this.lastFileModTurn < 0) return false
-    // 修改文件后没有验证过，且修改发生在最近
-    if (this.lastVerifyTurn < this.lastFileModTurn && currentTurn > this.lastFileModTurn) {
-      return true
-    }
-    return false
+    // 分层比较：
+    // - 如果有强验证轮次（真跑了验证命令），且强验证发生在最后一次修改之后 → 算验证过
+    // - 否则如果只是普通的 lastVerifyTurn（含 verify 子智能体/closed_loop 整体返回 ok 但没跑命令）→ 只放宽闸门一次
+    const hasStrongProof = this.lastStrongVerifyTurn >= this.lastFileModTurn
+    if (hasStrongProof) return false
+    const hasWeakProof = this.lastVerifyTurn >= this.lastFileModTurn
+    // 有弱证据 + 追问次数用完 → 放过；否则仍追问一次（让模型至少明确一次没验证也行，或者弱证据本身也算通过）
+    if (hasWeakProof && this.verifyPromptCount >= 1) return false
+    // 修改文件后没有真跑验证，且在修改之后没有验证 → 触发
+    return currentTurn > this.lastFileModTurn
   }
 
   // ── 反幻觉检测（对齐 TrieCode checkHallucination）──
@@ -1313,6 +1423,7 @@ ${blocks.join('\n\n')}`
     let result = await this.runToolWithRecovery(toolName, args, ctx, tool)
 
     // ── 占位符验证检测（对齐 TrieCode）：echo ok / 纯占位输出不能当验证证据 ──
+    let strongVerify = false
     if (toolName === 'terminal' && result.ok) {
       const cmd = String(args?.command || args?.cmd || args?.script || '')
       const out = String(result.content || '').trim()
@@ -1324,23 +1435,112 @@ ${blocks.join('\n\n')}`
           content: out,
           error: '[系统提示] 该命令输出仅包含占位文本（echo ok 类），不能作为验证证据。请运行真实的编译/测试命令（如 pio run、arduino-cli compile、npm test）来验证，或明确说明该命令无验证含义。'
         }
+      } else if (VERIFICATION_COMMANDS.test(cmd)) {
+        // 真正的验证命令（真编译/烧录/测试），输出也真返回 ok 才算强验证证据
+        strongVerify = true
       }
     }
 
-    // ── 验证证据闸门：追踪文件修改和验证 ──
+    // ── 验证证据闸门：追踪文件修改和验证（分层：lastVerifyTurn 只算「弱验证（含 verify/closed_loop 工具；strongVerify 算「真跑了命令的强证据
     if (this.isFileModifyTool(toolName) && result.ok) {
       this.lastFileModTurn = currentTurn
     }
     if (this.isVerificationTool(toolName, args) && result.ok) {
       this.lastVerifyTurn = currentTurn
+      if (strongVerify || toolName !== 'terminal') {
+        // 非 terminal 类工具（compile/upload/verify/closed_loop/run_tests/build/test）本身就默认强证据
+        // 「真执行了就强验证 → 强验证证据更新 strongVerify = true 也更新
+        this.lastStrongVerifyTurn = currentTurn
+      }
     }
 
     // P0-2（对齐 TrieCode）：空工具输出注入占位符，防模型把空 tool_result 误判为 end-of-turn 停止生成
     const toolContent = result.ok && !String(result.content || '').trim()
       ? JSON.stringify({ ...result, content: '(工具执行完成，无输出)' })
       : JSON.stringify(result)
+    // B3：最近读/写文件 LRU 记录（read_file/write_file/edit_file 成功后以真实路径为 key 保存截断内容）
+    // 压缩时以 system 块回填，避免模型失忆重复 read_file 同一个文件
+    if (result.ok) {
+      if (toolName === 'read_file') {
+        const target = String(args?.path || '').trim()
+        // read_file 返回的 content 格式是 "文件: <path> (<N>行)\n\n<真实内容>"，剥掉头再取
+        const body = String(result.content || '')
+        const payload = body.includes('\n\n') ? body.split('\n\n').slice(1).join('\n\n') : body
+        if (target) this.recordRecentFile(target, payload)
+      } else if (toolName === 'write_file' || toolName === 'create_file') {
+        const target = String(args?.path || '').trim()
+        const payload = String(args?.content || '')
+        if (target) this.recordRecentFile(target, payload)
+      } else if (toolName === 'edit_file') {
+        // edit_file 会返回 "已编辑文件 <path> (N行)" 这种简短内容，不包含完整文件；
+        // 保守做法：标记该路径最近被改过（给压缩回填时的模型看「这个文件我改过」提示），
+        // 但不保存伪内容，避免模型在压缩后把旧内容当新内容用。
+        const target = String(args?.path || '').trim()
+        if (target) this.recordRecentFile(target, '*(最近被 edit_file 修改过，如需完整内容请重新 read_file)*')
+      }
+    }
     this.messages.push({ role: 'tool', tool_call_id: tc.id, name: toolName, content: toolContent })
     this.emit('tool_result', { id: tc.id, name: toolName, result })
+  }
+
+  // B3 最近读文件 LRU：最多记 MAX_RECENT_FILES 个，超容量淘汰最久未用
+  private recordRecentFile(path: string, content: string): void {
+    const key = path
+    // 已存在 → 先删（重插以提升到「最新」位置：Map 原生按插入序迭代）
+    if (this.recentReadFiles.has(key)) this.recentReadFiles.delete(key)
+    const capped = content.length > RECENT_FILE_MAX_BYTES
+      ? content.slice(0, RECENT_FILE_MAX_BYTES) + `\n...(截断：原始 ${content.length} 字符，LRU 只保留前 ${RECENT_FILE_MAX_BYTES} 字符)`
+      : content
+    this.recentReadFiles.set(key, capped)
+    // 超容量：从最旧（Map 迭代第一项）开始删
+    while (this.recentReadFiles.size > MAX_RECENT_FILES) {
+      const oldest = this.recentReadFiles.keys().next().value
+      if (oldest == null) break
+      this.recentReadFiles.delete(oldest)
+    }
+  }
+
+  // 工具并发调度：把同一次模型返回的多个 tool_calls 按「并发批/串行单批」分组
+  // 规则：
+  //  1. 任何一个 tool 命中 SERIAL_EXCLUDES 或没有声明 concurrencySafe=true 或 category 不是 read/query → 必须单独占一个「串行批」（长度 = 1）
+  //  2. 连续的多个 concurrencySafe 且 category=read/query 且不在排除名单 → 合并成一个「并发批」
+  //     （长度 >= 1，上限 PARALLEL_LIMIT），整批一起 Promise.all 执行
+  //  3. 分组保留原顺序：批之间严格串行，批内部并行。
+  private groupToolCallsForConcurrency(
+    toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }>
+  ): Array<Array<{ id: string; type: string; function: { name: string; arguments: string } }>> {
+    const batches: Array<Array<{ id: string; type: string; function: { name: string; arguments: string } }>> = []
+    let currentParallel: Array<{ id: string; type: string; function: { name: string; arguments: string } }> | null = null
+
+    const canParallel = (name: string): boolean => {
+      if (SERIAL_EXCLUDES.has(name)) return false
+      const def = toolRegistry.get(name)
+      if (!def) return false // 未知工具保守串行
+      return def.concurrencySafe === true && (def.category === 'read' || def.category === 'query')
+    }
+
+    for (const tc of toolCalls) {
+      const name = tc.function?.name || ''
+      if (canParallel(name)) {
+        if (!currentParallel) currentParallel = []
+        // 单批封顶：满了就先 flush，再开新批（批间仍然严格串行）
+        if (currentParallel.length >= PARALLEL_LIMIT) {
+          batches.push(currentParallel)
+          currentParallel = []
+        }
+        currentParallel.push(tc)
+      } else {
+        // 先把前面挂起的并行批 flush
+        if (currentParallel && currentParallel.length > 0) {
+          batches.push(currentParallel)
+          currentParallel = null
+        }
+        // 这个工具自己占一个串行批
+        batches.push([tc])
+      }
+    }
+    if (currentParallel && currentParallel.length > 0) batches.push(currentParallel)
+    return batches
   }
 
   // ── 工具失败恢复 ──

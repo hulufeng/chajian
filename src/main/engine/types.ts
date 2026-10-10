@@ -25,6 +25,9 @@ export interface ToolDefinition {
     required: string[]
   }
   category: ToolCategory
+  /** 并发安全（对齐 TrieCode concurrencySafe）：为 true 时，同轮多个 read/query 类工具可以并行执行；
+   *  不声明或为 false 时，必须串行排队，避免读-写/写-写竞争（如 terminal/read_file/write_file/confirm/ask_user 都不能并发）。 */
+  concurrencySafe?: boolean
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
 }
 
