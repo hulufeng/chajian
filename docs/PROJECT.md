@@ -169,8 +169,12 @@ OpenAI 兼容档（openai / deepseek / qwen）直连 `/chat/completions`；**Gem
 ## 7. GitHub 仓库
 
 - 地址：https://github.com/hulufeng/chajian（public，默认分支 main）
-- 状态：桌面端（codelab-desktop）**已推送成功**
+- 状态：桌面端（codelab-desktop）**已推送成功**（截至 2026-10-10，main = `11d2078`）
+- `origin` 已校正指向 `chajian`。⚠️ 2026-10-10 之前 `origin` 实际是 `hulufeng/LabCode`，与文档不符——
+  那个仓库是**另一条线**（main = `f1ceafb`，内容含 codelab-site 映射到 `website/`，另有 `tmp-layout-sync`/`tmp-sync3` 分支与 `v1.1.0`/`v1.1.1` tag），
+  现已保留为独立 remote `labcode`，**不要往它 push 桌面端历史**（会非快进冲突）。
 - 注意：推送**必须走系统代理**（端口会变，用 `GIT_CURL_VERBOSE=1` 看实际端口）；清空代理环境变量会导致推送必败；代理偶发 502 需忽略重试
+- 一次性带 token 推送（不落盘、不写 config）：`git push https://<PAT>@github.com/hulufeng/chajian.git main:main`，推完即到 GitHub 页面撤销该 token
 - 官网（codelab-site）是**独立 git 仓库**，不在此仓库内（见第 9 节）
 
 ---
