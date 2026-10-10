@@ -96,7 +96,7 @@ function StatusBar({
             const warns = precheck.issues.filter((i) => i.level === 'warning').length
             if (errs > 0) {
               return {
-                color: 'var(--danger)',
+                color: 'var(--error)',
                 text: `引脚冲突×${errs}`,
                 title: `检测到 ${errs} 处引脚冲突（错误级）。点击查看详情。`,
                 onClick: onPrecheckClick
@@ -125,12 +125,12 @@ function StatusBar({
       ? { color: 'var(--violet)', text: '深度编译中', title: '正在真实编译校验（依赖/语法/库）…', onClick: onDeepCheckClick }
       : deepCheck.status === 'ok'
         ? { color: 'var(--success)', text: '深度通过', title: '真实编译校验通过：依赖、语法、库均正常。', onClick: onDeepCheckClick }
-        : { color: 'var(--danger)', text: '深度编译失败', title: deepCheck.summary || '真实编译校验失败，点击查看报告。', onClick: onDeepCheckClick }
+        : { color: 'var(--error)', text: '深度编译失败', title: deepCheck.summary || '真实编译校验失败，点击查看报告。', onClick: onDeepCheckClick }
 
   const serial: Dot | null = serialOpen
     ? { color: 'var(--success)', text: `串口 ${port || '已打开'}`, title: `串口已打开 ${port} @ ${baud}` }
     : port
-      ? { color: 'var(--text-muted)', text: `串口 ${port}`, title: '串口已识别但未打开' }
+      ? { color: 'var(--text-3)', text: `串口 ${port}`, title: '串口已识别但未打开' }
       : null
 
   const debug: Dot | null =
@@ -139,7 +139,7 @@ function StatusBar({
       : debugStatus === 'starting'
         ? { color: 'var(--warning)', text: '调试连接中', title: '正在连接 openocd' }
         : debugStatus === 'error'
-          ? { color: 'var(--danger)', text: '调试失败', title: '上次连接调试器失败' }
+          ? { color: 'var(--error)', text: '调试失败', title: '上次连接调试器失败' }
           : null
 
   const running: Dot | null = busy

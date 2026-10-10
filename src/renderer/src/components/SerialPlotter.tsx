@@ -18,9 +18,17 @@ const CHANNEL_COLORS = [
   '#911eb4', '#46c4f0', '#f032e6', '#bcf60c'
 ]
 
-const WIN_BG = { light: 'var(--panel)', dark: 'var(--terminal-bg)' }
-const WIN_TEXT = { light: 'var(--text-dim)', dark: 'var(--text-dim)' }
-const GRID = { light: 'var(--ink-1)', dark: 'var(--white-1)' }
+/** Canvas 2D 不认 CSS 变量：绘制前把令牌解析成真实颜色（主题切换后下次重绘自动跟随） */
+function cssColor(varName: string, fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
+  return v || fallback
+}
+const bgColor = (t: 'light' | 'dark'): string =>
+  t === 'light' ? cssColor('--surface-1', '#ffffff') : cssColor('--terminal-bg', '#1e1e1e')
+const textColor = (t: 'light' | 'dark'): string =>
+  cssColor('--text-2', t === 'light' ? '#5b6470' : '#9da7b3')
+const gridColor = (t: 'light' | 'dark'): string =>
+  t === 'light' ? cssColor('--ink-1', 'rgba(0,0,0,0.06)') : cssColor('--white-1', 'rgba(255,255,255,0.08)')
 
 /**
  * 解析一行文本，判断其是否为可绘制的数值行（兼容 Arduino Serial Plotter 约定）：
@@ -134,13 +142,13 @@ export default function SerialPlotter({
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
-    ctx.fillStyle = WIN_BG[theme]
+    ctx.fillStyle = bgColor(theme)
     ctx.fillRect(0, 0, w, h)
 
     const { channels, count } = buffersRef.current
     const len0 = count > 0 ? channels[0].length : 0
     if (count === 0 || len0 === 0) {
-      ctx.fillStyle = WIN_TEXT[theme]
+      ctx.fillStyle = textColor(theme)
       ctx.font = '13px system-ui, sans-serif'
       ctx.textBaseline = 'middle'
       ctx.fillText(
@@ -174,7 +182,7 @@ export default function SerialPlotter({
     }
 
     // 网格
-    ctx.strokeStyle = GRID[theme]
+    ctx.strokeStyle = gridColor(theme)
     ctx.lineWidth = 1
     for (let g = 0; g <= 4; g++) {
       const y = (h / 4) * g + 0.5
@@ -184,7 +192,7 @@ export default function SerialPlotter({
       ctx.stroke()
     }
     // 刻度文字
-    ctx.fillStyle = WIN_TEXT[theme]
+    ctx.fillStyle = textColor(theme)
     ctx.font = '11px system-ui, sans-serif'
     ctx.textBaseline = 'top'
     ctx.fillText(max.toFixed(1), 4, 4)
@@ -218,7 +226,7 @@ export default function SerialPlotter({
       const label = `CH${ci + 1}`
       ctx.fillStyle = CHANNEL_COLORS[ci % CHANNEL_COLORS.length]
       ctx.fillRect(lx, legendY + 2, 10, 10)
-      ctx.fillStyle = WIN_TEXT[theme]
+      ctx.fillStyle = textColor(theme)
       ctx.fillText(label, lx + 14, legendY)
       lx += 14 + ctx.measureText(label).width + 14
     })
@@ -300,8 +308,8 @@ export default function SerialPlotter({
   }
 
   const btnStyle = (active?: boolean): React.CSSProperties => ({
-    background: active ? (theme === 'dark' ? 'var(--panel-hover)' : 'var(--panel-2)') : 'transparent',
-    color: theme === 'dark' ? 'var(--text)' : 'var(--text-dim)',
+    background: active ? (theme === 'dark' ? 'var(--surface-hover)' : 'var(--surface-2)') : 'transparent',
+    color: theme === 'dark' ? 'var(--text)' : 'var(--text-2)',
     border: `1px solid ${theme === 'dark' ? 'var(--border-strong)' : 'var(--border)'}`,
     borderRadius: 4,
     padding: '2px 8px',
@@ -317,7 +325,7 @@ export default function SerialPlotter({
     gap: 4,
     padding: '6px 8px',
     borderBottom: `1px solid ${theme === 'dark' ? 'var(--border-strong)' : 'var(--border)'}`,
-    background: theme === 'dark' ? 'var(--panel-hover)' : 'var(--panel-2)'
+    background: theme === 'dark' ? 'var(--surface-hover)' : 'var(--surface-2)'
   }
 
   return (
@@ -335,7 +343,7 @@ export default function SerialPlotter({
         <button style={btnStyle()} onClick={exportCsv} disabled={stats.points === 0} title="把当前波形缓冲导出为 CSV">
           ⤓ 导出 CSV
         </button>
-        <span style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--border-strong)', marginLeft: 6 }}>
+        <span style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-2)' : 'var(--border-strong)', marginLeft: 6 }}>
           阈值
           <input
             type="number"
@@ -345,7 +353,7 @@ export default function SerialPlotter({
             style={{ width: 68, marginLeft: 4 }}
           />
         </span>
-        <label style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--border-strong)', marginLeft: 6 }}>
+        <label style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-2)' : 'var(--border-strong)', marginLeft: 6 }}>
           <input
             type="checkbox"
             checked={autoScale}
@@ -355,7 +363,7 @@ export default function SerialPlotter({
           自动缩放
         </label>
         {!autoScale && (
-          <span style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--border-strong)' }}>
+          <span style={{ fontSize: 12, color: theme === 'dark' ? 'var(--text-2)' : 'var(--border-strong)' }}>
             <input
               type="number"
               value={manualMin}
@@ -386,7 +394,7 @@ export default function SerialPlotter({
             ⚠ {alert}
           </span>
         )}
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 'auto' }}>
           {stats.ch} 通道 · {stats.points} 点/通道
         </span>
       </div>
@@ -395,14 +403,14 @@ export default function SerialPlotter({
       </div>
       {explainErr && (
         <div style={expStyle(theme)}>
-          <div style={{ color: 'var(--danger)' }}>解读失败：{explainErr}</div>
+          <div style={{ color: 'var(--error)' }}>解读失败：{explainErr}</div>
         </div>
       )}
       {explainOut && (
         <div style={expStyle(theme)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <strong style={{ fontSize: 12 }}>AI 解读</strong>
-            <span style={{ fontSize: 11, color: theme === 'dark' ? 'var(--text-muted)' : 'var(--text-dim)' }}>
+            <span style={{ fontSize: 11, color: theme === 'dark' ? 'var(--text-3)' : 'var(--text-2)' }}>
               通道：{explainOut.channel} · 规则命中 {explainOut.findings.length} 条
             </span>
             <button
@@ -421,7 +429,7 @@ export default function SerialPlotter({
             <div style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{explainOut.text}</div>
           )}
           {explainOut.findings.length > 0 && (
-            <div style={{ marginTop: 6, maxHeight: 96, overflow: 'auto', fontSize: 11, color: theme === 'dark' ? 'var(--text-dim)' : 'var(--text-dim)' }}>
+            <div style={{ marginTop: 6, maxHeight: 96, overflow: 'auto', fontSize: 11, color: theme === 'dark' ? 'var(--text-2)' : 'var(--text-2)' }}>
               {explainOut.findings.map((f, i) => (
                 <div key={i}>
                   <span style={{ fontFamily: 'var(--mono)' }}>[{f.kind}]</span> 第 {f.line} 行：{f.text}
@@ -439,7 +447,7 @@ function expStyle(theme: 'light' | 'dark'): React.CSSProperties {
   return {
     borderTop: `1px solid ${theme === 'dark' ? 'var(--border-strong)' : 'var(--border)'}`,
     padding: 8,
-    background: theme === 'dark' ? 'var(--terminal-bg)' : 'var(--panel)',
+    background: theme === 'dark' ? 'var(--terminal-bg)' : 'var(--surface-1)',
     maxHeight: 240,
     overflow: 'auto'
   }

@@ -52,8 +52,7 @@ export default function TargetPanel({
   fqbn,
   port,
   onApply,
-  onOpenDebug,
-  onClose
+  onOpenDebug
 }: Props): React.JSX.Element {
   const [boards, setBoards] = useState<BoardTargetInfo[]>([])
   const [ports, setPorts] = useState<DetectedPort[]>([])
@@ -177,7 +176,6 @@ export default function TargetPanel({
           {scBusy ? '自检中…' : '一键自检'}
         </button>
         <button className="btn" onClick={() => void load()}>自动探测</button>
-        <button className="btn" onClick={onClose} title="关闭硬件目标面板">✕</button>
       </div>
 
       {sc && (

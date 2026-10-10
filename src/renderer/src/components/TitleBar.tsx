@@ -212,34 +212,98 @@ function TitleBar({
     git: gitVisible,
   }
 
+  // 通知铃铛角标（占位：后续主进程真有通知时改真实数）
+  const [notifCount] = useState(1)
+
+  const renderMenuDropdown = (name: string): React.JSX.Element | null => {
+    if (openMenu !== name) return null
+    return (
+      <div className="dropdown">
+        {MENU_TREE[name].map((item, i) =>
+          item.separator ? (
+            <div key={i} className="dropdown-sep" />
+          ) : (
+            <div key={i} className="dropdown-item" onClick={() => handleAction(item.action)}>
+              <span>{item.label}</span>
+              {item.shortcut && <span className="dropdown-shortcut">{item.shortcut}</span>}
+            </div>
+          )
+        )}
+      </div>
+    )
+  }
+
   return (
-    <header className={`titlebar${simple ? ' simple' : ''}`} ref={barRef}>
+    <header className={`titlebar triecode${simple ? ' simple' : ''}`} ref={barRef}>
+      {/* ── 左段：LOGO + 通知 + 设置（对齐 TrieCode 顶栏左半部分顺序） ── */}
       <div className="titlebar-drag">
-        <span className="titlebar-logo">
-          <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+        <span className="titlebar-logo" title="LabCode 代码实验室">
+          <svg width="26" height="26" viewBox="0 0 64 64" fill="none">
             <defs>
-              {/*
-                颜色一律走 var(--token)：这里曾经写死 #111111 / #ffffff / #e8e8e8，
-                深色主题下黑描边压在深底上等于消失，logo 直接糊掉。
-                注意 SVG 表现属性（fill= / stroke= / stop-color= / flood-color=）
-                不认 var()，必须写进 style 对象才生效 —— 这是踩过的坑。
-              */}
-              <filter id="lc-emboss" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2.5" stdDeviation="2" floodOpacity="0.45" style={{ floodColor: 'var(--text)' }}/>
+              <filter id="lc-emboss-tc" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="2" stdDeviation="1.6" floodOpacity="0.4" style={{ floodColor: 'var(--text)' }}/>
               </filter>
-              <linearGradient id="lc-bevel" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" style={{ stopColor: 'var(--bg)' }}/>
+              <linearGradient id="lc-bevel-tc" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style={{ stopColor: 'var(--surface-0)' }}/>
                 <stop offset="1" style={{ stopColor: 'var(--border)' }}/>
               </linearGradient>
             </defs>
-            <rect width="64" height="64" rx="14" fill="url(#lc-bevel)"/>
-            <rect x="2.5" y="2.5" width="59" height="59" rx="11.5" strokeWidth="2.5" style={{ stroke: 'var(--text)' }}/>
-            <text x="32" y="45" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" filter="url(#lc-emboss)" letter-spacing="-1" style={{ fill: 'var(--text)' }}>LC</text>
-            <text x="32" y="43" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="900" letter-spacing="-1" opacity="0.18" style={{ fill: 'var(--text)' }}>LC</text>
+            <rect width="64" height="64" rx="12" fill="url(#lc-bevel-tc)"/>
+            <rect x="3" y="3" width="58" height="58" rx="10" strokeWidth="2" style={{ stroke: 'var(--text)' }}/>
+            <text x="32" y="44" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="30" font-weight="800" filter="url(#lc-emboss-tc)" letter-spacing="-1" style={{ fill: 'var(--accent)' }}>LC</text>
           </svg>
+          <span className="titlebar-logo-text" style={{ color: 'var(--text)' }}>LabCode</span>
         </span>
 
-        {simple ? (
+        {!simple && (
+          <>
+            <button className="titlebar-quick tb-icon-btn" title="通知中心" onClick={() => setOpenMenu((v) => (v === 'notif' ? null : 'notif'))}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              {notifCount > 0 && <span className="tb-notif-dot">{notifCount}</span>}
+            </button>
+            <button className="titlebar-quick tb-icon-btn" title="设置" onClick={() => handleAction('openSettings')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            </button>
+
+            {/* 通知下拉（占位，后续接真通知时再填） */}
+            {openMenu === 'notif' && (
+              <div className="dropdown dropdown-left">
+                <div className="dropdown-group">通知中心</div>
+                <div className="dropdown-item" style={{ color: 'var(--text-2)' }}>
+                  <span>暂无新通知</span>
+                </div>
+              </div>
+            )}
+
+            {/* 折叠/展开左侧栏 & 折叠/展开编辑器：TrieCode 两个快捷按钮 */}
+            <button className="titlebar-quick tb-icon-btn" {...hint('projectTree')} onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.6 }} title={leftPanelVisible ? '隐藏左侧栏' : '显示左侧栏'}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+            </button>
+            <button className="titlebar-quick tb-icon-btn" {...hint('editor', { title: editorVisible ? '折叠编辑器' : '还原编辑器' })} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.6 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ── 中段：菜单栏 文件/编辑/视图/帮助（对齐 TrieCode 文字菜单在中段左） ── */}
+      {!simple ? (
+        <nav className="titlebar-menus tc-menus">
+          {Object.keys(MENU_TREE).map((name) => (
+            <div key={name} className="menu-wrapper">
+              <span
+                className={`menu tc-menu ${openMenu === name ? 'active' : ''}`}
+                onClick={() => setOpenMenu((v) => (v === name ? null : name))}
+                onMouseEnter={() => openMenu && setOpenMenu(name)}
+              >
+                {name}
+              </span>
+              {renderMenuDropdown(name)}
+            </div>
+          ))}
+        </nav>
+      ) : (
+        <div className="titlebar-menus tc-menus">
           <div className="menu-wrapper">
             <button className="tb-btn tb-menu-btn" title="菜单" onClick={() => setOpenMenu((v) => (v === 'main' ? null : 'main'))}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17"/></svg>
@@ -260,56 +324,20 @@ function TitleBar({
                 )}
                 <div className="dropdown-sep" />
                 <div className="dropdown-item" onClick={() => handleAction('toggleSimple')}>
-                  <span>{simple ? '切换到专业界面（显示全部面板）' : '切换到极简界面'}</span>
+                  <span>切换到专业界面</span>
                 </div>
               </div>
             )}
           </div>
-        ) : (
-          <>
-            <button className="titlebar-quick" {...hint('projectTree')} onClick={onToggleLeftPanel} style={{ opacity: leftPanelVisible ? 1 : 0.5 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
-            </button>
-            <button className="titlebar-quick" {...hint('editor', { title: editorVisible ? '编辑器 · 折叠' : '编辑器 · 还原' })} onClick={onToggleEditor} style={{ opacity: editorVisible ? 1 : 0.5 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
-            </button>
-          </>
-        )}
-      </div>
-
-      {!simple && (
-        <nav className="titlebar-menus">
-          {Object.keys(MENU_TREE).map((name) => (
-            <div key={name} className="menu-wrapper">
-              <span
-                className={`menu ${openMenu === name ? 'active' : ''}`}
-                onClick={() => setOpenMenu((v) => (v === name ? null : name))}
-                onMouseEnter={() => openMenu && setOpenMenu(name)}
-              >
-                {name}
-              </span>
-              {openMenu === name && (
-                <div className="dropdown">
-                  {MENU_TREE[name].map((item, i) =>
-                    item.separator ? (
-                      <div key={i} className="dropdown-sep" />
-                    ) : (
-                      <div key={i} className="dropdown-item" onClick={() => handleAction(item.action)}>
-                        <span>{item.label}</span>
-                        {item.shortcut && <span className="dropdown-shortcut">{item.shortcut}</span>}
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </nav>
+        </div>
       )}
 
-      <div className="titlebar-tools">
+      <div className="titlebar-spacer" />
+
+      {/* ── 右段：工具 → 窗口控制（对齐 TrieCode 顺序：编译→烧录→串口→终端→搜索→min/max/close） ── */}
+      <div className="titlebar-tools tc-tools">
         <button
-          className={`tb-btn${simple ? ' tb-main' : ''} ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
+          className={`tb-btn tc-compile ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
           {...hint('compile', {
             title: compileState === 'compiling' ? '编译中…（只校验，不写板子）' : compileState === 'success' ? '编译成功（可烧录）' : compileState === 'error' ? '编译失败（看输出面板的错误行）' : '编译（只校验，不写板子）',
           })}
@@ -317,101 +345,113 @@ function TitleBar({
           disabled={busy}
         >
           {compileState === 'compiling' || compileState === 'uploading' ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19.952 15.002a.75.75 0 1 0-1.06 1.06 7.5 7.5 0 0 1-10.603 0 .75.75 0 0 0-1.061 1.06 9 9 0 0 0 12.723 0Z"/><path d="M17.474 12.53a.75.75 0 0 1 0 1.06l-1.061 1.06a.75.75 0 0 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0Z"/><path d="M12 3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 12 3Z"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M19.952 15.002a.75.75 0 1 0-1.06 1.06 7.5 7.5 0 0 1-10.603 0 .75.75 0 0 0-1.061 1.06 9 9 0 0 0 12.723 0Z"/><path d="M17.474 12.53a.75.75 0 0 1 0 1.06l-1.061 1.06a.75.75 0 0 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0Z"/><path d="M12 3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 12 3Z"/></svg>
           ) : compileState === 'success' ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
           ) : compileState === 'error' ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/></svg>
           )}
           {simple && <span className="tb-btn-text">编译</span>}
         </button>
+
         <button
-          className={`tb-btn${simple ? ' tb-main' : ''}`}
+          className={`tb-btn tc-upload`}
           {...hint('upload')}
           onClick={onUpload}
-          style={{
-            background: 'var(--accent)',
-            color: 'var(--on-dark)',
-            borderRadius: 6,
-          }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
           {simple && <span className="tb-btn-text">烧录</span>}
         </button>
 
-        {simple ? (
-          <div className="menu-wrapper">
-            <button
-              className={`tb-btn tb-more ${MORE_ITEMS.some((m) => panelOn[m.id]) ? 'tb-success' : ''}`}
-              title="更多面板"
-              onClick={() => setOpenMenu((v) => (v === 'more' ? null : 'more'))}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
-            </button>
-            {openMenu === 'more' && (
-              <div className="dropdown dropdown-left">
-                {MORE_ITEMS.map((m) => (
-                  <div key={m.id} className={`dropdown-item${panelOn[m.id] ? ' on' : ''}`} onClick={() => openPanelById(m.id)}>
-                    <span>{m.label}</span>
-                    <span className="dropdown-mark">{panelOn[m.id] ? '✓' : ''}</span>
-                  </div>
-                ))}
-                <div className="dropdown-sep" />
-                <div className="dropdown-item" onClick={() => handleAction('openSearch')}>
-                  <span>搜索 / 命令</span>
-                  <span className="dropdown-shortcut">Ctrl+K</span>
-                </div>
-                <div className="dropdown-item" onClick={() => handleAction('toggleSimple')}>
-                  <span>切到专业界面</span>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
+        {!simple && (
           <>
             <div className="tb-sep" />
-            {/* 第二段：面板开关（都切底部面板组，顺序 = 日常工作流顺序） */}
+            {/* 调试 / Git / 目标面板：LabCode 比 TrieCode 更全的能力，顺序排在串口前 */}
             <button
-              className={`tb-btn ${terminalVisible ? 'tb-success' : ''}`}
-              {...hint('output')}
-              onClick={onToggleTerminal}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-            </button>
-            <button
-              className={`tb-btn ${debugVisible ? 'tb-success' : ''}`}
+              className={`tb-btn tb-icon-btn ${debugVisible ? 'tb-success' : ''}`}
               {...hint('debug')}
+              title="调试面板（片上调试器 JTAG/DAP）"
               onClick={onToggleDebug}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
             </button>
             <button
-              className={`tb-btn ${gitVisible ? 'tb-success' : ''}`}
+              className={`tb-btn tb-icon-btn ${gitVisible ? 'tb-success' : ''}`}
               {...hint('git')}
+              title="Git 面板（变更 / 分支 / 提交）"
               onClick={onToggleGit}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
             </button>
             <button
-              className={`tb-btn ${targetVisible ? 'tb-success' : ''}`}
+              className={`tb-btn tb-icon-btn ${targetVisible ? 'tb-success' : ''}`}
               {...hint('target')}
+              title="硬件目标（板卡 / 构建路径 / 自检）"
               onClick={onToggleTarget}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
             </button>
+
             <div className="tb-sep" />
-            {/* PlatformIO 面板不再占工具栏位置：它属于「构建路径 = PlatformIO」时的操作面板，
-                从硬件目标面板进入即可（选 PlatformIO 路径会自动切过去），避免两个入口含义重叠。 */}
-            <button className="tb-btn" {...hint('search')} onClick={onOpenSearch}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
+            {/* TrieCode 三个标准快捷：串口监视 / 终端 / 搜索 */}
+            <button
+              className="tb-btn tb-icon-btn"
+              title="串口监视器"
+              onClick={() => window.dispatchEvent(new CustomEvent('codelab:openPanel', { detail: 'serial' }))}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h3l3-9 6 18 3-9h3"/></svg>
+            </button>
+            <button
+              className={`tb-btn tb-icon-btn ${terminalVisible ? 'tb-success' : ''}`}
+              {...hint('output')}
+              onClick={onToggleTerminal}
+              title="终端 / 输出面板"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+            </button>
+            <button className="tb-btn tb-icon-btn" {...hint('search')} onClick={onOpenSearch} title="搜索 / 命令面板">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
             </button>
           </>
         )}
+
+        {simple && (
+          <>
+            <div className="menu-wrapper">
+              <button
+                className={`tb-btn tb-more ${MORE_ITEMS.some((m) => panelOn[m.id]) ? 'tb-success' : ''}`}
+                title="更多面板"
+                onClick={() => setOpenMenu((v) => (v === 'more' ? null : 'more'))}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              </button>
+              {openMenu === 'more' && (
+                <div className="dropdown dropdown-left">
+                  {MORE_ITEMS.map((m) => (
+                    <div key={m.id} className={`dropdown-item${panelOn[m.id] ? ' on' : ''}`} onClick={() => openPanelById(m.id)}>
+                      <span>{m.label}</span>
+                      <span className="dropdown-mark">{panelOn[m.id] ? '✓' : ''}</span>
+                    </div>
+                  ))}
+                  <div className="dropdown-sep" />
+                  <div className="dropdown-item" onClick={() => handleAction('openSearch')}>
+                    <span>搜索 / 命令</span>
+                    <span className="dropdown-shortcut">Ctrl+K</span>
+                  </div>
+                  <div className="dropdown-item" onClick={() => handleAction('toggleSimple')}>
+                    <span>切到专业界面</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
-      <div className="titlebar-spacer" />
-      <div className="titlebar-window">
+
+      {/* ── 最右：窗口控制（min / max / close） ── */}
+      <div className="titlebar-window tc-window">
         <button className="win-btn minimize" onClick={() => window.api?.window?.minimize?.()} title="最小化">
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="4.5" width="8" height="1" fill="currentColor"/></svg>
         </button>

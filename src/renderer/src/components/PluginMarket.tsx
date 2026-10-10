@@ -172,7 +172,7 @@ export default function PluginMarket(): React.JSX.Element {
               {item.installed ? (
                 uninstalling === item.id ? (
                   <>
-                    <button className="settings-btn" style={{ color: 'var(--danger)' }} disabled={busyId === item.id} onClick={() => void doUninstall(item.id)}>
+                    <button className="settings-btn" style={{ color: 'var(--error)' }} disabled={busyId === item.id} onClick={() => void doUninstall(item.id)}>
                       确认卸载
                     </button>
                     <button className="settings-btn" onClick={() => setUninstalling(null)}>

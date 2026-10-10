@@ -14,6 +14,7 @@ import PlatformIOPanel from './components/PlatformIOPanel'
 import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
+import SerialPlotter from './components/SerialPlotter'
 import AgentBoard from './components/AgentBoard'
 import ErrorBoundary from './components/ErrorBoundary'
 import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage, PrecheckSnapshot } from '../../preload'
@@ -231,7 +232,7 @@ int main() {
 ]
 
 function App(): React.JSX.Element {
-  // 主题（默认浅色，可切换深色）
+  // 主题（默认浅色，与 TrieCode 一致：TrieCode 的浅色是默认态，深色通过 data-theme=dark 切换）
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('codelab-theme')
     return saved === 'dark' ? 'dark' : 'light'
@@ -440,12 +441,10 @@ function App(): React.JSX.Element {
   }, [])
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   /**
-   * 极简 / 专业界面。
-   * 默认极简：整个窗口只有「编译 + 烧录」两个主按钮、左侧窄图标带、
-   * 底部面板默认收起、首页只有一个输入框 —— 对齐 WorkBuddy / 豆包的消费级密度。
-   * 想要全套 VSCode 面板的话，在 ☰ 菜单里切「专业界面」，功能一个不丢。
+   * 极简 / 专业界面（对齐 TrieCode：默认专业模式，密度与 TrieCode v1.2.9 一致）。
+   * 想要消费级极简可以在视图菜单切「切换到极简界面」。
    */
-  const [simple, setSimple] = useState<boolean>(() => localStorage.getItem('codelab-simple') !== '0')
+  const [simple, setSimple] = useState<boolean>(() => localStorage.getItem('codelab-simple') === '1')
   const toggleSimple = useCallback(() => {
     setSimple((v) => {
       const next = !v
@@ -461,7 +460,7 @@ function App(): React.JSX.Element {
   // 直接改 bottomPanel 进来的，标题栏按钮高亮就跟实际面板状态对不上。
   // 删掉平行 state，改成派生，这类不同步从此不可能再发生。
   /** 底部统一面板组：一次只显示一个（UI 重设计核心，见 PanelDock 注释） */
-  // 极简模式默认收起底部面板（编译/烧录/报错时会自动弹开输出，用户不用去找）
+  // 专业模式（默认）：底部面板默认展开输出；极简模式才收起
   const [bottomPanel, setBottomPanel] = useState<PanelId | null>(simple ? null : 'output')
   /**
    * 输出 / 串口日志护栏。
@@ -722,10 +721,10 @@ function App(): React.JSX.Element {
       if (res && res.ok && res.svg) {
         setWiringSvg(res.svg)
       } else {
-        setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--danger)" font-size="13">生成失败：${res?.error || '未知错误'}</text></svg>`)
+        setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--error)" font-size="13">生成失败：${res?.error || '未知错误'}</text></svg>`)
       }
     } catch (e) {
-      setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--danger)" font-size="13">生成异常：${(e as Error).message}</text></svg>`)
+      setWiringSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="10" y="40" style="fill:var(--error)" font-size="13">生成异常：${(e as Error).message}</text></svg>`)
     }
   }, [fqbn, projectRoot])
 
@@ -1539,8 +1538,7 @@ function App(): React.JSX.Element {
               await window.api.serial.open({ port: selectedPort, baud })
               setSerialOpen(true)
               ensureOutputVisible()
-              // 重建 OutputPanel → 页签回到 defaultTab「串口监视器」
-              setOutputKey((k) => k + 1)
+              setBottomPanel('serial')
               pushOut((prev) => prev + '\n[提示] 烧录成功，已自动打开串口监视器。\n')
             } catch {
               /* 开串口失败不阻断烧录成功结论 */
@@ -1803,8 +1801,7 @@ function App(): React.JSX.Element {
                     // 面板可见性读的是 bottomPanel，所以这里必须真的展开面板，
                     // 只翻一个孤立 state 的话，折叠着或停在别的页签时点了毫无反应。
                     ensureOutputVisible()
-                    // 重建 OutputPanel → 页签回到 defaultTab「串口监视器」
-                    setOutputKey((k) => k + 1)
+                    setBottomPanel('serial')
                   }}
                   onGenerateWiring={() => void generateWiring()}
                 />
@@ -1848,15 +1845,16 @@ function App(): React.JSX.Element {
             onChange={setBottomPanel}
             height={panelHeight}
             onHeightChange={setPanelHeight}
-            badges={{ output: buildError ? '!' : 0, git: gitBadge }}
+            badges={{ output: buildError ? '!' : 0, problems: buildError ? '!' : 0, git: gitBadge }}
             showMinibar
             statusText={dockStatusText}
             render={(id) => {
-              if (id === 'output') {
+              if (id === 'output' || id === 'problems' || id === 'serial' || id === 'terminal') {
+                const dockTab = id === 'problems' ? '问题' : id === 'serial' ? '串口监视器' : id === 'terminal' ? '终端' : '输出'
                 return (
-                  <ErrorBoundary name="输出 / 串口监视器" key="output">
+                  <ErrorBoundary name="输出 / 串口监视器" key={`out-${id}`}>
                   <OutputPanel
-                    key={outputKey}
+                    key={`${outputKey}-${id}`}
                     outputLog={outputLog}
                     serialLog={serialLog}
                     cwd={cwd}
@@ -1867,12 +1865,14 @@ function App(): React.JSX.Element {
                     setBaud={setBaud}
                     serialOpen={serialOpen}
                     onToggleSerial={() => void toggleSerial()}
+                    onClearSerial={() => setSerialLog('')}
                     onRunCommand={(cmd) => void runCommand(cmd)}
                     terminalRef={terminalRef}
                     theme={theme}
                     shell={shell}
                     onClose={() => setBottomPanel(null)}
-                    defaultTab="串口监视器"
+                    defaultTab={dockTab}
+                    hideHeader
                     buildError={buildError}
                     buildVisible={everBuilt}
                     buildActive={compileState === 'compiling' || compileState === 'uploading'}
@@ -1889,6 +1889,7 @@ function App(): React.JSX.Element {
                   </ErrorBoundary>
                 )
               }
+              if (id === 'plotter') return <ErrorBoundary name="绘图仪" key="plotter"><SerialPlotter serialLog={serialLog} serialOpen={serialOpen} theme={theme} /></ErrorBoundary>
               if (id === 'debug') return <ErrorBoundary name="调试" key="debug"><DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
               if (id === 'platformio') return <ErrorBoundary name="PlatformIO" key="platformio"><PlatformIOPanel projectRoot={projectRoot} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
               if (id === 'target') {

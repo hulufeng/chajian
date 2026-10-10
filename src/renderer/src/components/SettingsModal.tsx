@@ -693,7 +693,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
 
                 {/* 支持提供商 chips */}
                 <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>支持的提供商</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 4 }}>支持的提供商</div>
                   <div className="byok-chips">
                     <span className="byok-chip">DeepSeek</span>
                     <span className="byok-chip">通义千问</span>
@@ -728,7 +728,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                       <span>引擎</span>
                       <span className="settings-val">
                         {engineStatus.installed ? `已安装${engineStatus.version ? ` · ${engineStatus.version}` : ''}` : '缺失'} ·{' '}
-                        {engineStatus.running ? <span style={{ color: 'var(--success)' }}>运行中 :8080</span> : <span style={{ color: 'var(--text-dim)' }}>已停止</span>}
+                        {engineStatus.running ? <span style={{ color: 'var(--success)' }}>运行中 :8080</span> : <span style={{ color: 'var(--text-2)' }}>已停止</span>}
                       </span>
                     </div>
                     <div className="settings-row">
@@ -985,7 +985,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                 {diagInfoText && <p className="settings-desc">{diagInfoText}</p>}
                 {diagMsg && <p className="settings-desc">{diagMsg}</p>}
                 {diagReport && (
-                  <pre className="settings-desc" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 260, overflow: 'auto', background: 'var(--panel-2)', padding: 8, borderRadius: 6 }}>
+                  <pre className="settings-desc" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 260, overflow: 'auto', background: 'var(--surface-2)', padding: 8, borderRadius: 6 }}>
                     {JSON.stringify(diagReport, null, 2)}
                   </pre>
                 )}
@@ -1138,7 +1138,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     连接已信任的
                   </button>
                 </div>
-                {mcpMsg && <p className="settings-desc" style={{ color: mcpMsg.startsWith('已') ? 'var(--accent-2)' : 'var(--danger)' }}>{mcpMsg}</p>}
+                {mcpMsg && <p className="settings-desc" style={{ color: mcpMsg.startsWith('已') ? 'var(--accent-2)' : 'var(--error)' }}>{mcpMsg}</p>}
 
                 {mcpServers.length === 0 && <p className="settings-desc">还没有配置任何 MCP 服务器。</p>}
                 {mcpServers.map((s) => (
@@ -1174,7 +1174,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                         <button className="btn" disabled={mcpBusy} onClick={() => void mcpRemove(s.name)}>删除</button>
                       )}
                     </div>
-                    {s.error && <p className="settings-desc" style={{ color: 'var(--danger)', margin: 0 }}>{s.error}</p>}
+                    {s.error && <p className="settings-desc" style={{ color: 'var(--error)', margin: 0 }}>{s.error}</p>}
                     {s.tools.length > 0 && (
                       <p className="settings-desc" style={{ margin: 0 }}>
                         工具：{s.tools.map((t) => t.name).join('、')}

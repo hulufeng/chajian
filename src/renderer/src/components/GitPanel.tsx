@@ -22,10 +22,10 @@ const STATUS_MARK: Record<GitFileChange['status'], string> = {
 const STATUS_COLOR: Record<GitFileChange['status'], string> = {
   added: 'var(--accent-2)',
   modified: 'var(--warning)',
-  deleted: 'var(--danger)',
+  deleted: 'var(--error)',
   renamed: 'var(--accent)',
   copied: 'var(--accent)',
-  untracked: 'var(--text-dim)'
+  untracked: 'var(--text-2)'
 }
 
 /**
@@ -33,7 +33,7 @@ const STATUS_COLOR: Record<GitFileChange['status'], string> = {
  * 三段：变更（暂存/未暂存/未跟踪）· 分支（新建/切换/合并/删除）· 提交历史。
  * 设计取向：不做「什么都不显示」的空态，非仓库时直接给「初始化仓库」动作。
  */
-export default function GitPanel({ projectRoot, onOpenFile, onClose }: Props): React.JSX.Element {
+export default function GitPanel({ projectRoot, onOpenFile }: Props): React.JSX.Element {
   const [st, setSt] = useState<GitStatusInfo | null>(null)
   const [br, setBr] = useState<GitBranchView | null>(null)
   const [log, setLog] = useState<GitLogEntry[]>([])
@@ -85,11 +85,6 @@ export default function GitPanel({ projectRoot, onOpenFile, onClose }: Props): R
   if (!root) {
     return (
       <div className="gitp">
-        <div className="gitp-head">
-          <span className="gitp-title">Git</span>
-          <span className="tgt-spacer" />
-          <button className="btn" onClick={onClose}>✕</button>
-        </div>
         <div className="gitp-empty">
           <div>还没有打开工程。</div>
           <div className="gitp-hint">Git 面板需要工程目录才能读取仓库状态。先在文件菜单里打开一个工程（或新建工程）再回来。</div>
@@ -104,10 +99,7 @@ export default function GitPanel({ projectRoot, onOpenFile, onClose }: Props): R
     return (
       <div className="gitp">
         <div className="gitp-head">
-          <span className="gitp-title">Git</span>
           <span className="gitp-sub mono">{root}</span>
-          <span className="tgt-spacer" />
-          <button className="btn" onClick={onClose}>✕</button>
         </div>
         <div className="gitp-empty">
           <div>{noGit ? '未检测到 Git 可执行文件。' : '当前工程还不是 Git 仓库。'}</div>
@@ -165,7 +157,6 @@ export default function GitPanel({ projectRoot, onOpenFile, onClose }: Props): R
   return (
     <div className="gitp">
       <div className="gitp-head">
-        <span className="gitp-title">Git</span>
         <span className="gitp-sub mono">
           {st?.branch || '—'}
           {st?.upstream ? ` · ${st.upstream}` : ' · 无远端'}
@@ -177,7 +168,6 @@ export default function GitPanel({ projectRoot, onOpenFile, onClose }: Props): R
         <button className="gitp-mini" disabled={!!busy || !st?.upstream} onClick={() => void run('pull', () => window.api.git.pull(root))}>拉取</button>
         <button className="gitp-mini" disabled={!!busy || !st?.upstream} onClick={() => void run('push', () => window.api.git.push(root))}>推送</button>
         <button className="gitp-mini" onClick={() => void refresh()}>刷新</button>
-        <button className="btn" onClick={onClose} title="关闭 Git 面板">✕</button>
       </div>
 
       {err && <div className="gitp-err">{err}</div>}

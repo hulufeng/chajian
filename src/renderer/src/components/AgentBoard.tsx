@@ -9,13 +9,13 @@ interface Props {
 type Draft = TaskSpecLite
 
 const STATUS_META: Record<string, { icon: string; label: string; color: string }> = {
-  pending: { icon: '·', label: '待执行', color: 'var(--text-dim)' },
+  pending: { icon: '·', label: '待执行', color: 'var(--text-2)' },
   'awaiting-approval': { icon: '⏸', label: '待放行', color: 'var(--warning)' },
   running: { icon: '⟳', label: '执行中', color: 'var(--accent)' },
   done: { icon: '✓', label: '完成', color: 'var(--accent-2)' },
-  failed: { icon: '✗', label: '失败', color: 'var(--danger)' },
-  skipped: { icon: '→', label: '已跳过', color: 'var(--text-dim)' },
-  blocked: { icon: '⊘', label: '阻塞', color: 'var(--danger)' }
+  failed: { icon: '✗', label: '失败', color: 'var(--error)' },
+  skipped: { icon: '→', label: '已跳过', color: 'var(--text-2)' },
+  blocked: { icon: '⊘', label: '阻塞', color: 'var(--error)' }
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -44,7 +44,7 @@ const SAMPLE: Draft[] = [
  * 重点：把「谁在干什么、能并行什么、哪里冲突、要不要你放行」四件事摆在同一屏，
  * 而不是让用户去猜多个 agent 背后发生了什么。
  */
-export default function AgentBoard({ projectRoot, onClose }: Props): React.JSX.Element {
+export default function AgentBoard({ projectRoot }: Props): React.JSX.Element {
   const [drafts, setDrafts] = useState<Draft[]>(SAMPLE)
   const [runs, setRuns] = useState<AgentTaskRun[]>([])
   const [report, setReport] = useState<OrchestrationReport | null>(null)
@@ -119,7 +119,6 @@ export default function AgentBoard({ projectRoot, onClose }: Props): React.JSX.E
         <button className="btn primary" disabled={busy || drafts.length === 0} onClick={() => void run()}>
           {busy ? '执行中…' : '开始并行执行'}
         </button>
-        <button className="btn" onClick={onClose}>✕</button>
       </div>
 
       {err && <div className="debug-err">{err}</div>}

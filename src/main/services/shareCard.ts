@@ -60,22 +60,22 @@ function renderCard(input: ShareCardInput): string {
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1115;
        font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#e8eaed;padding:24px}
   .card{width:520px;max-width:100%;background:linear-gradient(160deg,#171a21 0%,#101318 100%);
-        border:1px solid #262b34;border-radius:16px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+        border:1px solid #262b34;border-radius: var(--radius-lg);overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.45)}
   .bar{height:6px;background:${accent}}
   .body{padding:22px 24px 20px}
   h1{margin:0 0 6px;font-size:22px;letter-spacing:.3px}
-  .sub{color:#9aa3b2;font-size:13px;margin-bottom:16px}
-  .chip{display:inline-block;font-size:11px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  .sub{color:#9aa3b2;font-size: var(--text-md);margin-bottom:16px}
+  .chip{display:inline-block;font-size: var(--text-xs);font-family:ui-monospace,Menlo,Consolas,monospace;
         color:${accent};border:1px solid ${accent}55;border-radius:999px;padding:3px 9px;margin-bottom:14px}
   .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 14px}
-  .metric{background:#14171d;border:1px solid #22262e;border-radius:10px;padding:10px 12px}
-  .m-label{font-size:11px;color:#8b939f}
+  .metric{background:#14171d;border:1px solid #22262e;border-radius: var(--radius-md);padding:10px 12px}
+  .m-label{font-size: var(--text-xs);color:#8b939f}
   .m-value{font-size:17px;font-weight:600;margin-top:3px;word-break:break-all}
   .tone-ok .m-value{color:#4ade80}.tone-warn .m-value{color:#fbbf24}.tone-err .m-value{color:#f87171}
-  .m-hint{font-size:11px;color:#6f7783;margin-top:2px}
-  .code{background:#0c0e12;border:1px solid #22262e;border-radius:10px;padding:12px;font-size:11.5px;
+  .m-hint{font-size: var(--text-xs);color:#6f7783;margin-top:2px}
+  .code{background:#0c0e12;border:1px solid #22262e;border-radius: var(--radius-md);padding:12px;font-size:11.5px;
         line-height:1.55;white-space:pre-wrap;color:#b6bec9;max-height:220px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace}
-  .foot{margin-top:14px;font-size:11px;color:#6f7783;display:flex;justify-content:space-between}
+  .foot{margin-top:14px;font-size: var(--text-xs);color:#6f7783;display:flex;justify-content:space-between}
 </style></head>
 <body><div class="card"><div class="bar"></div><div class="body">
   ${input.chip ? `<div class="chip">${esc(input.chip)}</div>` : ''}

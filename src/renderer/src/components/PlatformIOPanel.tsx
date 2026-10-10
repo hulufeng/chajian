@@ -10,7 +10,7 @@ interface Props {
  * PlatformIO 面板：探测/安装 pio Core、多 env 选择、构建、烧录、串口监视。
  * 输出走主进程 task:output 流式回传（和 arduino-cli 安装同一条通道）。
  */
-export default function PlatformIOPanel({ projectRoot, onClose }: Props): React.JSX.Element {
+export default function PlatformIOPanel({ projectRoot }: Props): React.JSX.Element {
   const [info, setInfo] = useState<PioInfo | null>(null)
   const [env, setEnv] = useState('')
   const [port, setPort] = useState('')
@@ -185,9 +185,6 @@ export default function PlatformIOPanel({ projectRoot, onClose }: Props): React.
             )}
           </>
         )}
-        <button className="btn" onClick={onClose}>
-          ✕
-        </button>
       </div>
 
       <div className="pio-body">

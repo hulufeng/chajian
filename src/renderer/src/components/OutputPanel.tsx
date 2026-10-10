@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import BuildProgress from './BuildProgress'
 import TerminalView, { type TerminalHandle } from './TerminalView'
-import SerialPlotter from './SerialPlotter'
 import { hint } from '../featureHints'
 import type { Ref } from 'react'
 import type { BuildStageInfo, SerialPortInfo, CrashSignatureResult } from '../../../preload'
@@ -27,6 +26,10 @@ interface Props {
   shell?: 'powershell' | 'cmd' | 'pwsh' | 'bash'
   onClose?: () => void
   defaultTab?: OutputKind
+  /** 隐藏内层标签条（PanelDock 顶层已有标签，避免双层标签栏） */
+  hideHeader?: boolean
+  /** 清空串口日志（日志状态在 App） */
+  onClearSerial?: () => void
   buildError?: string | null
   onDiagnose?: () => void
   onDebugFix?: () => void
@@ -118,6 +121,8 @@ function OutputPanel({
   shell,
   onClose,
   defaultTab,
+  hideHeader = false,
+  onClearSerial,
   buildError,
   onDiagnose,
   onDebugFix,
@@ -132,7 +137,8 @@ function OutputPanel({
   buildUsage = null
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<OutputKind>(defaultTab ?? '输出')
-  const [serialView, setSerialView] = useState<'文本' | '波形'>('文本')
+  const [sendText, setSendText] = useState('')
+  const [eol, setEol] = useState<'crlf' | 'nl' | 'cr' | 'none'>('crlf')
   // 崩溃签名分析（本地规则解析，不调 AI、不联网）
   const [crash, setCrash] = useState<CrashSignatureResult | null>(null)
   const [crashBusy, setCrashBusy] = useState(false)
@@ -144,6 +150,19 @@ function OutputPanel({
       .then((r) => setCrash(r))
       .catch((e: unknown) => setCrash({ ok: false, error: e instanceof Error ? e.message : String(e) }))
       .finally(() => setCrashBusy(false))
+  }
+
+  /** 发送到串口（会话 id 与 open/close 保持一致：serial-<port>） */
+  const sendSerial = async (): Promise<void> => {
+    const t = sendText.trim()
+    if (!t || !serialOpen || !selectedPort) return
+    const suffix = eol === 'crlf' ? '\r\n' : eol === 'nl' ? '\n' : eol === 'cr' ? '\r' : ''
+    try {
+      const r = await window.api.serial.write({ id: `serial-${selectedPort}`, data: t + suffix })
+      if (r?.ok !== false) setSendText('')
+    } catch {
+      /* 写失败不清输入，便于重试 */
+    }
   }
 
   // 轻量迹象检测：只在日志里出现崩溃关键字时给按钮加提示，避免每次刷新都跑完整解析
@@ -205,23 +224,25 @@ function OutputPanel({
 
   return (
     <section className="output-panel">
-      <div className="output-tabs">
-        {TABS.map((t) => (
-          <div
-            key={t}
-            className={`output-tab${t === tab ? ' active' : ''}`}
-            onClick={() => setTab(t)}
-            {...(t === '串口监视器' ? hint('serial') : {})}
-          >
-            {t}
-          </div>
-        ))}
-        {onClose && (
-          <button className="output-tabs-close" onClick={onClose} title="关闭面板">
-            ×
-          </button>
-        )}
-      </div>
+      {!hideHeader && (
+        <div className="output-tabs">
+          {TABS.map((t) => (
+            <div
+              key={t}
+              className={`output-tab${t === tab ? ' active' : ''}`}
+              onClick={() => setTab(t)}
+              {...(t === '串口监视器' ? hint('serial') : {})}
+            >
+              {t}
+            </div>
+          ))}
+          {onClose && (
+            <button className="output-tabs-close" onClick={onClose} title="关闭面板">
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <div className="output-body">
         {buildError && (onDiagnose || onDebugFix) && (
           <div className="build-error-banner">
@@ -281,34 +302,44 @@ function OutputPanel({
         {tab === '串口监视器' && (
           <div className="serial-wrap">
             <div className="serial-controls">
-              <label>
-                端口
-                <select value={selectedPort} onChange={(e) => setSelectedPort(e.target.value)}>
-                  <option value="">选择端口</option>
-                  {ports.map((p) => (
-                    <option key={p.path} value={p.path}>
-                      {p.path}
-                      {p.friendlyName ? ` (${p.friendlyName})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                波特率
-                <select value={baud} onChange={(e) => setBaud(Number(e.target.value))}>
-                  {[9600, 19200, 38400, 57600, 74880, 115200, 230400, 460800, 921600].map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className={`btn ${serialOpen ? 'on' : ''}`}
-                disabled={!selectedPort}
-                onClick={onToggleSerial}
+              <span
+                className={`serial-dot${serialOpen ? ' on' : ''}`}
+                title={serialOpen ? '串口已连接' : '串口未连接'}
+              />
+              <select
+                value={selectedPort}
+                onChange={(e) => setSelectedPort(e.target.value)}
+                title="端口"
+                style={{ maxWidth: 180 }}
               >
-                {serialOpen ? '■ 关闭' : '● 打开'}
+                <option value="">选择端口</option>
+                {ports.map((p) => (
+                  <option key={p.path} value={p.path}>
+                    {p.path}
+                    {p.friendlyName ? ` (${p.friendlyName})` : ''}
+                  </option>
+                ))}
+              </select>
+              <select value={baud} onChange={(e) => setBaud(Number(e.target.value))} title="波特率" style={{ width: 130 }}>
+                {[9600, 19200, 38400, 57600, 74880, 115200, 230400, 460800, 921600].map((b) => (
+                  <option key={b} value={b}>
+                    {b} baud
+                  </option>
+                ))}
+              </select>
+              <select
+                value={eol}
+                onChange={(e) => setEol(e.target.value as 'crlf' | 'nl' | 'cr' | 'none')}
+                title="发送行尾符"
+                style={{ width: 140 }}
+              >
+                <option value="crlf">Both NL &amp; CR</option>
+                <option value="nl">换行 NL (LF)</option>
+                <option value="cr">回车 CR</option>
+                <option value="none">无行尾符</option>
+              </select>
+              <button className="btn accent" disabled={!selectedPort} onClick={onToggleSerial}>
+                {serialOpen ? '断开' : '连接'}
               </button>
               <button
                 className={`btn${crashHint ? ' crash-alert' : ''}`}
@@ -316,22 +347,12 @@ function OutputPanel({
                 disabled={crashBusy || !serialLog}
                 title="解析串口日志里的崩溃信息（本地规则解析，不调用 AI、不联网）"
               >
-                {crashBusy ? '分析中…' : crashHint ? '🧯 崩溃分析 · 检测到迹象' : '🧯 崩溃分析'}
+                {crashBusy ? '分析中…' : crashHint ? '⚡ 分析崩溃 · 检测到迹象' : '⚡ 分析崩溃'}
               </button>
-              <div className="serial-subtabs">
-                <button
-                  className={`subtab${serialView === '文本' ? ' active' : ''}`}
-                  onClick={() => setSerialView('文本')}
-                >
-                  文本
-                </button>
-                <button
-                  className={`subtab${serialView === '波形' ? ' active' : ''}`}
-                  onClick={() => setSerialView('波形')}
-                >
-                  波形
-                </button>
-              </div>
+              <span className="serial-spacer" />
+              <button className="btn" onClick={onClearSerial} disabled={!serialLog} title="清空串口日志">
+                清空
+              </button>
             </div>
             {crash && (
               <div className={`crash-panel${crash.crashed ? ' crashed' : ''}`}>
@@ -396,17 +417,31 @@ function OutputPanel({
                 )}
               </div>
             )}
-            {serialView === '文本' ? (
-              <div className="mono-log" ref={serialRef}>
-                {serialLog ? (
-                  serialLog
-                ) : (
-                  <span className="dim">打开串口后，设备输出的数据将实时显示在这里。</span>
-                )}
-              </div>
-            ) : (
-              <SerialPlotter serialLog={serialLog} serialOpen={serialOpen} theme={theme} />
-            )}
+            <div className="mono-log" ref={serialRef}>
+              {serialLog ? (
+                serialLog
+              ) : (
+                <span className="dim">连接串口以查看数据</span>
+              )}
+            </div>
+            <div className="serial-sendbar">
+              <input
+                value={sendText}
+                onChange={(e) => setSendText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void sendSerial()
+                }}
+                placeholder="输入消息，按回车发送..."
+                disabled={!serialOpen}
+              />
+              <button
+                className="btn accent"
+                onClick={() => void sendSerial()}
+                disabled={!serialOpen || !sendText.trim()}
+              >
+                发送
+              </button>
+            </div>
           </div>
         )}
         {tab === '终端' && (

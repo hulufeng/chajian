@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hint, type FeatureHintId } from '../featureHints'
 
-export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git' | 'agents'
+export type PanelId = 'output' | 'problems' | 'serial' | 'plotter' | 'terminal' | 'debug' | 'target' | 'platformio' | 'git' | 'agents'
 
 /**
  * label 用短名（工具栏空间有限），全名放 hint 走 tooltip。
@@ -9,7 +9,11 @@ export type PanelId = 'output' | 'debug' | 'target' | 'platformio' | 'git' | 'ag
  * 没配的面板（Pio / 协作）继续用原生 title，不硬凑文案 —— 不熟的功能不写介绍。
  */
 export const PANEL_META: Array<{ id: PanelId; label: string; hint: string; hintId?: FeatureHintId }> = [
-  { id: 'output', label: '输出', hint: '输出 · 编译日志 / 串口监视 / 波形 / 终端 / 问题', hintId: 'output' },
+  { id: 'output', label: '输出', hint: '输出 · 编译日志与进度', hintId: 'output' },
+  { id: 'problems', label: '问题', hint: '问题 · 编译错误与警告列表' },
+  { id: 'serial', label: '串口监视器', hint: '串口监视器 · 文本收发 / 崩溃签名分析' },
+  { id: 'plotter', label: '绘图仪', hint: '绘图仪 · 串口数据波形' },
+  { id: 'terminal', label: '终端', hint: '终端 · 系统命令行' },
   { id: 'debug', label: '调试', hint: '调试 · 寄存器 / 内存 / 断点 / 片内存储', hintId: 'debugPanel' },
   { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检', hintId: 'target' },
   { id: 'platformio', label: 'Pio', hint: 'PlatformIO · pio run 构建 / 烧录 / 串口监视（从硬件目标面板进入）' },

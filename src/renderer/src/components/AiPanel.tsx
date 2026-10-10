@@ -174,7 +174,7 @@ function categoryColor(cat: string): string {
     case 'write': return 'var(--warning)'
     case 'execute': return 'var(--accent)'
     case 'query': return 'var(--violet)'
-    default: return 'var(--text-muted)'
+    default: return 'var(--text-3)'
   }
 }
 
@@ -266,9 +266,9 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
   const beforeDiff = diffMatch ? content.slice(0, diffMatch.index).trim() : ''
   const afterDiff = diffMatch ? content.slice((diffMatch.index || 0) + diffMatch[0].length).trim() : ''
   return (
-    <div className="agent-tool-result" style={{ borderLeft: `3px solid ${ok ? 'var(--success)' : 'var(--danger)'}` }}>
+    <div className="agent-tool-result" style={{ borderLeft: `3px solid ${ok ? 'var(--success)' : 'var(--error)'}` }}>
       <div className="agent-tool-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="agent-tool-icon" style={{ color: ok ? 'var(--success)' : 'var(--danger)' }}>
+        <span className="agent-tool-icon" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
           {ok ? (
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
           ) : (
@@ -276,7 +276,7 @@ function ToolResultCard({ msg }: { msg: Extract<AgentMessage, { kind: 'tool_resu
           )}
         </span>
         <span className="agent-tool-name">{toolCnName(msg.name)}<span className="agent-tool-en">({msg.name})</span></span>
-        <span className="agent-tool-status" style={{ color: ok ? 'var(--success)' : 'var(--danger)' }}>
+        <span className="agent-tool-status" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
           {msg.rejected ? '已拒绝' : ok ? '成功' : '失败'}
         </span>
         <span className="agent-tool-toggle">{expanded ? '▲' : '▼'}</span>
@@ -1146,7 +1146,7 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
             onClick={() => onOpenSettings?.()}
             style={{
               fontSize: 11, padding: '3px 8px', borderRadius: 6,
-              border: '1px solid var(--border)', background: 'var(--panel-2)',
+              border: '1px solid var(--border)', background: 'var(--surface-2)',
               color: 'var(--text)', cursor: 'pointer', whiteSpace: 'nowrap'
             }}
           >⚙</button>

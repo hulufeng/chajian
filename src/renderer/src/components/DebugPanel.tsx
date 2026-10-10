@@ -24,7 +24,7 @@ function formatHex(bytes: number[]): string {
   return rows.join('\n')
 }
 
-export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): React.JSX.Element {
+export default function DebugPanel({ fqbn, chipOverride }: Props): React.JSX.Element {
   const [info, setInfo] = useState<{ installed: boolean; path: string; scripts: string; chips: DebugChip[] } | null>(null)
   const [ installing, setInstalling ] = useState(false)
   const [ installErr, setInstallErr ] = useState('')
@@ -267,7 +267,6 @@ export default function DebugPanel({ fqbn, chipOverride, onClose }: Props): Reac
             )}
           </>
         )}
-        <button className="btn icon" onClick={onClose} title="关闭调试面板">✕</button>
       </div>
 
       {installErr && <div className="debug-err">{installErr}</div>}

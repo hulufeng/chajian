@@ -1,64 +1,86 @@
-/* ==========================================================================
-   theme.css —— 全应用唯一的颜色配置源（Design Tokens）
-   --------------------------------------------------------------------------
-   约定（代码里只准用 var(--xxx)，不准再写死 hex / rgb / rgba）：
-     1. 所有颜色必须来自这里的 token；组件里的 inline style 也一样走 var()。
-     2. 语义名要能读出来："这层背景是什么用"，而不是"它是什么颜色"。
-        例如 --panel 是"面板底色"，--success 是"成功态"，别拿 --success 当背景乱用。
-     3. 改主题 = 只改下面两个块（:root 浅色 / [data-theme='dark'] 深色），
+/* ============================================================================
+   theme.css —— 全应用唯一的颜色/尺度配置源（Design Tokens）
+   ----------------------------------------------------------------------------
+   参照基准：TrieCode v1.3.1（C:\Program Files\TrieCode\resources\app.asar）
+   约定：
+     1. 所有颜色/尺度必须来自这里的 token；组件里的 inline style 也走 var()。
+     2. 改主题 = 只改下面两个块（:root 浅色 / [data-theme='dark'] 深色），
         业务 CSS 一行都不用动。
-     4. 状态色只此一套（绿/黄/红/蓝/紫），老代码里 \52c41a / #22c55e / #16a34a
-        三种绿、#2f7cf6 和 #4a7dff 两种蓝，统一到 --success / --accent。
-   分层：① 中性骨架 ② 文字 ③ 强调与交互 ④ 状态语义 ⑤ 终端 ⑥ 文件类型 ⑦ 覆盖与阴影
-   ========================================================================== */
+     3. 命名与取值以 TrieCode v1.3.1 为准：
+        - 背景层用 --surface-0..3（含 --bg-primary/secondary/tertiary 别名）
+        - 主色 --accent: #2563eb（浅）/ #3b82f6（深），TrieCode 蓝（非旧 #3F6BFF）
+        - 危险态 --error（替代旧 --danger）
+        - 圆角 --radius-{2xs,sm,md,lg,xl,full}，动效 --motion-* / --ease-*，
+          控件高 --control-height-*，栏高 --toolbar-height / --statusbar-height
+     4. 旧 codelab 语义名（--panel/--bg/--danger/--text-dim/--border-radius-md 等）
+        在文件末尾以「兼容别名」形式保留，指向新令牌，作为迁移期安全网；
+        组件代码已统一改为新令牌名。
+   分层：① 表面/骨架 ② 文字 ③ 强调与交互 ④ 状态语义 ⑤ 终端 ⑥ 文件类型
+        ⑦ 覆盖与阴影 ⑧ 中性墨/白 ⑨ 尺度（圆角/动效/控件/栏高）⑩ 兼容别名
+   ============================================================================ */
 
 :root {
-  /* ---------- ① 中性骨架：界面每一层的背景 ---------- */
-  --bg: #f5f5f5;            /* 最底：编辑器内容区 / 页面底 */
-  --panel: #ffffff;         /* 面板：卡片、弹窗、侧栏内容区 */
-  --panel-2: #f8f8f8;       /* 次级面板：面板头、下拉、输入条 */
-  --panel-hover: #ececec;   /* hover 反馈 */
-  --activitybar-bg: #f3f3f3;/* 左侧图标带 */
-  --titlebar-bg: #ffffff;   /* 顶栏 */
-  --statusbar-bg: #ffffff;  /* 状态栏 */
-  --active-tab: #ffffff;    /* 当前标签页（与 --panel 同色，连成一片） */
+  /* ---------- ① 表面 / 骨架：界面每一层的背景（TrieCode surface 体系） ---------- */
+  --surface-0: #f5f6f8;            /* 最底：页面底 / 编辑器内容区 */
+  --surface-1: #ffffff;            /* 面板：卡片、弹窗、侧栏内容区、当前标签 */
+  --surface-2: #f0f1f3;            /* 次级面板：面板头、下拉、输入条、活动栏 */
+  --surface-3: #e9ebef;            /* 三级：更深的分割块 */
+  --surface-hover: rgba(15, 23, 42, 0.06);    /* hover 反馈（半透明压暗） */
+  --surface-active: rgba(15, 23, 42, 0.09);   /* 选中/激活态底色 */
 
-  --border: #e0e0e0;        /* 分隔线 */
-  --border-strong: #c9c9c9; /* 需要更明确的分隔线（如输入框边框） */
+  --bg-primary: var(--surface-1);
+  --bg-secondary: var(--surface-2);
+  --bg-tertiary: var(--surface-3);
+  --bg-hover: var(--surface-hover);
+  --bg-active: var(--surface-active);
+
+  --border: #e2e5ea;               /* 分隔线 */
+  --border-strong: #cfd4db;        /* 更明确的分隔线（如输入框边框） */
+  --border-weak: #eceef1;          /* 极弱分隔（如内嵌块） */
+  --border-color: var(--border);
 
   /* ---------- ② 文字 ---------- */
-  --text: #1f1f1f;          /* 主文字 */
-  --text-dim: #616161;      /* 次要文字 / 说明 */
-  --text-muted: #9a9a9a;    /* 更弱：进度、角注 */
+  --text: #2b2f36;                 /* 主文字 */
+  --text-2: #5b6470;               /* 次要文字 / 说明 */
+  --text-3: #9aa2ad;               /* 更弱：进度、角注（TrieCode 浅色实测值） */
+  --text-strong: #16181d;          /* 强调文字（标题/按钮） */
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--text-3);
 
-  --on-accent: #ffffff;     /* 强调色底上的前景（按钮文字） */
-  --on-dark: #ffffff;       /* 深色底上的前景 */
-  --on-light: #1f1f1f;      /* 浅色底上的前景（浅色按钮文字） */
+  --on-accent: #ffffff;            /* 强调色底上的前景（按钮文字） */
+  --on-dark: #ffffff;              /* 深色底上的前景 */
+  --on-light: #1a1d23;             /* 浅色底上的前景（浅色按钮文字） */
 
-  /* ---------- ③ 强调与交互 ---------- */
-  --accent: #2f7cf6;        /* 主色：主按钮、选中态、链接 */
-  --accent-hover: #1f66d8;
-  --accent-soft: rgba(47, 124, 246, 0.12);   /* 强调色淡底（hover / 选中底色） */
-  --accent-soft-weak: rgba(47, 124, 246, 0.05);
-  --accent-text: #2f7cf6;   /* 强调色文字（浅底上够深） */
+  /* ---------- ③ 强调与交互：TrieCode 蓝（#2563eb） ---------- */
+  --accent: #2563eb;               /* 主色：主按钮、选中态、链接 */
+  --accent-hover: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.10);     /* 强调色淡底（hover / 选中底色） */
+  --accent-glow: rgba(37, 99, 235, 0.15);     /* 强调色更淡底（旧 --accent-soft-weak） */
+  --accent-text: var(--accent-hover);         /* 浅底上够深的强调文字 */
 
-  --accent-2: #22c55e;      /* 次强调：成功按钮、次要高亮 */
-  --violet: #8b5cf6;        /* 紫：多智能体 / 协作类标识 */
+  --accent-2: #22c55e;             /* 次强调：成功按钮、次要高亮 */
+  --violet: #8b5cf6;               /* 紫：多智能体 / 协作类标识 */
   --violet-soft: rgba(139, 92, 246, 0.15);
   --violet-soft-weak: rgba(139, 92, 246, 0.06);
+
+  /* TrieCode 的 AI 语义别名（指向 accent） */
+  --ai-color: var(--accent);
+  --ai-hover: var(--accent-hover);
+  --ai-soft: var(--accent-soft);
 
   /* ---------- ④ 状态语义：全应用只此一套 ---------- */
   --success: #16a34a;
   --success-soft: rgba(22, 163, 74, 0.10);
   --success-soft-weak: rgba(22, 163, 74, 0.04);
 
-  --warning: #ea580c;
-  --warning-soft: rgba(234, 88, 12, 0.10);
-  --warning-soft-weak: rgba(234, 88, 12, 0.05);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.10);
+  --warning-soft-weak: rgba(217, 119, 6, 0.05);
 
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.10);
-  --danger-soft-weak: rgba(220, 38, 38, 0.04);
+  --error: #dc2626;                /* 危险态（替代旧 --danger） */
+  --error-soft: rgba(220, 38, 38, 0.10);
+  --error-soft-weak: rgba(220, 38, 38, 0.04);
 
   --info: #2563eb;
   --info-soft: rgba(37, 99, 235, 0.10);
@@ -70,21 +92,20 @@
   --terminal-text: #d4d4d4;
 
   /* ---------- ⑥ 文件类型色（项目树图标，按语义而不是按图标颜色） ---------- */
-  --file-default: #6a737d;  /* 普通文件 */
-  --file-ts: #3b82f6;       /* 代码/脚本 */
-  --file-code: #6a9955;     /* 代码文本 */
-  --file-string: #ce9178;   /* 字符串 */
-  --file-func: #dcdcaa;     /* 函数/关键字 */
+  --file-default: #6a737d;         /* 普通文件 */
+  --file-ts: #3b82f6;              /* 代码/脚本 */
+  --file-code: #6a9955;            /* 代码文本 */
+  --file-string: #ce9178;          /* 字符串 */
+  --file-func: #dcdcaa;            /* 函数/关键字 */
 
-  /* ---------- ⑦ 覆盖层与阴影 ---------- */
-  --overlay: rgba(0, 0, 0, 0.38);   /* 模态遮罩 */
-  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.10);
-  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.16);
-  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.22);
-  --shadow-hi: 0 6px 18px rgba(0, 0, 0, 0.35); /* 深色底上的浮层 */
+  /* ---------- ⑦ 覆盖层与阴影（TrieCode 用 16,24,40 中性阴影） ---------- */
+  --overlay: rgba(0, 0, 0, 0.38);  /* 模态遮罩 */
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 4px 14px rgba(16, 24, 40, 0.10);
+  --shadow-3: 0 12px 32px rgba(16, 24, 40, 0.16);
+  --shadow-hi: 0 6px 18px rgba(0, 0, 0, 0.35);  /* 深色底上的浮层 */
 
-  /* ---------- ⑧ 中性墨 / 中性白：低透明度压暗与提亮 ---------- */
-  /* 黑白低透明度在深浅两主题下都成立，所以不再随主题切换 */
+  /* ---------- ⑧ 中性墨 / 中性白：低透明度压暗与提亮（深浅两主题通用） ---------- */
   --ink-1: rgba(0, 0, 0, 0.06);
   --ink-2: rgba(0, 0, 0, 0.12);
   --ink-3: rgba(0, 0, 0, 0.25);
@@ -95,76 +116,114 @@
   --white-3: rgba(255, 255, 255, 0.24);
   --white-4: rgba(255, 255, 255, 0.80);
 
-  /* ---------- 兼容别名 / 曾引用但未定义导致颜色失效的旧名 ---------- */
-  --card: var(--panel);
-  --text2: var(--text-dim);
-  --mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  /* ---------- ⑨ 尺度（TrieCode 规范）：圆角 / 动效 / 控件高 / 栏高 ---------- */
+  --radius-2xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  --motion-fast: 0.12s;
+  --motion-base: 0.2s;
+  --motion-slow: 0.35s;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --control-height-sm: 26px;
+  --control-height-md: 32px;
+  --control-height-lg: 40px;
+
+  --toolbar-height: 36px;
+  --statusbar-height: 21px;
+  --vscode-sash-size: 4px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+
   --font-sans: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
-  /* 以下旧名原本无人定义，静默回退成透明/黑色，这里补齐到语义等价 token */
-  --bg2: var(--panel-hover);
-  --panel-1: var(--panel);
-  --panel-alt: var(--panel-2);
-  --bg-panel: var(--panel);
-  --hover: var(--panel-hover);
-  --pink: var(--danger);
-  --border-radius-md: 6px;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --mono: var(--font-mono);
+
+  /* ---------- ⑩ 兼容别名：旧 codelab 语义名 -> 新令牌（迁移期安全网） ---------- */
+  --bg: var(--surface-0);
+  --bg2: var(--surface-hover);
+  --bg-panel: var(--surface-1);
+  --panel: var(--surface-1);
+  --panel-1: var(--surface-1);
+  --panel-2: var(--surface-2);
+  --panel-alt: var(--surface-2);
+  --panel-hover: var(--surface-hover);
+  --hover: var(--surface-hover);
+  --card: var(--surface-1);
+  --active-tab: var(--surface-1);
+  --titlebar-bg: var(--surface-1);
+  --statusbar-bg: var(--surface-1);
+  --activitybar-bg: var(--surface-2);
+  --text-dim: var(--text-2);
+  --text2: var(--text-2);
+  --border-radius-md: var(--radius-md);
+  --danger: var(--error);
+  --danger-soft: var(--error-soft);
+  --danger-soft-weak: var(--error-soft-weak);
+  --pink: var(--error);
+  --accent-soft-weak: var(--accent-glow);
 }
 
-/* ==========================================================================
-   深色主题：只覆盖上面这些 token，业务 CSS 不动
-   ========================================================================== */
+/* ============================================================================
+   深色主题：只覆盖上面这些 token，业务 CSS 不动（取值以 TrieCode v1.3.1 为准）
+   ============================================================================ */
 [data-theme='dark'] {
-  --bg: #10141c;
-  --panel: #161b26;
-  --panel-2: #1e2735;
-  --panel-hover: #232d3d;
-  --activitybar-bg: #131924;
-  --titlebar-bg: #161b26;
-  --statusbar-bg: #161b26;
-  --active-tab: #1e2735;
+  /* TrieCode 默认深色：灰蓝调，不是深紫也不是纯黑 */
+  --surface-0: #0d1117;
+  --surface-1: #131820;
+  --surface-2: #1a212b;
+  --surface-3: #232c38;
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --surface-active: rgba(255, 255, 255, 0.11);
 
-  --border: #232d3d;
-  --border-strong: #33405a;
+  --border: #2b333d;
+  --border-strong: #3a4450;
+  --border-weak: #20262e;
 
-  --text: #e8ecf4;
-  --text-dim: #8a93a6;
-  --text-muted: #6b7488;
+  --text: #e6edf3;
+  --text-2: #9da7b3;
+  --text-3: #9aa2ad;
+  --text-strong: #f0f6fc;
 
-  --on-accent: #ffffff;
-  --on-dark: #ffffff;
-  --on-light: #10141c;
+  --on-light: #171a21;
 
-  /* 深色底上把蓝色提亮，否则 --accent 在 --panel 上对比度不够 */
-  --accent: #4f8cff;
-  --accent-hover: #6ba0ff;
-  --accent-soft: rgba(79, 140, 255, 0.18);
-  --accent-soft-weak: rgba(79, 140, 255, 0.07);
-  --accent-text: #6ba0ff;
+  /* 蓝在深色主题下提亮保持对比度 */
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-soft: rgba(59, 130, 246, 0.14);
+  --accent-glow: rgba(59, 130, 246, 0.22);
+  --accent-text: var(--accent-hover);
 
   --accent-2: #4ade80;
   --violet: #a78bfa;
   --violet-soft: rgba(167, 139, 250, 0.18);
+  --violet-soft-weak: rgba(167, 139, 250, 0.06);
 
   --success: #4ade80;
-  --success-soft: rgba(74, 222, 128, 0.14);
+  --success-soft: rgba(74, 222, 128, 0.12);
   --success-soft-weak: rgba(74, 222, 128, 0.05);
 
-  --warning: #fb923c;
-  --warning-soft: rgba(251, 146, 60, 0.14);
-  --warning-soft-weak: rgba(251, 146, 60, 0.06);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --warning-soft-weak: rgba(251, 191, 36, 0.06);
 
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.16);
-  --danger-soft-weak: rgba(248, 113, 113, 0.06);
+  --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.12);
+  --error-soft-weak: rgba(248, 113, 113, 0.06);
 
   --info: #60a5fa;
   --info-soft: rgba(96, 165, 250, 0.16);
 
   --neutral-soft: rgba(148, 163, 184, 0.18);
-
-  /* 终端区在深浅主题下都保持深色（这是产品决定，不是跟随） */
-  --terminal-bg: #1e1e1e;
-  --terminal-text: #d4d4d4;
 
   --file-default: #8b949e;
   --file-ts: #79b8ff;
@@ -173,8 +232,8 @@
   --file-func: #e1c07b;
 
   --overlay: rgba(0, 0, 0, 0.62);
-  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.40);
-  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.50);
-  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.55);
   --shadow-hi: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
