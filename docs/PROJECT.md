@@ -194,8 +194,7 @@ OpenAI 兼容档（openai / deepseek / qwen）直连 `/chat/completions`；**Gem
 - [ ] 服务端配 `OPENAI_API_KEY` / `GEMINI_API_KEY`（未配则对应模型走演示回复）
 - [ ] ESP-IDF 工具链真机实测（menuconfig 内嵌终端 / 分区表 / Kconfig 三块只有静态自检，没跑过真板）
 - [ ] Agent 并发调度与自动记忆的真机回归（T1~T4 自检 20/0、18/0，未上真模型）
-- [ ] `KconfigEditor.tsx` / `PartitionEditor.tsx` 硬编码 hex 改走 theme.css 令牌（违反 §13「唯一颜色源」，code-review 查出；`SerialPlotter.tsx` 的 `cssColor()` 是可复用范式）
-- [ ] 两编辑器重复的 overlay/panel/btn 样式抽成共享 modal 样式表
+- [x] `KconfigEditor.tsx` / `PartitionEditor.tsx` 硬编码 hex 改走 theme.css 令牌（抽出 `components/modalStyles.ts`，新增 `scripts/scan-renderer-hex.mjs` 守规范，当前 0 命中）
 
 ---
 
@@ -368,3 +367,5 @@ node scripts/check-*.mjs                # 受影响的那些
 | `scripts/check-agent-context.mjs` | `isConcurrencySafe` 默认值推导、上下文治理「先无损后破坏性」顺序、token 估算含 tool_calls |
 | `src/main/services/updateService.ts` | 强制/普通更新：元数据取 `update.json`（可带 forceUpdate），缺失回退解析 `latest.yml`，`/S` 静默安装 |
 | `scripts/scan-ipc-handlers.mjs` 等扫描四件套 | 改 preload/main 通道后必跑，期望 0 命中 |
+| `scripts/scan-renderer-hex.mjs` | 渲染层硬编码 hex/rgb 扫描，期望 0 命中（只豁免 `cssColor` 兜底参数与 FALLBACK/PALETTE 常量块） |
+| `src/renderer/src/components/modalStyles.ts` | 模态框共用样式（overlay/panel/header/footer/按钮/输入框/语义色），两个 ESP-IDF 编辑器共用 |
