@@ -21,6 +21,8 @@ export type DiagnosticCategory =
   | 'toolchain_missing' // 工具链缺失
   | 'permission' // 权限/只读/占用
   | 'warning' // 警告（deprecated / unused 等）
+  | 'missing_library' // 链接器找不到 -lXXX（库未安装/未参与链接）
+  | 'size_overflow' // 固件超出芯片容量（分区/PSRAM/裁剪）
   | 'other'
 
 export interface BuildDiagnostic {
@@ -253,7 +255,8 @@ const KNOWN_NOTES: Array<{ re: RegExp; label: string }> = [
   { re: /BT: forcing BR\/EDR max sync conn eff to 1/i, label: 'ESP32 经典蓝牙栈提示' },
   { re: /#pragma message\(".*Skipping.*"\)/i, label: 'ESP32 平台提示' },
   { re: /this use of \w+ is deprecated/i, label: 'API 弃用提示（仍可编译）' },
-  { re: /multiple definition of .*select\(\)/i, label: '新 IDF 头文件与旧宏重复（无害）' }
+  { re: /multiple definition of .*select\(\)/i, label: '新 IDF 头文件与旧宏重复（无害）' },
+  { re: /Multiple libraries were found for/i, label: '多个库冲突（编译器自动选一个，如需指定优先库可在库管理卸载冲突库）' }
 ]
 
 const CATEGORY_LABEL: Record<DiagnosticCategory, string> = {
@@ -270,6 +273,8 @@ const CATEGORY_LABEL: Record<DiagnosticCategory, string> = {
   toolchain_missing: '工具链缺失',
   permission: '权限/占用',
   warning: '警告',
+  missing_library: '链接库缺失（-l 未找到）',
+  size_overflow: '固件超出容量',
   other: '其他错误'
 }
 
@@ -471,6 +476,20 @@ const RULES: Rule[] = [
     re: /(arduino-cli|avr-gcc|xtensa-esp[0-9a-z-]*-elf-gcc)\b\s*:?\s*(not found|is not recognized|command not found)/i,
     category: 'toolchain_missing',
     hint: '工具链缺失：在「设置 → 工具链」点一键安装 arduino-cli，或手动安装后配置路径。'
+  },
+  // ── 链接库缺失（ld 找不到 -lXXX） ──
+  {
+    re: /(ld: )?cannot find -l(\S+)/i,
+    category: 'missing_library',
+    hint: (m) =>
+      `链接器找不到库 -l${m[2] || ''}：该库未安装或未参与链接。Arduino 第三方库若含 .c/.cpp 会被自动链；` +
+      '若用平台/外部库请确认：①库已安装 ②FQBN/平台正确 ③PlatformIO/IDF 的 lib_deps 已声明。可试 arduino-cli lib install 安装对应库。'
+  },
+  // ── 固件超出芯片容量 ──
+  {
+    re: /(region\s+'[^']+'\s+overflowed by|section\s+'[^']+'\s+will not fit|Sketch too big|'\S+'\s+segment data does not fit|available space is not enough|DRAM segment data does not fit)/i,
+    category: 'size_overflow',
+    hint: '固件超出芯片容量：①用分区表编辑器扩大 app 分区（如 default_8MB / 自定义分区）②删减不用的库与功能 ③降低日志/缓冲区 ④ESP32 可改 Flash 大小或开启 PSRAM。'
   }
 ]
 
@@ -564,7 +583,13 @@ export function parseBuildOutput(text: string): BuildReport {
     }
     // 无位置信息，但命中了明确的错误签名（如 esptool / arduino-cli / 链接器 的整行报错）。
     // undefined_reference / multiple_definition 是强签名，无需再要求行内含 "error" 字样。
-    const strongSignature = hit?.category === 'undefined_reference' || hit?.category === 'multiple_definition'
+    // #8 收尾：缺库链接（ld: cannot find -lX）与固件超容量（region ... overflow / Sketch too big）
+    // 同样没有 error 关键字，但确属编译失败，一并列为强签名。
+    const strongSignature =
+      hit?.category === 'undefined_reference' ||
+      hit?.category === 'multiple_definition' ||
+      hit?.category === 'missing_library' ||
+      hit?.category === 'size_overflow'
     if (hit && (strongSignature || /error|fatal|failed|not found|denied|Timed out/i.test(raw))) {
       errors.push({
         category: hit.category,

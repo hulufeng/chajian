@@ -225,6 +225,50 @@ const check = (name, cond, detail) => {
   check('  ↳ 空输出进度为 null', p === null)
 }
 
+// ── #8 收尾：缺库链接（-l 未找到） ────────────────────────────────────────
+{
+  // 真实 ld 输出形态：链接器整行报错，不带 file:line: error: 前缀
+  const text = [
+    '/tmp/sk/sketch/sketch.ino.cpp.o: in function `setup()',
+    'ld: cannot find -lbt',
+    'collect2: error: ld returned 1 exit status'
+  ].join('\n')
+  const r = parseBuildOutput(text)
+  check('⑧-1 缺库链接识别为 missing_library', r.errors.some((e) => e.category === 'missing_library'), r.errors.map((e) => e.category).join(','))
+  check('  ↳ 真实缺库原因排在 collect2 收尾行之前', r.errors[0]?.category === 'missing_library', r.errors.map((e) => e.category).join(','))
+}
+
+// ── #8 收尾：固件超出芯片容量 ──────────────────────────────────────────────
+{
+  // ESP32 分区溢出真实形态（region 'iram0_0_seg' overflowed by N bytes）
+  const text = [
+    'xtensa-esp32-elf-g++.exe: region `iram0_0_seg\' overflowed by 1234 bytes',
+    'Sketch too big; see https://... for tips'
+  ].join('\n')
+  const r = parseBuildOutput(text)
+  check('⑧-2 分区溢出识别为 size_overflow', r.errors.some((e) => e.category === 'size_overflow'), r.errors.map((e) => e.category).join(','))
+  check('  ↳ Sketch too big 也归 size_overflow', r.errors.filter((e) => e.category === 'size_overflow').length >= 1, JSON.stringify(r.errors.map((e) => e.category)))
+}
+
+// ── #8 收尾：类型错误（no matching function）锁定覆盖 ──────────────────────
+{
+  const text = [
+    '/tmp/sk/sketch.ino:12:30: error: no matching function for call to \'digitalWrite(int, const char [4])\'',
+    '  127 |   digitalWrite(LED, "high");',
+    '      |                   ^~~~~~~'
+  ].join('\n')
+  const r = parseBuildOutput(text)
+  check('⑧-3 类型错识别为 type_error 且带定位', r.errors[0]?.category === 'type_error' && r.errors[0]?.line === 12, JSON.stringify({ c: r.errors[0]?.category, l: r.errors[0]?.line }))
+}
+
+// ── #8 收尾：多库冲突是已知无害提示（不进 errors） ────────────────────────
+{
+  const text = 'Multiple libraries were found for "Adafruit SSD1306":\n  Used: C:\\Users\\x\\libraries\\Adafruit_SSD1306\n  Not used: D:\\y\\Adafruit_SSD1306'
+  const r = parseBuildOutput(text)
+  check('⑧-4 多库冲突不进 errors', r.errorCount === 0, `errorCount=${r.errorCount}`)
+  check('  ↳ 被记成已知提示（可忽略）', r.knownNotes.some((n) => /多个库冲突/.test(n.label || '')), JSON.stringify(r.knownNotes.map((n) => n.label)))
+}
+
 console.log(`[diag] 通过 ${pass} 项`)
 if (fails.length) {
   console.log(`[diag] ✗ 失败 ${fails.length} 项`)

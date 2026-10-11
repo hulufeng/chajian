@@ -18,6 +18,7 @@ import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginMa
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
 import { load as loadHostAdapter, hostManifest as hostAdapterManifest } from './plugins/hostAdapter'
 import { load as loadEspIdfPlugin, manifest as espIdfManifest } from './plugins/esp-idf-toolchain'
+import { load as loadSvdQueryPlugin, manifest as svdQueryManifest } from './plugins/svd-query'
 import { compileProject as espIdfCompile, flashProject as espIdfFlash, listTargetsSync as espIdfListTargets, setTargetSync as espIdfSetTarget, detectEspIdf as espIdfDetect, menuconfigCmd as espIdfMenuconfigCmd, readPartitions as espIdfReadPartitions, writePartitions as espIdfWritePartitions, readSdkconfig as espIdfReadSdkconfig, writeSdkconfig as espIdfWriteSdkconfig, kconfigSchema as espIdfKconfigSchema, kconfigVisibility as espIdfKconfigVisibility } from './services/espIdf'
 import {
   installPlugin,
@@ -339,6 +340,8 @@ function initPlugins(): void {
   pluginManager.registerBuiltin(espIdfManifest, loadEspIdfPlugin)
   // 宿主能力：把串口会话等宿主接口暴露成命令，供已安装插件通过通道调用
   pluginManager.registerBuiltin(hostAdapterManifest, loadHostAdapter)
+  // SVD 寄存器查询（NeuralInverse #7）：做成内置插件，数据 GitHub 托管 espressif/svd，pluginManager 发现
+  pluginManager.registerBuiltin(svdQueryManifest, loadSvdQueryPlugin)
   // 已装插件（userData/plugins/*）：装完即接入命令面板 / 设备面板 / Agent 工具集
   const loaded = scanInstalledPlugins()
   console.log(

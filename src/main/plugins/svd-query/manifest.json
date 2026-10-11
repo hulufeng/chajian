@@ -1,0 +1,44 @@
+{
+  "id": "svd-query",
+  "name": "svd-query",
+  "displayName": "SVD 寄存器查询",
+  "version": "0.1.0",
+  "developer": "LabCode",
+  "description": "乐鑫官方 CMSIS-SVD 寄存器/位域/绝对地址精确查询。数据来自 espressif/svd（Apache-2.0，GitHub 托管，不进安装包、不进服务器）。写裸寄存器/改外设配置前必须用本工具核对，禁止凭记忆写寄存器地址或位域。",
+  "minAppVersion": "0.1.0",
+  "entry": "./index.ts",
+  "capabilities": {
+    "svd-query": { "transport": "backend", "service": "svd", "method": "query" }
+  },
+  "tools": [
+    {
+      "name": "svd_query",
+      "description": "查询芯片寄存器的精确信息（地址、偏移、位宽、位域、复位值来源）——数据来自乐鑫官方 CMSIS-SVD（espressif/svd，Apache-2.0）。写裸寄存器/改外设配置前必须用本工具核对，禁止凭记忆写寄存器地址或位域。",
+      "transport": "backend",
+      "category": "query",
+      "backend": { "backendId": "svd", "method": "query" },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "description": "操作类型", "enum": ["list", "peripherals", "reg", "peripheral", "install", "import", "remove"] },
+          "chip": { "type": "string", "description": "芯片型号，如 esp32s3 / esp32c3 / esp32（默认 esp32s3）" },
+          "name": { "type": "string", "description": "reg 用：寄存器名（如 GPIO_OUT / UART_CLKDIV，支持模糊）；peripheral 用：外设名（如 GPIO / UART0）" },
+          "peripheral": { "type": "string", "description": "reg 用：限定外设（如 GPIO），避免同名寄存器跨外设歧义" },
+          "exact": { "type": "boolean", "description": "reg 用：是否精确匹配寄存器名，默认 false（模糊）" },
+          "path": { "type": "string", "description": "import 用：本地 .svd 文件绝对路径" },
+          "force": { "type": "boolean", "description": "install 用：已安装时是否强制重新下载，默认 false" }
+        },
+        "required": ["action"]
+      }
+    }
+  ],
+  "channels": {
+    "internal": [],
+    "backend": ["svd.query"],
+    "cli": [],
+    "http": [],
+    "grpc": [],
+    "mcp": [],
+    "mqtt": []
+  }
+}

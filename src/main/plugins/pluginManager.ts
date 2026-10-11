@@ -227,6 +227,16 @@ export class PluginManager {
     this.builtins.push({ manifest, load })
   }
 
+  /** 随应用内置的插件 id 列表（始终已加载，无需安装） */
+  getBuiltinIds(): string[] {
+    return this.builtins.map((b) => b.manifest.id ?? '').filter(Boolean)
+  }
+
+  /** 某插件是否随应用内置（已加载、installPlugin 应短路为免装） */
+  isBuiltin(id: string): boolean {
+    return this.builtins.some((b) => b.manifest.id === id)
+  }
+
   /** 从磁盘目录加载插件（manifest 声明式发现，兼容 plugin.json / manifest.json） */
   loadFromDir(dir: string): void {
     try {

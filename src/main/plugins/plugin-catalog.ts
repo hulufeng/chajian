@@ -148,4 +148,21 @@ export const DEFAULT_CATALOG: CatalogEntry[] = [
     },
     'plugin-demo/plugin-dev-toolchain.zip'
   ),
+  // SVD 寄存器查询：随应用内置的源码插件（src/main/plugins/svd-query），始终已加载、无需下载安装。
+  // 数据来自乐鑫官方 espressif/svd（Apache-2.0，GitHub 托管），不进安装包、不进服务器。
+  // 无 zip 包（源码内置），url/sha256 留空，installPlugin 会按内置插件短路。
+  {
+    id: 'svd-query',
+    name: 'svd-query',
+    displayName: 'SVD 寄存器查询',
+    version: '0.1.0',
+    description: '乐鑫官方 CMSIS-SVD 寄存器/位域/绝对地址精确查询。数据来自 espressif/svd（Apache-2.0，GitHub 托管，不进安装包、不进服务器）。写裸寄存器/改外设配置前必须用本工具核对，禁止凭记忆写寄存器地址或位域。',
+    author: 'CodeLab 官方',
+    source: '内置源（SVD 数据来自 espressif/svd，Apache-2.0）',
+    url: '',
+    sha256: '',
+    exposes: ['svd_query'],
+    minAppVersion: '0.1.0',
+    tier: 'official',
+  },
 ]

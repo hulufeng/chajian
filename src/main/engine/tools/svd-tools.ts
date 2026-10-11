@@ -16,7 +16,7 @@ import {
   hex
 } from '../../services/debug/svdService'
 
-const svdQuery: ToolDefinition = {
+export const svdQuery: ToolDefinition = {
   name: 'svd_query',
   description:
     '查询芯片寄存器的精确信息（地址、偏移、位宽、位域、复位值来源）——数据来自乐鑫官方 CMSIS-SVD（espressif/svd，Apache-2.0），与官方逐字一致。' +

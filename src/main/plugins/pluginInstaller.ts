@@ -228,6 +228,17 @@ export async function installPlugin(
   const entry = DEFAULT_CATALOG.find((e) => e.id === id)
   if (!entry) return { ok: false, needConfirm: false, error: `清单里没有插件 ${id}` }
 
+  // 随应用内置的源码插件（如 svd-query）：已加载、无需下载安装，直接视为已装成功。
+  if (pluginManager.isBuiltin(id)) {
+    emit?.(`✔ ${entry.displayName} 随应用内置，无需安装`)
+    return {
+      ok: true,
+      needConfirm: false,
+      entry,
+      summary: { id, name: entry.name, displayName: entry.displayName, version: entry.version, loaded: true },
+    }
+  }
+
   // 信任分级：官方插件随应用分发、已审计，首次安装免确认；
   // 第三方 / 本地市场插件首次安装必须弹确认卡，用户同意后带 trust=true 重调。
   if (!isTrusted(id) && opts.trust !== true && entry.tier !== 'official') {
@@ -381,7 +392,11 @@ export function scanInstalledPlugins(): Array<{ manifest: { name: string; displa
 /** 给设置页用：可用（清单）+ 已装 合并成一个列表 */
 export async function listPlugins(emit?: Emit): Promise<Array<CatalogEntry & { installed?: boolean; trusted?: boolean }>> {
   const catalog = await loadCatalog(emit)
-  const installed = new Set(installedPlugins().map((p) => p.name))
+  // 已装 = 磁盘已装 ∪ 随应用内置（源码内置插件如 svd-query 始终已加载）
+  const installed = new Set<string>([
+    ...installedPlugins().map((p) => p.name),
+    ...pluginManager.getBuiltinIds(),
+  ])
   return catalog.map((e) => ({
     ...e,
     installed: installed.has(e.name) || installed.has(e.id),
