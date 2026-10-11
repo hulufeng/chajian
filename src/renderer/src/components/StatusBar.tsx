@@ -35,6 +35,9 @@ interface Props {
   deepCheck?: { status: 'idle' | 'pending' | 'ok' | 'error'; summary: string; text: string }
   /** 点击层2 圆点：展开完整编译报告（App 负责打进输出面板） */
   onDeepCheckClick?: () => void
+  /** 当前界面语言：状态栏直接点击切换（改设置还要开弹窗，太远） */
+  language?: 'zh' | 'en'
+  onToggleLanguage?: () => void
 }
 
 type Dot = { color: string; text: string; title: string; onClick?: () => void }
@@ -60,6 +63,8 @@ function dot(d: Dot | null): React.JSX.Element | null {
  * 用户为了确认「刚才那下到底成没成」要来回切面板。
  */
 function StatusBar({
+  language,
+  onToggleLanguage,
   toolchain,
   projectRoot,
   port,
@@ -190,6 +195,19 @@ function StatusBar({
       </span>
       <span className="sep">|</span>
       <span>UTF-8</span>
+      {language && onToggleLanguage && (
+        <>
+          <span className="sep">|</span>
+          <span
+            className="sb-item"
+            style={{ cursor: 'pointer' }}
+            onClick={onToggleLanguage}
+            title={`点击切换为${language === 'zh' ? 'English' : '中文（简体）'}`}
+          >
+            {language === 'zh' ? '中' : 'EN'}
+          </span>
+        </>
+      )}
     </footer>
   )
 }

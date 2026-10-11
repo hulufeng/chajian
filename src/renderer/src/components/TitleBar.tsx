@@ -97,6 +97,9 @@ interface TitleBarProps {
   onOpenSettings: () => void
   onCompile: () => void
   onUpload: () => void
+  /** 当前打开项目对应 active 工具链声明的 capability 键（来自主进程 plugin:projectCapabilities）。
+   *  为空表示无匹配工具链 → 编译/烧录/板卡按钮全部隐藏（对齐 TrieCode P0-2）。 */
+  capabilities: string[]
   onToggleTerminal: () => void
   onToggleDebug: () => void
   debugVisible: boolean
@@ -122,13 +125,23 @@ interface TitleBarProps {
 
 function TitleBar({
   onNewProject, onNewFile, onOpenProject, onSave, onCloseProject, onExit,
-  onToggleTheme, onOpenSettings, onCompile, onUpload,   onToggleTerminal, onToggleDebug, debugVisible, terminalVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
+  onToggleTheme, onOpenSettings, onCompile, onUpload, capabilities, onToggleTerminal, onToggleDebug, debugVisible, terminalVisible, onToggleTarget, targetVisible, onToggleGit, gitVisible,
   leftPanelVisible, editorVisible, onToggleLeftPanel, onToggleEditor,
   busy, compileState, theme, simple, onToggleSimple, onOpenSearch,
 }: TitleBarProps): React.JSX.Element {
+  // 能力驱动：active 工具链未声明该能力 → 对应按钮隐藏（对齐 TrieCode P0-2）
+  const caps = capabilities ?? []
+  const canCompile = caps.includes('compile')
+  const canUpload = caps.includes('upload')
+  const canBoard = caps.includes('board-manage') || caps.includes('board-select') || caps.includes('board-search')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [isMaximized, setIsMaximized] = useState(false)
   const barRef = useRef<HTMLElement>(null)
+  // 宿主真实版本：从主进程取，别在 UI 写死（之前关于弹窗硬编码 0.2.0，跟实际包对不上）
+  const [appVersion, setAppVersion] = useState<string>('')
+  useEffect(() => {
+    window.api?.app?.version?.().then(setAppVersion).catch(() => {})
+  }, [])
 
   useEffect(() => {
     window.api?.window?.isMaximized?.().then(setIsMaximized).catch(() => {})
@@ -187,7 +200,7 @@ function TitleBar({
         void window.api?.diag?.export?.()
         break
       case 'about':
-        alert('LabCode 代码实验室\n写码 · 烧录 · AI 辅助 · 排错，一个工具搞定\n版本 0.2.0')
+        alert(`LabCode 代码实验室\n写码 · 烧录 · AI 辅助 · 排错，一个工具搞定\n版本 ${appVersion || '1.1.3'}`)
         break
     }
   }
@@ -234,7 +247,7 @@ function TitleBar({
   }
 
   return (
-    <header className={`titlebar triecode${simple ? ' simple' : ''}`} ref={barRef}>
+    <header className={`titlebar labcode${simple ? ' simple' : ''}`} ref={barRef}>
       {/* ── 左段：LOGO + 通知 + 设置（对齐 TrieCode 顶栏左半部分顺序） ── */}
       <div className="titlebar-drag">
         <span className="titlebar-logo" title="LabCode 代码实验室">
@@ -336,6 +349,7 @@ function TitleBar({
 
       {/* ── 右段：工具 → 窗口控制（对齐 TrieCode 顺序：编译→烧录→串口→终端→搜索→min/max/close） ── */}
       <div className="titlebar-tools tc-tools">
+        {canCompile && (
         <button
           className={`tb-btn tc-compile ${compileState === 'success' ? 'tb-success' : ''} ${compileState === 'error' ? 'tb-error' : ''}`}
           {...hint('compile', {
@@ -355,7 +369,9 @@ function TitleBar({
           )}
           {simple && <span className="tb-btn-text">编译</span>}
         </button>
+        )}
 
+        {canUpload && (
         <button
           className={`tb-btn tc-upload`}
           {...hint('upload')}
@@ -364,6 +380,7 @@ function TitleBar({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
           {simple && <span className="tb-btn-text">烧录</span>}
         </button>
+        )}
 
         {!simple && (
           <>
@@ -385,6 +402,7 @@ function TitleBar({
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M6.5 8v8M9 5.5h4a4.5 4.5 0 0 1 4.5 4M15 14.6a4.5 4.5 0 0 1-4.5 3.9H9"/></svg>
             </button>
+            {canBoard && (
             <button
               className={`tb-btn tb-icon-btn ${targetVisible ? 'tb-success' : ''}`}
               {...hint('target')}
@@ -393,6 +411,7 @@ function TitleBar({
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5H6.5M3 14.5H6.5M17.5 9.5H21M17.5 14.5H21"/></svg>
             </button>
+            )}
 
             <div className="tb-sep" />
             {/* TrieCode 三个标准快捷：串口监视 / 终端 / 搜索 */}

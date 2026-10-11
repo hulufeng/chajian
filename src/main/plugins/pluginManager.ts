@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { validateManifest, isValidManifest } from './validate-manifest'
@@ -376,6 +376,47 @@ export class PluginManager {
     return result
   }
 
+  /**
+   * 检测某项目根目录由哪个「工具链插件」托管，返回该插件声明的 capability 键数组。
+   * 渲染层据此动态显隐标题栏的编译/烧录/板卡按钮（对齐 TrieCode P0-2：
+   * capabilities.includes('compile') 才显示编译按钮）。
+   * 无匹配项目 / 目录不可读 / 插件无 capabilities 时返回 []（→ 标题栏不显示工具链按钮）。
+   */
+  getProjectCapabilities(root: string): string[] {
+    if (!root || !existsSync(root)) return []
+    const plugin = this.loaded.find((p) => this.matchProjectDetection(p.manifest, root))
+    if (!plugin || !plugin.manifest.capabilities) return []
+    return Object.keys(plugin.manifest.capabilities)
+  }
+
+  /** 项目类型探测：遍历插件 manifest 的 projectDetection.markers（file/ext + 可选 contains） */
+  private matchProjectDetection(m: PluginManifest, root: string): boolean {
+    const pd = (m as unknown as { projectDetection?: { markers?: Array<{ file?: string; ext?: string; contains?: string }> } }).projectDetection
+    if (!pd || !Array.isArray(pd.markers)) return false
+    for (const marker of pd.markers) {
+      if (marker.file) {
+        const fp = join(root, marker.file)
+        if (!existsSync(fp)) continue
+        if (marker.contains) {
+          try {
+            if (!readFileSync(fp, 'utf8').includes(marker.contains)) continue
+          } catch {
+            continue
+          }
+        }
+        return true
+      }
+      if (marker.ext) {
+        try {
+          if (readdirSync(root).some((f) => f.toLowerCase().endsWith(marker.ext!.toLowerCase()))) return true
+        } catch {
+          /* 目录不可读则跳过该 marker */
+        }
+      }
+    }
+    return false
+  }
+
   /** 聚合所有插件声明的技能（skills[]）——给 Agent / 命令面板做能力引导 */
   getSkills(): Array<{ plugin: string; name: string; description: string; prompt?: string }> {
     const out: Array<{ plugin: string; name: string; description: string; prompt?: string }> = []
@@ -441,6 +482,38 @@ export class PluginManager {
           icon: p.manifest.icon,
           selectors: (dp.selectors as Array<Record<string, unknown>>) || [],
           actions: (dp.actions as Array<Record<string, unknown>>) || []
+        })
+      }
+    }
+    return result
+  }
+
+  /**
+   * 获取所有插件声明的视图（views）—— P2-20。
+   *
+   * 此前 `views` 只在 validate-manifest 里做校验，没有任何聚合 / 分发 / IPC，
+   * 是一个纯声明零实现的空壳字段；渲染层的侧边栏 tab 与底部面板 tab 全是硬编码。
+   * 本方法补上聚合侧，让 manifest.views[].slot 能真正驱动 UI。
+   *
+   * slot 取值受 manifest schema 约束：'sidebar' | 'activitybar' | 'panel'。
+   * type === 'webview' 时 entry 必填（schema 保证），指向插件内的 html。
+   */
+  getViews(): Array<{ plugin: string; id: string; title: string; icon?: string; slot: string; type: string; entry?: string }> {
+    const result: Array<{ plugin: string; id: string; title: string; icon?: string; slot: string; type: string; entry?: string }> = []
+    for (const p of this.loaded) {
+      const views = p.manifest.views
+      if (!Array.isArray(views)) continue
+      for (const raw of views) {
+        const v = raw as Record<string, unknown>
+        if (!v || typeof v.id !== 'string' || typeof v.slot !== 'string') continue
+        result.push({
+          plugin: p.manifest.name,
+          id: v.id,
+          title: (v.title as string) || v.id,
+          icon: (v.icon as string) || undefined,
+          slot: v.slot,
+          type: (v.type as string) || 'webview',
+          entry: typeof v.entry === 'string' ? v.entry : undefined
         })
       }
     }

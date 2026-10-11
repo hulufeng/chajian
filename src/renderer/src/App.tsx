@@ -9,6 +9,7 @@ import { type Groups, createGroup, openTab, closeTab, findTabLocation, flattenTa
 import OutputPanel from './components/OutputPanel'
 import AiPanel from './components/AiPanel'
 import NewProjectDialog, { type ProjectTypeItem } from './components/NewProjectDialog'
+import OpenProjectDialog from './components/OpenProjectDialog'
 import DebugPanel from './components/DebugPanel'
 import PlatformIOPanel from './components/PlatformIOPanel'
 import TargetPanel from './components/TargetPanel'
@@ -311,6 +312,8 @@ function App(): React.JSX.Element {
 
   // 工具链 / 串口
   const [toolchain, setToolchain] = useState<ToolchainStatus | null>(null)
+  // 当前打开项目对应的 active 工具链声明的 capability 键（标题栏编译/烧录/板卡按钮显隐，P0-2）
+  const [toolchainCapabilities, setToolchainCapabilities] = useState<string[]>([])
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32c3')
   // 板卡架构（由 fqbn 推导）：决定编辑器内置硬件片段与悬停文档的取向。
   // 纯字符串推导、开销可忽略，不必 useMemo。
@@ -429,9 +432,23 @@ function App(): React.JSX.Element {
     }
   }, [outputLog]) // eslint-disable-line react-hooks/exhaustive-deps
   const [showNewProject, setShowNewProject] = useState(false)
+  // 打开项目走应用内目录选择器（原生对话框 Shell 视图在本机不渲染）
+  const [showOpenProject, setShowOpenProject] = useState(false)
+  // P2-20：命令面板 open-view 请求切到某个插件视图（tab id）
+  const [sidebarRequest, setSidebarRequest] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState('general')
   const [language, setLanguage] = useState<'zh' | 'en'>(() => (localStorage.getItem('codelab-lang') as 'zh' | 'en') || 'zh')
+  // 动效偏好：system = 尊重系统的「减少动效」设置；on / off = 用户强制覆盖。
+  // 落到 <html data-motion>，由 main.css 统一收口，业务 CSS 不用各处判断。
+  const [motion, setMotion] = useState<'system' | 'on' | 'off'>(() => {
+    const v = localStorage.getItem('codelab-motion')
+    return v === 'on' || v === 'off' ? v : 'system'
+  })
+  useEffect(() => {
+    document.documentElement.setAttribute('data-motion', motion)
+    localStorage.setItem('codelab-motion', motion)
+  }, [motion])
   const [shell, setShell] = useState<ShellType>(() => (localStorage.getItem('codelab-shell') as ShellType) || 'powershell')
   // 编辑器偏好（字号/缩进/换行/minimap/字体）：单一 state，实时下发给 EditorArea + 设置面板
   const [editorSettings, setEditorSettings] = useState<EditorSettings>(() => loadEditorSettings())
@@ -609,6 +626,21 @@ function App(): React.JSX.Element {
       clearInterval(timer)
     }
   }, [projectRoot])
+
+  // 标题栏能力按钮：按当前打开项目的 active 工具链解析 capabilities，驱动编译/烧录/板卡按钮显隐（P0-2）
+  useEffect(() => {
+    if (!projectRoot) {
+      setToolchainCapabilities([])
+      return
+    }
+    let alive = true
+    window.api.plugin
+      .projectCapabilities(projectRoot)
+      .then((caps) => { if (alive) setToolchainCapabilities(Array.isArray(caps) ? caps : []) })
+      .catch(() => { if (alive) setToolchainCapabilities([]) })
+    return () => { alive = false }
+  }, [projectRoot])
+
   const [debugChip, setDebugChip] = useState<string | undefined>(undefined)
   const [leftPanelVisible, setLeftPanelVisible] = useState(!simple)
   const [editorVisible, setEditorVisible] = useState(true)
@@ -969,15 +1001,23 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // 打开项目
-  const openProject = useCallback(async () => {
-    const res = await window.api.project.open()
-    if (!res) return
-    window.api?.diag?.log('project:open', { root: res.root, treeNodes: res.tree ? 1 : 0 })
-    setProjectRoot(res.root)
-    setTree(res.tree)
-    setCwdHint(res.root)
-  }, [])
+  // 打开项目：拉起应用内目录选择器（原生 showOpenDialog 的 Shell 视图在本机不渲染）
+  const openProject = useCallback(() => setShowOpenProject(true), [])
+
+    // 选择器选定目录后真正打开工程
+    const openProjectPath = useCallback(async (p: string) => {
+      const res = await window.api.project.openPath(p)
+      if (!res) { setShowOpenProject(false); return }
+      setShowOpenProject(false)
+      if ('error' in res) {
+        pushOut((prev) => prev + `\n[打开项目失败] ${res.error}\n`)
+        return
+      }
+      window.api?.diag?.log('project:open', { root: res.root, treeNodes: res.tree ? 1 : 0 })
+      setProjectRoot(res.root)
+      setTree(res.tree)
+      setCwdHint(res.root)
+    }, [pushOut])
 
   const setCwdHint = useCallback((_root: string) => {
     /* cwd 由 projectRoot 派生，无需额外状态 */
@@ -1307,6 +1347,45 @@ function App(): React.JSX.Element {
       pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
       return
     }
+    // P0-2 路由：ESP-IDF 工程走 idf.py build（此按钮此前只支持 arduino，硬编码 .ino + grpc.compile）。
+    // 判据复用 P0-2 已解析出的 toolchainCapabilities：esp-idf 声明 board-select，arduino 是 board-search。
+    if (projectRoot && toolchainCapabilities.includes('board-select')) {
+      setCompileState('compiling')
+      setBusy(true)
+      ensureOutputVisible()
+      buildStartedAtRef.current = Date.now()
+      setBuildStartedAt(Date.now())
+      setBuildElapsedMs(0)
+      setBuildStage({ stage: 'prepare', label: '准备' })
+      setCompileProgress(null)
+      setEverBuilt(true)
+      pushOut((prev) => prev + `\n▶ [编译] ESP-IDF idf.py build  (${projectRoot})\n`)
+      const r = await window.api.espIdf.compile({ projectPath: projectRoot, port: selectedPort || undefined })
+      const tid = r?.ok ? r.taskId : undefined
+      if (tid) {
+        setActiveTaskId(tid)
+        pendingTasksRef.current.set(tid, () => undefined)
+        // ESP-IDF 首次构建要装工具链 + 编译 bootloader，给足 15 分钟兜底
+        guardTimerRef.current = setTimeout(() => {
+          if (pendingTasksRef.current.has(tid)) {
+            pendingTasksRef.current.delete(tid)
+            const msg = 'ESP-IDF 编译超时（15 分钟无响应），已复位状态。请重试。'
+            pushOut((prev) => prev + `\n[错误] ${msg}\n`)
+            // 补 setBuildError：否则「一键 AI 诊断 / AI 自动修复」按钮不出现（P1-10 确定性闭环）
+            setBuildError(msg)
+            setCompileState('error')
+            setBusy(false)
+          }
+        }, 900000)
+      } else {
+        const msg = `ESP-IDF 编译启动失败：${r?.error ?? '未知错误'}`
+        pushOut((prev) => prev + `[错误] ${msg}\n`)
+        setBuildError(msg)
+        setCompileState('error')
+        setBusy(false)
+      }
+      return
+    }
     if (!toolchain?.available || !toolchain.path) {
       pushOut((prev) => prev + '\n[错误] 未检测到 arduino-cli 工具链。\n')
       return
@@ -1384,7 +1463,7 @@ function App(): React.JSX.Element {
       setCompileState('error')
       setBusy(false)
     }
-  }, [toolchain, tree, activePath, fqbn, compileState, tabs, everBuilt])
+  }, [toolchain, tree, activePath, fqbn, compileState, tabs, everBuilt, projectRoot, toolchainCapabilities, selectedPort, ensureOutputVisible])
 
   const runUpload = useCallback(async () => {
     // 真机测试留痕：烧录最怕「端口 / 板卡 / 产物目录」三缺一，这里把三者都记下来
@@ -1396,6 +1475,44 @@ function App(): React.JSX.Element {
     // 门控最前：进行中再点击给明确反馈（避免静默吞掉像"卡死"）
     if (compileState === 'compiling' || compileState === 'uploading') {
       pushOut((prev) => prev + '\n[提示] 已有编译/烧录任务在进行中，请等待完成或查看输出面板。\n')
+      return
+    }
+    // P0-2 路由：ESP-IDF 工程烧录走 idf.py flash（绕开 arduino 的 .ino + grpc.upload 硬编码）。
+    if (projectRoot && toolchainCapabilities.includes('board-select')) {
+      if (!selectedPort) {
+        pushOut((prev) => prev + '\n[错误] 请先在工具栏选择串口端口。\n')
+        setCompileState('error')
+        return
+      }
+      setCompileState('uploading')
+      setBusy(true)
+      ensureOutputVisible()
+      buildStartedAtRef.current = Date.now()
+      setBuildStartedAt(Date.now())
+      setBuildElapsedMs(0)
+      pushOut((prev) => prev + `\n▶ [烧录] ESP-IDF idf.py -p ${selectedPort} flash  (${projectRoot})\n`)
+      const r = await window.api.espIdf.flash({ projectPath: projectRoot, port: selectedPort })
+      const tid = r?.ok ? r.taskId : undefined
+      if (tid) {
+        setActiveTaskId(tid)
+        pendingTasksRef.current.set(tid, () => undefined)
+        guardTimerRef.current = setTimeout(() => {
+          if (pendingTasksRef.current.has(tid)) {
+            pendingTasksRef.current.delete(tid)
+            const msg = 'ESP-IDF 烧录超时（15 分钟无响应），已复位状态。请重试。'
+            pushOut((prev) => prev + `\n[错误] ${msg}\n`)
+            setBuildError(msg)
+            setCompileState('error')
+            setBusy(false)
+          }
+        }, 900000)
+      } else {
+        const msg = `ESP-IDF 烧录启动失败：${r?.error ?? '未知错误'}`
+        pushOut((prev) => prev + `[错误] ${msg}\n`)
+        setBuildError(msg)
+        setCompileState('error')
+        setBusy(false)
+      }
       return
     }
     if (!toolchain?.available || !toolchain.path) {
@@ -1567,7 +1684,7 @@ function App(): React.JSX.Element {
       setBusy(false)
       await restoreSerial()
     }
-  }, [toolchain, tree, activePath, fqbn, selectedPort, compileState, tabs, serialOpen, baud, everBuilt])
+  }, [toolchain, tree, activePath, fqbn, selectedPort, compileState, tabs, serialOpen, baud, everBuilt, projectRoot, toolchainCapabilities, ensureOutputVisible])
 
   // 串口开关
   const toggleSerial = useCallback(async () => {
@@ -1602,7 +1719,13 @@ function App(): React.JSX.Element {
         pushOut((prev) => prev + `[命令面板] 命令 ${capId} 暂无绑定执行器\n`)
       }
     } else if (cmd.kind === 'open-view') {
-      pushOut((prev) => prev + `[命令面板] 视图系统待实现: ${cmd.view || cmd.id}\n`)
+      // P2-20：open-view 命令接到插件 views 登记表上。
+      // 此前这里只打印「视图系统待实现」，是 views 字段零实现的最后一处占位。
+      const viewId = cmd.view || cmd.id
+      // ToolchainSidebar 只在 activeSidebar === 'device' 时挂载，先切过去再请求切 tab
+      setActiveSidebar('device')
+      setSidebarRequest(`plugin:${cmd.plugin}:${viewId}`)
+      pushOut((prev) => prev + `[命令面板] 打开视图：${viewId}（插件 ${cmd.plugin}）\n`)
     }
   }, [])
 
@@ -1711,6 +1834,7 @@ function App(): React.JSX.Element {
         onOpenSettings={() => { setSettingsTab('general'); setShowSettings(true) }}
         onCompile={() => void runCompile()}
         onUpload={() => void runUpload()}
+        capabilities={toolchainCapabilities}
         onToggleTerminal={() => openPanel('output')}
         onToggleDebug={() => openPanel('debug')}
         debugVisible={bottomPanel === 'debug'}
@@ -1789,6 +1913,8 @@ function App(): React.JSX.Element {
               {activeSidebar === 'device' && (
                 <ToolchainSidebar
                   projectRoot={projectRoot}
+                  requestedTab={sidebarRequest}
+                  onRequestedTabHandled={() => setSidebarRequest(null)}
                   onOpenFile={(p, n) => void openFile(p, n || p.split(/[\\/]/).pop() || 'file')}
                   onBoardChange={(f, name) => {
                     setFqbn(f)
@@ -1946,12 +2072,25 @@ function App(): React.JSX.Element {
         onPrecheckClick={onPrecheckClick}
         deepCheck={deepCheck}
         onDeepCheckClick={onDeepCheckClick}
+        language={language}
+        onToggleLanguage={() => setLanguage((l) => {
+          const next = l === 'zh' ? 'en' : 'zh'
+          localStorage.setItem('codelab-lang', next)
+          return next
+        })}
       />
       {showNewProject && (
         <NewProjectDialog
           pluginTypes={pluginTypes}
           onClose={() => setShowNewProject(false)}
           onCreate={createProject}
+        />
+      )}
+      {showOpenProject && (
+        <OpenProjectDialog
+          initialPath={projectRoot}
+          onClose={() => setShowOpenProject(false)}
+          onPick={(p) => void openProjectPath(p)}
         />
       )}
       {showSettings && (
@@ -1969,6 +2108,8 @@ function App(): React.JSX.Element {
             setLanguage(l)
             localStorage.setItem('codelab-lang', l)
           }}
+          motion={motion}
+          onMotionChange={setMotion}
           defaultTab={settingsTab}
           projectRoot={projectRoot}
           version={appVersion}

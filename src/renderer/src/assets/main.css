@@ -401,12 +401,22 @@ body {
 .toolchain-tabs {
   display: flex; border-bottom: 1px solid var(--border);
   background: var(--surface-hover); flex-shrink: 0;
+  /* P2-20：插件可通过 manifest.views[] 继续往这条里加 tab（esp-idf 就贡献了 2 个），
+     侧栏宽度有限时必须允许横向滚动，且 tab 本身不能被压扁，
+     否则新增的插件 tab 会被裁在可视区外、根本点不到。 */
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.toolchain-tabs::-webkit-scrollbar { height: 4px; }
+.toolchain-tabs::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 2px;
 }
 .toolchain-tab {
   display: flex; align-items: center; gap: 4px;
   padding: 8px 12px; cursor: pointer; font-size: var(--text-sm);
   color: var(--text-2); border-bottom: 2px solid transparent;
   margin-bottom: -1px; transition: all 0.15s;
+  flex-shrink: 0; white-space: nowrap;
 }
 .toolchain-tab:hover { color: var(--text); background: var(--surface-0); }
 .toolchain-tab.active {
@@ -420,6 +430,8 @@ body {
 .toolchain-webview {
   width: 100%; height: 100%; border: none;
   background: var(--surface-0);
+  /* iframe 默认 inline 且高度不定，显式 block + 100% 撑满容器，否则看着像白屏 */
+  display: block;
 }
 /* 内置页面缺失时的降级说明：留一个能看清「为什么是空的」的位置，别白屏 */
 .toolchain-missing {
@@ -5276,6 +5288,33 @@ html, body {
 .serial-wrap .mono-log {
   flex: 1;
   min-height: 0;
+}
+
+/* ============================================================================
+   动效偏好收口：data-motion 由 App 落到 <html>（system / on / off）。
+   业务 CSS 一律用 --motion-* 变量，这里只做总开关，不散落到各处。
+   - system：尊重系统的「减少动效」(见上方 @media prefers-reduced-motion)
+   - off：强制关闭所有动画/过渡（无障碍 / 低性能机器）
+   - on：即便系统要求减少动效也照常播放
+   ============================================================================ */
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-motion='on'] *,
+  html[data-motion='on'] *::before,
+  html[data-motion='on'] *::after {
+    animation-duration: var(--motion-base) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--motion-base) !important;
+    scroll-behavior: smooth !important;
+  }
 }
 .serial-controls {
   display: flex;

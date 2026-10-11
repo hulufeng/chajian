@@ -313,12 +313,18 @@ const api = {
   // 项目 / 文件
   project: {
     open: (): Promise<{ root: string; tree: TreeNode } | null> => ipcRenderer.invoke('project:open'),
+    // 应用内目录选择器：按明确路径打开（原生对话框不可用时的可靠路径）
+    openPath: (p: string): Promise<{ root: string; tree: TreeNode } | { error: string } | null> =>
+      ipcRenderer.invoke('project:openPath', p),
     tree: (root: string): Promise<TreeNode> => ipcRenderer.invoke('project:tree', root),
     create: (opts: { type: string; name: string; parentPath?: string; scaffold?: Array<{ file: string; content: string }> }): Promise<{ ok: boolean; root?: string; tree?: TreeNode; error?: string }> =>
       ipcRenderer.invoke('project:create', opts)
   },
   fs: {
     read: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
+    // 应用内目录选择器：列举目录内容
+    readDir: (path: string): Promise<{ path: string; dirs: string[]; files: string[] }> =>
+      ipcRenderer.invoke('fs:readDir', path),
     write: (path: string, content: string): Promise<boolean> => ipcRenderer.invoke('fs:writeFile', path, content),
     readImage: (path: string): Promise<string> => ipcRenderer.invoke('fs:readImage', path),
     /** 文件元信息（大小 + mtime），用于大文件保护和外部改动刷新 */
@@ -514,10 +520,21 @@ const api = {
       ipcRenderer.invoke('plugin:list'),
     projectTypes: (): Promise<Array<{ id: string; title: string; icon?: string; scaffold: Array<{ file: string; content: string }> }>> =>
       ipcRenderer.invoke('plugin:projectTypes'),
+    /** 按项目目录解析 active 工具链声明的 capability 键（标题栏按钮动态显隐用，P0-2） */
+    projectCapabilities: (root: string): Promise<string[]> =>
+      ipcRenderer.invoke('plugin:projectCapabilities', root),
     capabilities: (): Promise<Record<string, { transport: string; service?: string; method?: string; plugin: string }>> =>
       ipcRenderer.invoke('plugin:capabilities'),
     devicePanels: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; selectors: Array<Record<string, unknown>>; actions: Array<Record<string, unknown>> }>> =>
       ipcRenderer.invoke('plugin:devicePanels'),
+    // P2-20：插件声明的视图（slot: sidebar | activitybar | panel）
+    views: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; slot: string; type: string; entry?: string }>> =>
+      ipcRenderer.invoke('plugin:views'),
+    // P2-20：webview 类型 view 的 app:// 地址（主进程算好，渲染层不能自己拼路径）
+    viewUrl: (plugin: string, entry: string): Promise<string> =>
+      ipcRenderer.invoke('plugin:viewUrl', plugin, entry),
+    // P2-20：webview 桥接 preload 的 file:// 地址（已废弃：插件页改走 iframe + 纯 postMessage，
+    // 不再依赖 webview preload，故移除 viewBridgeUrl；保留注释说明历史）。
     commands: (): Promise<Array<{ plugin: string; id: string; title: string; icon?: string; kind: string; view?: string; placement?: string; when?: string; transport?: string }>> =>
       ipcRenderer.invoke('plugin:commands'),
     skills: (): Promise<Array<{ plugin: string; name: string; description: string; prompt?: string }>> =>
@@ -593,6 +610,11 @@ const api = {
     listTargets: (): Promise<Array<{ target: string; name: string }>> => ipcRenderer.invoke('espIdf:listTargets'),
     setTarget: (target: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('espIdf:setTarget', target),
     status: (): Promise<unknown> => ipcRenderer.invoke('espIdf:status'),
+    // ESP-IDF 编译/烧录（P0-2 路由）：返回 taskId，后续日志/退出码走 task:output / task:exit
+    compile: (o: { projectPath: string; port?: string; target?: string }): Promise<{ ok: boolean; taskId?: string; error?: string }> =>
+      ipcRenderer.invoke('espIdf:compile', o),
+    flash: (o: { projectPath: string; port?: string; target?: string }): Promise<{ ok: boolean; taskId?: string; error?: string }> =>
+      ipcRenderer.invoke('espIdf:flash', o),
     menuconfigCmd: (): Promise<{ args: string[]; cwd: string; env: Record<string, string> } | { error: string }> =>
       ipcRenderer.invoke('espIdf:menuconfigCmd'),
     readPartitions: (

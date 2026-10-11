@@ -135,6 +135,12 @@
     "tool": "arduino-cli",
     "versionArgs": ["version"]
   },
+  "projectDetection": {
+    "markers": [
+      { "ext": ".ino" }
+    ],
+    "type": "arduino"
+  },
   "channels": {
     "internal": ["arduino.version", "arduino.detect"],
     "backend": [

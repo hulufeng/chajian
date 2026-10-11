@@ -67,8 +67,15 @@ export function parseKconfig(
       kind: 'menuconfig' | 'block'
       indent: number
     }
-    const stack: Scope[] = [{ children: parent, kind: 'block', indent: -1 }]
-    const cur = (): Scope => stack[stack.length - 1]
+    const rootScope: Scope = { children: parent, kind: 'block', indent: -1 }
+    const stack: Scope[] = [rootScope]
+    // 防御：任何 scope 的 children 缺失/非数组时回落到根 scope。
+    // 否则一处构造疏漏就会让整份 Kconfig 解析抛异常、编辑器整体不可用。
+    const cur = (): Scope => {
+      const top = stack[stack.length - 1]
+      if (!top || !Array.isArray(top.children)) return rootScope
+      return top
+    }
 
     let i = 0
     while (i < joined.length) {
@@ -166,7 +173,11 @@ export function parseKconfig(
           i++
           break
         case 'if': {
-          const node: KNode = { kind: 'menu', prompt: `if ${rest}`, depends: rest.trim() }
+          // children 必须初始化：此前漏了，导致压栈的 scope.children 为 undefined，
+          // 块内后续任何 `cur().children.push(...)` 都抛
+          //「Cannot read properties of undefined (reading 'push')」。
+          // ESP-IDF 的 Kconfig 里 if 块非常多，等于解析必然崩。
+          const node: KNode = { kind: 'menu', prompt: `if ${rest}`, depends: rest.trim(), children: [] }
           cur().children.push(node)
           stack.push({ children: node.children!, kind: 'block', indent })
           i++

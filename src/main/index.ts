@@ -1,8 +1,9 @@
-﻿import { app, shell, BrowserWindow, ipcMain, dialog, session } from 'electron'
-import { join, resolve } from 'node:path'
+﻿import { app, shell, BrowserWindow, ipcMain, dialog, session, protocol, net } from 'electron'
+import { join, resolve, extname } from 'node:path'
 import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir, homedir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { listProjectTree, readTextFile, writeTextFile, readImageAsDataUrl } from './services/fsService'
 // 编辑器语言服务：补全 / 悬停 / 跳转 / 实时诊断（#29 #31）+ 编译数据库保障（#30）
@@ -17,7 +18,7 @@ import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginMa
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
 import { load as loadHostAdapter, hostManifest as hostAdapterManifest } from './plugins/hostAdapter'
 import { load as loadEspIdfPlugin, manifest as espIdfManifest } from './plugins/esp-idf-toolchain'
-import { listTargetsSync as espIdfListTargets, setTargetSync as espIdfSetTarget, detectEspIdf as espIdfDetect, menuconfigCmd as espIdfMenuconfigCmd, readPartitions as espIdfReadPartitions, writePartitions as espIdfWritePartitions, readSdkconfig as espIdfReadSdkconfig, writeSdkconfig as espIdfWriteSdkconfig, kconfigSchema as espIdfKconfigSchema, kconfigVisibility as espIdfKconfigVisibility } from './services/espIdf'
+import { compileProject as espIdfCompile, flashProject as espIdfFlash, listTargetsSync as espIdfListTargets, setTargetSync as espIdfSetTarget, detectEspIdf as espIdfDetect, menuconfigCmd as espIdfMenuconfigCmd, readPartitions as espIdfReadPartitions, writePartitions as espIdfWritePartitions, readSdkconfig as espIdfReadSdkconfig, writeSdkconfig as espIdfWriteSdkconfig, kconfigSchema as espIdfKconfigSchema, kconfigVisibility as espIdfKconfigVisibility } from './services/espIdf'
 import {
   installPlugin,
   uninstallPlugin,
@@ -159,6 +160,42 @@ function buildDiagnosticChunk(log: string): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * P2-20：把插件 webview 页面从 file:// 迁到自定义协议 app://。
+ *
+ * 为什么必须换协议（file:// 在这里行不通）：
+ *   渲染进程开着 contextIsolation，而 iframe 指向 file:// 时不渲染内容——
+ *   症状是「iframe 元素在、无报错、纯白屏」，极难定位。叠加中文工程路径时
+ *   还要自己做百分号编码（file:// 的非 ASCII 部分不编码 Chrome 直接拒绝）。
+ *   自定义协议一次解决两者：URL 由我们拼装（天然编码正确），内容由主进程 net.fetch 转发。
+ *
+ * standard + secure 让它按「正常站点」对待，iframe / fetch / 相对路径都能正常工作。
+ * 注意：必须在 app ready 之前调用，否则不生效。
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
+  }
+])
+
+/** app:// 协议返回静态资源时的 Content-Type（插件 webview 基本只用到 html/css/js/svg/png） */
+const VIEW_MIME: Record<string, string> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
 }
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL']
@@ -314,6 +351,48 @@ ipcMain.handle('ping', () => 'pong（来自主进程）')
 ipcMain.handle('espIdf:listTargets', () => espIdfListTargets())
 ipcMain.handle('espIdf:setTarget', (_e, target: string) => espIdfSetTarget(lastProjectRoot || '', target))
 ipcMain.handle('espIdf:status', () => espIdfDetect())
+
+// ESP-IDF 编译/烧录（P0-2 路由补齐）：按 service 限定直接调 espIdf 后端，
+// 绕开 capability 同名冲突——getCapabilities() 合并时「先加载者胜」，
+// arduino 先注册会让 capability.run('compile') 打到 arduino 的 toolchain.compile，
+// 导致 espIdf.compile/flash 永远不可达。
+// 任务 id 复用既有 cap-compile-/cap-upload- 前缀 → 渲染层 task:exit 分类零改动。
+function runEspIdfTask(
+  event: Electron.IpcMainInvokeEvent,
+  kind: 'compile' | 'upload',
+  run: (push: (c: string) => void, done: (c: number) => void) => unknown
+): { ok: boolean; taskId?: string; error?: string } {
+  const taskId = `cap-${kind}-${++taskSeq}`
+  const sender = event.sender
+  // 累积原始输出：失败时用它生成结构化诊断块（与 arduino 路径同款，P1-10 确定性闭环）。
+  // 之前 ESP-IDF 只推原始 chunk，渲染层 extractBuildError 找不到「── 构建诊断 ──」
+  // 标记，只能退化成关键词窗口猜测，且 buildError 为空导致「一键修复」按钮不出现。
+  let log = ''
+  const push = (chunk: string): void => {
+    log += chunk
+    if (!sender.isDestroyed()) sender.send('task:output', { id: taskId, chunk })
+  }
+  const done = (code: number): void => {
+    if (!sender.isDestroyed()) {
+      if (code !== 0) {
+        const diag = buildDiagnosticChunk(log)
+        if (diag) sender.send('task:output', { id: taskId, chunk: diag })
+      }
+      sender.send('task:exit', { id: taskId, code })
+    }
+    activeTasks.delete(taskId)
+  }
+  try {
+    run(push, done)
+    return { ok: true, taskId }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+ipcMain.handle('espIdf:compile', (event, o: { projectPath: string; port?: string; target?: string }) =>
+  runEspIdfTask(event, 'compile', (push, done) => espIdfCompile({ projectPath: o.projectPath, port: o.port, target: o.target }, push, done)))
+ipcMain.handle('espIdf:flash', (event, o: { projectPath: string; port?: string; target?: string }) =>
+  runEspIdfTask(event, 'upload', (push, done) => espIdfFlash({ projectPath: o.projectPath, port: o.port, target: o.target }, push, done)))
 ipcMain.handle('espIdf:menuconfigCmd', () => espIdfMenuconfigCmd(lastProjectRoot || ''))
 ipcMain.handle('espIdf:readPartitions', (_e, projectPath: string) => espIdfReadPartitions(projectPath))
 ipcMain.handle('espIdf:writePartitions', (_e, csvPath: string, rows: import('./services/espIdf').PartitionRow[]) => espIdfWritePartitions(csvPath, rows))
@@ -428,6 +507,29 @@ ipcMain.handle('project:open', async () => {
   return { root: res.filePaths[0], tree: await listProjectTree(res.filePaths[0]) }
 })
 
+// 应用内「打开项目」的数据源之一：按明确路径打开工程。
+// 原生 showOpenDialog 在部分 Windows 机器上 Shell 视图不渲染（导航树空白、无法脚本驱动），
+// 因此渲染层默认走这个应用内选择器，不再依赖系统对话框。
+ipcMain.handle('project:openPath', async (_e, p: string) => {
+  if (typeof p !== 'string' || !p.trim()) return null
+  const dir = resolve(p.trim())
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return { error: `目录不存在：${dir}` }
+  lastProjectRoot = dir
+  return { root: dir, tree: await listProjectTree(dir) }
+})
+
+// 应用内目录浏览器的数据源：列举子目录/文件（隐藏项过滤掉，避免 node_modules/.git 噪音）
+ipcMain.handle('fs:readDir', (_e, p: string) => {
+  if (typeof p !== 'string' || !p.trim()) throw new Error('invalid path')
+  const dir = resolve(p.trim())
+  const entries = readdirSync(dir, { withFileTypes: true })
+  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name)
+  const files = entries.filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name)
+  dirs.sort((a, b) => a.localeCompare(b, 'zh'))
+  files.sort((a, b) => a.localeCompare(b, 'zh'))
+  return { path: dir, dirs, files }
+})
+
 ipcMain.handle('project:tree', async (_e, root: string) => {
   if (typeof root !== 'string') return null
   return (await listProjectTree(root)) as TreeNode
@@ -509,7 +611,11 @@ ipcMain.handle('plugin:invoke', (_e, channel: string, command: string, args?: un
 )
 ipcMain.handle('plugin:projectTypes', () => pluginManager.getProjectTypes())
 ipcMain.handle('plugin:capabilities', () => pluginManager.getCapabilities())
+// 按打开的项目目录解析「当前 active 工具链」的 capability 键（供标题栏编译/烧录/板卡按钮动态显隐，P0-2）
+ipcMain.handle('plugin:projectCapabilities', (_e, root: string) => pluginManager.getProjectCapabilities(root || ''))
 ipcMain.handle('plugin:devicePanels', () => pluginManager.getDevicePanels())
+// P2-20：把插件声明的 views 暴露给渲染层，使侧边栏/底部面板 tab 可由 manifest 驱动
+ipcMain.handle('plugin:views', () => pluginManager.getViews())
 ipcMain.handle('plugin:commands', () => pluginManager.getCommands())
 ipcMain.handle('plugin:skills', () => pluginManager.getSkills())
 ipcMain.handle('plugin:tools', () => pluginManager.getTools())
@@ -1677,31 +1783,87 @@ ipcMain.handle('app:resourcesPath', () => {
  * 因此这里**判存**：文件不存在就返回空串，渲染层降级成一行说明，
  * 一个页面缺失不该把整个侧栏带崩。
  */
+/**
+ * 内置工具链 Web UI 的地址（平台管理 / 库管理 / 设置）。
+ *
+ * P2-20：原先这里手拼 `file:///` + 磁盘路径，有两个既有问题——
+ *   1) 开发态真实文件在 src/main/plugins 下，而这里只判 out/main/... → dev 下必然找不到，
+ *      即「平台管理 / 库管理」两个 tab 一直是坏的；
+ *   2) file:// URL 里的中文路径没做百分号编码，Chromium 会静默拒绝。
+ * 现在统一走 resolvePluginEntryFile + app://，两条一起解决。
+ */
 ipcMain.handle('toolchain:ui-url', (_e, tab: string): string => {
   const safe = /^[a-z0-9-]+$/i.test(tab || '') ? tab : ''
   if (!safe) return ''
-  const rel = join('plugins', 'arduino-toolchain', 'ui', `${safe}.html`)
-  // 逐个判存，取第一个真的在磁盘上的。踩过的坑（顺序即真实情况）：
-  //   1) apps 里配了 asarUnpack('**/plugins/**')，plugins 根本不进 asar，
-  //      而是解到 resources/app.asar.unpacked/out/main/... 落盘 —— 打包后唯一判存成功的根，
-  //      file:// iframe 也只认磁盘真实文件，asr 内部路径一定加载不了。
-  //   2) asar 未解包时 UI 在 resources/app.asar/out/main/... 内，existsSync 看不见 asar 内部，
-  //      判存必然落空，保留只是为了让配置失效时报错信息能指出根因。
-  //   3) 直接拼 resources/plugins/... 是错的（UI 不在 resources 根下）。
-  //   开发态 app.getAppPath() 是项目根，真实文件在 out/main/plugins/... 下。
+  // arduinoManifest.name 与磁盘目录名一致时可直接命中；两种都试一遍更稳
+  return pluginViewUrl(arduinoManifest.name, `ui/${safe}.html`) || pluginViewUrl('arduino-toolchain', `ui/${safe}.html`)
+})
+
+/**
+ * 把「插件显示名 + 相对入口」解析成磁盘绝对路径。找不到返回 null。
+ *
+ * 关键点：manifest.name 是**显示名**（如「ESP-IDF 工具链」，含中文与空格），
+ * 而磁盘目录名是 `esp-idf-toolchain` —— 两者不相等。因此不能把 name 当目录直接拼，
+ * 也不能用 [a-z0-9-]+ 白名单过滤 name（会把中文显示名直接拒掉）。
+ * 这里先按目录名试一次，不中再遍历各插件的 manifest.json 按 name 反查。
+ */
+function resolvePluginEntryFile(plugin: string, entry: string): string | null {
+  const safeEntry = /^[a-z0-9_\-./]+$/i.test(entry || '') && !entry.includes('..') ? entry : ''
+  if (!plugin || !safeEntry) return null
+
   const roots = app.isPackaged
     ? [
         join(process.resourcesPath, 'app.asar.unpacked', 'out', 'main'),
         join(process.resourcesPath, 'app.asar', 'out', 'main'),
-        join(process.resourcesPath, 'out', 'main'),
+        join(process.resourcesPath, 'out', 'main')
       ]
-    : [join(app.getAppPath(), 'out', 'main')]
+    : [
+        // 开发态：插件源码就在 src/main/plugins 下；
+        // out/main/plugins 只有在构建把 plugins 拷过去时才有，两者都试。
+        join(app.getAppPath(), 'src', 'main'),
+        join(app.getAppPath(), 'out', 'main')
+      ]
+
   for (const root of roots) {
-    const file = join(root, rel)
-    if (existsSync(file)) return `file:///${file.replace(/\\/g, '/')}`
+    const pluginsDir = join(root, 'plugins')
+    let dirs: string[] = []
+    try {
+      dirs = readdirSync(pluginsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+    } catch {
+      continue
+    }
+    // 目录名直接命中优先，省掉读 manifest 的开销
+    const candidates = dirs.includes(plugin) ? [plugin] : dirs
+    for (const d of candidates) {
+      const file = join(pluginsDir, d, safeEntry)
+      if (!existsSync(file)) continue
+      if (d !== plugin) {
+        // 目录名没命中，才校验该目录 manifest 的 name 是否就是请求的显示名
+        try {
+          const mf = JSON.parse(readFileSync(join(pluginsDir, d, 'manifest.json'), 'utf-8')) as { name?: string }
+          if (mf.name !== plugin) continue
+        } catch {
+          continue
+        }
+      }
+      return file
+    }
   }
-  return ''
-})
+  return null
+}
+
+/** 拼插件 webview 的 app:// URL。找不到对应文件返回空串。 */
+function pluginViewUrl(plugin: string, entry: string): string {
+  if (!resolvePluginEntryFile(plugin, entry)) return ''
+  // 插件名是中文显示名，必须 encodeURIComponent；否则 URL 里出现非 ASCII 会解析失败
+  return `app://plugin/${encodeURIComponent(plugin)}/${entry}`
+}
+
+ipcMain.handle('plugin:viewUrl', (_e, plugin: string, entry: string): string =>
+  pluginViewUrl(plugin, entry)
+)
 
 ipcMain.handle(
   'target:write-ini',
@@ -2012,6 +2174,30 @@ app.whenReady().then(() => {
   // 诊断日志必须最先起来：后面所有埋点才有地方写
   initDiag()
   initPlugins()
+  // P2-20：app:// 协议必须在这里注册（不能在模块顶层）。
+  // 处理器里的 net.fetch 会取 session.defaultSession，app 未 ready 时会抛
+  //「Session can only be received when app is ready」直接导致启动失败。
+  // 注意区分：registerSchemesAsPrivileged 必须留在 ready **之前**的顶层。
+  protocol.handle('app', (request) => {
+    const u = new URL(request.url)
+    console.log('[app://] HIT', request.url)
+    if (u.hostname !== 'plugin') return new Response('not found', { status: 404 })
+    const plugin = decodeURIComponent(u.pathname.split('/')[1] ?? '')
+    const rel = u.pathname.split('/').slice(2).join('/')
+    const file = resolvePluginEntryFile(plugin, rel)
+    console.log('[app://] resolve', JSON.stringify({ plugin, rel, file }))
+    if (!file) return new Response('not found', { status: 404 })
+    // 直接读文件构造 Response。踩过的坑：net.fetch(file://…) 会被拒，
+    // iframe 拿到的是 chrome-error://chromewebdata/（页面纯白、无任何报错日志），
+    // 排查成本极高——所以这里不用 net.fetch。
+    try {
+      const mime = VIEW_MIME[extname(file).toLowerCase()] ?? 'application/octet-stream'
+      return new Response(readFileSync(file), { headers: { 'content-type': `${mime}; charset=utf-8` } })
+    } catch {
+      return new Response('read failed', { status: 500 })
+    }
+  })
+  console.log('[app://] handler registered')
   createWindow()
 
   // ── 匿名试用：首次打开自动登录，不用注册就能用云端模型（对齐 TrieCode）──

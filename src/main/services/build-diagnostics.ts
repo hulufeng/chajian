@@ -1,7 +1,11 @@
 // 编译/烧录错误结构化分类（P1-8）
-// 把 arduino-cli / gcc / esptool 的原始输出解析成「分类 + 文件 + 行号 + 可执行修复建议」，
+// 把 arduino-cli / gcc / esptool / idf.py(CMake+ninja) 的原始输出解析成
+//「分类 + 文件 + 行号 + 可执行修复建议」，
 // 供 ①Agent 的 compile/upload 工具返回结构化结果 ②UI「一键 AI 诊断」捕获更精准的上下文。
 // 纯本地解析，不联网，无第三方依赖。
+//
+// P1-10：已覆盖 ESP-IDF 路径。ESP-IDF 规则必须排在 arduino 规则之前——两者报错文本
+//（undefined reference / fatal error）大量重叠，但修复动作不同（装 IDF 组件 vs 装 arduino 库）。
 
 export type DiagnosticCategory =
   | 'missing_include' // 头文件不存在 → 多半缺库或 FQBN 选错
@@ -330,6 +334,55 @@ interface Rule {
 
 // 顺序敏感：越具体的规则越靠前
 const RULES: Rule[] = [
+  // ══════════════ ESP-IDF（idf.py / CMake / ninja）══════════════
+  // 必须排在 arduino 规则之前：IDF 的报错文本与 gcc 通用错误大量重叠
+  // （如 undefined reference / fatal error），但修复动作完全不同
+  // （装 ESP-IDF 组件 vs 装 arduino 库）。排在后面会被 arduino 规则抢走，
+  // 给出「装 arduino-cli」的误导建议。
+  {
+    re: /CMAKE_(?:ASM|C|CXX)_COMPILER:\s*(\S+)\s*is not a full path and was not found in the PATH/i,
+    category: 'toolchain_missing',
+    hint: (m) =>
+      `ESP-IDF 交叉编译器 ${m[1] || ''} 不在 PATH 中 —— 这不是代码问题，是 ESP-IDF 的 tools 目录没被注入子进程环境。` +
+      '修复方向：让 toolsPath 指向真实工具根（如 C:\\Espressif\\tools，注意它本身就是工具根、下面直接是 cmake/ninja/xtensa-*，别再拼一层 tools），' +
+      '必要时在 ESP-IDF 官方终端里跑 idf.py --version 确认环境本身正常。'
+  },
+  {
+    re: /(Failed to resolve component|Could not find component|component\s+['"][^'"]+['"]\s+(?:not\s+found|does\s+not\s+exist))/i,
+    category: 'board_platform',
+    hint: (m) =>
+      `ESP-IDF 组件解析失败：${m[0]}。通常是 CMakeLists.txt 里 set(EXTRA_COMPONENT_DIRS ...) 或 idf_component_register 引用的组件名/目录不存在。检查：①路径拼写 ②该组件目录是否真的存在 ③ESP-IDF 版本是否包含该组件。`
+  },
+  {
+    re: /(IDF_TARGET is not set|Could not detect the target|target\s+['"][^'"]+['"]\s+is\s+not\s+supported)/i,
+    category: 'board_platform',
+    hint: 'ESP-IDF 没确定目标芯片：在「硬件目标」面板用「应用目标芯片」显式设置 target（会写入 sdkconfig 的 CONFIG_IDF_TARGET），或在 sdkconfig.defaults 里加 CONFIG_IDF_TARGET="esp32s3"。'
+  },
+  {
+    re: /(was generated for target\s+'[^']*'\s*,?\s*but CMakeCache\.txt contains|run 'idf\.py fullclean')/i,
+    category: 'other',
+    hint: 'sdkconfig 与 CMake 缓存里的目标芯片不一致（改了 target / 改了分区表 / 用 Kconfig 编辑器改过 sdkconfig 后常见）。修复动作：idf.py fullclean 后重新构建——它会重建 CMakeCache.txt。这是状态不同步，不是代码错误。'
+  },
+  {
+    re: /(ninja:\s*build stopped|CMake Error at|Failed executing|command terminated with non-zero|Error:\s+Python script.*failed)/i,
+    category: 'other',
+    hint: 'ESP-IDF 构建在 CMake / Ninja 阶段中止，真正的错误在它上面的若干行。往上翻找第一条 error: 或 CMake Error；若上方是「编译器不在 PATH」，按工具链那条处理。也可能是上一次的 CMake 缓存脏了，用 idf.py fullclean 后重来。'
+  },
+  {
+    re: /(Project configuration error|Failed to load SDK config|sdkconfig[^:\n]{0,40}(?:error|invalid|missing))/i,
+    category: 'other',
+    hint: 'sdkconfig 有问题：通常被手工改坏或与当前 idf.py 版本不匹配。建议 idf.py fullclean 后重新 configure，或用「Kconfig 编辑器 / menuconfig 终端」改回合法值。'
+  },
+  {
+    re: /(Failed to open\s+COM\d+|could not open port|Access is denied[^.\n]*COM\d+|cannot open[^.\n]*COM\d+|Permission denied[^.\n]*tty|Serial port busy)/i,
+    category: 'port_error',
+    hint: '串口打不开。依次检查：①串口是否被串口监视器/其他程序占用（先关掉占用它的面板）②驱动是否安装（CH340/CP210x/CP2104）③端口号是否还是当前那个——设备重插后端口号常变，用「自动探测」重新选。'
+  },
+  {
+    re: /(Failed to connect to ESP\d+|No serial data received|invalid head of packet|Wrong boot mode|Failed to write target memory|EsptoolFailedToWrite|Target is not responding)/i,
+    category: 'flash_error',
+    hint: '烧录失败（握手/下载模式问题）。①CH340 板子要走 UART0(TX/RX)，不是原生 USB 口 ②按住 BOOT 键上电再松开，或在板子上电瞬间点烧录 ③复位板子后重试 ④确认固件没超过 flash 容量（Flash Size 设小了也会失败）。'
+  },
   // ── 缺失头文件 ──
   {
     re: /fatal error:\s*([^:]+):\s*No such file or directory/i,
@@ -580,9 +633,13 @@ export function parseBuildOutput(text: string): BuildReport {
     suggestions.push(s)
   }
   for (const e of errs) {
-    // 提取形如 arduino-cli lib install "xxx" / core install xxx 的可执行片段
+    // 提取可执行的修复命令片段：
+    //   ① arduino-cli lib/core install "xxx"
+    //   ② idf.py <子命令>（fullclean / reconfigure / set-target / --version …）
     // 引号形式整体取；否则只取 ASCII 标识符部分，避免把中文说明截进命令
-    const cmd = e.hint.match(/(arduino-cli\s+(?:lib|core)\s+install\s+(?:"[^"]+"|[A-Za-z0-9_:.\-]+))/i)
+    const cmd =
+      e.hint.match(/(arduino-cli\s+(?:lib|core)\s+install\s+(?:"[^"]+"|[A-Za-z0-9_:.\-]+))/i) ??
+      e.hint.match(/(idf\.py\s+(?:fullclean|reconfigure|set-target|build|flash|menuconfig|--version)\b)/i)
     if (cmd) addSug(cmd[1])
   }
 

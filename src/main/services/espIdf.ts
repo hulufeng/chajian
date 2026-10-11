@@ -121,13 +121,24 @@ function deriveToolsPath(root: string): string | null {
   const frameworksMatch = root.replace(/\\/g, '/').match(/^(.*)\/frameworks\/esp-idf-v[0-9.]+$/i)
   if (frameworksMatch) return norm(frameworksMatch[1]) ?? frameworksMatch[1]
   // 回退：root 同级或上级的 .espressif/tools
+  // 关键：候选必须真的含有非空 tools/ 子目录才算数。否则会选中「只装了 python_env 的空壳
+  // ~/.espressif/tools」而漏掉真正装着 xtensa/cmake/ninja 的 C:\Espressif\tools，
+  // 导致 idf.py 起来但 CMake 找不到 xtensa-esp32s3-elf-gcc（本机 junction→esp_bak 即踩此坑）。
   const cands = [
     join(dirname(root), '.espressif', 'tools'),
     join(root, '.espressif', 'tools'),
     join(homedir(), '.espressif', 'tools'),
-    join('C:', 'Espressif', 'tools')
+    join('C:', 'Espressif', 'tools'),
+    join('D:', 'Espressif', 'tools')
   ]
-  for (const c of cands) if (existsSync(c)) return norm(c)
+  for (const c of cands) {
+    if (!existsSync(c)) continue
+    try {
+      if (readdirSync(join(c, 'tools')).length > 0) return norm(c)
+    } catch {
+      /* 无 tools 子目录（空壳），试下一个 */
+    }
+  }
   return null
 }
 
@@ -153,30 +164,52 @@ function derivePythonEnv(root: string, toolsPath: string | null, pythonFromEnv?:
   return { pythonEnvPath: null, pythonExe: null }
 }
 
-// 扫描 toolsPath/tools 下各工具 bin，拼成 export PATH
+// 探测「直接包含各工具目录」的那一层。
+// 两种布局都要兼容：
+//   A) toolsPath 本身就是工具根（如 idf-env.json 的 idfToolsPath = C:\Espressif\tools）
+//   B) 工具根在 toolsPath/tools 下（如 toolsPath = C:\Espressif）
+// 之前固定 join(toolsPath,'tools')，遇到 A 会拼成 ...\tools\tools → 扫不到任何 bin，
+// 导致 idf.py 起来了但 CMake 找不到 xtensa 编译器。
+function resolveToolRoot(toolsPath: string | null): string | null {
+  if (!toolsPath) return null
+  const markers = ['xtensa-esp-elf', 'riscv32-esp-elf', 'xtensa-esp32s3-elf', 'ninja', 'cmake', 'ccache', 'esp-rom-elfs', 'xtensa-esp-elf-gdb', 'riscv32-esp-elf-gdb']
+  for (const c of [toolsPath, join(toolsPath, 'tools')]) {
+    try {
+      if (readdirSync(c).some((n) => markers.includes(n))) return c
+    } catch { /* 不存在则试下一个 */ }
+  }
+  return null
+}
+
+// 扫描工具根下各工具 bin，拼成 export PATH
 function deriveExportPath(toolsPath: string | null): string {
   const dirs: string[] = []
-  if (toolsPath) {
-    const toolsRoot = join(toolsPath, 'tools')
-    if (existsSync(toolsRoot)) {
-      try {
-        for (const tool of readdirSync(toolsRoot)) {
-          const t = join(toolsRoot, tool)
-          // xtensa-esp-elf/esp-xx/bin、cmake/x.x/bin、ninja/x.x
-          let sub: string[] = []
-          try { sub = readdirSync(t) } catch { continue }
-          for (const s of sub) {
-            const bin = join(t, s, 'bin')
-            if (existsSync(bin)) dirs.push(bin)
-            // ninja 直接是 tools/ninja/x.x/ninja.exe
-            if (existsSync(join(t, s, 'ninja.exe'))) dirs.push(join(t, s))
-            // xtensa bin 在 tools/xtensa-esp-elf/esp-xx/xtensa-esp-elf/bin
-            const xtBin = join(t, s, 'xtensa-esp-elf', 'bin')
-            if (existsSync(xtBin)) dirs.push(xtBin)
-          }
+  const toolsRoot = resolveToolRoot(toolsPath)
+  if (toolsRoot) {
+    try {
+      for (const tool of readdirSync(toolsRoot)) {
+        const t = join(toolsRoot, tool)
+        // xtensa-esp-elf/esp-xx/bin、cmake/x.x/bin、ninja/x.x
+        let sub: string[] = []
+        try { sub = readdirSync(t) } catch { continue }
+        for (const s of sub) {
+          const bin = join(t, s, 'bin')
+          if (existsSync(bin)) dirs.push(bin)
+          // ninja 直接是 tools/ninja/x.x/ninja.exe
+          if (existsSync(join(t, s, 'ninja.exe'))) dirs.push(join(t, s))
+          // xtensa bin 在 tools/xtensa-esp-elf/esp-xx/xtensa-esp-elf/bin
+          const xtBin = join(t, s, 'xtensa-esp-elf', 'bin')
+          if (existsSync(xtBin)) dirs.push(xtBin)
+          // 某些布局 xtensa bin 直接在 tool/version/xtensa-<target>-elf/bin
+          try {
+            for (const inner of readdirSync(join(t, s))) {
+              const innerBin = join(t, s, inner, 'bin')
+              if (existsSync(innerBin) && existsSync(join(innerBin, 'xtensa-esp32s3-elf-gcc.exe'))) dirs.push(innerBin)
+            }
+          } catch { /* 不是版本目录 */ }
         }
-      } catch { /* 忽略 */ }
-    }
+      }
+    } catch { /* 忽略 */ }
   }
   return dirs.join(WIN ? ';' : ':')
 }
@@ -191,7 +224,10 @@ export function findEspIdf(): EspIdfStatus {
   for (const cand of pathCandidates()) {
     const root = norm(cand)
     if (!root || !hasIdfPy(root)) continue
-    let toolsPath = toolsPathHint ? norm(toolsPathHint) : deriveToolsPath(root)
+    // toolsPath 用「原始候选」推导：cand 保留了 /frameworks/esp-idf-vX 结构，
+    // 而 realpath 后的 root 可能因 junction（如 C:\Espressif\frameworks\esp-idf-v5.4
+    // → esp_bak\esp-idf）丢掉该结构，导致正则失配、toolsPath 推错。
+    let toolsPath = toolsPathHint ? norm(toolsPathHint) : (deriveToolsPath(cand) ?? deriveToolsPath(root))
     const { pythonEnvPath, pythonExe } = derivePythonEnv(root, toolsPath, pythonFromEnv)
     const exportPath = deriveExportPath(toolsPath)
     return {
@@ -469,7 +505,16 @@ export function readPartitions(
         .split('\n')
         .find((l) => l.startsWith('CONFIG_PARTITION_TABLE_CUSTOM_FILENAME='))
       if (custom) {
-        csvName = custom.slice('CONFIG_PARTITION_TABLE_CUSTOM_FILENAME='.length).replace(/^"|"$/g, '').trim()
+        // 顺序很关键：必须先 trim() 再剥引号。
+        // split('\n') 后行尾可能残留 '\r'（CRLF），若先跑 /^"|"$/ 正则，
+        // 尾部引号后面还跟着 '\r' 导致 "$ 锚点匹配不到，只剥掉前导引号；
+        // 之后 trim() 去掉 '\r'，引号就暴露成尾字符 → 路径变成
+        // `partitions.csv"` → writeFileSync 报 ENOENT（真机实测抓到的 bug）。
+        csvName = custom
+          .slice('CONFIG_PARTITION_TABLE_CUSTOM_FILENAME='.length)
+          .trim()
+          .replace(/^"(.*)"$/s, '$1')
+          .trim()
       }
     }
     const csvPath = join(projectPath, csvName)
@@ -495,14 +540,35 @@ export function writePartitions(
   csvPath: string,
   rows: PartitionRow[]
 ): { ok: boolean; error?: string } {
+  // 防御：路径必须是非空字符串。渲染层传空/脏值时，之前会在 dirname() 处抛
+  // 难以定位的 TypeError，这里提前给出可读错误。
+  if (typeof csvPath !== 'string' || !csvPath.trim()) {
+    return { ok: false, error: '分区表路径无效（为空）' }
+  }
+  if (!Array.isArray(rows)) {
+    return { ok: false, error: '分区表数据无效（rows 不是数组）' }
+  }
+  // 统一成绝对路径 + 剥掉杂散引号。
+  // 路径里混进引号（曾因 CRLF 下 /^"|"$/ 剥引号顺序错误导致 partitions.csv"）
+  // 会让 writeFileSync 报 ENOENT，且极难定位，这里做兜底净化。
+  const abs = resolve(csvPath.trim().replace(/^"(.*)"$/s, '$1'))
+  const dir = dirname(abs)
   try {
     const header = '# Name,   Type, SubType, Offset,   Size,    Flags'
-    const body = rows.map((r) => [r.name, r.type, r.subtype, r.offset, r.size, r.flags].map((s) => s.trim()).join(', '))
-    mkdirSync(dirname(csvPath), { recursive: true })
-    writeFileSync(csvPath, [header, ...body].join('\n') + '\n')
+    const body = rows.map((r) =>
+      [r.name, r.type, r.subtype, r.offset, r.size, r.flags].map((s) => String(s ?? '').trim()).join(', ')
+    )
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(abs, [header, ...body].join('\n') + '\n', 'utf-8')
     return { ok: true }
   } catch (e) {
-    return { ok: false, error: (e as Error).message }
+    const err = e as NodeJS.ErrnoException
+    // 带出 errno 与实际落盘路径：此前只回 message，真机排查时无法判断是
+    // 目录不存在、权限还是路径形态问题。
+    return {
+      ok: false,
+      error: `${err.code ?? 'ERR'}: ${err.message} (path=${JSON.stringify(abs)}, dirExists=${existsSync(dir)})`
+    }
   }
 }
 
@@ -538,9 +604,19 @@ export function writeSdkconfig(
   cfgPath: string,
   items: Array<{ key: string; value: string }>
 ): { ok: boolean; error?: string } {
+  if (typeof cfgPath !== 'string' || !cfgPath.trim()) {
+    return { ok: false, error: 'sdkconfig 路径无效（为空）' }
+  }
+  if (!Array.isArray(items)) {
+    return { ok: false, error: 'sdkconfig 数据无效（items 不是数组）' }
+  }
+  // 归一成绝对路径并剥掉杂散引号（与 writePartitions 同理防 CRLF 剥引号顺序坑）；
+  // 工程未 configure 过时 sdkconfig 还不存在，需兜底建目录
+  const abs = resolve(cfgPath.trim().replace(/^"(.*)"$/s, '$1'))
+  const dir = dirname(abs)
   try {
     const map = new Map(items.map((i) => [i.key, i.value]))
-    const lines = existsSync(cfgPath) ? readFileSync(cfgPath, 'utf-8').split('\n') : []
+    const lines = existsSync(abs) ? readFileSync(abs, 'utf-8').split('\n') : []
     const out: string[] = []
     const seen = new Set<string>()
     for (const l of lines) {
@@ -559,10 +635,12 @@ export function writeSdkconfig(
     for (const [k, v] of map) {
       if (!seen.has(k)) out.push(`${k}=${formatSdkValue(v)}`)
     }
-    writeFileSync(cfgPath, out.join('\n'))
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(abs, out.join('\n'), 'utf-8')
     return { ok: true }
   } catch (e) {
-    return { ok: false, error: (e as Error).message }
+    const err = e as NodeJS.ErrnoException
+    return { ok: false, error: `${err.code ?? 'ERR'}: ${err.message} (dir=${dir}, dirExists=${existsSync(dir)})` }
   }
 }
 

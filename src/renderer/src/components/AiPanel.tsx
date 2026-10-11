@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorTab } from './EditorArea'
 import type { ChannelHealth } from '../../../preload'
 import { hint } from '../featureHints'
+import { isChimeEnabled, playChime } from '../lib/sound'
 import DiffView from './DiffView'
 
 // ---------- 类型 ----------
@@ -626,6 +627,9 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
           setStreamingText('')
           setStreamingThinking('')
           setStreamingReasoning('')
+          // 完成提示音：长任务跑几分钟时用户会切走干别的，靠这一声把他叫回来。
+          // 失败不响 —— 错误有自己的红色消息条，再响一声反而像成功。
+          if (isChimeEnabled()) playChime()
           break
         }
         case 'error': {

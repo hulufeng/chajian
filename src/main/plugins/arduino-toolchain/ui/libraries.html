@@ -204,7 +204,10 @@
     return new Promise((resolve, reject) => {
       const id = Date.now() + Math.random();
       const handler = (e) => {
-        if (e.data && e.data.id === id) {
+        // 注意：<webview> 里 window.parent === window，页面用 window.parent.postMessage
+        // 发的出站消息会落在「自己」的 window 上，被本监听当成回包而 resolve(undefined)。
+        // 出站消息带 type:'plugin:invoke'，回包不带该字段，据此过滤掉自回声。
+        if (e.data && e.data.id === id && e.data.type !== 'plugin:invoke') {
           window.removeEventListener('message', handler);
           if (e.data.error) reject(new Error(e.data.error));
           else resolve(e.data.result);

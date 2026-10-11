@@ -58,7 +58,11 @@ export default function PanelDock({
   const lastId = lastRef.current
 
   useEffect(() => {
-    if (active && !mounted.includes(active)) setMounted((m) => [...m, active])
+    if (!active) return
+    // 幂等：判断放进函数式更新里。StrictMode(dev) 会双调用 effect，
+    // 若在闭包外判断 mounted，两次都读到同一份陈旧值 → 追加重复 id →
+    // 两个 dock-slot 同时 display:flex，面板内容渲染两遍（tab 条仍只有一份）。
+    setMounted((m) => (m.includes(active) ? m : [...m, active]))
   }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onMouseDown = useCallback(

@@ -185,7 +185,9 @@
 
   window.addEventListener('message', (e) => {
     const data = e.data;
-    if (!data || !data.id) return;
+    // <webview> 里 window.parent === window，出站消息会自回声到本监听；
+    // 出站带 type:'plugin:invoke'、回包不带，据此过滤，否则会 resolve(undefined)。
+    if (!data || !data.id || data.type === 'plugin:invoke') return;
     const p = pending.get(data.id);
     if (!p) return;
     pending.delete(data.id);

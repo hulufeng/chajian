@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { McpRuntimeState } from '../../../preload'
 import { type EditorSettings, EDITOR_FONT_FAMILIES } from './editor/editorSettings'
+import { isChimeEnabled, playChime, setChimeEnabled } from '../lib/sound'
 import PluginMarket from './PluginMarket'
 
 type ShellType = 'powershell' | 'cmd' | 'pwsh' | 'bash'
@@ -13,6 +14,9 @@ interface SettingsProps {
   onShellChange: (s: ShellType) => void
   language: 'zh' | 'en'
   onLanguageChange: (l: 'zh' | 'en') => void
+  /** 动效偏好：跟随系统（尊重 prefers-reduced-motion）/ 全部开启 / 全部关闭 */
+  motion: 'system' | 'on' | 'off'
+  onMotionChange: (m: 'system' | 'on' | 'off') => void
   defaultTab?: string
   /** 当前工程根目录：MCP 需要读项目级 .labcode/mcp.json */
   projectRoot?: string | null
@@ -107,8 +111,10 @@ const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
 
-function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange, deepPrecheckOn, onDeepPrecheckChange, featureHintsOn, onFeatureHintsChange }: SettingsProps): React.JSX.Element {
+function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, language, onLanguageChange, motion, onMotionChange, defaultTab, projectRoot, version, editorSettings, onEditorSettingsChange, deepPrecheckOn, onDeepPrecheckChange, featureHintsOn, onFeatureHintsChange }: SettingsProps): React.JSX.Element {
   const [active, setActive] = useState(defaultTab || 'general')
+  // 提示音：开关状态只影响 UI 显示 + 试听，真正播放的判定在 AiPanel 里（done 事件）
+  const [chimeOn, setChimeOn] = useState<boolean>(() => isChimeEnabled())
   // MCP 服务器
   const [mcpServers, setMcpServers] = useState<McpRuntimeState[]>([])
   const [mcpGlobalPath, setMcpGlobalPath] = useState('')
@@ -939,6 +945,32 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                   <span>终端 Shell</span>
                   <select className="settings-select" value={shell} onChange={(e) => onShellChange(e.target.value as ShellType)}>
                     {SHELL_OPTIONS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
+                  </select>
+                </div>
+                <div className="settings-row">
+                  <span>AI 完成提示音</span>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={chimeOn}
+                      onChange={(e) => {
+                        setChimeEnabled(e.target.checked)
+                        setChimeOn(e.target.checked)
+                        if (e.target.checked) playChime()
+                      }}
+                      title="AI 跑完一轮时响一声。长任务可以切走干别的，靠这声叫你回来。"
+                    />
+                    <button className="settings-btn" onClick={() => playChime()} title="立刻试听一声">
+                      试听
+                    </button>
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <span>动效偏好</span>
+                  <select className="settings-select" value={motion} onChange={(e) => onMotionChange(e.target.value as 'system' | 'on' | 'off')}>
+                    <option value="system">跟随系统</option>
+                    <option value="on">全部开启</option>
+                    <option value="off">全部关闭</option>
                   </select>
                 </div>
                 <div className="settings-row">
