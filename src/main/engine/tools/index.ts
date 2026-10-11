@@ -24,6 +24,7 @@ import { verifyTools } from './verify-tool'
 import { closedLoopTools } from './closed-loop-tool'
 import { svdTools } from './svd-tools'
 import { platformioTools } from './platformio-tools'
+import { embeddedCheckTools } from './embedded-check-tools'
 import { targetTools } from './target-tools'
 import { multiAgentTools } from './multi-agent-tools'
 import { mcpExternalTools } from './mcp-tools'
@@ -582,6 +583,7 @@ export const coreTools: ToolDefinition[] = [
   ...closedLoopTools,
   ...svdTools,
   ...platformioTools,
+  ...embeddedCheckTools,
   ...targetTools,
   ...mcpExternalTools,
   ...pluginTools,
