@@ -11,6 +11,7 @@ import { mqttBridge, type MqttServerSpec } from './mqtt-bridge'
 import { grpcBridge, type GrpcCallSpec } from './grpc-bridge'
 import { mcpBridge, type McpCallSpec } from './mcp-bridge'
 import type { ToolCategory } from '../engine/types'
+import { registerSubAgent, type SubAgentDef } from '../engine/subagentRegistry'
 
 export interface ScaffoldFile {
   file: string
@@ -63,6 +64,17 @@ export interface PluginContext {
    * 这样插件运行时和宿主版本的耦合只靠命令名，不靠文件路径。
    */
   invoke: (channel: ChannelName, command: string, args?: unknown) => unknown
+  /** 动态注册一个子智能体到注册中心，让本插件的能力可被主 agent 通过 dispatch_subagent 派发（#11） */
+  registerSubAgent: (def: {
+    id: string
+    name: string
+    description: string
+    role?: string
+    allowTools?: string[]
+    system?: string
+    writeScope?: string[]
+    maxTurns?: number
+  }) => void
 }
 
 export interface LoadedPlugin {
@@ -304,7 +316,9 @@ export class PluginManager {
             return { ok: false, error: `宿主命令未注册: ${channel}:${command}` }
           }
           return this.invoke(channel, command, args)
-        }
+        },
+        // 插件把自身能力注册为子智能体，主 agent 即可通过 dispatch_subagent 派发
+        registerSubAgent: (def) => registerSubAgent(def as unknown as SubAgentDef)
       }
       try {
         b.load(ctx)
