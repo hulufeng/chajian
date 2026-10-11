@@ -642,6 +642,66 @@ export async function aiChat(messages: ChatMessage[], state: AiState = getAiStat
   return { content: data.content, creditsLeft: data.creditsLeft, cost: data.cost }
 }
 
+// ---------- AI 内联补全（Ghost Text，对齐 TrieCode 的 AI 内联补全）----------
+// 与 aiChat 分开的原因：补全要「快 + 短」，用默认 16384 max_tokens 会让 3B 本地模型
+// 一路生成到上限，等好几秒还容易跑偏出解释文字；这里限到 64 token、温度 0.2。
+const INLINE_MAX_TOKENS = 64
+const INLINE_TIMEOUT_MS = 15_000
+
+const tailOf = (s: string, n: number): string => (s.length > n ? s.slice(s.length - n) : s)
+const headOf = (s: string, n: number): string => (s.length > n ? s.slice(0, n) : s)
+
+/** 剥掉模型爱加的代码块围栏与解释文字，只留可插入的纯代码 */
+export function cleanInlineCompletion(raw: string): string {
+  let t = (raw || '').trim()
+  const fence = t.match(/^```[a-zA-Z0-9]*\s*\n([\s\S]*?)\n?```/)
+  if (fence) {
+    t = fence[1].trim()
+  } else {
+    t = t.replace(/^```[a-zA-Z0-9]*\s*\n?/, '').replace(/\n?```\s*$/, '')
+  }
+  const out: string[] = []
+  for (const line of t.split('\n')) {
+    // 模型顺手加的说明/客套一律截断
+    if (/^(好的|以下是|这是|说明|解释|注意|Here|Sure|I |The |This )/i.test(line.trim())) break
+    out.push(line)
+    if (out.length >= 4) break
+  }
+  return out.join('\n').replace(/\s+$/, '')
+}
+
+/**
+ * 生成光标处的补全文本。本地模型走小 max_tokens 通道；云端/BYOK 复用 aiChat 后裁剪。
+ * 失败时返回空串——内联补全是锦上添花，绝不能让编辑器报错或卡住。
+ */
+export async function aiInlineComplete(opts: {
+  prefix: string
+  suffix: string
+  language: string
+  filePath: string
+}): Promise<{ text: string }> {
+  const instruction =
+    '你是代码补全引擎。只输出要插入的代码片段：不要解释、不要用 markdown 围栏、不要重复下面已有的内容。输出尽量短（1-3 行）。'
+  const content =
+    `${instruction}\n\n文件: ${opts.filePath}\n语言: ${opts.language}\n\n` +
+    `光标前:\n${tailOf(opts.prefix, 4000)}\n<<<光标>>>\n光标后:\n${headOf(opts.suffix, 1500)}\n\n` +
+    '请只输出填补 <<<光标>>> 处的代码：'
+  // ChatMessage.role 不含 'system'，故指令并入单条 user 消息
+  const messages = [{ role: 'user', content }]
+
+  const local = getLocalModel()
+  if (local) {
+    const r = await chatWithLocalModelStream(local, messages, [], () => {}, {
+      maxTokens: INLINE_MAX_TOKENS,
+      temperature: 0.2,
+      idleTimeoutMs: INLINE_TIMEOUT_MS
+    })
+    return { text: cleanInlineCompletion(r.text) }
+  }
+  const r = await aiChat(messages as ChatMessage[])
+  return { text: cleanInlineCompletion(r.content) }
+}
+
 // ---------- 状态变更辅助（供 IPC 调用） ----------
 export function setAiState(state: AiState): void {
   saveAiState(state)

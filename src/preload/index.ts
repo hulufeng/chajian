@@ -471,7 +471,11 @@ const api = {
     sendCode: (email: string): Promise<{ ok: boolean; devMode?: boolean }> => ipcRenderer.invoke('ai:send-code', email),
     loginWithCode: (email: string, code: string): Promise<AiState> => ipcRenderer.invoke('ai:login-with-code', email, code),
     logout: (): Promise<AiState> => ipcRenderer.invoke('ai:logout'),
-    refreshMe: (): Promise<AiState> => ipcRenderer.invoke('ai:refreshMe')
+    refreshMe: (): Promise<AiState> => ipcRenderer.invoke('ai:refreshMe'),
+    /** AI 内联补全（Ghost Text）：返回光标处要插入的代码；失败/无建议时为空串 */
+    inlineComplete: (opts: {
+      prefix: string; suffix: string; language: string; filePath: string
+    }): Promise<{ text: string }> => ipcRenderer.invoke('ai:inlineComplete', opts)
   },
 
 

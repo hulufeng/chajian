@@ -1159,6 +1159,23 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                     >隐藏</button>
                   </div>
                 </div>
+
+                <div className="settings-row">
+                  <span>AI 内联补全 (Ghost Text)</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`settings-btn ${editorSettings.inlineCompletions ? 'active' : ''}`}
+                      onClick={() => patchEditor({ inlineCompletions: true })}
+                    >开启</button>
+                    <button
+                      className={`settings-btn ${!editorSettings.inlineCompletions ? 'active' : ''}`}
+                      onClick={() => patchEditor({ inlineCompletions: false })}
+                    >关闭</button>
+                  </div>
+                </div>
+                <p className="settings-desc" style={{ marginTop: 4, fontSize: 11 }}>
+                  输入时由 AI 在光标处给出灰色续写建议，按 Tab 接受。调用当前通道的模型：本地模型不出本机，云端/BYOK 会消耗积分或额度。对齐 TrieCode，默认关闭。
+                </p>
               </div>
             )}
             {active === 'skills' && (

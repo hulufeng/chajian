@@ -17,7 +17,7 @@ import {
   armLogicAnalyzer, armScope, readPower, getCapabilities, setInstrumentSink,
   type LogicAnalyzerConfig, type ScopeConfig
 } from './services/instrumentsService'
-import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, sendLoginCode, loginWithCode, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
+import { aiChat, aiInlineComplete, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, sendLoginCode, loginWithCode, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
 import { load as loadArduinoPlugin, manifest as arduinoManifest } from './plugins/arduino-toolchain'
@@ -1311,6 +1311,18 @@ ipcMain.handle('ai:refreshMe', () => refreshAccount())
 ipcMain.handle('model:local', async () => {
   // 本地模型：直接扫描已安装 GGUF（无需 Ollama；llama-server 内置引擎同样识别）
   return listLocalModels()
+})
+
+/**
+ * AI 内联补全（Ghost Text）：编辑器在光标处请求一小段补全。
+ * 失败一律返回空串——补全是锦上添花，抛错会让编辑器弹出报错打断输入。
+ */
+ipcMain.handle('ai:inlineComplete', async (_e, opts: { prefix: string; suffix: string; language: string; filePath: string }) => {
+  try {
+    return await aiInlineComplete(opts)
+  } catch {
+    return { text: '' }
+  }
 })
 
 // ---------- Agent 引擎（AI 智能体，工具调用闭环） ----------

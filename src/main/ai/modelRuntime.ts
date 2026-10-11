@@ -591,7 +591,7 @@ export function chatWithLocalModelStream(
   messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }>,
   tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: object } }>,
   onChunk: (chunk: LocalStreamChunk) => void,
-  opts?: { idleTimeoutMs?: number; signal?: AbortSignal },
+  opts?: { idleTimeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
   return new Promise(async (resolve, reject) => {
     // 确保引擎在跑
@@ -606,8 +606,10 @@ export function chatWithLocalModelStream(
       messages,
       tools: tools.length > 0 ? tools : undefined,
       stream: true,
-      max_tokens: 16384,
-      temperature: 0.3,
+      // 内联补全这类短请求要小 max_tokens + 低温度：默认 16384 会让 3B 模型一路生成到上限，
+      // 补全要等好几秒才出、还容易跑偏出解释文字。调用方可按需收窄。
+      max_tokens: opts?.maxTokens ?? 16384,
+      temperature: opts?.temperature ?? 0.3,
     })
 
     // 本地推理超时兜底：引擎卡住 / 模型加载慢时，没有超时保护界面会一直转圈「没反应」。

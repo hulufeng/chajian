@@ -17,6 +17,9 @@ export interface EditorSettings {
   minimap: boolean
   /** 字体（CSS font-family 值） */
   fontFamily: string
+  /** AI 内联补全（Ghost Text）。对齐 TrieCode：默认关闭——补全会触发模型调用，
+   *  本地小模型下既占资源又可能出偏差，交给用户显式开启。 */
+  inlineCompletions: boolean
 }
 
 export const EDITOR_FONT_FAMILIES: Array<{ value: string; label: string }> = [
@@ -34,6 +37,7 @@ const KEYS = {
   wordWrap: 'codelab-wordwrap',
   minimap: 'codelab-minimap',
   fontFamily: 'codelab-fontfamily',
+  inlineCompletions: 'codelab-inline-completions',
 } as const
 
 const clampNum = (raw: string | null, d: number, min: number, max: number): number => {
@@ -57,6 +61,7 @@ export function loadEditorSettings(): EditorSettings {
     wordWrap: loadStr(localStorage.getItem(KEYS.wordWrap), 'off') === 'on' ? 'on' : 'off',
     minimap: loadBool(localStorage.getItem(KEYS.minimap), true),
     fontFamily: loadStr(localStorage.getItem(KEYS.fontFamily), EDITOR_FONT_FAMILIES[0].value),
+    inlineCompletions: loadBool(localStorage.getItem(KEYS.inlineCompletions), false),
   }
 }
 
@@ -68,5 +73,6 @@ export function saveEditorSettings(s: EditorSettings): void {
   localStorage.setItem(KEYS.wordWrap, s.wordWrap)
   localStorage.setItem(KEYS.minimap, s.minimap ? '1' : '0')
   localStorage.setItem(KEYS.fontFamily, s.fontFamily)
+  localStorage.setItem(KEYS.inlineCompletions, s.inlineCompletions ? '1' : '0')
   document.documentElement.style.setProperty('--editor-font-size', `${s.fontSize}px`)
 }

@@ -57,6 +57,9 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
   const dbgShowCurrent = dbg.currentLine !== null && sameSourceFile(path, dbg.currentFile)
   const mounted = useRef(false)
   const suppress = useRef(false)
+  // AI 内联补全开关：registerProviders 只在挂载时跑一次，直接读 settings 会拿到旧值，
+  // 故用 ref 承接，由下方的 settings effect 持续同步。
+  const inlineEnabledRef = useRef(settings.inlineCompletions)
   const registered = useRef(false)
   const diagTimer = useRef<number | null>(null)
 
@@ -236,6 +239,52 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
         }
       }
     })
+
+    // ── AI 内联补全（Ghost Text，对齐 TrieCode 的 AI 内联补全）──
+    // 只登记一次（本组件是无 key 长实例）。三重守卫，避免打扰与浪费：
+    // ①开关关闭直接返回空；②上下文太短（<8 个非空字符）不请求，模型没有依据；
+    // ③debounce 250ms + token 取消，防止每敲一字打一次模型、慢响应盖掉新请求。
+    monaco.languages.registerInlineCompletionsProvider('*', {
+      provideInlineCompletions: async (model: any, position: any, _ctx: any, token: any) => {
+        if (!inlineEnabledRef.current) return { items: [] }
+        try {
+          const full: string = model.getValue() || ''
+          const offset: number = model.getOffsetAt(position)
+          const prefix = full.slice(0, offset)
+          if (prefix.trim().length < 8) return { items: [] }
+          const suffix = full.slice(offset)
+          const text = await new Promise<string>((resolve) => {
+            const timer = window.setTimeout(() => {
+              window.api.ai
+                .inlineComplete({
+                  prefix,
+                  suffix,
+                  language: model.getLanguageId?.() || language,
+                  filePath: model.uri?.fsPath || path
+                })
+                .then((r) => resolve(r?.text || ''))
+                .catch(() => resolve(''))
+            }, 250)
+            token?.onCancellationRequested?.(() => {
+              window.clearTimeout(timer)
+              resolve('')
+            })
+          })
+          if (!text) return { items: [] }
+          return {
+            items: [
+              {
+                insertText: text,
+                range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column)
+              }
+            ]
+          }
+        } catch {
+          return { items: [] }
+        }
+      },
+      freeInlineCompletions: () => {}
+    })
   }
 
   const handleMount: OnMount = (editor, monaco) => {
@@ -285,8 +334,11 @@ export default function MonacoWrapper({ path, language, value, theme, settings, 
         insertSpaces: settings.insertSpaces,
         detectIndentation: false,
         wordWrap: settings.wordWrap,
-        minimap: { enabled: settings.minimap, scale: 1 }
+        minimap: { enabled: settings.minimap, scale: 1 },
+        // Ghost Text 总开关：provider 已注册，但 Monaco 侧也要打开才会渲染灰字建议
+        inlineSuggest: { enabled: settings.inlineCompletions }
       })
+      inlineEnabledRef.current = settings.inlineCompletions
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
