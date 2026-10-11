@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hint, type FeatureHintId } from '../featureHints'
 
-export type PanelId = 'output' | 'problems' | 'serial' | 'plotter' | 'terminal' | 'debug' | 'target' | 'platformio' | 'git' | 'agents'
+export type PanelId = 'output' | 'problems' | 'serial' | 'plotter' | 'terminal' | 'debug' | 'target' | 'platformio' | 'git' | 'agents' | 'instruments'
 
 /**
  * label 用短名（工具栏空间有限），全名放 hint 走 tooltip。
@@ -18,7 +18,8 @@ export const PANEL_META: Array<{ id: PanelId; label: string; hint: string; hintI
   { id: 'target', label: '目标', hint: '硬件目标 · 板卡 / 构建路径 / 烧录 / 自检', hintId: 'target' },
   { id: 'platformio', label: 'Pio', hint: 'PlatformIO · pio run 构建 / 烧录 / 串口监视（从硬件目标面板进入）' },
   { id: 'git', label: 'Git', hint: 'Git · 变更 / 分支 / 提交历史', hintId: 'git' },
-  { id: 'agents', label: '协作', hint: '多智能体协作 · 任务分解与并行执行看板' }
+  { id: 'agents', label: '协作', hint: '多智能体协作 · 任务分解与并行执行看板' },
+  { id: 'instruments', label: '仪器', hint: '仪器 · ESP32-S3 逻辑分析仪 / 示波器 / 功率计' }
 ]
 
 interface Props {

@@ -347,6 +347,7 @@ function friendlyName(f: string): string {
   if (lower.includes('qwen2.5-coder-3b')) return 'Qwen2.5 Coder 3B'
   if (lower.includes('qwen2.5-coder-7b')) return 'Qwen2.5 Coder 7B'
   if (lower.includes('qwen2.5-1.5b')) return 'Qwen2.5 1.5B'
+  if (lower.includes('qwen2.5-7b')) return 'Qwen2.5 7B'
   if (lower.includes('minicpm5-1b')) return 'MiniCPM5 1B'
   if (lower.includes('minicpm5-2b')) return 'MiniCPM5 2B'
   if (lower.includes('qwen3.5-4b')) return 'Qwen3.5 4B'
@@ -442,6 +443,27 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     tier: 'M',
     icon: '🐍',
   },
+  // L 档：16GB+ 内存 —— 3B 不够用时的升级档（代码场景优先 coder-7b）
+  {
+    id: 'qwen2.5-coder-7b',
+    name: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf',
+    displayName: 'Qwen2.5 Coder 7B',
+    description: '通义千问代码专用，70亿参数，4.7GB 体积，10GB 内存可跑，Apache 2.0 可商用',
+    parameters: '7B',
+    quantization: 'Q4_K_M',
+    sizeGB: 4.7,
+    minRAMGB: 10,
+    minVRAMGB: 4,
+    ggufUrl: `${HF_MIRROR}/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf`,
+    ggufFile: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf',
+    ollamaTag: 'qwen2.5-coder-7b',
+    category: 'coding',
+    tier: 'L',
+    icon: '🧠',
+  },
+  // 注：通用 Qwen2.5-7B-Instruct 官方 GGUF 是分片文件（qwen2.5-7b-instruct-q4_k_m-0000{1,2}-of-00002.gguf），
+  // 当前 downloadModel 只支持单文件断点续传，贸然登记会导致「点了下载却失败」。
+  // 等下载器支持分片 GGUF 再补通用 7B；代码场景直接用上面 verified 的单文件 coder-7b。
 ]
 
 // ── 模型下载（断点续传 + 重定向 + 完整性校验）────────────────

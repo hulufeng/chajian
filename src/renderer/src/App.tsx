@@ -16,6 +16,7 @@ import TargetPanel from './components/TargetPanel'
 import GitPanel from './components/GitPanel'
 import PanelDock, { type PanelId } from './components/PanelDock'
 import SerialPlotter from './components/SerialPlotter'
+import InstrumentsPanel from './components/InstrumentsPanel'
 import AgentBoard from './components/AgentBoard'
 import ErrorBoundary from './components/ErrorBoundary'
 import type { BoardTargetInfo, BuildStageInfo, ChannelHealth, FlashStage, PrecheckSnapshot } from '../../preload'
@@ -2016,6 +2017,7 @@ function App(): React.JSX.Element {
                 )
               }
               if (id === 'plotter') return <ErrorBoundary name="绘图仪" key="plotter"><SerialPlotter serialLog={serialLog} serialOpen={serialOpen} theme={theme} /></ErrorBoundary>
+              if (id === 'instruments') return <ErrorBoundary name="仪器" key="instruments"><InstrumentsPanel theme={theme} /></ErrorBoundary>
               if (id === 'debug') return <ErrorBoundary name="调试" key="debug"><DebugPanel fqbn={fqbn} chipOverride={debugChip} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
               if (id === 'platformio') return <ErrorBoundary name="PlatformIO" key="platformio"><PlatformIOPanel projectRoot={projectRoot} onClose={() => setBottomPanel(null)} /></ErrorBoundary>
               if (id === 'target') {

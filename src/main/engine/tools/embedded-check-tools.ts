@@ -29,7 +29,7 @@ const formulaCheckTool: ToolDefinition = {
         String(args.kind || ''),
         Number(args.target),
         Number(args.clock),
-        { mode: args.mode ? String(args.mode) : 'standard', tolerancePpm: args.tolerancePpm != null ? Number(args.tolerancePpm) : 2000 }
+        { mode: args.mode === 'double' ? 'double' : 'standard', tolerancePpm: args.tolerancePpm != null ? Number(args.tolerancePpm) : 2000 }
       )
       return { ok: true, content: JSON.stringify(r, null, 2) }
     } catch (e) {

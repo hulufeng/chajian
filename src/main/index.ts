@@ -12,6 +12,11 @@ import {
   ensureCompileDb, disposeAll as disposeLsp, status as lspStatus, configureServerSearch
 } from './services/lsp/lspService'
 import { listPorts, writeSerial, startPortWatcher, stopPortWatcher } from './services/serialService'
+import {
+  connectInstruments, disconnectInstruments, listInstrumentPorts, sendInstrumentCommand,
+  armLogicAnalyzer, armScope, readPower, getCapabilities, setInstrumentSink,
+  type LogicAnalyzerConfig, type ScopeConfig
+} from './services/instrumentsService'
 import { aiChat, listModels, getAiState, setAiState, getChannelHealth, getLocalModel, listByokProfiles, saveByokProfile, deleteByokProfile, setActiveByok, setLocalModel, login, register, logout, refreshAccount, sendLoginCode, loginWithCode, guestLogin, type ChatMessage, type ByokProfile, type AiState } from './services/aiGateway'
 import { runCommand } from './services/commandService'
 import { pluginManager, isStreamTask, type StreamTask } from './plugins/pluginManager'
@@ -48,7 +53,7 @@ import {
   STAGE_LABEL
 } from './services/build-diagnostics'
 import { generateWiringDiagram, readSketchCode } from './services/wiringService'
-import { listLocalModels } from './ai/modelRuntime'
+import { listLocalModels, MODEL_CATALOG, downloadModel } from './ai/modelRuntime'
 import { checkPinConflicts, formatPinReport, type PinReport } from './services/pinConflict'
 import { listTemplates, getTemplate, materializeTemplate, groupTemplates } from './services/templateLibrary'
 import { explainSerialLog, type ExplainResult } from './services/logExplainer'
@@ -405,6 +410,25 @@ ipcMain.handle('espIdf:readSdkconfig', (_e, projectPath: string) => espIdfReadSd
 ipcMain.handle('espIdf:writeSdkconfig', (_e, cfgPath: string, items: Array<{ key: string; value: string }>) => espIdfWriteSdkconfig(cfgPath, items))
 ipcMain.handle('espIdf:kconfigSchema', (_e, projectPath: string) => espIdfKconfigSchema(projectPath))
 ipcMain.handle('espIdf:kconfigVisibility', (_e, projectPath: string) => espIdfKconfigVisibility(projectPath))
+
+// 仪器（#13）：ESP32-S3 仪器固件 → 逻辑分析仪 / 示波器 / 功率计
+// 数据/日志/状态经 sink 转发到渲染层（mainWindow 在 createWindow 作用域内，这里用 getAllWindows 取窗口）
+setInstrumentSink((channel: string, payload: unknown) => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) {
+      w.webContents.send(channel, payload)
+      break
+    }
+  }
+})
+ipcMain.handle('instruments:listPorts', () => listInstrumentPorts())
+ipcMain.handle('instruments:connect', (_e, o: { port: string; baud: number }) => connectInstruments(o))
+ipcMain.handle('instruments:disconnect', () => disconnectInstruments())
+ipcMain.handle('instruments:command', (_e, cmd: string) => sendInstrumentCommand(cmd))
+ipcMain.handle('instruments:armLA', (_e, cfg: LogicAnalyzerConfig) => armLogicAnalyzer(cfg))
+ipcMain.handle('instruments:armScope', (_e, cfg: ScopeConfig) => armScope(cfg))
+ipcMain.handle('instruments:readPower', () => readPower())
+ipcMain.handle('instruments:capabilities', () => getCapabilities())
 
 // 视图：缩放 / 全屏
 ipcMain.handle('view:zoomIn', () => {
@@ -1615,6 +1639,32 @@ ipcMain.handle('engine:ensure', async (_e, opts?: { model?: string; force?: bool
   const model = r.model || preferred
   setLocalModel(model)
   return { ready: true, model, error: null, reason: null as string | null }
+})
+
+/**
+ * 可下载模型目录（含 3B / 7B 各档位），带 downloaded 标记让 UI 区分「下载 / 已下载」。
+ */
+ipcMain.handle('engine:catalog', async () => {
+  const local = await listLocalModels()
+  const have = new Set(local.map((m) => m.id))
+  return MODEL_CATALOG.map((m) => ({ ...m, downloaded: have.has(m.ggufFile) }))
+})
+
+/**
+ * 按 catalog id 下载 GGUF 模型（断点续传，进度经 engine:downloadProgress 推给渲染层）。
+ * 存在的理由：downloadModel 此前是孤儿函数，没有任何 IPC 接它——
+ * UI 只能列已下载模型，想从 3B 升 7B 只能手动往 models 目录丢文件。
+ */
+ipcMain.handle('engine:download', async (event, opts: { modelId: string }) => {
+  const sender = event.sender
+  try {
+    await downloadModel(opts.modelId, (p) => {
+      if (!sender.isDestroyed()) sender.send('engine:downloadProgress', { modelId: opts.modelId, ...p })
+    })
+    return { ok: true, error: null as string | null }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 })
 
 // ---------- 片上调试（openocd + telnet）----------

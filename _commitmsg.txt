@@ -1,0 +1,33 @@
+feat(#13): 仪器面板 + 本地模型 7B 档位与下载链路；修复 HEAD 遗留类型错误
+
+仪器（#13）：把串口上的 ESP32-S3 仪器固件当逻辑分析仪 / 示波器 / 功率计用
+- 新增 instrumentsService.ts：二进制帧协议（0xAA 0x55 魔数 + 类型 + 长度 + CRC8），
+  与 ASCII 控制/日志行混流解析；LA/示波器/功率计三类帧解码
+- 新增 InstrumentsPanel.tsx：连接栏、三模式切换、LA 通道掩码与触发沿配置、
+  示波器通道/采样率/点数、Canvas 波形绘制、日志区
+- 主进程 8 个 instruments:* IPC + sink 事件转发（data/log/status）
+- preload 绑定与类型、PanelDock 注册「仪器」面板、App 渲染分支
+
+本地模型通道（3B 不够时可升 7B）：
+- MODEL_CATALOG 新增 qwen2.5-coder-7b（L 档，4.7GB / 10GB 内存），
+  friendlyName 同步识别；直链已实测 200
+- 通用 Qwen2.5-7B-Instruct 官方 GGUF 是分片文件（00001/00002-of-00002），
+  当前 downloadModel 只支持单文件断点续传，登记会导致点了下载却失败，
+  故暂不登记并留注释说明
+- 补下载链路：downloadModel 此前是孤儿函数、没有任何 IPC 接它，
+  只能手动往 models 目录丢 gguf。新增 engine:catalog（带 downloaded 标记，
+  避免重复下载）/ engine:download（经 engine:downloadProgress 推进度）
+  + preload 绑定 + 设置页「可下载模型」区块
+
+修复 HEAD 遗留类型错误（此前 tsc --noEmit 双配置不通过，非本次引入）：
+- benchmark: CompileOptions 缺必填 bin → 用 findToolchain() 解析
+- subagentRegistry / subagent-dispatch-tool: ROLE_TOOLS 的 key 不含 'custom'，
+  用 AgentRole 索引越界 → 与 orchestrator.ts 同款写法做 'custom' 短路
+- embedded-check-tools: mode 由宽 string 收窄为 'standard' | 'double'
+- svd-query: ToolDefinition.execute 需第二参 ctx，补传
+- githubDaemon ×2: headers 错转成 RequestInit 导致类型不匹配，
+  去掉错转即可（Record<string,string> 本身就是合法 HeadersInit）
+
+验证：tsc --noEmit 双配置 0 错误；check-agent-hooks 20/0、check-agent-tools 18/0、
+check-subagents 13/13、check-github-daemon 10/10、check-local-model 9/0；
+scan-ipc-handlers 0 CRITICAL

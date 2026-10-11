@@ -783,7 +783,25 @@ const api = {
     ensure: (
       opts?: { model?: string; force?: boolean }
     ): Promise<{ ready: boolean; model: string | null; error: string | null; reason: string | null }> =>
-      ipcRenderer.invoke('engine:ensure', opts)
+      ipcRenderer.invoke('engine:ensure', opts),
+    /** 可下载模型目录（含 3B / 7B 各档位）；downloaded 标记本地是否已有该文件 */
+    catalog: (): Promise<Array<{
+      id: string; displayName: string; description: string; parameters: string
+      sizeGB: number; minRAMGB: number; tier: string; icon: string; ggufFile: string; downloaded: boolean
+    }>> => ipcRenderer.invoke('engine:catalog'),
+    /** 按 catalog id 下载 GGUF（断点续传）；进度走 onDownloadProgress 事件 */
+    download: (modelId: string): Promise<{ ok: boolean; error: string | null }> =>
+      ipcRenderer.invoke('engine:download', { modelId }),
+    onDownloadProgress: (
+      cb: (p: { modelId: string; status: string; percent: number; downloadedMB: number; totalMB: number }) => void
+    ): (() => void) => {
+      const listener = (
+        _e: IpcRendererEvent,
+        p: { modelId: string; status: string; percent: number; downloadedMB: number; totalMB: number }
+      ): void => cb(p)
+      ipcRenderer.on('engine:downloadProgress', listener)
+      return () => ipcRenderer.removeListener('engine:downloadProgress', listener)
+    }
   },
 
   // 寄存器数据（CMSIS-SVD，乐鑫官方）
@@ -958,6 +976,37 @@ const api = {
       ipcRenderer.invoke('target:write-ini', opts),
     /** 一键硬件自检：插板后先跑它，知道缺什么而不是盲试 */
     selfCheck: (): Promise<SelfCheckReport> => ipcRenderer.invoke('selfcheck:run')
+  },
+
+  // 仪器（#13）：把串口上的 ESP32-S3 仪器固件当逻辑分析仪 / 示波器 / 功率计用
+  instruments: {
+    /** 枚举可用串口（与串口监视器共用底层枚举） */
+    listPorts: (): Promise<SerialPortInfo[]> => ipcRenderer.invoke('instruments:listPorts'),
+    connect: (opts: { port: string; baud: number }): Promise<{ ok: boolean; error?: string; port?: string }> =>
+      ipcRenderer.invoke('instruments:connect', opts),
+    disconnect: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('instruments:disconnect'),
+    /** 发送一条原始控制指令（调试 / 自定义用） */
+    command: (cmd: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('instruments:command', cmd),
+    armLogicAnalyzer: (cfg: LogicAnalyzerConfig): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('instruments:armLA', cfg),
+    armScope: (cfg: ScopeConfig): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('instruments:armScope', cfg),
+    readPower: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('instruments:readPower'),
+    capabilities: (): Promise<InstrumentCaps> => ipcRenderer.invoke('instruments:capabilities'),
+    onData: (cb: (d: InstrumentData) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, d: InstrumentData): void => cb(d)
+      ipcRenderer.on('instruments:data', listener)
+      return () => ipcRenderer.removeListener('instruments:data', listener)
+    },
+    onLog: (cb: (line: string) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, line: string): void => cb(line)
+      ipcRenderer.on('instruments:log', listener)
+      return () => ipcRenderer.removeListener('instruments:log', listener)
+    },
+    onStatus: (cb: (s: InstrumentStatus) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, s: InstrumentStatus): void => cb(s)
+      ipcRenderer.on('instruments:status', listener)
+      return () => ipcRenderer.removeListener('instruments:status', listener)
+    }
   },
 
   // PlatformIO（pio CLI 集成：多 env 解析 / 构建 / 烧录 / 串口监视）
@@ -1314,6 +1363,59 @@ export interface OrchestrationReport {
   layers: string[][]
   conflicts: Array<{ a: string; b: string; files: string[]; resolution: string }>
   summary: string
+}
+
+// ── 仪器（#13）数据类型：与主进程 instrumentsService 保持一致，preload 不引主进程模块 ──
+export interface LogicAnalyzerFrame {
+  kind: 'la'
+  sampleRate: number
+  triggerIndex: number
+  channelCount: number
+  channelMask: number
+  sampleCount: number
+  /** 每字节=各通道电平位图，bit i 置位=第 i 通道高电平 */
+  samples: number[]
+}
+export interface ScopeFrame {
+  kind: 'scope'
+  sampleRate: number
+  channel: number
+  sampleCount: number
+  /** int16 ADC 原始值 */
+  values: number[]
+}
+export interface PowerReading {
+  kind: 'power'
+  busV: number
+  shuntV: number
+  currentA: number
+  powerW: number
+  present: boolean
+}
+export type InstrumentData = LogicAnalyzerFrame | ScopeFrame | PowerReading
+export interface InstrumentCaps {
+  idn?: string
+  la?: { maxChannels: number; maxRateHz: number; maxSamples: number }
+  scope?: { channels: number[]; maxRateHz: number; maxSamples: number }
+  power?: { supported: boolean; i2cAddr?: number }
+}
+export interface InstrumentStatus extends Partial<InstrumentCaps> {
+  connected?: boolean
+  port?: string
+  error?: string
+}
+export interface LogicAnalyzerConfig {
+  channelMask: number
+  sampleRate: number
+  preSamples: number
+  postSamples: number
+  trigChannel: number
+  trigEdge: 0 | 1
+}
+export interface ScopeConfig {
+  channel: number
+  sampleRate: number
+  sampleCount: number
 }
 
 export type Api = typeof api

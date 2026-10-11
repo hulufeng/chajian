@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync
 import { tmpdir } from 'os'
 import { join, extname } from 'path'
 import { AgentRunner } from './agent-runner'
-import { compileSketch, type CompileOptions } from '../services/toolchain'
+import { compileSketch, findToolchain, type CompileOptions } from '../services/toolchain'
 import { parseBuildOutput } from '../services/build-diagnostics'
 import { defaultBenchmarkTasks, type BenchmarkTask, type Scaffold } from './benchmark-tasks'
 
@@ -111,6 +111,8 @@ function compileAndCheck(root: string, task: BenchmarkTask): Promise<{ ok: boole
     const opts: CompileOptions = {
       sketch,
       fqbn: task.fqbn || 'esp32:esp32:esp32dev',
+      // CompileOptions.bin 必填：compileSketch 靠它 spawn arduino-cli
+      bin: findToolchain() || 'arduino-cli',
       buildPath: join(root, '.bench-build')
     }
     let out = ''

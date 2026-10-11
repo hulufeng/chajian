@@ -17,5 +17,7 @@ export function load(ctx: PluginContext): void {
   // 命令名 svd.query（与 manifest 的 channels.backend 一致）。
   // 注意：pluginManager.invoke 不 await 异步 handler，所以 plugin invoke backend svd.query
   // 的顶层序列化对 install 这类异步 action 不完美；但 Agent 主路径走内置工具，不受影响。
-  ctx.registerBackend('svd.query', (args) => svdQuery.execute((args ?? {}) as Record<string, unknown>))
+  ctx.registerBackend('svd.query', (args) =>
+    svdQuery.execute((args ?? {}) as Record<string, unknown>, { projectRoot: null, cwd: process.cwd() })
+  )
 }

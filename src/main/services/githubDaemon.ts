@@ -86,7 +86,7 @@ export async function pollOnce(
   }
   const hits: MentionHit[] = []
   const listUrl = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/issues?state=all&sort=updated&direction=desc&per_page=30`
-  const listRes = await fetcher(listUrl, { headers: headers as unknown as RequestInit })
+  const listRes = await fetcher(listUrl, { headers })
   if (!listRes.ok) throw new Error(`GitHub API ${listRes.status}`)
   const issues = (await listRes.json()) as GitHubIssue[]
   for (const it of issues) {
@@ -103,7 +103,7 @@ export async function pollOnce(
     }
     if (it.comments_url) {
       try {
-        const cRes = await fetcher(it.comments_url, { headers: headers as unknown as RequestInit })
+        const cRes = await fetcher(it.comments_url, { headers })
         if (cRes.ok) {
           const comments = (await cRes.json()) as Array<{ id: number; user?: { login?: string }; body?: string; html_url?: string }>
           for (const c of comments) {

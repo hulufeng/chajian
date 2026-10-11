@@ -53,7 +53,7 @@ export function resolveSubAgent(def: SubAgentDef): { system: string; allowTools:
   const allowTools =
     def.allowTools && def.allowTools.length
       ? def.allowTools
-      : def.role
+      : def.role && def.role !== 'custom'
         ? ROLE_TOOLS[def.role] || []
         : []
   const system = def.system ?? (def.role ? buildSubAgentPrompt(def.role, def.writeScope || []) : '')

@@ -20,7 +20,7 @@ const listTool: ToolDefinition = {
         name: d.name,
         description: d.description,
         role: d.role ?? null,
-        tools: d.allowTools?.length ?? (d.role ? (ROLE_TOOLS[d.role as AgentRole] || []).length : 0)
+        tools: d.allowTools?.length ?? (d.role && d.role !== 'custom' ? (ROLE_TOOLS[d.role] || []).length : 0)
       }))
       return { ok: true, content: JSON.stringify(list, null, 2) }
     } catch (e) {

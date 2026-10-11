@@ -207,11 +207,17 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   // ── 本地模型引擎（llama.cpp）──
   interface EngineModel { id: string; name: string; sizeGB: number; quantization: string; parameters: string }
   interface EngineStatus { installed: boolean; running: boolean; version: string; engineDir: string }
+  interface CatalogModel {
+    id: string; displayName: string; description: string; parameters: string
+    sizeGB: number; minRAMGB: number; tier: string; icon: string; ggufFile: string; downloaded: boolean
+  }
   const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null)
   const [engineModels, setEngineModels] = useState<EngineModel[]>([])
   const [engineSel, setEngineSel] = useState('')
-  const [engineBusy, setEngineBusy] = useState<string | null>(null) // 'start' | 'stop' | 'models'
+  const [engineBusy, setEngineBusy] = useState<string | null>(null) // 'start' | 'stop' | 'models' | 'dl:<id>'
   const [engineMsg, setEngineMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [engineCatalog, setEngineCatalog] = useState<CatalogModel[]>([])
+  const [engineDl, setEngineDl] = useState<{ modelId: string; percent: number; downloadedMB: number; totalMB: number } | null>(null)
 
   const refreshEngine = (): void => {
     window.api.engine.status()
@@ -223,6 +229,10 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
         if (m.length > 0) setEngineSel((prev) => prev || m[0].id)
       })
       .catch(() => setEngineModels([]))
+    // 可下载目录（含 7B 档位）：downloaded 标记让 UI 区分「下载 / 已下载」，避免重复下
+    window.api.engine.catalog()
+      .then((c) => setEngineCatalog(c))
+      .catch(() => setEngineCatalog([]))
   }
 
   const refreshSvd = (): void => {
@@ -239,6 +249,14 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
 
   useEffect(() => {
     refreshEngine()
+  }, [])
+
+  // 模型下载进度：主进程经 engine:downloadProgress 推送（断点续传会多次回调）
+  useEffect(() => {
+    const off = window.api.engine.onDownloadProgress((p) => {
+      setEngineDl({ modelId: p.modelId, percent: p.percent, downloadedMB: p.downloadedMB, totalMB: p.totalMB })
+    })
+    return off
   }, [])
 
   // MCP：进入设置页就拉一次概览；工程切换时重拉（项目级配置会变）
@@ -791,6 +809,49 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                             {engineSel === m.id && <span className="byok-badge-active">选中</span>}
                           </div>
                         ))}
+                      </div>
+                    )}
+                    <div className="svd-block-title" style={{ marginTop: 10 }}>可下载模型（3B 不够用时可升 7B）</div>
+                    {engineCatalog.length === 0 ? (
+                      <div className="svd-empty">正在读取模型目录…</div>
+                    ) : (
+                      <div className="engine-model-list">
+                        {engineCatalog.map((m) => {
+                          const dl = engineDl && engineDl.modelId === m.id ? engineDl : null
+                          return (
+                            <div key={m.id} className="engine-model">
+                              <div className="engine-model-main">
+                                <span className="engine-model-name">{m.icon} {m.displayName}</span>
+                                <span className="engine-model-meta">{m.description} · 建议 {m.minRAMGB}GB+ 内存</span>
+                              </div>
+                              {m.downloaded ? (
+                                <span className="byok-badge-active">已下载</span>
+                              ) : dl ? (
+                                <span className="engine-model-meta">
+                                  下载中 {dl.percent}%（{dl.downloadedMB}/{dl.totalMB} MB）
+                                </span>
+                              ) : (
+                                <button
+                                  className="settings-btn"
+                                  disabled={engineBusy !== null}
+                                  onClick={() => {
+                                    setEngineBusy(`dl:${m.id}`)
+                                    setEngineMsg(null)
+                                    setEngineDl({ modelId: m.id, percent: 0, downloadedMB: 0, totalMB: 0 })
+                                    window.api.engine.download(m.id)
+                                      .then((r) => setEngineMsg(r.ok
+                                        ? { text: `${m.displayName} 下载完成 —— 在上方「已下载模型」里选中它，再点「启动引擎」`, ok: true }
+                                        : { text: `下载失败：${r.error || '未知错误'}`, ok: false }))
+                                      .catch((e: Error) => setEngineMsg({ text: e.message, ok: false }))
+                                      .finally(() => { setEngineBusy(null); setEngineDl(null); refreshEngine() })
+                                  }}
+                                >
+                                  下载 {m.sizeGB.toFixed(1)}GB
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                     {engineMsg && <div className={`svd-msg ${engineMsg.ok ? 'ok' : 'err'}`} style={{ marginTop: 10 }}>{engineMsg.text}</div>}
