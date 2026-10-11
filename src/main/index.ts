@@ -32,6 +32,8 @@ import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatf
 import { schedulerService } from './services/scheduler'
 import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
+import { runBenchmark, defaultBenchmarkTasks } from './engine/benchmark'
+import type { BenchmarkTask } from './engine/benchmark-tasks'
 import type { TreeNode } from './services/fsService'
 import * as nodePty from 'node-pty'
 import { arduinoGrpc } from './services/grpc-client'
@@ -1348,6 +1350,24 @@ ipcMain.handle('agent:askRespond', (_e, opts: { answers: string[] }) => {
 ipcMain.handle('agent:status', () => {
   return agentRunner ? { status: agentRunner.getStatus(), stats: agentRunner.getStats() } : { status: 'idle' }
 })
+
+// ── 标准任务实测 harness（商业化 P1 · 方向二 §5.1）──
+// 在 Electron 主进程内分批跑 AgentRunner，独立编译验证并采集指标；报告落 userData/benchmark-report.json。
+// 真模型走 AI 网关，需服务端配置上游 Key（未配时任务失败属预期）。
+let benchSignal = { stopped: false }
+ipcMain.handle('bench:run', async (_e, arg: { tasks?: BenchmarkTask[]; model?: string; localModel?: string; maxTurns?: number } = {}) => {
+  benchSignal = { stopped: false }
+  const tasks = arg.tasks && arg.tasks.length ? arg.tasks : defaultBenchmarkTasks
+  const report = await runBenchmark(tasks, {
+    model: arg.model, localModel: arg.localModel, maxTurns: arg.maxTurns, signal: benchSignal,
+    onTaskDone: (r) => console.log(`[bench] ${r.id} ${r.passed ? 'PASS' : 'FAIL'} turns=${r.turns} compileAttempts=${r.compileAttempts} selfRepair=${r.selfRepairRounds} cost=¥${r.costCNY}`)
+  })
+  const outPath = join(app.getPath('userData'), 'benchmark-report.json')
+  writeFileSync(outPath, JSON.stringify(report, null, 2))
+  console.log(`[bench] 完成 ${report.passed}/${report.total}  报告: ${outPath}`)
+  return { ok: true, report, outPath }
+})
+ipcMain.handle('bench:stop', () => { benchSignal.stopped = true; return { ok: true } })
 
 
 // examples 目录（开发时在项目根，打包后在 resources 下；不存在时回退源码路径供开发机调试）
