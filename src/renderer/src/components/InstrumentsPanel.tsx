@@ -12,6 +12,20 @@ const SCOPE_NSAMP_OPTS = [1000, 2000, 4000, 8000]
 
 type Mode = 'la' | 'scope' | 'power'
 
+/**
+ * 画布用的是真实颜色值，CSS 变量无法直接喂给 ctx.fillStyle，
+ * 故在绘制时把设计令牌解析成当前主题下的实际颜色（fallback 供解析失败时用）。
+ * 这样面板颜色与全站主题令牌同源，不再各写一套硬编码色值。
+ */
+function cssColor(token: string, fallback: string): string {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim()
+    return v || fallback
+  } catch {
+    return fallback
+  }
+}
+
 export default function InstrumentsPanel({ theme }: { theme?: string }): React.JSX.Element {
   const [ports, setPorts] = useState<string[]>([])
   const [port, setPort] = useState('')
@@ -111,15 +125,15 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
     const h = cv.clientHeight || 240
     cv.width = w
     cv.height = h
-    const bg = dark ? '#0d1117' : '#ffffff'
-    const fg = dark ? '#c9d1d9' : '#24292f'
-    const grid = dark ? '#21262d' : '#ececec'
+    const bg = cssColor('--surface-0', dark ? '#0d1117' : '#ffffff')
+    const fg = cssColor('--text', dark ? '#e6edf3' : '#24292f')
+    const grid = cssColor('--border', dark ? '#2b333d' : '#e2e5ea')
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
 
     if (!frame || frame.kind === 'power') {
       ctx.fillStyle = fg
-      ctx.font = '13px ui-monospace, monospace'
+      ctx.font = '13px var(--font-mono, ui-monospace, monospace)'
       ctx.fillText(frame ? '' : '未采集到数据 —— 先连接 ESP32-S3 仪器固件，再点击「采集」', 14, 28)
       if (frame && frame.kind === 'power') {
         ctx.fillText('功率读数见下方数值面板', 14, 28)
@@ -132,24 +146,24 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
     }
 
-    if (frame.kind === 'la') drawLA(ctx, frame, w, h, dark)
-    else drawScope(ctx, frame, w, h, dark)
+    if (frame.kind === 'la') drawLA(ctx, frame, w, h)
+    else drawScope(ctx, frame, w, h)
   }, [frame, mode, dark])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', color: dark ? '#c9d1d9' : '#24292f', fontSize: 13 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', color: 'var(--text)', fontSize: 13 }}>
       {/* 连接栏 */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', borderBottom: `1px solid ${dark ? '#21262d' : '#e5e5e5'}` }}>
-        <select value={port} onChange={(e) => setPort(e.target.value)} style={sel(dark)}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>
+        <select value={port} onChange={(e) => setPort(e.target.value)} style={sel()}>
           {ports.length === 0 && <option value="">（无串口）</option>}
           {ports.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <select value={baud} onChange={(e) => setBaud(Number(e.target.value))} style={sel(dark)}>
+        <select value={baud} onChange={(e) => setBaud(Number(e.target.value))} style={sel()}>
           {BAUD_OPTIONS.map((b) => <option key={b} value={b}>{b} baud</option>)}
         </select>
         {!connected
-          ? <button style={btn(dark)} onClick={onConnect}>连接</button>
-          : <button style={btn(dark)} onClick={onDisconnect}>断开</button>}
+          ? <button style={btn()} onClick={onConnect}>连接</button>
+          : <button style={btn()} onClick={onDisconnect}>断开</button>}
         <span style={{ opacity: 0.8 }}>
           {connected ? `● 已连接${status.idn ? ' · ' + status.idn : ''}` : '○ 未连接'}
         </span>
@@ -160,8 +174,8 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
       <div style={{ display: 'flex', gap: 4, padding: '6px 10px' }}>
         {(['la', 'scope', 'power'] as Mode[]).map((m) => (
           <button key={m} onClick={() => setMode(m)}
-            style={{ ...btn(dark), background: mode === m ? (dark ? '#1f6feb' : '#0969da') : (dark ? '#21262d' : '#f0f0f0'),
-              color: mode === m ? '#fff' : (dark ? '#c9d1d9' : '#24292f') }}>
+            style={{ ...btn(), background: mode === m ? 'var(--accent)' : 'var(--surface-2)',
+              color: mode === m ? 'var(--on-accent)' : 'var(--text)' }}>
             {m === 'la' ? '逻辑分析仪' : m === 'scope' ? '示波器' : '功率计'}
           </button>
         ))}
@@ -179,45 +193,45 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
               </label>
             ))}
             <span>采样率：</span>
-            <select value={laRate} onChange={(e) => setLaRate(Number(e.target.value))} style={sel(dark)}>
+            <select value={laRate} onChange={(e) => setLaRate(Number(e.target.value))} style={sel()}>
               {LA_RATES.map((r) => <option key={r} value={r}>{r / 1e6} MHz</option>)}
             </select>
             <span>预采样：</span>
-            <input type="number" value={laPre} onChange={(e) => setLaPre(Number(e.target.value))} style={{ ...sel(dark), width: 70 }} />
+            <input type="number" value={laPre} onChange={(e) => setLaPre(Number(e.target.value))} style={{ ...sel(), width: 70 }} />
             <span>后采样：</span>
-            <input type="number" value={laPost} onChange={(e) => setLaPost(Number(e.target.value))} style={{ ...sel(dark), width: 80 }} />
+            <input type="number" value={laPost} onChange={(e) => setLaPost(Number(e.target.value))} style={{ ...sel(), width: 80 }} />
             <span>触发：</span>
-            <select value={laTrig} onChange={(e) => setLaTrig(Number(e.target.value))} style={sel(dark)}>
+            <select value={laTrig} onChange={(e) => setLaTrig(Number(e.target.value))} style={sel()}>
               <option value={-1}>无</option>
               {LA_GPIO.map((g, i) => (laMask & (1 << i)) ? <option key={i} value={i}>CH{i}</option> : null)}
             </select>
-            <select value={laEdge} onChange={(e) => setLaEdge(Number(e.target.value) as 0 | 1)} style={sel(dark)}>
+            <select value={laEdge} onChange={(e) => setLaEdge(Number(e.target.value) as 0 | 1)} style={sel()}>
               <option value={1}>上升沿</option>
               <option value={0}>下降沿</option>
             </select>
-            <button style={btn(dark)} onClick={onArmLA}>采集</button>
+            <button style={btn()} onClick={onArmLA}>采集</button>
           </>
         )}
         {mode === 'scope' && (
           <>
             <span>通道：</span>
-            <select value={scopeCh} onChange={(e) => setScopeCh(Number(e.target.value))} style={sel(dark)}>
+            <select value={scopeCh} onChange={(e) => setScopeCh(Number(e.target.value))} style={sel()}>
               {SCOPE_GPIO.map((g, i) => <option key={i} value={i}>ADC1_CH{i}(GPIO{g})</option>)}
             </select>
             <span>采样率：</span>
-            <select value={scopeRate} onChange={(e) => setScopeRate(Number(e.target.value))} style={sel(dark)}>
+            <select value={scopeRate} onChange={(e) => setScopeRate(Number(e.target.value))} style={sel()}>
               {SCOPE_RATES.map((r) => <option key={r} value={r}>{r / 1000} kHz</option>)}
             </select>
             <span>点数：</span>
-            <select value={scopeNsamp} onChange={(e) => setScopeNsamp(Number(e.target.value))} style={sel(dark)}>
+            <select value={scopeNsamp} onChange={(e) => setScopeNsamp(Number(e.target.value))} style={sel()}>
               {SCOPE_NSAMP_OPTS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
-            <button style={btn(dark)} onClick={onArmScope}>采集</button>
+            <button style={btn()} onClick={onArmScope}>采集</button>
           </>
         )}
         {mode === 'power' && (
           <>
-            <button style={btn(dark)} onClick={onReadPower}>读取一次</button>
+            <button style={btn()} onClick={onReadPower}>读取一次</button>
             <span style={{ opacity: 0.7 }}>INA219 接 I2C（SDA=GPIO12，SCL=GPIO13，0x40）；未接则显示「未检测到」</span>
           </>
         )}
@@ -228,7 +242,7 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         {frame && frame.kind === 'power' && (
           <div style={{ position: 'absolute', top: 8, left: 12, right: 12, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-            {!frame.present && <div style={{ gridColumn: '1 / -1', color: '#f85149' }}>未检测到功率计（INA219）。请检查 I2C 接线与地址。</div>}
+            {!frame.present && <div style={{ gridColumn: '1 / -1', color: 'var(--error)' }}>未检测到功率计（INA219）。请检查 I2C 接线与地址。</div>}
             <Metric label="总线电压" value={frame.busV.toFixed(3)} unit="V" />
             <Metric label="分流电压" value={frame.shuntV.toFixed(4)} unit="V" />
             <Metric label="电流" value={frame.currentA.toFixed(4)} unit="A" />
@@ -238,7 +252,7 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
       </div>
 
       {/* 日志 */}
-      <div style={{ height: 96, overflowY: 'auto', borderTop: `1px solid ${dark ? '#21262d' : '#e5e5e5'}`, padding: '4px 10px', fontFamily: 'ui-monospace, monospace', fontSize: 12, whiteSpace: 'pre-wrap', opacity: 0.9 }}>
+      <div style={{ height: 96, overflowY: 'auto', borderTop: '1px solid var(--border)', padding: '4px 10px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', opacity: 0.9 }}>
         {logs.length === 0 ? '（仪器日志）' : logs.join('\n')}
       </div>
     </div>
@@ -247,31 +261,35 @@ export default function InstrumentsPanel({ theme }: { theme?: string }): React.J
 
 function Metric({ label, value, unit }: { label: string; value: string; unit: string }): React.JSX.Element {
   return (
-    <div style={{ background: 'rgba(127,127,127,0.12)', borderRadius: 6, padding: '8px 10px' }}>
+    <div style={{ background: 'var(--surface-hover)', borderRadius: 'var(--radius-sm)', padding: '8px 10px' }}>
       <div style={{ opacity: 0.7 }}>{label}</div>
       <div style={{ fontSize: 22, fontVariantNumeric: 'tabular-nums' }}>{value} <span style={{ fontSize: 13, opacity: 0.7 }}>{unit}</span></div>
     </div>
   )
 }
 
-function sel(dark: boolean): React.CSSProperties {
+function sel(): React.CSSProperties {
   return {
-    background: dark ? '#0d1117' : '#fff', color: dark ? '#c9d1d9' : '#24292f',
-    border: `1px solid ${dark ? '#30363b' : '#d0d7de'}`, borderRadius: 6, padding: '3px 6px'
+    background: 'var(--surface-0)', color: 'var(--text)',
+    border: '1px solid var(--border-strong)', borderRadius: 6, padding: '3px 6px'
   }
 }
-function btn(dark: boolean): React.CSSProperties {
+function btn(): React.CSSProperties {
   return {
-    background: dark ? '#21262d' : '#f0f0f0', color: dark ? '#c9d1d9' : '#24292f',
-    border: `1px solid ${dark ? '#30363b' : '#d0d7de'}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer'
+    background: 'var(--surface-2)', color: 'var(--text)',
+    border: '1px solid var(--border-strong)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer'
   }
 }
 
-function drawLA(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind: 'la' }>, w: number, h: number, dark: boolean): void {
+function drawLA(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind: 'la' }>, w: number, h: number): void {
+  const label = cssColor('--text-2', '#8b949e')
+  const base = cssColor('--border', '#30363b')
+  const wave = cssColor('--accent', '#2f81f7')
+  const trig = cssColor('--error', '#f85149')
   const chans: number[] = []
   for (let i = 0; i < 8; i++) if (f.channelMask & (1 << i)) chans.push(i)
   if (chans.length === 0) {
-    ctx.fillStyle = dark ? '#c9d1d9' : '#24292f'
+    ctx.fillStyle = label
     ctx.fillText('未选择通道', 14, 28)
     return
   }
@@ -282,12 +300,12 @@ function drawLA(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind
   chans.forEach((ch, idx) => {
     const yBase = rowH * idx + rowH * 0.5
     const hi = Math.max(6, rowH * 0.32)
-    ctx.fillStyle = dark ? '#8b949e' : '#57606a'
+    ctx.fillStyle = label
     ctx.font = '12px ui-monospace, monospace'
     ctx.fillText(`CH${ch} GPIO${LA_GPIO[ch]}`, 6, rowH * idx + 16)
-    ctx.strokeStyle = dark ? '#30363b' : '#ddd'
+    ctx.strokeStyle = base
     ctx.beginPath(); ctx.moveTo(padL, yBase); ctx.lineTo(w, yBase); ctx.stroke()
-    ctx.strokeStyle = '#2f81f7'
+    ctx.strokeStyle = wave
     ctx.lineWidth = 1.5
     ctx.beginPath()
     for (let i = 0; i < n; i++) {
@@ -301,16 +319,19 @@ function drawLA(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind
   })
   if (f.triggerIndex < n && f.triggerIndex !== 0xffffffff) {
     const x = xOf(f.triggerIndex)
-    ctx.strokeStyle = '#f85149'
+    ctx.strokeStyle = trig
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
-    ctx.fillStyle = '#f85149'
+    ctx.fillStyle = trig
     ctx.fillText('TRIG', x + 4, 14)
   }
-  ctx.fillStyle = dark ? '#8b949e' : '#57606a'
+  ctx.fillStyle = label
   ctx.fillText(`${f.sampleRate / 1e6} MHz · ${n} 点`, padL, h - 6)
 }
 
-function drawScope(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind: 'scope' }>, w: number, h: number, dark: boolean): void {
+function drawScope(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { kind: 'scope' }>, w: number, h: number): void {
+  const label = cssColor('--text-2', '#8b949e')
+  const zero = cssColor('--border', '#30363b')
+  const wave = cssColor('--success', '#3fb950')
   const n = f.sampleCount
   const padL = 12
   let mn = Infinity, mx = -Infinity
@@ -321,9 +342,9 @@ function drawScope(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { k
   const xOf = (i: number) => padL + (n <= 1 ? 0 : (i / (n - 1)) * (w - padL))
   const yOf = (v: number) => mid - ((v - mn) / range) * (h * 0.42)
   // 零线
-  ctx.strokeStyle = dark ? '#30363b' : '#ddd'
+  ctx.strokeStyle = zero
   ctx.beginPath(); ctx.moveTo(padL, mid); ctx.lineTo(w, mid); ctx.stroke()
-  ctx.strokeStyle = '#3fb950'
+  ctx.strokeStyle = wave
   ctx.lineWidth = 1.5
   ctx.beginPath()
   for (let i = 0; i < n; i++) {
@@ -332,7 +353,7 @@ function drawScope(ctx: CanvasRenderingContext2D, f: Extract<InstrumentData, { k
   }
   ctx.stroke()
   ctx.lineWidth = 1
-  ctx.fillStyle = dark ? '#8b949e' : '#57606a'
+  ctx.fillStyle = label
   ctx.font = '12px ui-monospace, monospace'
   ctx.fillText(`GPIO${SCOPE_GPIO[f.channel] ?? f.channel} · ${f.sampleRate / 1000} kHz · ${n} 点`, padL, 16)
   ctx.fillText(`min ${mn}  max ${mx}  (ADC 12bit, Vref 3.3V → ${(mn * 3.3 / 4095).toFixed(2)}~${(mx * 3.3 / 4095).toFixed(2)}V)`, padL, h - 8)
