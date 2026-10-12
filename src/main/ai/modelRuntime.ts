@@ -591,7 +591,16 @@ export function chatWithLocalModelStream(
   messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }>,
   tools: Array<{ type: 'function'; function: { name: string; description: string; parameters: object } }>,
   onChunk: (chunk: LocalStreamChunk) => void,
-  opts?: { idleTimeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number },
+  opts?: {
+    idleTimeoutMs?: number
+    signal?: AbortSignal
+    maxTokens?: number
+    temperature?: number
+    /** 重复惩罚（llama.cpp repeat_penalty）。默认 1.0 = 不惩罚。 */
+    repeatPenalty?: number
+    /** 额外停止序列（模型自身的 EOS 仍生效） */
+    stop?: string[]
+  },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
   return new Promise(async (resolve, reject) => {
     // 确保引擎在跑
@@ -610,6 +619,11 @@ export function chatWithLocalModelStream(
       // 补全要等好几秒才出、还容易跑偏出解释文字。调用方可按需收窄。
       max_tokens: opts?.maxTokens ?? 16384,
       temperature: opts?.temperature ?? 0.3,
+      // 重复惩罚：llama-server 默认 1.0（不惩罚）。内联补全这类「低温度 + 无 stop」
+      // 的短请求，小模型会陷入复读循环一路生成到 max_tokens。默认给一个温和的惩罚。
+      repeat_penalty: opts?.repeatPenalty ?? 1.0,
+      // 停止序列：undefined 时 JSON.stringify 会省略该字段，不影响其他调用方
+      stop: opts?.stop,
     })
 
     // 本地推理超时兜底：引擎卡住 / 模型加载慢时，没有超时保护界面会一直转圈「没反应」。

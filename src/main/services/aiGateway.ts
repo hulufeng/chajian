@@ -651,6 +651,26 @@ const INLINE_TIMEOUT_MS = 15_000
 const tailOf = (s: string, n: number): string => (s.length > n ? s.slice(s.length - n) : s)
 const headOf = (s: string, n: number): string => (s.length > n ? s.slice(0, n) : s)
 
+/**
+ * 退化检测：小模型在低温度贪心采样下极易卡成无限复读
+ * （实测 3B 补全出过 "OUTPUT: OUTPUT: OUTPUT: ..." 一路填满 max_tokens）。
+ * 识别「由某个短单元循环构成」的文本，只保留第一个单元。
+ */
+function collapseRepetition(text: string): string {
+  const t = (text || '').trim()
+  if (!t) return ''
+  const parts = t.split(/\s+/)
+  // 单元长度最多取总长 1/3，至少要有两轮完整重复才算退化
+  for (let len = 1; len <= Math.floor(parts.length / 3); len++) {
+    let ok = true
+    for (let i = len; i < parts.length; i++) {
+      if (parts[i] !== parts[i % len]) { ok = false; break }
+    }
+    if (ok) return parts.slice(0, len).join(' ')
+  }
+  return t
+}
+
 /** 剥掉模型爱加的代码块围栏与解释文字，只留可插入的纯代码 */
 export function cleanInlineCompletion(raw: string): string {
   let t = (raw || '').trim()
@@ -667,7 +687,7 @@ export function cleanInlineCompletion(raw: string): string {
     out.push(line)
     if (out.length >= 4) break
   }
-  return out.join('\n').replace(/\s+$/, '')
+  return collapseRepetition(out.join('\n').replace(/\s+$/, ''))
 }
 
 /**
@@ -691,6 +711,8 @@ export async function aiInlineComplete(opts: {
 
   const local = getLocalModel()
   if (local) {
+    // 注意：不要传 stop: ['\n\n']。实测会让「缩进空白行」这类光标位直接返回空补全
+    // （模型先吐换行即被截断）。小模型的复读改用下方 collapseRepetition 清洗兜底。
     const r = await chatWithLocalModelStream(local, messages, [], () => {}, {
       maxTokens: INLINE_MAX_TOKENS,
       temperature: 0.2,
