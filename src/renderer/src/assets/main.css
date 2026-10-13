@@ -332,6 +332,10 @@ body {
 .device-port-row .device-select { flex: 1; }
 .device-port-row .device-refresh { margin-top: 0; padding: 6px 8px; }
 .device-actions { padding: 0 4px; display: flex; flex-direction: column; gap: 6px; }
+/* 设备面板子标签（设备 / 配置 / 目标），复用通用 tab 样式，窄边栏内稍收紧 */
+.device-subtabs { margin: 2px 0 8px; }
+.device-subtabs .sidebar-tab { font-size: var(--text-xs); padding: 6px 4px; }
+.device-config-tab { padding: 0 4px; }
 .device-action-btn {
   width: 100%; padding: 8px; background: var(--accent);
   color: var(--on-dark); border: none; border-radius: var(--radius-2xs);
@@ -340,11 +344,32 @@ body {
 .device-action-btn:hover { opacity: 0.9; }
 .device-action-btn.on { background: var(--pink); }
 
-/* 板卡配置选项 */
-.device-option-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.device-option-label { font-size: 11.5px; color: var(--text-2); flex-shrink: 0; }
-.device-option-select { flex: 1; min-width: 0; font-size: 11.5px; padding: 4px 6px; }
+/* 板卡配置选项：对齐 TrieCode 设备面板——标签在上、控件占满整行，避免窄边栏左右挤压 */
+.device-option-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 7px; min-width: 0; }
+.device-option-label { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.device-option-select { width: 100%; min-width: 0; font-size: 11px; padding: 3px 6px; }
 .device-option-loading { font-size: var(--text-xs); color: var(--text-2); padding: 4px 0; }
+
+/* 平台 / 库管理列表 */
+.device-subtitle { font-size: var(--text-xs); color: var(--text-2); font-weight: 600; margin: 10px 0 4px; }
+.device-list { display: flex; flex-direction: column; gap: 4px; }
+.device-list-item {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  padding: 6px 8px; background: var(--surface-0);
+  border: 1px solid var(--border); border-radius: var(--radius-2xs);
+}
+.device-list-meta { min-width: 0; overflow: hidden; }
+.device-list-name { display: block; font-size: 11.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-list-sub { display: block; font-size: 10px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-mini-btn {
+  flex-shrink: 0; padding: 4px 10px; font-size: var(--text-xs);
+  background: var(--accent); color: var(--on-dark); border: none;
+  border-radius: var(--radius-2xs); cursor: pointer; font-weight: 600;
+}
+.device-mini-btn:hover { opacity: 0.9; }
+.device-mini-btn:disabled { opacity: 0.5; cursor: default; }
+.device-mini-btn.danger { background: var(--surface-2); color: var(--danger, var(--text-2)); border: 1px solid var(--border); }
+.device-mini-btn.danger:hover { color: var(--danger); border-color: var(--danger, var(--border)); opacity: 1; }
 
 /* ---------- 工具链一键安装 ---------- */
 .toolchain-status {

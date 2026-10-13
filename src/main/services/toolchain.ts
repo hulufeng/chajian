@@ -384,14 +384,20 @@ export function searchLibraries(keyword: string, bin?: string): LibraryInfo[] {
     const r = spawnSync(toolBin, args, { encoding: 'utf-8', timeout: 20000, maxBuffer: 64 * 1024 * 1024 })
     if (r.status !== 0) return []
     const data = JSON.parse(r.stdout || '{}')
-    // arduino-cli 返回 { libraries: [...] }
+    // arduino-cli 返回 { libraries: [...] }，新版每项的详情在 latest / releases 里
     const libs = Array.isArray(data) ? data : data.libraries
     if (Array.isArray(libs)) {
-      return libs.map((l: { name?: string; version?: string; author?: string; sentence?: string }) => ({
+      return libs.map((l: {
+        name?: string
+        version?: string
+        author?: string
+        sentence?: string
+        latest?: { version?: string; author?: string; sentence?: string }
+      }) => ({
         name: l.name || '',
-        version: l.version || '',
-        author: l.author || '',
-        sentence: l.sentence || ''
+        version: l.latest?.version || l.version || '',
+        author: l.latest?.author || l.author || '',
+        sentence: l.latest?.sentence || l.sentence || ''
       })).filter((l: LibraryInfo) => l.name)
     }
     return []
@@ -407,15 +413,15 @@ export function listInstalledLibraries(bin?: string): LibraryInfo[] {
     const r = spawnSync(toolBin, ['lib', 'list', '--format', 'json'], { encoding: 'utf-8', timeout: 15000, maxBuffer: 64 * 1024 * 1024 })
     if (r.status !== 0) return []
     const data = JSON.parse(r.stdout || '[]')
-    if (Array.isArray(data)) {
-      return data.map((l: { library?: { name?: string; version?: string; author?: string; sentence?: string } }) => ({
-        name: l.library?.name || '',
-        version: l.library?.version || '',
-        author: l.library?.author || '',
-        sentence: l.library?.sentence || ''
-      })).filter((l: LibraryInfo) => l.name)
-    }
-    return []
+    // 新版 arduino-cli 返回 { installed_libraries: [...] }，旧版是顶层数组，两种都兼容
+    const libs: Array<{ library?: { name?: string; version?: string; author?: string; sentence?: string } }> =
+      Array.isArray(data) ? data : (data && Array.isArray(data.installed_libraries) ? data.installed_libraries : [])
+    return libs.map((l) => ({
+      name: l.library?.name || '',
+      version: l.library?.version || '',
+      author: l.library?.author || '',
+      sentence: l.library?.sentence || ''
+    })).filter((l: LibraryInfo) => l.name)
   } catch {
     return []
   }
@@ -435,15 +441,20 @@ export function listPlatforms(bin?: string): InstalledPlatform[] {
     const r = spawnSync(toolBin, ['core', 'list', '--format', 'json'], { encoding: 'utf-8', timeout: 15000, maxBuffer: 64 * 1024 * 1024 })
     if (r.status !== 0) return []
     const data = JSON.parse(r.stdout || '[]')
-    if (Array.isArray(data)) {
-      return data.map((p: { id?: string; version?: string; name?: string; architecture?: string }) => ({
-        id: p.id || '',
-        version: p.version || '',
-        name: p.name || '',
-        architecture: p.architecture || ''
-      })).filter((p: InstalledPlatform) => p.id)
-    }
-    return []
+    // 新版 arduino-cli 返回 { platforms: [...] }（版本在 installed_version，名称藏在 releases 里），旧版是顶层数组
+    const platforms: Array<Record<string, unknown>> =
+      Array.isArray(data) ? data : (data && Array.isArray(data.platforms) ? data.platforms : [])
+    return platforms.map((p) => {
+      const raw = p as { id?: string; installed_version?: string; version?: string; name?: string; architecture?: string; releases?: Record<string, { name?: string }> }
+      const version = raw.installed_version || raw.version || ''
+      const releaseName = (raw.releases && raw.releases[version]?.name) || ''
+      return {
+        id: raw.id || '',
+        version,
+        name: raw.name || releaseName,
+        architecture: raw.architecture || ''
+      }
+    }).filter((p: InstalledPlatform) => p.id)
   } catch {
     return []
   }
@@ -464,14 +475,14 @@ export function searchPlatforms(keyword: string, bin?: string): SearchablePlatfo
     const r = spawnSync(toolBin, args, { encoding: 'utf-8', timeout: 20000, maxBuffer: 64 * 1024 * 1024 })
     if (r.status !== 0) return []
     const data = JSON.parse(r.stdout || '[]')
-    if (Array.isArray(data)) {
-      return data.map((p: { id?: string; name?: string; latest_version?: string; latestVersion?: string }) => ({
-        id: p.id || '',
-        name: p.name || p.id || '',
-        latestVersion: p.latest_version || p.latestVersion || ''
-      })).filter((p: SearchablePlatform) => p.id)
-    }
-    return []
+    // 新版返回 { platforms: [...] }，旧版是顶层数组
+    const platforms: Array<{ id?: string; name?: string; latest_version?: string; latestVersion?: string }> =
+      Array.isArray(data) ? data : (data && Array.isArray(data.platforms) ? data.platforms : [])
+    return platforms.map((p) => ({
+      id: p.id || '',
+      name: p.name || p.id || '',
+      latestVersion: p.latest_version || p.latestVersion || ''
+    })).filter((p: SearchablePlatform) => p.id)
   } catch {
     return []
   }
@@ -515,6 +526,39 @@ export function uninstallLibrary(
   onExit: (code: number) => void
 ): ChildProcess {
   return runArduino(['lib', 'uninstall', name], { bin }, onData, onExit)
+}
+
+/** 安装/卸载命令的 Promise 化封装：跑完返回成功态与全部输出，供渲染层直接 await */
+function runToCompletion(args: string[], bin: string): Promise<{ success: boolean; output: string }> {
+  return new Promise((resolve) => {
+    let output = ''
+    const cp = runArduino(args, { bin },
+      (chunk: string) => { output += chunk },
+      (code: number) => resolve({ success: code === 0, output: output.trim() })
+    )
+    // 进程起不来的兜底（如 bin 非法），避免 Promise 永远挂起
+    cp.on('error', (err: Error) => resolve({ success: false, output: err.message }))
+  })
+}
+
+/** 安装平台（Promise 版，供 IPC/UI 调用） */
+export function installPlatformAsync(platform: string, bin: string): Promise<{ success: boolean; output: string }> {
+  return runToCompletion(['core', 'install', platform], bin)
+}
+
+/** 卸载平台（Promise 版） */
+export function uninstallPlatformAsync(platform: string, bin: string): Promise<{ success: boolean; output: string }> {
+  return runToCompletion(['core', 'uninstall', platform], bin)
+}
+
+/** 安装库（Promise 版） */
+export function installLibraryAsync(name: string, bin: string): Promise<{ success: boolean; output: string }> {
+  return runToCompletion(['lib', 'install', name], bin)
+}
+
+/** 卸载库（Promise 版） */
+export function uninstallLibraryAsync(name: string, bin: string): Promise<{ success: boolean; output: string }> {
+  return runToCompletion(['lib', 'uninstall', name], bin)
 }
 
 export interface BoardOptionValue {

@@ -100,13 +100,14 @@ const CATEGORIES = [
 ]
 
 /**
- * 导航分组：按「用户为什么来这儿」把分类收成 3 组。
- * 分组依据——AI 与模型（调模型）、硬件与工具链（板子/寄存器/编辑器/通用）、扩展能力（外部能力接入）。
+ * 导航分组：对齐 TrieCode 的「个人 / AI / 集成 / 开发」四段式。
+ * 分组依据——个人（常规）、AI（模型/本地引擎/技能）、集成（MCP/插件）、开发（编辑器/寄存器/诊断/钩子）。
  */
 const CATEGORY_GROUPS: Array<{ title: string; items: typeof CATEGORIES }> = [
-  { title: 'AI 与模型', items: CATEGORIES.filter((c) => c.id === 'models' || c.id === 'engine') },
-  { title: '硬件与工具链', items: CATEGORIES.filter((c) => ['svd', 'editor', 'general', 'diag'].includes(c.id)) },
-  { title: '扩展能力', items: CATEGORIES.filter((c) => ['mcp', 'plugins', 'skills', 'hooks'].includes(c.id)) }
+  { title: '个人', items: CATEGORIES.filter((c) => c.id === 'general') },
+  { title: 'AI', items: CATEGORIES.filter((c) => ['models', 'engine', 'skills'].includes(c.id)) },
+  { title: '集成', items: CATEGORIES.filter((c) => ['mcp', 'plugins'].includes(c.id)) },
+  { title: '开发', items: CATEGORIES.filter((c) => ['editor', 'svd', 'diag', 'hooks'].includes(c.id)) }
 ]
 
 // 插件区（安装/卸载/换源/确认卡）在 PluginMarket 里自管数据，这里只负责挂载
@@ -123,6 +124,9 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [mcpBusy, setMcpBusy] = useState(false)
   const [mcpMsg, setMcpMsg] = useState('')
   const [mcpDraft, setMcpDraft] = useState({ name: '', command: '' })
+  // MCP 全局总开关 + 单服务器测试连接结果（对齐 TrieCode）
+  const [mcpGlobalEnabled, setMcpGlobalEnabled] = useState(true)
+  const [mcpTestMsg, setMcpTestMsg] = useState('')
   // BYOK 自定义模型（多 profile）
   interface ByokProfile { id: string; name: string; baseUrl: string; apiKey: string; model: string }
   const [byokProfiles, setByokProfiles] = useState<ByokProfile[]>([])
@@ -218,6 +222,10 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [engineMsg, setEngineMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [engineCatalog, setEngineCatalog] = useState<CatalogModel[]>([])
   const [engineDl, setEngineDl] = useState<{ modelId: string; percent: number; downloadedMB: number; totalMB: number } | null>(null)
+  // 本地通道配置：内置 llama.cpp（bundled）vs 用户 Ollama（ollama，对齐 TrieCode 的 :11434/v1）
+  const [localProvider, setLocalProvider] = useState<'bundled' | 'ollama'>('bundled')
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434/v1')
+  const [ollamaModel, setOllamaModel] = useState('')
 
   const refreshEngine = (): void => {
     window.api.engine.status()
@@ -233,6 +241,37 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
     window.api.engine.catalog()
       .then((c) => setEngineCatalog(c))
       .catch(() => setEngineCatalog([]))
+    // 读取本地通道配置（内置 llama.cpp vs 用户 Ollama）
+    window.api.ai.state()
+      .then((s) => {
+        setLocalProvider(s.localProvider || 'bundled')
+        setOllamaBaseUrl(s.ollamaBaseUrl || 'http://localhost:11434/v1')
+        const tag = String(s.modelId || '').startsWith('local:') ? s.modelId.slice(6) : ''
+        setOllamaModel(tag)
+      })
+      .catch(() => {})
+  }
+
+  const applyOllama = async (): Promise<void> => {
+    const tag = ollamaModel.trim()
+    if (!tag) {
+      setEngineMsg({ text: '请填写 Ollama 模型 tag（如 qwen3 / llama3.2）', ok: false })
+      return
+    }
+    const realTag = tag.startsWith('local:') ? tag.slice(6) : tag
+    await window.api.ai.setState({ localProvider: 'ollama', ollamaBaseUrl: ollamaBaseUrl.trim(), modelId: 'local:' + realTag })
+    await window.api.ai.setLocalModel(realTag)
+    setLocalProvider('ollama')
+    setEngineMsg({ text: `已切换到 Ollama 通道：${ollamaBaseUrl.trim()} / ${realTag}`, ok: true })
+    await refreshEngine()
+  }
+
+  const switchToBundled = async (): Promise<void> => {
+    await window.api.ai.setState({ localProvider: 'bundled' })
+    await window.api.ai.setLocalModel(null)
+    setLocalProvider('bundled')
+    setEngineMsg({ text: '已切回内置 llama.cpp 引擎', ok: true })
+    await refreshEngine()
   }
 
   const refreshSvd = (): void => {
@@ -266,6 +305,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
       setMcpServers(ov.servers)
       setMcpGlobalPath(ov.globalPath)
       setMcpProjectPath(ov.projectPath)
+      setMcpGlobalEnabled(ov.globalEnabled !== false)
     } catch (e) {
       setMcpMsg(`读取失败：${(e as Error).message}`)
     }
@@ -347,6 +387,31 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
       const ov = await window.api.mcp.start(projectRoot ?? null)
       setMcpServers(ov.servers)
       setMcpMsg(`已连接 ${ov.servers.filter((s) => s.status === 'running').length} 个，共 ${ov.totalTools} 个工具`)
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpSetGlobalEnabled = async (enabled: boolean): Promise<void> => {
+    setMcpBusy(true)
+    setMcpMsg('')
+    try {
+      await window.api.mcp.setGlobalEnabled(enabled)
+      setMcpGlobalEnabled(enabled)
+      setMcpMsg(enabled ? 'MCP 已全局启用（对新的对话生效）' : 'MCP 已全局停用：不再向 AI 暴露任何外部工具，也不会自动拉起服务器')
+      await refreshMcp()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const mcpTestServer = async (name: string): Promise<void> => {
+    setMcpBusy(true)
+    setMcpTestMsg('')
+    try {
+      const r = await window.api.mcp.test({ name, projectRoot: projectRoot ?? null })
+      setMcpTestMsg(r.ok ? `${name}：连接成功，${r.toolCount} 个工具` : `${name}：连接失败 — ${r.error || '未知原因'}`)
+      await refreshMcp()
     } finally {
       setMcpBusy(false)
     }
@@ -739,6 +804,36 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                 <p className="settings-desc">
                   完全离线地跑模型：引擎本体已经在用户目录装好，下载好 gguf 模型后可给 Agent 当 GPT 兼容性端点用（http://127.0.0.1:8080/v1），不花钱、不联网、代码不上传。
                 </p>
+
+                {/* 本地通道：内置 llama.cpp vs 用户已有 Ollama（对齐 TrieCode 的 :11434/v1） */}
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0 4px' }}>
+                  <span style={{ fontWeight: 600 }}>本地通道：</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input type="radio" name="localProvider" checked={localProvider === 'bundled'} onChange={() => void switchToBundled()} />
+                    内置 llama.cpp
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input type="radio" name="localProvider" checked={localProvider === 'ollama'} onChange={() => setLocalProvider('ollama')} />
+                    Ollama（本机已有 :11434）
+                  </label>
+                </div>
+                {localProvider === 'ollama' && (
+                  <div style={{ marginBottom: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 6 }}>
+                    <p className="settings-desc">直连你已安装的 Ollama（OpenAI 兼容 /v1/chat/completions），不下载模型、不托管引擎。请确保 Ollama 已运行且已执行 `ollama pull &lt;模型&gt;。</p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'flex-end' }}>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>Ollama 基址</span>
+                        <input value={ollamaBaseUrl} onChange={(e) => setOllamaBaseUrl(e.target.value)} style={{ width: 280 }} placeholder="http://localhost:11434/v1" />
+                      </label>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>模型 tag（如 qwen3 / llama3.2）</span>
+                        <input value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} style={{ width: 200 }} placeholder="qwen3" />
+                      </label>
+                      <button className="btn-primary" onClick={() => void applyOllama()}>应用 Ollama 通道</button>
+                    </div>
+                  </div>
+                )}
+
                 {!engineStatus ? (
                   <div className="svd-empty">正在读取引擎状态…</div>
                 ) : !engineStatus.installed ? (
@@ -1195,6 +1290,16 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                   信任状态只记录在本机（{mcpTrustPath || 'mcp-trust.json'}），工程仓库里的配置无法替你做决定。
                 </p>
 
+                {/* 全局总开关（对齐 TrieCode「启用 MCP 服务器」） */}
+                <div className="settings-row" style={{ margin: '2px 0 6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+                    <input type="checkbox" checked={mcpGlobalEnabled} disabled={mcpBusy} onChange={(e) => void mcpSetGlobalEnabled(e.target.checked)} />
+                    启用 MCP 服务器（对新的对话生效）
+                  </label>
+                </div>
+                <p className="settings-desc" style={{ marginTop: 0 }}>开启后服务器工具会注册给 AI，执行前需你确认。单个服务器连不上或调用失败不影响其它功能。</p>
+                {mcpTestMsg && <p className="settings-desc" style={{ color: mcpTestMsg.includes('失败') ? 'var(--error)' : 'var(--accent-2)' }}>{mcpTestMsg}</p>}
+
                 {/* 常用服务器一键预设：点击填入「名称+命令」，随后仍需手动「添加」并「信任」 */}
                 <div className="mcp-presets">
                   <div className="mcp-presets-title">常用服务器（一键填入）</div>
@@ -1272,6 +1377,14 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                         <input type="checkbox" checked={s.enabled} onChange={(e) => void mcpSetEnabled(s.name, e.target.checked)} />
                         启用
                       </label>
+                      <button
+                        className="btn"
+                        disabled={mcpBusy}
+                        title="临时拉起该服务器并读取工具列表，验证连通性"
+                        onClick={() => void mcpTestServer(s.name)}
+                      >
+                        测试连接
+                      </button>
                       <button
                         className="btn"
                         disabled={mcpBusy}

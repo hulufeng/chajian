@@ -31,6 +31,9 @@ export interface AiState {
   // 多 BYOK profile
   byokProfiles: ByokProfile[]
   activeByokId: string | null
+  // 本地引擎通道：'bundled' = 自带 llama.cpp（默认）；'ollama' = 指向用户已有的 Ollama OpenAI 兼容端点
+  localProvider: 'bundled' | 'ollama'
+  ollamaBaseUrl: string
 }
 
 export interface ByokProfile {
@@ -63,7 +66,8 @@ function defaultState(): AiState {
   return {
     token: null, email: null, planCredits: null, rechargeCredits: null, totalCredits: null,
     planMonth: null, modelId: 'deepseek-flash', byok: null,
-    byokProfiles: [], activeByokId: null
+    byokProfiles: [], activeByokId: null,
+    localProvider: 'bundled', ollamaBaseUrl: 'http://localhost:11434/v1'
   }
 }
 
@@ -612,7 +616,7 @@ export async function aiChat(messages: ChatMessage[], state: AiState = getAiStat
   // 表现为「选了本地模型却报 401 未登录」，甚至悄悄消耗云端积分。
   const local = getLocalModel()
   if (local) {
-    const content = await chatWithLocalModel(local, messages)
+    const content = await chatWithLocalModel(local, messages, undefined, localChannelOpts() ?? undefined)
     return { content }
   }
   // 禁止静默降级：用户明确选了本地模型，但引擎没就绪时必须直说，
@@ -716,7 +720,8 @@ export async function aiInlineComplete(opts: {
     const r = await chatWithLocalModelStream(local, messages, [], () => {}, {
       maxTokens: INLINE_MAX_TOKENS,
       temperature: 0.2,
-      idleTimeoutMs: INLINE_TIMEOUT_MS
+      idleTimeoutMs: INLINE_TIMEOUT_MS,
+      ...(localChannelOpts() ?? {})
     })
     return { text: cleanInlineCompletion(r.text) }
   }
@@ -744,6 +749,22 @@ export function setLocalModel(model: string | null): void {
 
 export function getLocalModel(): string | null {
   return activeLocalModel
+}
+
+/**
+ * 本地通道参数：根据 localProvider 决定走自带 llama.cpp 还是用户已有 Ollama。
+ * 返回 null 表示当前没选本地模型；'bundled' 返回空对象（chatWithLocalModelStream 走默认托管）；
+ * 'ollama' 返回 baseUrl + modelName + managedEngine:false（直连 Ollama，不托管引擎）。
+ * 两者协议一致（OpenAI /v1/chat/completions），仅服务端不同——这是与 TrieCode 对齐的落地。
+ */
+export function localChannelOpts(): { baseUrl?: string; modelName?: string; managedEngine?: boolean } | null {
+  const local = getLocalModel()
+  if (!local) return null
+  const s = getAiState()
+  if (s.localProvider === 'ollama') {
+    return { baseUrl: s.ollamaBaseUrl || 'http://localhost:11434/v1', modelName: local, managedEngine: false }
+  }
+  return {}
 }
 
 /**
@@ -892,7 +913,7 @@ export function aiChatStream(
         if (cancelled) return
         onChunk(chunk as StreamChunk)
       },
-      { signal: controller.signal }
+      { signal: controller.signal, ...(localChannelOpts() ?? {}) }
     )
       // 与 fetchStream 保持一致：取消（AbortError）走干净结束 onDone(null)，
       // 不再「吞掉 onDone」——否则 Agent 模式下点停止时 callModel 的 await 永远不 settle，

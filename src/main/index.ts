@@ -34,7 +34,7 @@ import {
 } from './plugins/pluginInstaller'
 import type { ChannelName } from './plugins/pluginManager'
 import { readSettings, writeSettings } from './settings'
-import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoards, listConnectedBoardsWithSerial, probeChipId, type InstallProgress } from './services/toolchain'
+import { listBoards, detectToolchain, installArduinoCli, boardDetails, listPlatforms, searchPlatforms, installPlatform, uninstallPlatform, listInstalledLibraries, searchLibraries, installLibrary, uninstallLibrary, installPlatformAsync, uninstallPlatformAsync, installLibraryAsync, uninstallLibraryAsync, findToolchain, compileSketch, uploadSketch, normalizeSketchPath, listConnectedBoards, listConnectedBoardsWithSerial, probeChipId, type InstallProgress } from './services/toolchain'
 import { schedulerService } from './services/scheduler'
 import { setUpdaterWindow, registerUpdaterIpc, checkForUpdates } from './services/updateService'
 import { AgentRunner } from './engine/agent-runner'
@@ -141,12 +141,14 @@ import {
   saveGlobalServer as saveGlobalMcpServer,
   removeGlobalServer as removeGlobalMcpServer,
   setServerTrusted as setMcpServerTrusted,
-  setServerEnabled as setMcpServerEnabled
+  setServerEnabled as setMcpServerEnabled,
+  setMcpGlobalEnabled
 } from './services/mcpConfig'
 import {
   getOverview as getMcpOverview,
   startTrustedServers as startTrustedMcpServers,
-  stopServer as stopMcpServer
+  stopServer as stopMcpServer,
+  testServer as testMcpServer
 } from './services/mcpManager'
 import { getEngineStatus, startLlamaEngine, stopLlamaEngine } from './ai/modelRuntime'
 import {
@@ -730,6 +732,28 @@ ipcMain.handle('toolchain:install', async (event) => {
 // 直接检测工具链（不经过插件层，用于安装后立即刷新状态）
 ipcMain.handle('toolchain:detectDirect', () => detectToolchain())
 
+// ── 平台管理 / 库管理（对齐 TrieCode 同名片）──
+ipcMain.handle('toolchain:list-platforms', (): unknown => listPlatforms())
+ipcMain.handle('toolchain:search-platforms', (_e, keyword: string): unknown => searchPlatforms(keyword || ''))
+ipcMain.handle('toolchain:list-libraries', (): unknown => listInstalledLibraries())
+ipcMain.handle('toolchain:search-libraries', (_e, keyword: string): unknown => searchLibraries(keyword || ''))
+ipcMain.handle('toolchain:install-platform', async (_e, platform: string): Promise<{ success: boolean; output: string }> => {
+  const bin = findToolchain() || 'arduino-cli'
+  return installPlatformAsync(platform, bin)
+})
+ipcMain.handle('toolchain:uninstall-platform', async (_e, platform: string): Promise<{ success: boolean; output: string }> => {
+  const bin = findToolchain() || 'arduino-cli'
+  return uninstallPlatformAsync(platform, bin)
+})
+ipcMain.handle('toolchain:install-library', async (_e, name: string): Promise<{ success: boolean; output: string }> => {
+  const bin = findToolchain() || 'arduino-cli'
+  return installLibraryAsync(name, bin)
+})
+ipcMain.handle('toolchain:uninstall-library', async (_e, name: string): Promise<{ success: boolean; output: string }> => {
+  const bin = findToolchain() || 'arduino-cli'
+  return uninstallLibraryAsync(name, bin)
+})
+
 // ── gRPC daemon（arduino-cli daemon 模式，对齐 TrieCode）──
 ipcMain.handle('grpc:start', async (_e, opts?: { binPath?: string }) => {
   return arduinoGrpc.start(opts?.binPath)
@@ -1287,6 +1311,18 @@ ipcMain.handle('ai:setByok', (_e, byok: { baseUrl: string; apiKey: string; model
   return s
 })
 
+// 合并持久化部分 AiState（Ollama 通道：localProvider / ollamaBaseUrl 等）
+ipcMain.handle('ai:setState', (_e, patch: Partial<AiState>): AiState => {
+  const s = { ...getAiState(), ...patch }
+  setAiState(s)
+  return s
+})
+
+// Ollama 模式：直接设激活的本地模型名（Ollama tag），不启自带 llama-server
+ipcMain.handle('ai:setLocalModel', (_e, model: string | null): void => {
+  setLocalModel(model)
+})
+
 // ---------- 多 BYOK profile ----------
 ipcMain.handle('ai:byokProfiles', () => listByokProfiles())
 ipcMain.handle('ai:byokSave', (_e, profile: ByokProfile) => saveByokProfile(profile))
@@ -1755,6 +1791,15 @@ ipcMain.handle('mcp:trust', (_e, opts: { name: string; trusted: boolean; project
 ipcMain.handle('mcp:enable', (_e, opts: { name: string; enabled: boolean; projectRoot?: string | null }) =>
   setMcpServerEnabled(opts.name, opts.enabled, opts.projectRoot ?? null)
 )
+
+ipcMain.handle('mcp:test', (_e, opts: { name: string; projectRoot?: string | null }) =>
+  testMcpServer(opts.name, opts.projectRoot ?? null)
+)
+
+ipcMain.handle('mcp:setGlobalEnabled', (_e, opts: { enabled: boolean }) => {
+  setMcpGlobalEnabled(opts.enabled)
+  return { ok: true }
+})
 
 // 编译过程：把输出文本解析成「阶段 + 资源用量」，渲染层只显示不猜
 ipcMain.handle('build:inspect', (_e, text: string) => {
@@ -2306,15 +2351,21 @@ app.whenReady().then(() => {
   // （state.modelId 是 local:，但主进程的 activeLocalModel 没同步，aiChat 取不到就降级）。
   // 不 await：引擎起得十几秒，等它只会拖慢窗口；失败就打日志，界面照常显示「一键启动」入口。
   {
-    const modelId = getAiState().modelId ?? ''
+    const st = getAiState()
+    const modelId = st.modelId ?? ''
     if (modelId.startsWith('local:')) {
       const file = modelId.slice('local:'.length)
-      startLlamaEngine(file)
-        .then((r) => {
-          if (r.success) setLocalModel(r.model || file)
-          else console.warn('[ai] 上次用的本地模型启动失败：', r.error)
-        })
-        .catch((e) => console.warn('[ai] 本地引擎自动接上失败：', e))
+      // Ollama 通道：只把激活模型名设为 Ollama tag（请求走 :11434/v1），不启自带 llama-server
+      if (st.localProvider === 'ollama') {
+        setLocalModel(file)
+      } else {
+        startLlamaEngine(file)
+          .then((r) => {
+            if (r.success) setLocalModel(r.model || file)
+            else console.warn('[ai] 上次用的本地模型启动失败：', r.error)
+          })
+          .catch((e) => console.warn('[ai] 本地引擎自动接上失败：', e))
+      }
     }
   }
 

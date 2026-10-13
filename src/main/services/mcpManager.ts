@@ -5,7 +5,7 @@
 // 为什么要这层间接：MCP 服务器是外部进程，出问题（命令写错、启动超时、协议不兼容）时
 // 不能影响 IDE 其它功能。所以这里的任何异常都收敛成「这个 server 启动失败 + 原因」，
 // 绝不让它冒泡到窗口层。
-import { loadMcpServers, type McpServerView } from './mcpConfig'
+import { loadMcpServers, getMcpGlobalEnabled, type McpServerView } from './mcpConfig'
 import { startMcpClient, stopMcpClient, getMcpClient, type McpTool } from './mcp-client'
 
 export interface McpRuntimeState {
@@ -26,6 +26,8 @@ export interface McpOverview {
   totalTools: number
   globalPath: string
   projectPath: string | null
+  /** MCP 全局总开关（对齐 TrieCode「启用 MCP 服务器」） */
+  globalEnabled: boolean
 }
 
 /** 记录启动失败原因，供 UI 展示（进程本身由 mcp-client 持有） */
@@ -33,6 +35,7 @@ const failures = new Map<string, string>()
 
 /** 拉起所有「已启用 + 已信任」的服务器。返回本次启动后的整体快照，不抛异常。 */
 export async function startTrustedServers(projectRoot?: string | null): Promise<McpOverview> {
+  if (!getMcpGlobalEnabled()) return await getOverview(projectRoot)
   const { servers } = loadMcpServers(projectRoot)
   for (const s of servers) {
     if (!s.enabled || !s.trusted) continue
@@ -111,7 +114,8 @@ export async function getOverview(projectRoot?: string | null): Promise<McpOverv
     servers: views,
     totalTools: views.reduce((n, v) => n + v.tools.length, 0),
     globalPath,
-    projectPath
+    projectPath,
+    globalEnabled: getMcpGlobalEnabled()
   }
 }
 
@@ -119,6 +123,7 @@ export async function getOverview(projectRoot?: string | null): Promise<McpOverv
 export async function listExternalTools(
   projectRoot?: string | null
 ): Promise<Array<{ server: string; name: string; description: string }>> {
+  if (!getMcpGlobalEnabled()) return []
   const ov = await getOverview(projectRoot)
   const out: Array<{ server: string; name: string; description: string }> = []
   for (const s of ov.servers) {
@@ -158,5 +163,28 @@ export async function callExternalTool(
     return { ok: !r.isError, content: text || '(空响应)', error: r.isError ? text : undefined }
   } catch (e) {
     return { ok: false, content: '', error: `调用 ${server}/${tool} 失败：${(e as Error).message}` }
+  }
+}
+
+/**
+ * 测试单个服务器连通性（对齐 TrieCode 的「测试连接」）：临时拉起它并读工具列表。
+ * 已启用+已信任才会连；不影响其它服务器，也不改信任状态。
+ */
+export async function testServer(
+  name: string,
+  projectRoot?: string | null
+): Promise<{ ok: boolean; toolCount: number; error?: string }> {
+  const { servers } = loadMcpServers(projectRoot)
+  const s = servers.find((x) => x.name === name)
+  if (!s) return { ok: false, toolCount: 0, error: `没有名为 ${name} 的服务器` }
+  if (!s.enabled) return { ok: false, toolCount: 0, error: `${name} 已被禁用` }
+  if (!s.trusted) return { ok: false, toolCount: 0, error: `${name} 未信任，先点「信任」再测试` }
+  try {
+    const existing = getMcpClient(name)
+    const client = existing?.isRunning() ? existing : await startMcpClient(s.name, s.command, s.args)
+    const tools = await client.listTools()
+    return { ok: true, toolCount: tools.length }
+  } catch (e) {
+    return { ok: false, toolCount: 0, error: (e as Error).message }
   }
 }

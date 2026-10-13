@@ -91,6 +91,9 @@ export interface AiState {
   byok: { baseUrl: string; apiKey: string; model: string } | null
   byokProfiles?: ByokProfile[]
   activeByokId?: string | null
+  // 本地引擎通道：'bundled' = 自带 llama.cpp；'ollama' = 指向用户已有的 Ollama :11434/v1
+  localProvider?: 'bundled' | 'ollama'
+  ollamaBaseUrl?: string
 }
 
 export interface ByokProfile {
@@ -375,6 +378,16 @@ const api = {
      * 一个 iframe 打不开，绝不该把整个侧栏带崩。
      */
     uiUrl: (tab: string): Promise<string> => ipcRenderer.invoke('toolchain:ui-url', tab),
+    // 平台管理（对齐 TrieCode 平台管理）
+    listPlatforms: (): Promise<unknown> => ipcRenderer.invoke('toolchain:list-platforms'),
+    searchPlatforms: (keyword: string): Promise<unknown> => ipcRenderer.invoke('toolchain:search-platforms', keyword),
+    installPlatform: (platform: string): Promise<{ success: boolean; output: string }> => ipcRenderer.invoke('toolchain:install-platform', platform),
+    uninstallPlatform: (platform: string): Promise<{ success: boolean; output: string }> => ipcRenderer.invoke('toolchain:uninstall-platform', platform),
+    // 库管理（对齐 TrieCode 库管理）
+    listLibraries: (): Promise<unknown> => ipcRenderer.invoke('toolchain:list-libraries'),
+    searchLibraries: (keyword: string): Promise<unknown> => ipcRenderer.invoke('toolchain:search-libraries', keyword),
+    installLibrary: (name: string): Promise<{ success: boolean; output: string }> => ipcRenderer.invoke('toolchain:install-library', name),
+    uninstallLibrary: (name: string): Promise<{ success: boolean; output: string }> => ipcRenderer.invoke('toolchain:uninstall-library', name),
     onInstallProgress: (cb: (p: { phase: string; percent: number; message: string }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, p: { phase: string; percent: number; message: string }): void => cb(p)
       ipcRenderer.on('toolchain:install-progress', listener)
@@ -460,6 +473,10 @@ const api = {
     setModel: (modelId: string): Promise<AiState> => ipcRenderer.invoke('ai:setModel', modelId),
     setByok: (byok: { baseUrl: string; apiKey: string; model: string } | null): Promise<AiState> =>
       ipcRenderer.invoke('ai:setByok', byok),
+    // 合并持久化部分 AiState（Ollama 通道用）
+    setState: (patch: Partial<AiState>): Promise<AiState> => ipcRenderer.invoke('ai:setState', patch),
+    // 直接设置当前激活的本地模型名（Ollama 模式：设为 Ollama 模型 tag，不启自带引擎）
+    setLocalModel: (model: string | null): Promise<void> => ipcRenderer.invoke('ai:setLocalModel', model),
     // 多 BYOK profile
     byokProfiles: (): Promise<ByokProfile[]> => ipcRenderer.invoke('ai:byokProfiles'),
     byokSave: (profile: ByokProfile): Promise<AiState> => ipcRenderer.invoke('ai:byokSave', profile),
@@ -902,7 +919,10 @@ const api = {
     trust: (opts: { name: string; trusted: boolean; projectRoot?: string | null }): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('mcp:trust', opts),
     enable: (opts: { name: string; enabled: boolean; projectRoot?: string | null }): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('mcp:enable', opts)
+      ipcRenderer.invoke('mcp:enable', opts),
+    test: (opts: { name: string; projectRoot?: string | null }): Promise<{ ok: boolean; toolCount: number; error?: string }> =>
+      ipcRenderer.invoke('mcp:test', opts),
+    setGlobalEnabled: (enabled: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('mcp:setGlobalEnabled', { enabled })
   },
 
   // 编译过程：阶段与资源用量（主进程从真实输出解析，渲染层只负责显示）
@@ -1288,6 +1308,7 @@ export interface McpOverview {
   totalTools: number
   globalPath: string
   projectPath: string | null
+  globalEnabled: boolean
 }
 
 /**

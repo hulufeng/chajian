@@ -241,3 +241,30 @@ export function setServerEnabled(name: string, enabled: boolean, projectRoot?: s
 export function isAbsoluteCommand(command: string): boolean {
   return isAbsolute(command)
 }
+
+/**
+ * 全局总开关（对齐 TrieCode 的「启用 MCP 服务器（对新的对话生效）」）。
+ * 关掉后：MCP 工具不再注册给 AI、也不自动拉起任何服务器（逐个的信任/启用仍保留，回开即恢复）。
+ * 独立存 mcp-global.json，默认 true（不影响老用户）。
+ */
+function globalSettingsPath(): string {
+  const appData = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming')
+  return join(appData, 'codelab-desktop', 'mcp-global.json')
+}
+
+export function getMcpGlobalEnabled(): boolean {
+  try {
+    const p = globalSettingsPath()
+    if (!existsSync(p)) return true
+    const raw = JSON.parse(readFileSync(p, 'utf-8')) as { enabled?: unknown }
+    return raw.enabled !== false
+  } catch {
+    return true
+  }
+}
+
+export function setMcpGlobalEnabled(enabled: boolean): void {
+  const p = globalSettingsPath()
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, JSON.stringify({ enabled }, null, 2), 'utf-8')
+}

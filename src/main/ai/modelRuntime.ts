@@ -600,18 +600,46 @@ export function chatWithLocalModelStream(
     repeatPenalty?: number
     /** 额外停止序列（模型自身的 EOS 仍生效） */
     stop?: string[]
+    /**
+     * Ollama 通道（对齐 TrieCode）：直接打用户已有的 Ollama OpenAI 兼容端点，
+     * 不托管自带 llama.cpp 引擎、不下载模型。baseUrl 形如 http://localhost:11434/v1。
+     * 两者协议完全一致（都是 /v1/chat/completions），仅服务端不同。
+     */
+    baseUrl?: string
+    /** Ollama 模式下传给服务端的真实模型名（如 qwen3 / llama3.2），覆盖内置的 'local-model' */
+    modelName?: string
+    /** false = 不托管引擎（Ollama 模式）；默认 true = 托管自带 llama-server */
+    managedEngine?: boolean
   },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
   return new Promise(async (resolve, reject) => {
-    // 确保引擎在跑
-    const engine = await startLlamaEngine(model)
-    if (!engine.success) {
-      reject(new Error(engine.error || '引擎启动失败'))
-      return
+    // 通道分两种：
+    //  - 内置引擎（默认 managedEngine=true）：本进程托管 llama.cpp 的 llama-server.exe，自动启动/复用。
+    //  - Ollama 通道（managedEngine=false）：直连用户已有的 Ollama OpenAI 兼容端点
+    //    （默认 http://localhost:11434/v1），不托管引擎、不下载模型。
+    // 两者协议完全一致（都是 /v1/chat/completions），只是服务端不同。
+    const useOllama = opts?.managedEngine === false
+    let baseUrl: string
+    let effectiveModel: string
+    if (useOllama) {
+      if (!opts?.baseUrl) {
+        reject(new Error('Ollama 通道未配置 baseUrl（默认 http://localhost:11434/v1）'))
+        return
+      }
+      baseUrl = opts.baseUrl.replace(/\/+$/, '')
+      effectiveModel = opts.modelName || model
+    } else {
+      const engine = await startLlamaEngine(model)
+      if (!engine.success) {
+        reject(new Error(engine.error || '引擎启动失败'))
+        return
+      }
+      baseUrl = `http://${LLAMA_HOST}:${LLAMA_PORT}/v1`
+      effectiveModel = 'local-model'
     }
 
     const body = JSON.stringify({
-      model: 'local-model',
+      model: effectiveModel,
       messages,
       tools: tools.length > 0 ? tools : undefined,
       stream: true,
@@ -642,11 +670,12 @@ export function chatWithLocalModelStream(
       }, idleTimeoutMs)
     }
 
+    const target = new URL(`${baseUrl}/chat/completions`)
     let req: http.ClientRequest
     req = http.request({
-      host: LLAMA_HOST,
-      port: LLAMA_PORT,
-      path: '/v1/chat/completions',
+      host: target.hostname,
+      port: Number(target.port) || 80,
+      path: target.pathname,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -768,6 +797,7 @@ export function chatWithLocalModel(
   model: string,
   messages: Array<{ role: string; content: string }>,
   onChunk?: (text: string) => void,
+  opts?: { idleTimeoutMs?: number; baseUrl?: string; modelName?: string; managedEngine?: boolean; signal?: AbortSignal },
 ): Promise<string> {
   return chatWithLocalModelStream(
     model,
@@ -776,7 +806,7 @@ export function chatWithLocalModel(
     (chunk) => {
       if (chunk.type === 'content' && chunk.text && onChunk) onChunk(chunk.text)
     },
-    { idleTimeoutMs: LOCAL_IDLE_TIMEOUT_MS },
+    opts ?? { idleTimeoutMs: LOCAL_IDLE_TIMEOUT_MS },
   ).then((r) => r.text)
 }
 

@@ -76,6 +76,7 @@ const FALLBACK_PANEL: DevicePanelInfo = {
 }
 
 function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWindow, onGenerateWiring, onOpenFile }: DevicePanelProps): React.JSX.Element | null {
+  const [activeTab, setActiveTab] = useState<'设备' | '配置' | '目标' | '平台' | '库'>('设备')
   const [diagOpen, setDiagOpen] = useState(false)
   const [panels, setPanels] = useState<DevicePanelInfo[]>([])
   const [boards, setBoards] = useState<Array<{ fqbn: string; name: string; platform?: string }>>([])
@@ -97,6 +98,20 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
   const optionValuesRef = useRef(optionValues)
   optionValuesRef.current = optionValues
   const [loadingOptions, setLoadingOptions] = useState(false)
+
+  // 平台管理（对齐 TrieCode「平台管理」）
+  const [installedPlatforms, setInstalledPlatforms] = useState<Array<{ id: string; version: string; name?: string; architecture?: string }>>([])
+  const [platformKeyword, setPlatformKeyword] = useState('')
+  const [platformResults, setPlatformResults] = useState<Array<{ id: string; name: string; latestVersion?: string }>>([])
+  const [platformBusy, setPlatformBusy] = useState<string | null>(null)
+  const [platformMsg, setPlatformMsg] = useState('')
+
+  // 库管理（对齐 TrieCode「库管理」）
+  const [installedLibs, setInstalledLibs] = useState<Array<{ name: string; version: string; author?: string }>>([])
+  const [libKeyword, setLibKeyword] = useState('')
+  const [libResults, setLibResults] = useState<Array<{ name: string; version: string; author?: string; sentence?: string }>>([])
+  const [libBusy, setLibBusy] = useState<string | null>(null)
+  const [libMsg, setLibMsg] = useState('')
   const [toolchain, setToolchain] = useState<ToolchainState>({
     checking: true,
     available: false,
@@ -205,6 +220,12 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 切到「平台 / 库」页时拉取已安装列表（已安装项依赖本地 arduino-cli data 目录）
+  useEffect(() => {
+    if (activeTab === '平台') loadInstalledPlatforms()
+    if (activeTab === '库') loadInstalledLibs()
+  }, [activeTab])
+
   /**
    * board.list 背后是 spawnSync(arduino-cli board listall)，**同步阻塞主进程最多 20s**，
    * 而且输出有 1MB+。所以：
@@ -238,6 +259,78 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
       loadBoards(kw)
     }, 300)
   }, [])
+
+  // ── 平台管理 ──
+  const loadInstalledPlatforms = (): void => {
+    window.api.toolchain.listPlatforms()
+      .then((p) => setInstalledPlatforms((p as Array<{ id: string; version: string; name?: string; architecture?: string }>) || []))
+      .catch(() => setInstalledPlatforms([]))
+  }
+  const loadInstalledLibs = (): void => {
+    window.api.toolchain.listLibraries()
+      .then((p) => setInstalledLibs((p as Array<{ name: string; version: string; author?: string }>) || []))
+      .catch(() => setInstalledLibs([]))
+  }
+  const searchPlatformsDebounced = useCallback((kw: string): void => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      searchTimerRef.current = null
+      if (!kw.trim()) { setPlatformResults([]); return }
+      window.api.toolchain.searchPlatforms(kw.trim())
+        .then((r) => setPlatformResults((r as Array<{ id: string; name: string; latestVersion?: string }>) || []))
+        .catch(() => setPlatformResults([]))
+    }, 300)
+  }, [])
+  const searchLibsDebounced = useCallback((kw: string): void => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      searchTimerRef.current = null
+      if (!kw.trim()) { setLibResults([]); return }
+      window.api.toolchain.searchLibraries(kw.trim())
+        .then((r) => setLibResults((r as Array<{ name: string; version: string; author?: string; sentence?: string }>) || []))
+        .catch(() => setLibResults([]))
+    }, 300)
+  }, [])
+  const doInstallPlatform = (id: string): void => {
+    setPlatformBusy(id); setPlatformMsg('')
+    window.api.toolchain.installPlatform(id)
+      .then((r) => {
+        setPlatformMsg((r as { success: boolean; output: string }).success ? `已安装 ${id}` : `安装失败：${(r as { output: string }).output.slice(0, 200)}`)
+        loadInstalledPlatforms()
+      })
+      .catch((e) => setPlatformMsg(`安装出错：${String(e).slice(0, 200)}`))
+      .finally(() => setPlatformBusy(null))
+  }
+  const doUninstallPlatform = (id: string): void => {
+    setPlatformBusy(id); setPlatformMsg('')
+    window.api.toolchain.uninstallPlatform(id)
+      .then((r) => {
+        setPlatformMsg((r as { success: boolean; output: string }).success ? `已卸载 ${id}` : `卸载失败：${(r as { output: string }).output.slice(0, 200)}`)
+        loadInstalledPlatforms()
+      })
+      .catch((e) => setPlatformMsg(`卸载出错：${String(e).slice(0, 200)}`))
+      .finally(() => setPlatformBusy(null))
+  }
+  const doInstallLib = (name: string): void => {
+    setLibBusy(name); setLibMsg('')
+    window.api.toolchain.installLibrary(name)
+      .then((r) => {
+        setLibMsg((r as { success: boolean; output: string }).success ? `已安装 ${name}` : `安装失败：${(r as { output: string }).output.slice(0, 200)}`)
+        loadInstalledLibs()
+      })
+      .catch((e) => setLibMsg(`安装出错：${String(e).slice(0, 200)}`))
+      .finally(() => setLibBusy(null))
+  }
+  const doUninstallLib = (name: string): void => {
+    setLibBusy(name); setLibMsg('')
+    window.api.toolchain.uninstallLibrary(name)
+      .then((r) => {
+        setLibMsg((r as { success: boolean; output: string }).success ? `已卸载 ${name}` : `卸载失败：${(r as { output: string }).output.slice(0, 200)}`)
+        loadInstalledLibs()
+      })
+      .catch((e) => setLibMsg(`卸载出错：${String(e).slice(0, 200)}`))
+      .finally(() => setLibBusy(null))
+  }
 
   const selectBoard = (fqbn: string, name?: string): void => {
     setDeviceCtx((prev) => ({ ...prev, board: fqbn }))
@@ -350,46 +443,64 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
             <span>{panel.icon || '🔌'} {panel.title}</span>
           </div>
 
-          {/* 工具链状态：未检测到时显示一键安装按钮 */}
-          {toolchain.checking ? (
-            <div className="toolchain-status">
-              <span className="toolchain-checking">正在检测工具链…</span>
-            </div>
-          ) : !toolchain.available ? (
-            <div className="toolchain-install">
-              <div className="toolchain-warning">
-                ⚠️ 未检测到 Arduino CLI 工具链
+          {/* 子标签：对齐 TrieCode 设备面板（设备 / 平台管理 / 库管理 / 设置）的分区结构 */}
+          <div className="sidebar-tabs device-subtabs">
+            {(['设备', '配置', '目标', '平台', '库'] as const).map((t) => (
+              <div
+                key={t}
+                className={`sidebar-tab ${activeTab === t ? 'active' : ''}`}
+                onClick={() => setActiveTab(t)}
+              >
+                {t}
               </div>
-              {toolchain.installing ? (
-                <div className="toolchain-progress">
-                  <div className="toolchain-progress-bar">
-                    <div
-                      className="toolchain-progress-fill"
-                      style={{ width: `${toolchain.installPercent}%` }}
-                    />
+            ))}
+          </div>
+
+          {/* ===== 设备页：工具链状态 + 开发板 + 端口 + 操作 ===== */}
+          {activeTab === '设备' && (
+            <>
+              {/* 工具链状态：未检测到时显示一键安装按钮 */}
+              {toolchain.checking ? (
+                <div className="toolchain-status">
+                  <span className="toolchain-checking">正在检测工具链…</span>
+                </div>
+              ) : !toolchain.available ? (
+                <div className="toolchain-install">
+                  <div className="toolchain-warning">
+                    ⚠️ 未检测到 Arduino CLI 工具链
                   </div>
-                  <div className="toolchain-progress-text">
-                    {toolchain.installMessage || `安装中… ${toolchain.installPercent}%`}
-                  </div>
+                  {toolchain.installing ? (
+                    <div className="toolchain-progress">
+                      <div className="toolchain-progress-bar">
+                        <div
+                          className="toolchain-progress-fill"
+                          style={{ width: `${toolchain.installPercent}%` }}
+                        />
+                      </div>
+                      <div className="toolchain-progress-text">
+                        {toolchain.installMessage || `安装中… ${toolchain.installPercent}%`}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button className="toolchain-install-btn" onClick={handleInstall}>
+                        一键安装 Arduino CLI
+                      </button>
+                      {toolchain.installError && (
+                        <div className="toolchain-error">{toolchain.installError}</div>
+                      )}
+                      <div className="toolchain-hint">
+                        自动下载并安装到用户目录，无需管理员权限
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
-                <>
-                  <button className="toolchain-install-btn" onClick={handleInstall}>
-                    一键安装 Arduino CLI
-                  </button>
-                  {toolchain.installError && (
-                    <div className="toolchain-error">{toolchain.installError}</div>
-                  )}
-                  <div className="toolchain-hint">
-                    自动下载并安装到用户目录，无需管理员权限
-                  </div>
-                </>
+                <div className="toolchain-ok">
+                  ✅ Arduino CLI 已就绪
+                </div>
               )}
-            </div>
-          ) : (
-            <div className="toolchain-ok">
-              ✅ Arduino CLI 已就绪
-            </div>
+            </>
           )}
 
           {panel.selectors.map((sel) => {
@@ -397,93 +508,69 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
             // 兼容两种 manifest 写法：插件注册的是 backend `serial.list`，
             // manifest 里可能写 service:"serialport" 或 "serial"，两者都识别为端口选择器
             const isPort = (sel.source?.service === 'serialport' || sel.source?.service === 'serial') && sel.source?.method === 'list'
-    const isTarget = sel.source?.service === 'espIdf' && sel.source?.method === 'listTargets'
+            const isTarget = sel.source?.service === 'espIdf' && sel.source?.method === 'listTargets'
+
+            // 板卡 / 端口选择器放进「设备」页；ESP-IDF 目标选择器放进「目标」页（对齐 TrieCode 分页）
+            if (activeTab === '设备' ? !(isBoard || isPort) : !isTarget) return null
 
             if (isBoard) {
               const selectedName = boards.find((b) => b.fqbn === deviceCtx.board)?.name || deviceCtx.board || ''
               return (
-                // key 必须挂在外层 Fragment 上：React 列表的 key 校验看的是 map 的直接返回值，
-                // 之前挂在里面那层 div 上，每次渲染都刷一条「Each child in a list should have a unique key」
-                <Fragment key={sel.id}>
-                  <div className="device-field">
-                    <label>{sel.title}</label>
-                    <div className="device-search-wrap">
-                      {/* TrieCode 风格：点击展开可搜索板卡列表 */}
-                      <div
-                        className={`device-board-trigger ${boardMenuOpen ? 'open' : ''}`}
-                        onClick={() => {
-                          const next = !boardMenuOpen
-                          setBoardMenuOpen(next)
-                          if (next && boards.length === 0) loadBoards('')
-                        }}
-                      >
-                        <span className={`device-board-trigger-name ${deviceCtx.board ? '' : 'placeholder'}`}>
-                          {selectedName || '选择开发板…'}
-                        </span>
-                        <span className="device-board-caret">▾</span>
-                      </div>
-                      {boardMenuOpen && (
-                        <div className="device-dropdown board-menu">
-                          <input
-                            className="device-search"
-                            placeholder={sel.placeholder || '搜索…'}
-                            value={boardSearch}
-                            onChange={(e) => {
-                              setBoardSearch(e.target.value)
-                              // 防抖：见 loadBoards 注释，关键字查询不能每击键一次
-                              loadBoardsDebounced(e.target.value)
-                            }}
-                            autoFocus
-                          />
-                          <div className="device-dropdown-list">
-                            {filteredBoards.slice(0, 60).map((b) => (
-                              <div
-                                key={b.fqbn}
-                                className={`device-option ${deviceCtx.board === b.fqbn ? 'active' : ''}`}
-                                onClick={() => {
-                                  selectBoard(b.fqbn, b.name)
-                                  setBoardMenuOpen(false)
-                                }}
-                              >
-                                <span className="device-option-name">{b.name}</span>
-                                <span className="device-option-fqbn">{b.fqbn}</span>
-                              </div>
-                            ))}
-                            {filteredBoards.length === 0 && (
-                              <div className="device-option-empty">{loadingBoards ? '加载中…' : '无匹配板卡'}</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                <div key={sel.id} className="device-field">
+                  <label>{sel.title}</label>
+                  <div className="device-search-wrap">
+                    {/* TrieCode 风格：点击展开可搜索板卡列表 */}
+                    <div
+                      className={`device-board-trigger ${boardMenuOpen ? 'open' : ''}`}
+                      onClick={() => {
+                        const next = !boardMenuOpen
+                        setBoardMenuOpen(next)
+                        if (next && boards.length === 0) loadBoards('')
+                      }}
+                    >
+                      <span className={`device-board-trigger-name ${deviceCtx.board ? '' : 'placeholder'}`}>
+                        {selectedName || '选择开发板…'}
+                      </span>
+                      <span className="device-board-caret">▾</span>
                     </div>
-                    <button className="device-refresh" onClick={() => loadBoards(boardSearch)} disabled={loadingBoards}>
-                      {loadingBoards ? '加载中…' : '刷新板卡'}
-                    </button>
-                  </div>
-                  {/* 板卡配置选项（分区方案 / CPU 频率 / Flash / 上传速度等），对齐 TrieCode 直列展示 */}
-                  {deviceCtx.board && boardOptions.length > 0 && (
-                    <div className="device-field device-options-block">
-                      {loadingOptions ? (
-                        <div className="device-option-loading">加载选项中…</div>
-                      ) : (
-                        boardOptions.map((opt) => (
-                          <div key={opt.option} className="device-option-row">
-                            <span className="device-option-label">{opt.label}</span>
-                            <select
-                              className="device-select device-option-select"
-                              value={(optionValues[deviceCtx.board] || {})[opt.option] || opt.values[0]?.value || ''}
-                              onChange={(e) => changeOption(opt.option, e.target.value)}
+                    {boardMenuOpen && (
+                      <div className="device-dropdown board-menu">
+                        <input
+                          className="device-search"
+                          placeholder={sel.placeholder || '搜索…'}
+                          value={boardSearch}
+                          onChange={(e) => {
+                            setBoardSearch(e.target.value)
+                            // 防抖：见 loadBoards 注释，关键字查询不能每击键一次
+                            loadBoardsDebounced(e.target.value)
+                          }}
+                          autoFocus
+                        />
+                        <div className="device-dropdown-list">
+                          {filteredBoards.slice(0, 60).map((b) => (
+                            <div
+                              key={b.fqbn}
+                              className={`device-option ${deviceCtx.board === b.fqbn ? 'active' : ''}`}
+                              onClick={() => {
+                                selectBoard(b.fqbn, b.name)
+                                setBoardMenuOpen(false)
+                              }}
                             >
-                              {opt.values.map((v) => (
-                                <option key={v.value} value={v.value}>{v.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </Fragment>
+                              <span className="device-option-name">{b.name}</span>
+                              <span className="device-option-fqbn">{b.fqbn}</span>
+                            </div>
+                          ))}
+                          {filteredBoards.length === 0 && (
+                            <div className="device-option-empty">{loadingBoards ? '加载中…' : '无匹配板卡'}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button className="device-refresh" onClick={() => loadBoards(boardSearch)} disabled={loadingBoards}>
+                    {loadingBoards ? '加载中…' : '刷新板卡'}
+                  </button>
+                </div>
               )
             }
 
@@ -532,27 +619,194 @@ function DevicePanel({ projectRoot, onBoardChange, onPortChange, onOpenSerialWin
             return null
           })}
 
-          {panel.actions.length > 0 && (
+          {/* 设备页操作（串口监视器 / 接线图 / menuconfig 等常规 action） */}
+          {activeTab === '设备' && panel.actions.filter((a) => a.id !== 'edit_partitions' && a.id !== 'edit_kconfig').length > 0 && (
             <div className="device-actions">
-              {panel.actions.map((action) => (
-                <button
-                  key={action.id}
-                  className="device-action-btn"
-                  onClick={() => handleAction(action)}
-                >
-                  {action.title}
-                </button>
-              ))}
+              {panel.actions
+                .filter((a) => a.id !== 'edit_partitions' && a.id !== 'edit_kconfig')
+                .map((action) => (
+                  <button
+                    key={action.id}
+                    className="device-action-btn"
+                    onClick={() => handleAction(action)}
+                  >
+                    {action.title}
+                  </button>
+                ))}
             </div>
           )}
 
-          {/* 诊断工具组：引脚冲突 / 烧录历史 / 分享卡片 */}
-          <div className="device-actions">
-            <button className="device-action-btn" onClick={() => setDiagOpen(true)} title="引脚冲突检测、烧录快照回滚、生成分享卡片">
-              🔧 诊断与回滚
-            </button>
-          </div>
+          {/* 设备页：诊断工具组（引脚冲突 / 烧录历史 / 分享卡片） */}
+          {activeTab === '设备' && (
+            <div className="device-actions">
+              <button className="device-action-btn" onClick={() => setDiagOpen(true)} title="引脚冲突检测、烧录快照回滚、生成分享卡片">
+                🔧 诊断与回滚
+              </button>
+            </div>
+          )}
 
+          {/* ===== 配置页：板卡配置项 + 分区表 / Kconfig 编辑 ===== */}
+          {activeTab === '配置' && (
+            <div className="device-config-tab">
+              {deviceCtx.board && boardOptions.length > 0 ? (
+                <div className="device-field device-options-block">
+                  {loadingOptions ? (
+                    <div className="device-option-loading">加载选项中…</div>
+                  ) : (
+                    boardOptions.map((opt) => (
+                      <div key={opt.option} className="device-option-row">
+                        <span className="device-option-label" title={opt.label}>{opt.label}</span>
+                        <select
+                          className="device-select device-option-select"
+                          value={(optionValues[deviceCtx.board] || {})[opt.option] || opt.values[0]?.value || ''}
+                          onChange={(e) => changeOption(opt.option, e.target.value)}
+                        >
+                          {opt.values.map((v) => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="device-option-loading">
+                  {deviceCtx.board ? '该板卡无可选配置项' : '请先在「设备」页选择开发板'}
+                </div>
+              )}
+              {panel.actions.filter((a) => a.id === 'edit_partitions' || a.id === 'edit_kconfig').length > 0 && (
+                <div className="device-actions">
+                  {panel.actions
+                    .filter((a) => a.id === 'edit_partitions' || a.id === 'edit_kconfig')
+                    .map((action) => (
+                      <button
+                        key={action.id}
+                        className="device-action-btn"
+                        onClick={() => handleAction(action)}
+                      >
+                        {action.title}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== 平台管理页：已安装平台 + 搜索安装 ===== */}
+          {activeTab === '平台' && (
+            <div className="device-config-tab">
+              <div className="device-field">
+                <label>搜索可安装平台</label>
+                <input
+                  className="device-search"
+                  placeholder="如 esp32、arduino:avr…"
+                  value={platformKeyword}
+                  onChange={(e) => { setPlatformKeyword(e.target.value); searchPlatformsDebounced(e.target.value) }}
+                />
+              </div>
+              {platformResults.length > 0 && (
+                <div className="device-list">
+                  {platformResults.map((p) => (
+                    <div key={p.id} className="device-list-item">
+                      <div className="device-list-meta">
+                        <span className="device-list-name">{p.name || p.id}</span>
+                        <span className="device-list-sub">{p.id}{p.latestVersion ? ` · 最新 ${p.latestVersion}` : ''}</span>
+                      </div>
+                      <button
+                        className="device-mini-btn"
+                        disabled={platformBusy === p.id}
+                        onClick={() => doInstallPlatform(p.id)}
+                      >
+                        {platformBusy === p.id ? '…' : '安装'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="device-subtitle">已安装平台</div>
+              {installedPlatforms.length > 0 ? (
+                <div className="device-list">
+                  {installedPlatforms.map((p) => (
+                    <div key={p.id} className="device-list-item">
+                      <div className="device-list-meta">
+                        <span className="device-list-name">{p.name || p.id}</span>
+                        <span className="device-list-sub">{p.id}{p.version ? ` · ${p.version}` : ''}</span>
+                      </div>
+                      <button
+                        className="device-mini-btn danger"
+                        disabled={platformBusy === p.id}
+                        onClick={() => doUninstallPlatform(p.id)}
+                      >
+                        {platformBusy === p.id ? '…' : '卸载'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="device-option-loading">无已安装平台</div>
+              )}
+              {platformMsg && <div className="device-option-loading">{platformMsg}</div>}
+            </div>
+          )}
+
+          {/* ===== 库管理页：已安装库 + 搜索安装 ===== */}
+          {activeTab === '库' && (
+            <div className="device-config-tab">
+              <div className="device-field">
+                <label>搜索库</label>
+                <input
+                  className="device-search"
+                  placeholder="如 Wire、Adafruit SSD1306…"
+                  value={libKeyword}
+                  onChange={(e) => { setLibKeyword(e.target.value); searchLibsDebounced(e.target.value) }}
+                />
+              </div>
+              {libResults.length > 0 && (
+                <div className="device-list">
+                  {libResults.map((l) => (
+                    <div key={l.name} className="device-list-item">
+                      <div className="device-list-meta">
+                        <span className="device-list-name">{l.name}</span>
+                        <span className="device-list-sub">{l.author ? `${l.author} · ` : ''}最新 {l.version || '—'}</span>
+                      </div>
+                      <button
+                        className="device-mini-btn"
+                        disabled={libBusy === l.name}
+                        onClick={() => doInstallLib(l.name)}
+                      >
+                        {libBusy === l.name ? '…' : '安装'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="device-subtitle">已安装库</div>
+              {installedLibs.length > 0 ? (
+                <div className="device-list">
+                  {installedLibs.map((l) => (
+                    <div key={l.name} className="device-list-item">
+                      <div className="device-list-meta">
+                        <span className="device-list-name">{l.name}</span>
+                        <span className="device-list-sub">{l.author ? `${l.author} · ` : ''}{l.version}</span>
+                      </div>
+                      <button
+                        className="device-mini-btn danger"
+                        disabled={libBusy === l.name}
+                        onClick={() => doUninstallLib(l.name)}
+                      >
+                        {libBusy === l.name ? '…' : '卸载'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="device-option-loading">无已安装库</div>
+              )}
+              {libMsg && <div className="device-option-loading">{libMsg}</div>}
+            </div>
+          )}
+
+          {/* menuconfig 交互终端：始终渲染（打开后挂在「目标」页上下文），不随标签切换消失 */}
           {menuconfig && (
             <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: 'var(--surface-1)', color: 'var(--text)', fontSize: 12 }}>
