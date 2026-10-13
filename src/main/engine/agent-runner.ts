@@ -38,6 +38,30 @@ const RETRY_BACKOFF_MS = 1200
 const VERIFICATION_TOOLS = new Set(['run_command', 'execute_command', 'terminal', 'run_tests', 'compile', 'upload', 'build', 'test', 'verify', 'closed_loop'])
 const VERIFICATION_COMMANDS = /\b(test|build|compile|run|npm\s+(test|run|build)|pytest|go\s+test|cargo\s+test|python\s+-m\s+pytest|arduino-cli\s+(compile|upload))\b/i
 
+// ── 进展闸（对齐 TrieCode isActionProgress / lastProgressTurn / noProgressRounds）──
+// 为什么需要：纯读取/搜索类工具的成功**不算实质进展**。若不区分，模型卡在"反复 read/search 探索"或
+// "变参失败循环"里时，每轮都有"成功的工具调用"→ 进展计数永不触发 → 一路跑到 maxTurns 才停。
+// 只有真有副作用/状态变更的动作（写文件/编译/烧录/装库/提交…）或 terminal 里非只读命令才算进展。
+const PROGRESS_NEUTRAL_TOOL_RE = /^(read_file|list_files|list_dir|search_content|search_files|find_files|code_symbols|lsp_|read_diagnostics|git_status|git_diff|git_log|git_show|web_search|web_fetch|analyze_image|read_pdf|list_memories|recall_memory|skill_list|read_skill|list_skills|list_plugins|plugin_market_search|mcp_tools|mcp_list_servers|search_sessions|schedule_list|todo_list|board_list|board_detect|platform_list|project_overview|ask_user|set_agent_mode|list_background_tasks|get_task_status|arxiv_search)/i
+const READONLY_CMD_RE = /^(ls|dir|cd|pwd|echo|cls|clear|git\s+(status|log|diff|branch|show)|tasklist|netstat|where|type|more|cat|tree|help|ver|grep|find|findstr|rg|sed|awk|head|tail|wc|sort|uniq|cut|tr|diff|strings|which|whoami|date|set|export|mkdir|md)\b/i
+/** 这次工具调用是否**真的推进了任务**（比"成功"严一档：terminal 还要看命令是否只读） */
+function isActionProgress(name: string, args: Record<string, unknown>): boolean {
+  if (PROGRESS_NEUTRAL_TOOL_RE.test(String(name || ''))) return false
+  if (name === 'terminal' || name === 'execute_command' || name === 'run_command') {
+    const cmd = String(args?.command || args?.cmd || args?.script || '').trim()
+    if (!cmd) return true // 无命令参数的工具类 terminal 视为有动作
+    // 链式命令按分隔符拆段，任一段非只读即算进展（`cd x && ls` 仍不算）
+    const segs = cmd.split(/&&|\|\||[;|&]/).map((s) => s.trim()).filter(Boolean)
+    return segs.some((seg) => !READONLY_CMD_RE.test(seg))
+  }
+  return true
+}
+const NO_PROGRESS_LIMIT = 3   // 连续多少轮无实质进展 → 注入"换策略/问用户"
+const EXTEND_LOOKAHEAD = 5    // 距 maxTurns 还剩几轮时评估自延长
+const EXTEND_BY = 20          // 每次延长轮数
+const PROGRESS_WINDOW = 10    // 往前看多少轮内有过实质进展才算"还在干活"
+const MAX_TURN_EXTENSIONS = 3 // 自延长次数上限（防失控）
+
 // ── 工具并发调度（对齐 TrieCode）：
 // - SERIAL_EXCLUDES：出现在该名单中的工具，不管是否声明 concurrencySafe，都必须严格串行、一个个来，不能并发
 // - concurrencySafe=true 且不在 SERIAL_EXCLUDES 且 category=read/query 的同类型工具，可以合并一批并发执行
@@ -183,6 +207,12 @@ export class AgentRunner {
   /** 工具强制重试计数（任务明确要求工具、模型却纯文本回复时的强制引导次数，上限 2，真实调用后清零） */
   private forcedToolRetries = 0
 
+  // ── 进展闸状态（对齐 TrieCode）──
+  private lastProgressTurn = -1      // 最近一次「实质进展」的轮次（纯读取不算）
+  private noProgressRounds = 0       // 连续无实质进展的轮数
+  private turnProgress = false       // 本轮是否有实质进展（每轮开头重置）
+  private turnsExtended = 0          // 轮次天花板自延长次数（设上限防失控）
+
   // ── 上下文压缩状态 ──
   private compressed = false
   private recentReadFiles = new Map<string, string>() // path → 截断内容（最近读文件重注入）
@@ -321,6 +351,10 @@ export class AgentRunner {
     this.wrapupTried = false
     this.compressed = false
     this.recentReadFiles.clear()
+    this.lastProgressTurn = -1
+    this.noProgressRounds = 0
+    this.turnProgress = false
+    this.turnsExtended = 0
     this.planApproved = false
     this.planStore = null
     // 工具耗时按会话重置：跨 run 累计会让「这次 run 慢在哪」失真
@@ -365,6 +399,15 @@ export class AgentRunner {
         if (this.stopped) break
         this.stats.turns = turn + 1
         this.emit('stats', this.getStats())
+        this.turnProgress = false
+
+        // ── 轮次天花板自延长（对齐 TrieCode）：近上限且近期有实质进展 → 延长，防长任务被 20 轮硬砍 ──
+        if (turn >= this.maxTurns - EXTEND_LOOKAHEAD && this.turnsExtended < MAX_TURN_EXTENSIONS
+            && this.lastProgressTurn >= 0 && this.lastProgressTurn >= turn - PROGRESS_WINDOW) {
+          this.maxTurns += EXTEND_BY
+          this.turnsExtended++
+          this.emit('thinking', { content: `（任务仍有实质进展，轮次上限自动延长 ${EXTEND_BY} → ${this.maxTurns}）`, full: '' })
+        }
 
         // ── 预算护栏：墙钟超时 ──
         if (Date.now() - this.wallStart > MAX_WALL_TIME_MS) {
@@ -464,6 +507,20 @@ export class AgentRunner {
             }
           }
 
+          // ── 进展闸（对齐 TrieCode）：本轮无实质进展（全是读取/失败）→ 累计，达上限注入换策略/问用户 ──
+          if (this.turnProgress) {
+            this.noProgressRounds = 0
+          } else {
+            this.noProgressRounds++
+            if (this.noProgressRounds >= NO_PROGRESS_LIMIT) {
+              this.noProgressRounds = 0
+              this.messages.push({
+                role: 'user',
+                content: '[系统提示] 已经连续多轮没有实质进展（只在读取/搜索，或反复失败）。请停止无效循环：换一种实现策略、向用户说明当前卡点并询问下一步，或直接基于已有信息给出结论。不要继续重复同类只读操作。'
+              })
+              this.emit('thinking', { content: '（进展闸：连续多轮无实质进展，已提示换策略/问用户）', full: '' })
+            }
+          }
           this.forcedToolRetries = 0 // 模型实际调用了工具 → 重置强制重试计数
           this.status = 'thinking'
           this.emit('status', { status: 'thinking' })
@@ -1480,6 +1537,12 @@ ${blocks.join('\n\n')}`
         // 「真执行了就强验证 → 强验证证据更新 strongVerify = true 也更新
         this.lastStrongVerifyTurn = currentTurn
       }
+    }
+
+    // 进展闸（对齐 TrieCode）：只有"真有副作用/状态变更"的成功才算进展，纯读取不算
+    if (result.ok && isActionProgress(toolName, args)) {
+      this.turnProgress = true
+      this.lastProgressTurn = currentTurn
     }
 
     // P0-2（对齐 TrieCode）：空工具输出注入占位符，防模型把空 tool_result 误判为 end-of-turn 停止生成
