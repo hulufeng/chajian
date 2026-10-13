@@ -589,10 +589,22 @@ export class AgentRunner {
           this.messages.push({ role: 'assistant', content: result.content })
           this.emit('message', { role: 'assistant', content: result.content })
         } else {
+          // 空 content + 任务明确要工具 → 不是合法收尾，是模型没 engage（实测：本地 3B 首轮空回复，
+          // 若直接进 wrap-up 会跳过上面所有护栏，让模型幻觉出"编译成功，验证通过"当结论）。
+          // 先强制引导调工具，别急着收尾。
+          const requiredOnEmpty = this.detectRequiredTools()
+          if (requiredOnEmpty && this.forcedToolRetries < 2) {
+            this.forcedToolRetries++
+            this.messages.push({
+              role: 'user',
+              content: `[系统提示] 你上一轮既没有输出内容、也没有调用任何工具。用户明确要求使用工具完成（需要：${requiredOnEmpty.join('、')}）。请立即按如下格式输出工具调用（一个调用一块，JSON 一行，不要用代码围栏，不要模拟工具结果、不要口头声称已完成）：\n<tool_call>\n{"name":"工具名","arguments":{...}}\n先调用真实工具拿到结果，再继续下一步。`
+            })
+            this.emit('thinking', { content: `（工具强制重试第 ${this.forcedToolRetries} 次：模型空回复，任务需要 ${requiredOnEmpty.join('、')}，已强制引导）`, full: '' })
+            continue
+          }
           // 模型空收尾（无 toolCalls 且无 content）→ 对齐 TrieCode wrap-up 机制：
           // 追加"请总结"user 消息并用空工具集重调一次，强制模型输出纯文本总结
           if (!this.wrapupTried) {
-            this.wrapupTried = true
             // 带未验证提示（若修改过文件但未验证）
             let hint = ''
             if (this.lastFileModTurn > this.lastVerifyTurn) {
@@ -631,6 +643,29 @@ export class AgentRunner {
             }
             if (this.stopped) return
             if (summary) {
+              // 反幻觉兜底：wrap-up 总结也不得声称未实际执行的操作
+              // （实测：本地 3B 空首轮 + wrap-up 会幻觉"编译成功/已成功添加了"，此前被当成最终结论）
+              // 判据两层：① checkHallucination 正则；② 更稳的——本轮 0 次工具调用却出现任何
+              // "已完成/添加/修改/编译"类措辞，一律判幻觉（0 工具=啥都没做，任何"我做了X"都是假话，
+              // 堵死模型换着花样措辞绕过正则）。
+              const wrapHallucination = this.checkHallucination(summary)
+                || (this.stats.toolCalls === 0 && /已|成功|完成|添加|增加|写入|创建|修改|编译|烧录|验证|通过|做好|加了|改了|部署/.test(summary)
+                  ? '完成了某项操作（但本轮 0 次工具调用）' : null)
+              if (wrapHallucination) {
+                this.messages.push({ role: 'assistant', content: summary })
+                this.messages.push({
+                  role: 'user',
+                  content: `[系统提示] 你的总结中声称"${wrapHallucination}"，但本会话没有对应的工具调用证据。请不要声称未实际执行的操作，请基于真实发生的工具调用重新总结；若确实未执行，请如实说明未完成。`
+                })
+                this.emit('thinking', { content: `（反幻觉纠正：总结声称"${wrapHallucination}"但无工具证据）`, full: '' })
+                const honest = this.stats.toolCalls > 0
+                  ? `本轮实际执行了 ${this.stats.toolCalls} 次工具操作，但尚未取得"${wrapHallucination}"的真实证据，因此还不能算完成。请让我重试或给出更明确的指令。`
+                  : '（本轮未执行任何工具操作，任务尚未真正完成。请重试或换一种更明确的指令。）'
+                this.messages.push({ role: 'assistant', content: honest })
+                this.emit('message', { role: 'assistant', content: honest })
+                this.finishRun()
+                return
+              }
               this.messages.push({ role: 'assistant', content: summary })
               this.emit('message', { role: 'assistant', content: summary })
             } else {
