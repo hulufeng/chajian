@@ -713,9 +713,10 @@ function AiPanel({ tabs, activePath, projectRoot, onApplyCode, onRunTerminal, on
     const local = localRes.status === 'fulfilled' ? localRes.value : []
     setLocalModels(local)
     if (local.length > 0) {
-      // 有本地模型时优先用本地（云端不可用也能干活）
+      // 有本地模型时优先用本地（云端不可用也能干活）——但用户显式选了 BYOK 智能体时不抢：
+      // 否则每次挂载都把 modelId 冲回本地 3B，用户自己配的 key（智谱/DeepSeek 等）永远激活不了。
       const id = local.find((x) => x.id.toLowerCase().includes('coder-3b'))?.id || local[0].id
-      if (!s?.modelId?.startsWith('local:')) {
+      if (!s?.modelId?.startsWith('local:') && !s?.modelId?.startsWith('byok:')) {
         setUseLocalModel(true)
         setSelectedLocalModel(id)
         window.api.ai.setModel(`local:${id}`).catch(() => undefined)

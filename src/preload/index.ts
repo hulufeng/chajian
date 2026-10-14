@@ -99,9 +99,11 @@ export interface AiState {
 export interface ByokProfile {
   id: string
   name: string
+  provider?: string
   baseUrl: string
   apiKey: string
   model: string
+  thinkingParams?: Record<string, unknown>
 }
 
 export interface PinReportLike {

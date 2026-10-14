@@ -54,6 +54,58 @@ const BYOK_PROVIDERS: Array<{ value: string; label: string; baseUrl: string; mod
 ]
 
 /**
+ * 思考档位预设（对齐 TrieCode provider-registry 的 thinkingLevels/thinkingParams）。
+ * 按厂商分组——不同厂商对推理强度的请求字段不同（reasoning_effort / thinking:{type} / reasoning_split）。
+ * 第一个预设永远是「关闭思考」（params 为空），保证默认零附加、无回归。
+ * claude / ollama / custom 无预设 → 设置界面隐藏该选择器。
+ */
+interface ThinkingPreset { label: string; params: Record<string, unknown> }
+const THINKING_PRESETS: Record<string, ThinkingPreset[]> = {
+  deepseek: [
+    { label: '关闭思考', params: {} },
+    { label: '低', params: { reasoning_effort: 'low' } },
+    { label: '高', params: { reasoning_effort: 'high' } },
+    { label: '极限', params: { reasoning_effort: 'max' } }
+  ],
+  qwen: [
+    { label: '关闭思考', params: {} },
+    { label: '高', params: { reasoning_effort: 'high' } },
+    { label: '极限', params: { reasoning_effort: 'max' } }
+  ],
+  minimax: [
+    { label: '关闭思考', params: {} },
+    { label: '自适应', params: { reasoning_split: true } }
+  ],
+  kimi: [
+    { label: '关闭思考', params: {} },
+    { label: '开启', params: { reasoning_effort: 'max' } }
+  ],
+  zhipu: [
+    { label: '关闭思考', params: {} },
+    { label: '开启', params: { thinking: { type: 'enabled' } } }
+  ],
+  openai: [
+    { label: '关闭思考', params: {} },
+    { label: '低', params: { reasoning_effort: 'low' } },
+    { label: '中', params: { reasoning_effort: 'medium' } },
+    { label: '高', params: { reasoning_effort: 'high' } }
+  ],
+  doubao: [
+    { label: '关闭思考', params: {} },
+    { label: '开启', params: { reasoning_effort: 'high' } }
+  ]
+}
+
+/** 根据已存 thinkingParams 反查预设序号（找不到 → 0 关闭思考） */
+function findThinkingIndex(provider: string | undefined, params: Record<string, unknown> | undefined): number {
+  const presets = provider ? THINKING_PRESETS[provider] : undefined
+  if (!presets || !params) return 0
+  const key = JSON.stringify(params)
+  const idx = presets.findIndex((p) => JSON.stringify(p.params) === key)
+  return idx >= 0 ? idx : 0
+}
+
+/**
  * 常用 MCP 服务器一键预设（对齐 TrieCode 的插件生态体验：免手填命令）。
  * 全部走 Node/npx（跨平台最稳）；点击只「填入名称+命令」，仍需用户手动点「添加」并「信任」——
  * 预设不自动信任，信任门控保持不变。
@@ -128,7 +180,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [mcpGlobalEnabled, setMcpGlobalEnabled] = useState(true)
   const [mcpTestMsg, setMcpTestMsg] = useState('')
   // BYOK 自定义模型（多 profile）
-  interface ByokProfile { id: string; name: string; baseUrl: string; apiKey: string; model: string }
+  interface ByokProfile { id: string; name: string; provider?: string; baseUrl: string; apiKey: string; model: string; thinkingParams?: Record<string, unknown> }
   const [byokProfiles, setByokProfiles] = useState<ByokProfile[]>([])
   const [activeByokId, setActiveByokId] = useState<string | null>(null)
   const [editingByokId, setEditingByokId] = useState<string | null>(null) // null = 新建
@@ -138,6 +190,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
   const [byokApiKey, setByokApiKey] = useState('')
   const [byokModel, setByokModel] = useState('')
   const [byokSaved, setByokSaved] = useState(false)
+  const [byokThinkingIndex, setByokThinkingIndex] = useState(0) // 思考档位序号（0=关闭思考）
   // 测试与诊断：自检结果 / 导出反馈（开发的我拿这份报告定位真机问题）
   const [diagBusy, setDiagBusy] = useState(false)
   const [diagReport, setDiagReport] = useState<Record<string, unknown> | null>(null)
@@ -663,7 +716,9 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                             setByokApiKey(p.apiKey)
                             setByokModel(p.model)
                             const matched = BYOK_PROVIDERS.find((x) => p.baseUrl.startsWith(x.baseUrl))
-                            setByokProvider(matched ? matched.value : 'custom')
+                            const pv = matched ? matched.value : 'custom'
+                            setByokProvider(pv)
+                            setByokThinkingIndex(findThinkingIndex(pv, p.thinkingParams))
                             setByokSaved(false)
                           }}>✎</button>
                           <button className="icon-btn" title="删除" onClick={() => {
@@ -700,6 +755,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                       setByokBaseUrl('https://api.deepseek.com/v1')
                       setByokApiKey('')
                       setByokModel('deepseek-chat')
+                      setByokThinkingIndex(0)
                       setByokSaved(false)
                     }}>＋ 添加 API Key</button>
                   </div>
@@ -715,6 +771,7 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                       setByokBaseUrl('https://api.deepseek.com/v1')
                       setByokApiKey('')
                       setByokModel('deepseek-chat')
+                      setByokThinkingIndex(0)
                       setByokSaved(false)
                     }}>＋ 添加 API Key</button>
                   </div>
@@ -759,12 +816,27 @@ function SettingsModal({ theme, onToggleTheme, onClose, shell, onShellChange, la
                       <span>模型名</span>
                       <input className="settings-input" value={byokModel} onChange={(e) => { setByokModel(e.target.value); setByokSaved(false) }} placeholder="deepseek-chat" />
                     </div>
+                    {THINKING_PRESETS[byokProvider] && (
+                      <div className="settings-row">
+                        <span>思考模式</span>
+                        <select
+                          className="settings-select"
+                          value={byokThinkingIndex}
+                          onChange={(e) => { setByokThinkingIndex(Number(e.target.value)); setByokSaved(false) }}
+                        >
+                          {THINKING_PRESETS[byokProvider].map((p, i) => (
+                            <option key={p.label} value={i}>{p.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="settings-actions" style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                       <button className="byok-primary-btn" onClick={() => {
                         if (!byokName.trim() || !byokBaseUrl.trim() || !byokApiKey.trim() || !byokModel.trim()) return
                         const id = editingByokId || `custom-${Date.now()}`
+                        const picked = THINKING_PRESETS[byokProvider]?.[byokThinkingIndex]?.params ?? {}
                         void window.api.ai.byokSave({
-                          id, name: byokName.trim(), baseUrl: byokBaseUrl.trim(), apiKey: byokApiKey.trim(), model: byokModel.trim()
+                          id, name: byokName.trim(), provider: byokProvider, baseUrl: byokBaseUrl.trim(), apiKey: byokApiKey.trim(), model: byokModel.trim(), thinkingParams: picked
                         }).then(() => {
                           void window.api.ai.byokProfiles().then((ps) => {
                             setByokProfiles(ps)

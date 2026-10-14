@@ -39,9 +39,13 @@ export interface AiState {
 export interface ByokProfile {
   id: string          // 稳定 id（如 deepseek / qwen / custom-xxx）
   name: string        // 显示名
+  provider?: string   // 厂商（deepseek/qwen/minimax/kimi/zhipu/doubao/openai...），用于思考档位预设匹配
   baseUrl: string
   apiKey: string
   model: string
+  // 思考档位展开后的请求体附加字段（如 reasoning_effort / thinking:{type} / reasoning_split）。
+  // 仅当用户在设置里显式选了某档位才非空；默认空 → 不附加任何字段，保持现状（无回归风险）。
+  thinkingParams?: Record<string, unknown>
 }
 
 export interface UserInfo {
@@ -576,15 +580,16 @@ export function anthropicStream(
     })
 }
 
-async function chatByok(messages: ChatMessage[], byok: { baseUrl: string; apiKey: string; model: string }): Promise<string> {
+async function chatByok(messages: ChatMessage[], byok: ByokProfile): Promise<string> {
   if (!byok.apiKey || !byok.baseUrl) throw new Error('自定义模型未配置完整（需 Base URL / API Key / 模型名）')
   // Anthropic（Claude）走 Messages API，与 OpenAI 兼容端点不同
   if (isAnthropicEndpoint(byok.baseUrl)) return chatByokAnthropic(messages as unknown as RawChatMessage[], byok)
   const url = byok.baseUrl.replace(/\/$/, '') + '/chat/completions'
+  const thinkingExtra = byok.thinkingParams && Object.keys(byok.thinkingParams).length ? byok.thinkingParams : {}
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${byok.apiKey}` },
-    body: JSON.stringify({ model: byok.model, messages })
+    body: JSON.stringify({ model: byok.model, messages, ...thinkingExtra })
   })
   if (!res.ok) {
     const text = await res.text()
@@ -967,12 +972,18 @@ export function aiChatStream(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${activeByok.apiKey}`
     }
+    // 思考档位：仅当用户显式选了某档位（thinkingParams 非空）才附加到请求体，
+    // 让 DeepSeek-R1 / GLM / Qwen 等推理模型按档位思考；默认空 → 不附加任何字段。
+    const thinkingExtra = (activeByok.thinkingParams && Object.keys(activeByok.thinkingParams).length)
+      ? activeByok.thinkingParams
+      : {}
     const body = JSON.stringify({
       model: activeByok.model,
       messages,
       stream: true,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? 'auto' : undefined
+      tool_choice: tools.length > 0 ? 'auto' : undefined,
+      ...thinkingExtra
     })
     const byokController = new AbortController()
     fetchStream(url, headers, body, onChunk, byokController.signal, onDone)

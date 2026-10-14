@@ -14,6 +14,7 @@ import { listSkills } from '../services/skillService'
 import { newToolTiming, makeTimingAuditMiddleware, makeSlowToolMiddleware, type ToolTiming } from './tool-observers'
 import { makePreToolUseHookMiddleware, makePostToolUseHookMiddleware } from './hooks'
 import { autoSaveMemory } from './auto-memory'
+import { actionKey, SterileGuard } from './loop-guard'
 import type {
   AgentRunOptions, AgentStatus, AgentStats, ToolCall, ConfirmRequest, ToolContext, ToolResult, ToolDefinition
 } from './types'
@@ -24,7 +25,6 @@ toolRegistry.registerAll(coreTools)
 // ── 预算护栏 ──────────────────────────────────────────────
 const MAX_WALL_TIME_MS = 120 * 60 * 1000 // 120 分钟墙钟上限
 const BUDGET_WARN_RATIO = 0.75 // 75% 时提前提醒收尾
-const STERILE_MAX_REPEAT = 3 // 同工具同参数重复执行上限
 const PARALLEL_LIMIT = 5 // 单个并发批的最大工具数（对齐 TrieCode PARALLEL_LIMIT，防一次性打满 IO/进程）
 
 // ── 工具失败恢复 ──────────────────────────────────────────
@@ -187,7 +187,7 @@ export class AgentRunner {
   private confirmTimer: NodeJS.Timeout | null = null
 
   // ── 预算护栏状态 ──
-  private sterileActions = new Map<string, number>() // 工具名|参数JSON → 重复次数
+  private sterileGuard = new SterileGuard() // 无菌动作检测（键含参数归一化，见 loop-guard.ts）
   private budgetHinted = false
   private wallStart = 0
 
@@ -338,7 +338,7 @@ export class AgentRunner {
     if (lm) setLocalModel(lm)
 
     // 重置护栏状态
-    this.sterileActions.clear()
+    this.sterileGuard.reset()
     this.budgetHinted = false
     this.wallStart = Date.now()
     this.failedTools.clear()
@@ -411,7 +411,10 @@ export class AgentRunner {
 
         // ── 预算护栏：墙钟超时 ──
         if (Date.now() - this.wallStart > MAX_WALL_TIME_MS) {
-          this.emit('message', { role: 'assistant', content: `（任务已运行超过 ${MAX_WALL_TIME_MS / 60000} 分钟，自动停止。请拆分任务后重试。）` })
+          this.emit('message', {
+            role: 'assistant',
+            content: `任务已运行超过 ${MAX_WALL_TIME_MS / 60000} 分钟，达到时长上限，已停止调用新工具。这一轮的操作与输出都在上面的工具记录里，改动也已落盘；直接回复「继续」我就接着做——不必重新提问。若任务过大，建议拆分成更小的步骤分次进行。`
+          })
           this.finishRun('wall_time')
           return
         }
@@ -481,30 +484,54 @@ export class AgentRunner {
           this.status = 'tool_calling'
           this.emit('status', { status: 'tool_calling' })
 
+          // ── 残缺调用护栏（对齐 TrieCode argumentsIncomplete，agent-runner.js:716/897/963）──
+          // JSON 残缺或缺少 required 参数的调用不能安全执行（空参执行会写空文件/空删/误杀），
+          // 必须丢弃完整调用之外的那些，并注入重发提示让模型补全参数后重发。
+          const incompleteCalls = result.toolCalls.filter((tc) => this.isIncompleteToolCall(tc))
+          const validCalls = result.toolCalls.filter((tc) => !incompleteCalls.includes(tc))
+
           // 保留本轮 content（即使有工具调用，模型的开场白/说明也应展示，对齐 TrieCode send(content)）
           if (result.content && result.content.trim()) {
             this.emit('message', { role: 'assistant', content: result.content })
           }
-          this.messages.push({
-            role: 'assistant',
-            content: result.content || '',
-            tool_calls: result.toolCalls
-          })
+          // 仅把完整调用回写 assistant 消息（保证 tool_calls 与工具结果一一对应；
+          // 残缺调用不进上下文，避免产生孤儿 tool_call 导致 API 400）。
+          if (validCalls.length > 0) {
+            this.messages.push({
+              role: 'assistant',
+              content: result.content || '',
+              tool_calls: validCalls
+            })
+          } else if (result.content && result.content.trim()) {
+            this.messages.push({ role: 'assistant', content: result.content })
+          }
 
           // 工具并发调度（对齐 TrieCode）：按「批次」拆分
           // 每批 = 要么是 1 个串行互斥工具；要么是 N 个同时满足三个条件的并发安全工具：
           //   ① 声明 concurrencySafe=true   ② 不在 SERIAL_EXCLUDES 里   ③ category 是 read 或 query
           // 每批并行执行；批与批之间严格串行（保证互斥工具之间不会和并发批串台）
-          const batches = this.groupToolCallsForConcurrency(result.toolCalls)
-          for (const batch of batches) {
-            if (this.stopped) break
-            // 只有 1 个且是串行工具 → 保持原来单跑（日志和行为一致）
-            if (batch.length === 1) {
-              await this.executeToolCall(batch[0], turn)
-            } else {
-              // 并发批：Promise.all 一起跑；结果按原顺序回填
-              await Promise.all(batch.map((tc) => this.executeToolCall(tc, turn)))
+          if (validCalls.length > 0) {
+            const batches = this.groupToolCallsForConcurrency(validCalls)
+            for (const batch of batches) {
+              if (this.stopped) break
+              // 只有 1 个且是串行工具 → 保持原来单跑（日志和行为一致）
+              if (batch.length === 1) {
+                await this.executeToolCall(batch[0], turn)
+              } else {
+                // 并发批：Promise.all 一起跑；结果按原顺序回填
+                await Promise.all(batch.map((tc) => this.executeToolCall(tc, turn)))
+              }
             }
+          }
+
+          // 残缺调用：丢弃 + 注入重发提示（对齐 TrieCode agent-runner.js:897/963）
+          if (incompleteCalls.length > 0) {
+            const names = incompleteCalls.map((tc) => tc.function?.name || '(未知)').join('、')
+            this.messages.push({
+              role: 'user',
+              content: `（你上一条回复发起的工具调用（${names}）因参数残缺（JSON 不完整或缺少必填参数）未执行。请重新发出这些调用，补全完整参数后再提交。）`
+            })
+            this.emit('thinking', { content: `（残缺工具调用已丢弃并提示重发：${names}）`, full: '' })
           }
 
           // ── 进展闸（对齐 TrieCode）：本轮无实质进展（全是读取/失败）→ 累计，达上限注入换策略/问用户 ──
@@ -639,7 +666,7 @@ export class AgentRunner {
               }
               summary = String(wrap.content || '').trim()
             } catch (e) {
-              console.warn(`[Agent] wrap-up 总结调用失败: ${(e as Error).message}`)
+              console.warn(`[Agent] wrap-up 总结调用失败: ${this.redactErrorText((e as Error).message)}`)
             }
             if (this.stopped) return
             if (summary) {
@@ -699,12 +726,21 @@ export class AgentRunner {
         return
       }
 
-      // 达到最大轮次
-      this.emit('message', { role: 'assistant', content: `（已达到最大轮次 ${this.maxTurns}，停止执行）` })
+      // 达到最大轮次 — 三段式文案（对齐 TrieCode budgetStopMessage）：为什么停 → 活在哪 → 怎么继续。
+      // 不写「请重新提问」：用户没做错什么，重新提问等于把已完成的活重来一遍；
+      // 要继续只需要一句话（继续/收尾），工具记录与文件改动都还在。
+      const recentToolNames = [...new Set(this.messages.filter((m) => m.role === 'tool').slice(-3).map((m) => m.name))].join('、')
+      const progressNote = this.stats.toolCalls > 0
+        ? `本轮已完成 ${this.stats.toolCalls} 次工具操作（${recentToolNames || '读写文件、执行命令'}等），操作记录都在上方，文件改动也已落盘。`
+        : '本轮的操作记录都在上方。'
+      this.emit('message', {
+        role: 'assistant',
+        content: `已达到本任务的最大轮次（${this.maxTurns}），已停止调用新工具。${progressNote}直接回复「继续」或「收尾」我就接着做——不必重新提问。`
+      })
       this.finishRun('max_turns')
     } catch (e) {
       this.status = 'error'
-      this.emit('error', { message: (e as Error).message })
+      this.emit('error', { message: this.redactErrorText((e as Error).message) })
       this.emit('status', { status: 'error' })
     }
   }
@@ -725,6 +761,46 @@ export class AgentRunner {
         toolCalls: this.stats.toolCalls
       })
     }
+  }
+
+  /**
+   * 工具调用参数是否残缺（对齐 TrieCode argumentsIncomplete 护栏）：
+   * JSON 解析失败 / 解析结果非对象 / 工具声明了 required 参数却缺失 → 判定残缺。
+   * 残缺调用若带空参执行会造成写空文件、空删除、误杀等严重后果，故必须丢弃、
+   * 并提示模型补全参数后重发，而不是裸执行。
+   */
+  private isIncompleteToolCall(tc: { function?: { name?: string; arguments?: string } }): boolean {
+    const raw = String(tc.function?.arguments ?? '').trim()
+    if (!raw) return true
+    let args: unknown
+    try {
+      args = JSON.parse(raw)
+    } catch {
+      return true
+    }
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return true
+    const def = toolRegistry.get(tc.function?.name || '')
+    const required = def?.parameters?.required
+    if (Array.isArray(required) && required.length > 0) {
+      const obj = args as Record<string, unknown>
+      for (const k of required) {
+        if (obj[k] === undefined || obj[k] === null) return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * 错误脱敏（对齐 TrieCode redactError）：把错误文本里的 API key / Bearer 令牌抹除，
+   * 并截断到 500 字符，避免随失败信息回显进对话面板 + 写入主进程日志造成凭证泄漏。
+   */
+  private redactErrorText(raw: unknown): string {
+    let t = String(raw ?? '')
+    t = t.replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-***')
+    t = t.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer ***')
+    t = t.replace(/Authorization["'\s:]+[A-Za-z0-9._~+/=-]+/gi, 'Authorization: ***')
+    t = t.replace(/x-api-key["'\s:]+[A-Za-z0-9._~+/=-]+/gi, 'x-api-key: ***')
+    return t.slice(0, 500)
   }
 
   /** 粗估当前上下文 token 数（字符数 / 系数，够用于水位判断，不追求精确） */
@@ -1390,7 +1466,7 @@ ${blocks.join('\n\n')}`
         return r
       })
       .catch((e) => {
-        console.error(`[Agent] 模型调用失败: ${(e as Error).message}`)
+        console.error(`[Agent] 模型调用失败: ${this.redactErrorText((e as Error).message)}`)
         throw e
       })
   }
@@ -1515,16 +1591,15 @@ ${blocks.join('\n\n')}`
       this.emit('status', { status: 'tool_calling' })
     }
 
-    // ── 无菌动作检测 ──
-    const sterileKey = `${toolName}|${JSON.stringify(args).slice(0, 160)}`
-    const sterileCount = (this.sterileActions.get(sterileKey) ?? 0) + 1
-    this.sterileActions.set(sterileKey, sterileCount)
+    // ── 无菌动作检测（loop-guard：键含 trim+超长 hash 归一化，堵「加个换行再试」绕过）──
+    const sterileKey = actionKey(toolName, args)
+    const sterileCount = this.sterileGuard.record(sterileKey)
 
-    if (sterileCount >= STERILE_MAX_REPEAT) {
+    if (this.sterileGuard.shouldBlock(sterileKey)) {
       const result: ToolResult = {
         ok: false,
         content: '',
-        error: `[系统提示] 工具 ${toolName} 已用相同参数重复执行 ${sterileCount} 次，疑似无效循环。请停止重复尝试，诊断根因后换一种实现方式，或向用户说明情况。`
+        error: `[系统提示] 工具 ${toolName} 已用相同参数重复执行 ${sterileCount} 次（忽略空白/格式差异），疑似无效循环。请停止重复尝试，诊断根因后换一种实现方式，或向用户说明情况。`
       }
       this.messages.push({ role: 'tool', tool_call_id: tc.id, name: toolName, content: JSON.stringify(result) })
       this.emit('tool_result', { id: tc.id, name: toolName, result })
