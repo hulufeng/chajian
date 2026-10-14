@@ -35,3 +35,6 @@ _labcode-install*/
 # 运行期调试输出（开发者随手落的日志，不入库）
 ._deverr.txt
 ._devlog.txt
+
+# clangd 自动生成的编译数据库（由 compile flags / CMake 等生成，不入库）
+compile_commands.json
