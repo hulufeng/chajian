@@ -14392,26 +14392,18 @@ function bindEvents() {
     const sb = document.getElementById('gw-ov-register-send-btn'); if (sb) sb.addEventListener('click', () => sendGwCode(true));
     const sb2 = document.getElementById('gw-register-send-btn'); if (sb2) sb2.addEventListener('click', () => sendGwCode(false));
     const fo = document.getElementById('gw-ov-forgot'); if (fo) fo.addEventListener('click', gwForgotOverlay);
-    const sk = document.getElementById('gw-ov-skip'); if (sk) sk.addEventListener('click', hideLoginOverlay);
     window.__showGwLoginOverlay = showLoginOverlay;
     // 启动检查：登录门禁
-    // 商业化取向：产品方内置了云端凭据时，**不拦用户** —— 装完即用，登录只是可选增强
-    // （领更多额度 / 跨设备同步 / 邀请奖励）。只有连内置凭据都没有时才强制登录。
+    // 前提：**云端模型必须登录才能用**（登录即赠免费额度，见商业化规划）。
+    // 只对云端通道强制登录；本地模型 / Ollama / 自带 Key 不拦。
     (async () => {
       try {
         const cfg = await window.LabCode.config.get();
+        const provider = (cfg.ai && cfg.ai.provider) || 'gateway';
+        const needsLogin = provider === 'gateway' || (provider === 'custom' && !cfg.ai.apiKey);
         const loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
-        if (!loggedIn) {
-          let st = null;
-          try { st = await window.LabCode.ai.gatewayStatus(); } catch (e) {}
-          if (st && st.valid) {
-            // 云端凭据真实可用（内置/管理后台）→ 放行，只做温和提示
-            setTimeout(() => {
-              showToast('已启用内置云端模型，直接开聊即可；登录可获得更多额度', 'info');
-            }, 1200);
-          } else if (window.__showGwLoginOverlay) {
-            window.__showGwLoginOverlay();
-          }
+        if (needsLogin && !loggedIn && window.__showGwLoginOverlay) {
+          window.__showGwLoginOverlay();
         }
         await refreshCreditsBadge();
       } catch (e) { /* 不影响主流程 */ }
