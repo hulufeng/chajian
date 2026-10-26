@@ -9886,7 +9886,7 @@ function bindEvents() {
     // ============ 大模型插件（本地运行，内置 llama 引擎，模型走国内直链）============
     { id: 'llama-runtime', name: 'LabCode AI 引擎', description: '内置 llama.cpp 大模型引擎（GPU 加速），无需安装任何外部软件，安装模型后即可使用', version: '1.0.0', author: 'LabCode', icon: '🧠', category: 'ai-model', channels: ['bundled'], capabilities: ['llm-runtime', 'local-ai'], bundled: true, minRamGB: 4, minDiskGB: 0.5 },
     { id: 'qwen25-coder-1.5b', name: 'Qwen2.5-Coder 1.5B（轻量）', description: '通义千问代码模型 1.5B 量化版，8GB 内存即可流畅运行，适合代码补全和简单问答', version: '1.0.0', author: 'LabCode', icon: '⚡', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/master/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', minRamGB: 4, minDiskGB: 2, recommendedFor: 'low' },
-    { id: 'qwen25-coder-3b', name: 'Qwen2.5-Coder 3B（平衡）', description: '通义千问代码模型 3B 量化版，约 2GB 体积，4GB 显存或 8GB 内存即可跑，代码补全和单文件修改的甜点档', version: '1.0.0', author: 'LabCode', icon: '🔧', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/master/qwen2.5-coder-3b-instruct-q4_k_m.gguf', minRamGB: 6, minDiskGB: 3, recommendedFor: 'entry' },
+    { id: 'qwen25-coder-3b', name: 'Qwen2.5-Coder 3B（平衡）', description: '通义千问代码模型 3B 量化版，约 2GB 体积，4GB 显存或 8GB 内存即可跑，代码补全和单文件修改的甜点档', version: '1.0.0', author: 'LabCode', icon: '🔧', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/master/qwen2.5-coder-3b-instruct-q4_k_m.gguf', minRamGB: 6, minDiskGB: 3, recommendedFor: 'low' },
     { id: 'qwen25-coder-7b', name: 'Qwen2.5-Coder 7B（推荐）', description: '通义千问代码模型 7B，代码生成和调试能力强，AI 编程主力模型，6GB+ 显存或 16GB 内存', version: '1.0.0', author: 'LabCode', icon: '🌟', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/master/qwen2.5-coder-7b-instruct-q4_k_m.gguf', minRamGB: 8, minDiskGB: 5, recommendedFor: 'medium' },
     { id: 'qwen25-coder-14b', name: 'Qwen2.5-Coder 14B（高性能）', description: '通义千问代码模型 14B，更强的代码理解和生成能力，需 12GB+ 显存或 32GB 内存', version: '1.0.0', author: 'LabCode', icon: '🚀', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/master/qwen2.5-coder-14b-instruct-q4_k_m.gguf', minRamGB: 16, minDiskGB: 9, recommendedFor: 'high' },
     { id: 'qwen35-9b', name: 'Qwen3.5-9B（强推理）', description: '通义千问 3.5 系列 9B，代码理解与多步推理更强，支持思考模式，需 10GB+ 显存或 24GB 内存', version: '1.0.0', author: 'LabCode', icon: '🧠', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code', 'reasoning'], requires: 'llama-runtime', modelName: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', ggufFile: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', downloadUrl: 'https://modelscope.cn/models/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf', minRamGB: 10, minDiskGB: 7, recommendedFor: 'strong' },
@@ -9939,6 +9939,16 @@ function bindEvents() {
   let remotePlugins = [];
   let remoteMarketOnline = false;
   let remoteMarketURL = '';
+  // 最近一次成功同步的市场清单（本地缓存）：市场不可达时用它兜底，
+  // 这样服务端新增模型不必等发版，用户离线也能看到最新清单
+  const MARKET_CACHE_KEY = 'labcode_market_cache';
+  function loadCachedMarket() {
+    try {
+      const v = JSON.parse(localStorage.getItem(MARKET_CACHE_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  let cachedMarketPlugins = loadCachedMarket();
 
   async function getPluginMarketURL() {
     if (remoteMarketURL) return remoteMarketURL;
@@ -9999,6 +10009,8 @@ function bindEvents() {
         source: 'remote'
       }));
       remoteMarketOnline = true;
+      // 同步到本地缓存：市场下次不可达时，仍能显示这份最新清单（免发版即可上架新模型）
+      try { localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(remotePlugins)); } catch (e) { /* 忽略配额/隐私模式 */ }
       console.log('[插件市场] 已从 ' + url + ' 拉取 ' + remotePlugins.length + ' 个远程插件');
     } catch (e) {
       remotePlugins = [];
@@ -10034,9 +10046,10 @@ function bindEvents() {
   }
 
   function getAllPlugins() {
-    // 远程优先，id 去重；内置目录作为离线兜底
+    // 优先级：远程市场 > 本地缓存（最近一次成功同步）> 内置目录（随安装包，离线兜底）；按 id 去重
     const map = new Map();
     OFFICIAL_PLUGINS.forEach(p => { if (!map.has(p.id)) map.set(p.id, { ...p, source: 'builtin' }); });
+    cachedMarketPlugins.forEach(p => map.set(p.id, { ...p, source: p.source || 'cache' }));
     remotePlugins.forEach(p => map.set(p.id, p));
     return Array.from(map.values());
   }
