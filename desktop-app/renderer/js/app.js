@@ -11563,7 +11563,8 @@ function bindEvents() {
       else if (!gwStatus.loggedIn) { tag.textContent = '需登录'; tag.classList.add('bad'); }
       else if (!gwStatus.valid) { tag.textContent = '需重新登录'; tag.classList.add('bad'); }
       else if (m.costPerCall > 0) { tag.textContent = m.costPerCall + ' 积分/次'; }
-      else { tag.textContent = gwStatus.creditsLeft != null ? ('额度 ' + gwStatus.creditsLeft) : '免费'; }
+      else if (gwStatus.dailyRemaining != null) { tag.textContent = '今日剩余 ' + gwStatus.dailyRemaining + ' 次'; }
+      else { tag.textContent = '免费'; }
       row.appendChild(tag);
       if (m.desc) row.title = m.desc;
       if (cur === m.id) row.classList.add('active');
