@@ -4469,6 +4469,24 @@ void loop() {
     return { content: reason, toolCalls: [], streamed: false, thinking: null, degraded: true };
   }
 
+  // 简单的非流式补全：给「git 提交信息」「合并冲突」等辅助功能用。
+  // 这些调用点原先误用不存在的 client.chat(prompt, [])，这里补齐，避免抛「chat is not a function」。
+  async chat(prompt, history = []) {
+    if (!this.hasApiKey()) {
+      return this._degradedReply('未配置可用的 AI（请到设置中配置本地模型或云端 Key）');
+    }
+    try {
+      const messages = (Array.isArray(history) && history.length)
+        ? history.concat([{ role: 'user', content: prompt }])
+        : [{ role: 'user', content: prompt }];
+      const r = await window.LabCode.ai.chat({ messages, maxTokens: 1024, temperature: 0.3 });
+      if (r && r.success) return { content: r.content || '', toolCalls: [], streamed: false, thinking: null };
+      return this._degradedReply((r && r.error) || 'AI 调用失败');
+    } catch (e) {
+      return this._degradedReply('AI 调用异常：' + (e.message || e));
+    }
+  }
+
   async generateResponse(userInput, messages) {
     // 没有 Electron 环境或 AI 通道 → 如实说明。
     // 历史行为会回退到 MockAIClient，返回编造的回复和**伪造的工具调用**（write_file/terminal/...），
@@ -10277,17 +10295,21 @@ function bindEvents() {
       _gwStatusCache = st;
     } catch (e) { /* 用缓存 */ }
     if (!st) { stateEl.innerHTML = '<span style="color:#888;">内置云端状态未知</span>'; return; }
-    if (st.loggedIn) {
+    if (st.loggedIn && st.valid) {
       const c = st.creditsLeft != null ? ('剩余额度 ' + st.creditsLeft) : '';
       stateEl.innerHTML = '<span style="color:#10b981;">● 已登录</span>'
         + (st.email ? ' ' + st.email : '')
         + (c ? '<br>' + c : '');
-    } else if (st.available) {
+    } else if (st.valid) {
       stateEl.innerHTML = '<span style="color:#10b981;">● 已内置，装完即用</span>'
         + '<br><span style="color:#888;">无需注册；登录可获得更多额度与邀请奖励</span>';
+    } else if (st.available) {
+      // 有凭据但都失效（登录过期 / 后端 Key 无效）→ 提示去更新
+      stateEl.innerHTML = '<span style="color:#f59e0b;">● 配置需更新</span>'
+        + '<br><span style="color:#888;">登录已过期或后端 API Key 无效，请在「设置 → 云端后端」检查</span>';
     } else {
       stateEl.innerHTML = '<span style="color:#f59e0b;">● 暂不可用</span>'
-        + '<br><span style="color:#888;">登录账号即可使用内置云端模型</span>';
+        + '<br><span style="color:#888;">登录账号或配置后端 API Key 即可使用内置云端模型</span>';
     }
   }
 
@@ -11640,14 +11662,17 @@ function bindEvents() {
         const gw = await window.LabCode.ai.gatewayStatus();
         const tagEl = document.querySelector('[data-gw-tag="gateway"]');
         if (tagEl) {
-          if (gw.loggedIn) {
+          if (gw.loggedIn && gw.valid) {
             tagEl.textContent = gw.creditsLeft != null ? ('额度 ' + gw.creditsLeft) : '已登录';
             tagEl.className = 'model-local-tag';
-          } else if (gw.available) {
+          } else if (gw.valid) {
             tagEl.textContent = '已内置 · 免注册';
             tagEl.className = 'model-local-tag';
+          } else if (gw.available) {
+            tagEl.textContent = '配置需更新';
+            tagEl.className = 'model-local-tag bad';
           } else {
-            tagEl.textContent = '需登录';
+            tagEl.textContent = '需登录/配置';
             tagEl.className = 'model-local-tag bad';
           }
         }
@@ -13663,6 +13688,13 @@ function bindEvents() {
       const el = document.getElementById('ai-local-lora');
       if (el) el.value = (ll === false || ll === 'off') ? 'off' : 'auto';
     }
+    // 云端后端（管理员配置）输入框预填
+    {
+      const bk = document.getElementById('backend-api-key-input');
+      const bu = document.getElementById('backend-gateway-url-input');
+      if (bk) bk.value = ai.backendApiKey || '';
+      if (bu) bu.value = ai.backendGatewayUrl || '';
+    }
     document.getElementById('ai-test-result').textContent = '';
     updateAiSettingsVisibility();
     renderAgentMarket();
@@ -13952,6 +13984,47 @@ function bindEvents() {
       }
       settingsModal.style.display = 'none';
     });
+
+    // ============ 云端后端（管理员配置）Key 保存 + 测试连接 ============
+    const bkSave = document.getElementById('backend-api-key-save');
+    if (bkSave && !bkSave.dataset.bound) {
+      bkSave.dataset.bound = '1';
+      bkSave.addEventListener('click', async () => {
+        const key = document.getElementById('backend-api-key-input').value.trim();
+        const url = document.getElementById('backend-gateway-url-input').value.trim();
+        const hint = document.getElementById('backend-api-key-hint');
+        try {
+          await window.LabCode.config.set('ai.backendApiKey', key);
+          await window.LabCode.config.set('ai.backendGatewayUrl', url);
+          if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 已保存</span><span style="color:#888;">（云端请求将用此 Key；无需重新打包）</span>';
+          showToast('云端后端 Key 已保存', 'success');
+          if (typeof refreshGatewayUI === 'function') refreshGatewayUI();
+        } catch (e) {
+          if (hint) hint.innerHTML = '<span style="color:#ef4444;">保存失败：' + (e.message || e) + '</span>';
+        }
+      });
+    }
+    const bkTest = document.getElementById('backend-api-key-test');
+    if (bkTest && !bkTest.dataset.bound) {
+      bkTest.dataset.bound = '1';
+      bkTest.addEventListener('click', async () => {
+        const hint = document.getElementById('backend-api-key-hint');
+        if (hint) hint.innerHTML = '<span style="color:#888;">正在测试连接…</span>';
+        try {
+          const st = await window.LabCode.ai.gatewayStatus();
+          if (st && st.valid) {
+            if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 连接成功</span>'
+              + (st.creditsLeft != null ? ' <span style="color:#888;">（剩余额度 ' + st.creditsLeft + '）</span>' : '');
+          } else if (st && st.available) {
+            if (hint) hint.innerHTML = '<span style="color:#f59e0b;">⚠ Key 无效或已过期，请检查</span>';
+          } else {
+            if (hint) hint.innerHTML = '<span style="color:#ef4444;">未配置有效 Key</span>';
+          }
+        } catch (e) {
+          if (hint) hint.innerHTML = '<span style="color:#ef4444;">测试失败：' + (e.message || e) + '</span>';
+        }
+      });
+    }
 
     // ============ Agent 市场：从市面上的 AI 智能体里挑选并切换 ============
     // 数据来源：前期调研（Hermes / DeepSeek 系 / 本地引擎 / 开源编码 agent）
@@ -14331,8 +14404,8 @@ function bindEvents() {
         if (!loggedIn) {
           let st = null;
           try { st = await window.LabCode.ai.gatewayStatus(); } catch (e) {}
-          if (st && st.available) {
-            // 有内置云端凭据 → 放行，只做温和提示
+          if (st && st.valid) {
+            // 云端凭据真实可用（内置/管理后台）→ 放行，只做温和提示
             setTimeout(() => {
               showToast('已启用内置云端模型，直接开聊即可；登录可获得更多额度', 'info');
             }, 1200);

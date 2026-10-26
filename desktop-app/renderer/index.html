@@ -805,6 +805,21 @@
               </div>
             </div>
             <div style="background:#1e1e1e;border:1px solid #3c3c3c;border-radius:6px;padding:12px;margin-bottom:8px;">
+              <div style="font-size:13px;font-weight:600;color:#e0e0e0;">云端后端（管理员配置）</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">留空则各用户用自己的账号登录；填写后所有用户共用此 Key 调用云端模型，无需重新打包。</div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+                <input id="backend-api-key-input" type="text" spellcheck="false" placeholder="云端后端 API Key"
+                       style="flex:1;min-width:0;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;font-family:Consolas,monospace;">
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+                <input id="backend-gateway-url-input" type="text" spellcheck="false" placeholder="网关地址（默认 bluebubai.work）"
+                       style="flex:1;min-width:0;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;font-family:Consolas,monospace;">
+                <button id="backend-api-key-save" style="background:#2d5a27;color:#fff;border:1px solid #3f7a36;border-radius:4px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">保存</button>
+                <button id="backend-api-key-test" style="background:#3a3a3a;color:#fff;border:1px solid #555;border-radius:4px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">测试连接</button>
+              </div>
+              <div id="backend-api-key-hint" style="font-size:11px;margin-top:5px;"></div>
+            </div>
+            <div style="background:#1e1e1e;border:1px solid #3c3c3c;border-radius:6px;padding:12px;margin-bottom:8px;">
               <div style="display:flex;align-items:flex-start;gap:8px;">
                 <input type="radio" name="ai-provider" value="custom" id="ai-prov-custom">
                 <div>

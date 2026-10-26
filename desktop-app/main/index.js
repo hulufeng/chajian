@@ -311,17 +311,31 @@ function getBuiltinGateway() {
         if (token) break;
       } catch (e) { /* 换下一个位置 */ }
     }
+    // 运行时「管理后台」配置的后端 API Key（优先级低于 env / gateway.json，
+    // 高于没有 —— 让管理员无需重新打包即可下发/轮换云端凭据）
+    const cfg = config && config.ai;
+    if (!token && cfg && cfg.backendApiKey) token = String(cfg.backendApiKey);
+    if (!url && cfg && cfg.backendGatewayUrl) url = String(cfg.backendGatewayUrl);
   } catch (e) { /* 没有内置凭据文件是正常的 */ }
   _builtinGatewayCache = { token: token || '', url: url || '' };
   return _builtinGatewayCache;
 }
 
+// 网关凭据候选（按尝试顺序）：用户自己的 token > 产品内置/管理后台后端 key
+// 用途：用户登录 token 过期（401）时自动回退到管理后台配置的后端 key，云端不中断。
+function gatewayAuthCandidates(aiCfg) {
+  const out = [];
+  const own = (aiCfg && aiCfg.gatewayToken) || '';
+  if (own) out.push({ token: own, url: (aiCfg && aiCfg.gatewayUrl) || '', kind: 'user' });
+  const b = getBuiltinGateway();
+  if (b.token) out.push({ token: b.token, url: b.url || '', kind: 'backend' });
+  return out;
+}
+
 // 取当前可用的网关凭据：用户自己的 > 内置的
 function resolveGatewayAuth(aiCfg) {
-  const own = (aiCfg && aiCfg.gatewayToken) || '';
-  if (own) return { token: own, builtin: false, url: (aiCfg && aiCfg.gatewayUrl) || '' };
-  const b = getBuiltinGateway();
-  if (b.token) return { token: b.token, builtin: true, url: b.url || '' };
+  const c = gatewayAuthCandidates(aiCfg);
+  if (c.length) return { token: c[0].token, builtin: c[0].kind !== 'user', url: c[0].url || '' };
   return { token: '', builtin: false, url: (aiCfg && aiCfg.gatewayUrl) || '' };
 }
 
@@ -384,6 +398,10 @@ function setupIPC() {
       obj[lastKey] = deepMergeConfig(prevVal, value);
     } else {
       obj[lastKey] = value;
+    }
+    // 管理后台的云端后端 Key / URL 变了 → 清掉凭据缓存，下次请求立即用新值
+    if (keys[0] === 'ai' && (lastKey === 'backendApiKey' || lastKey === 'backendGatewayUrl')) {
+      _builtinGatewayCache = null;
     }
     return saveConfig(config);
   });
@@ -928,21 +946,33 @@ function setupIPC() {
     try {
       // ===== 网关模式（内置云端 → 积分扣费）=====
       if (aiCfg.provider === 'gateway') {
-        // 用户自己的 token 优先；没有就用产品内置的公共凭据（首次使用零配置）
-        const gwAuth = resolveGatewayAuth(aiCfg);
-        const gwToken = gwAuth.token;
-        if (!gwToken) return { success: false, error: 'not logged in, please login in settings' };
+        // 云端凭据候选：用户自己的 token > 管理后台/内置后端 key。
+        // 用户登录 token 过期（401）时自动回退到管理后台配置的后端 key，云端不中断。
+        const candidates = gatewayAuthCandidates(aiCfg);
+        if (!candidates.length) return { success: false, error: 'not logged in, please login in settings' };
         const gwModel = normalizeGwModel(useModel); // 矫正旧配置残留的不可用模型
-        const gwUrl = baseURL.replace(/\/$/, '') + '/api/chat';
-        const gwResp = await net.fetch(gwUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + gwToken },
-          body: JSON.stringify({ model: gwModel, messages, temperature })
-        });
-        const gwData = await gwResp.json().catch(() => ({}));
+        let gwResp = null, gwData = {}, triedKind = null;
+        for (const c of candidates) {
+          const cUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/chat';
+          triedKind = c.kind;
+          gwResp = await net.fetch(cUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
+            body: JSON.stringify({ model: gwModel, messages, temperature })
+          });
+          if (gwResp.status !== 401) break; // 401 才试下一个候选
+        }
+        gwData = await gwResp.json().catch(() => ({}));
         if (!gwResp.ok) {
           if (gwResp.status === 402) {
             return { success: false, error: gwData.error || '积分不足', creditsInsufficient: true, creditsLeft: gwData.creditsLeft };
+          }
+          if (gwResp.status === 401) {
+            // 所有候选都 401 → 区分原因给用户清晰提示
+            const msg = triedKind === 'user'
+              ? '登录已过期或未登录，请在设置中重新登录'
+              : '云端后端 API Key 无效或未配置，请在「设置 → 云端后端」检查';
+            return { success: false, error: msg, needReauth: triedKind === 'user' };
           }
           return { success: false, error: `网关返回 ${gwResp.status}: ${(gwData.error || '')}` };
         }
@@ -1161,11 +1191,12 @@ function setupIPC() {
     if (!url || url === '/api/chat/stream' || url === '/chat/completions') throw new Error('未配置API baseURL，请在设置中配置');
 
     const headers = { 'Content-Type': 'application/json' };
+    let gwCandidates = [];
     if (isGateway) {
-      const gwAuth = resolveGatewayAuth(aiCfg);
-      const gwToken = gwAuth.token;
-      if (!gwToken) throw new Error('not logged in, please login in settings');
-      headers['Authorization'] = 'Bearer ' + gwToken;
+      // 云端凭据候选：用户自己的 token > 管理后台/内置后端 key（token 过期时回退）
+      gwCandidates = gatewayAuthCandidates(aiCfg);
+      if (!gwCandidates.length) throw new Error('not logged in, please login in settings');
+      headers['Authorization'] = 'Bearer ' + gwCandidates[0].token;
     } else if (apiKey) {
       headers['Authorization'] = 'Bearer ' + apiKey;
     }
@@ -1234,7 +1265,11 @@ function setupIPC() {
     }
 
     // 单次请求 + 流解析（供首次与引擎重启后重试共用）
-    async function doStreamOnce(enableThinking) {
+    async function doStreamOnce(enableThinking, candIdx = 0) {
+      // 网关：按候选顺序使用 token；当前候选 401 时由下方自动换下一个（登录 token 过期→后端 key）
+      if (isGateway && gwCandidates[candIdx]) {
+        headers['Authorization'] = 'Bearer ' + gwCandidates[candIdx].token;
+      }
       const b = Object.assign({}, bodyObj);
       if (aiCfg.provider === 'local') b.chat_template_kwargs = { enable_thinking: enableThinking !== false };
       else if (aiCfg.provider === 'ollama') b.think = enableThinking !== false;
@@ -1253,6 +1288,10 @@ function setupIPC() {
       const toolCalls = [];
       const response = await net.fetch(url, { method: 'POST', headers, body: JSON.stringify(b), signal: acSignal });
       if (!response.ok) {
+        // 网关：当前候选 token 401 → 换下一个候选（用户登录失效时回退到管理后台后端 key）
+        if (response.status === 401 && isGateway && gwCandidates[candIdx + 1]) {
+          return doStreamOnce(enableThinking, candIdx + 1);
+        }
         const errText = await response.text().catch(() => '');
         const err = new Error(`API 返回 ${response.status}: ${redactError(errText)}`);
         if (response.status === 402) err.creditsInsufficient = true;
@@ -1506,16 +1545,24 @@ function setupIPC() {
     if (!baseURL) return { success: false, error: '未配置baseURL' };
     try {
       // 网关模式：用 /api/me 验证 token 有效性（不消耗积分）
+      // 遍历候选（用户 token 过期时回退到管理后台后端 key），任一有效即算连通
       if (aiCfg.provider === 'gateway') {
-        const gwUrl = baseURL.replace(/\/$/, '') + '/api/me';
-        const gwAuth = resolveGatewayAuth(aiCfg);
-        const gwResp = await net.fetch(gwUrl, {
-          headers: { Authorization: 'Bearer ' + gwAuth.token }
-        });
-      if (!gwResp.ok) return { success: false, status: gwResp.status, error: '网关登录失效，请重新登录' };
-        const data = await gwResp.json().catch(() => ({}));
-        const u = data?.user || {};
-        return { success: true, model: useModel, gateway: true, creditsLeft: u.totalCredits ?? (u.planCredits || 0) + (u.rechargeCredits || 0) };
+        const candidates = gatewayAuthCandidates(aiCfg);
+        if (!candidates.length) return { success: false, status: 401, error: '未登录，请在设置中登录' };
+        let lastStatus = null, lastKind = null;
+        for (const c of candidates) {
+          const gwUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/me';
+          lastKind = c.kind;
+          const gwResp = await net.fetch(gwUrl, { headers: { Authorization: 'Bearer ' + c.token } });
+          lastStatus = gwResp.status;
+          if (gwResp.ok) {
+            const data = await gwResp.json().catch(() => ({}));
+            const u = data?.user || {};
+            return { success: true, model: useModel, gateway: true, usingBackend: c.kind === 'backend', creditsLeft: u.totalCredits ?? (u.planCredits || 0) + (u.rechargeCredits || 0) };
+          }
+          if (gwResp.status !== 401) break; // 非 401（如网络错）不再试
+        }
+        return { success: false, status: lastStatus, usingBackend: lastKind === 'backend', error: lastKind === 'user' ? '网关登录失效，请重新登录' : '云端后端 API Key 无效或未配置' };
       }
       const url = baseURL.replace(/\/$/, '') + '/chat/completions';
       // 本地引擎：探测前先对齐模型，否则「测试连接」会打到别的模型上得到假阳性
@@ -1541,26 +1588,30 @@ function setupIPC() {
   // 商业化取向：有内置凭据时**不拦用户**（装完即用），登录只是可选增强。
   ipcMain.handle('ai:gatewayStatus', async () => {
     const aiCfg = config.ai || {};
-    const auth = resolveGatewayAuth(aiCfg);
+    const candidates = gatewayAuthCandidates(aiCfg);
     let creditsLeft = null, dailyRemaining = null, email = aiCfg.gatewayEmail || '';
-    if (auth.token) {
+    let valid = false, usingBackend = false;
+    // 逐个候选打 /api/me，第一个有效即停（用户 token 过期时回退到管理后台后端 key）
+    for (const c of candidates) {
+      const gwBase = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '');
       try {
-        const gwBase = aiCfg.gatewayUrl || getBuiltinGateway().url || AI_PROVIDERS.gateway.baseURL;
-        const res = await net.fetch(gwBase.replace(/\/$/, '') + '/api/me', {
-          headers: { Authorization: 'Bearer ' + auth.token }
-        });
+        const res = await net.fetch(gwBase + '/api/me', { headers: { Authorization: 'Bearer ' + c.token } });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           const u = data.user || {};
           creditsLeft = u.totalCredits ?? ((u.planCredits || 0) + (u.rechargeCredits || 0));
           dailyRemaining = u.dailyRemaining ?? null;
           email = u.email || email;
+          valid = true;
+          usingBackend = c.kind === 'backend';
+          break;
         }
-      } catch (e) { /* 探测失败不影响判断 */ }
+      } catch (e) { /* 试下一个候选 */ }
     }
     return {
-      available: !!auth.token,
-      builtin: auth.builtin,
+      available: candidates.length > 0,
+      valid,
+      usingBackend,
       loggedIn: !!aiCfg.gatewayToken,
       creditsLeft,
       dailyRemaining,
