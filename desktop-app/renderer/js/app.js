@@ -11513,14 +11513,64 @@ function bindEvents() {
   
   // 模型选择器（修复：写入真实配置 ai.provider/ai.model，初始化从配置回显）
   const MODEL_MAP = {
-    // 内置云端：产品方内置凭据，装完即用（不需要用户注册/填 Key）→ 第一次用的默认路径
-    'gateway':        { provider: 'gateway',  model: 'qwen3-8b',           label: 'LabCode 内置云端' },
-    // 云端：只保留网关真实可用的模型（其余未配上游 Key，选了只会报"暂未配置"，已下架）
-    'siliconflow':    { provider: 'custom',   model: 'Qwen/Qwen3-8B',       baseURL: 'https://api.siliconflow.cn/v1', label: '硅基流动 Qwen3-8B（免费）' },
+    // 内置云端：走 LabCode 网关（登录即用免费额度），模型列表由网关 /api/models 下发
+    'gateway':        { provider: 'gateway',  model: 'qwen3-8b',           label: 'LabCode 云端' },
+    // 自带 Key 直连服务商（不消耗云端额度）：填自己的 API Key 即可
+    'siliconflow':    { provider: 'custom',   model: 'Qwen/Qwen3-8B',       baseURL: 'https://api.siliconflow.cn/v1', label: '硅基流动 Qwen3-8B（自带 Key 直连）', byok: true },
     'ollama':         { provider: 'ollama',   model: 'qwen2.5-coder:7b',   label: 'Ollama 本地模型' }
     // 注意：这里没有「本地 AI 引擎」——内置的只是引擎运行时，模型全是用户自己下载安装的，
     // 本机模型由 refreshLocalModelsInSelector() 按实际存在的 .gguf 动态生成（data-model="local-file"）。
   };
+  const GW_DEFAULT_MODEL = 'qwen3-8b';
+  let gwModelList = [];
+
+  // 拉取网关真实模型池（服务器下发 → 网关侧配了新模型，App 下拉里自动出现）
+  async function fetchGatewayModels() {
+    try {
+      if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayModels) {
+        const r = await window.LabCode.ai.gatewayModels();
+        if (r && r.success && Array.isArray(r.models)) { gwModelList = r.models; return gwModelList; }
+      }
+    } catch (e) { /* 离线：回退默认项 */ }
+    return gwModelList;
+  }
+
+  // 渲染云端模型到下拉（只列 available=true；网关不可达时给一个默认入口，避免用户误以为没有云端模型）
+  async function renderGatewayModelOptions() {
+    const box = document.getElementById('gw-model-list');
+    if (!box) return;
+    const all = await fetchGatewayModels();
+    let avail = all.filter(m => m.available);
+    if (!avail.length) {
+      avail = [{ id: GW_DEFAULT_MODEL, name: 'LabCode 云端（默认模型）', desc: '', available: true, costPerCall: 0 }];
+    }
+    let gwStatus = null;
+    try { gwStatus = await window.LabCode.ai.gatewayStatus(); } catch (e) {}
+    let cur = '';
+    try { const c = await window.LabCode.config.get(); cur = (c && c.ai && c.ai.model) || ''; } catch (e) {}
+    box.innerHTML = '';
+    avail.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'model-option gw-cloud-item';
+      row.dataset.gwModel = m.id;
+      const label = document.createElement('span');
+      label.className = 'model-opt-label';
+      label.textContent = '☁️ ' + (m.name || m.id);
+      row.appendChild(label);
+      const tag = document.createElement('span');
+      tag.className = 'model-local-tag';
+      if (!gwStatus) { tag.textContent = '检测中'; }
+      else if (!gwStatus.loggedIn) { tag.textContent = '需登录'; tag.classList.add('bad'); }
+      else if (!gwStatus.valid) { tag.textContent = '需重新登录'; tag.classList.add('bad'); }
+      else if (m.costPerCall > 0) { tag.textContent = m.costPerCall + ' 积分/次'; }
+      else { tag.textContent = gwStatus.creditsLeft != null ? ('额度 ' + gwStatus.creditsLeft) : '免费'; }
+      row.appendChild(tag);
+      if (m.desc) row.title = m.desc;
+      if (cur === m.id) row.classList.add('active');
+      box.appendChild(row);
+    });
+  }
+
   const modelSelectBtn = document.getElementById('model-select-btn');
   const modelDropdown = document.getElementById('model-dropdown');
   if (modelSelectBtn && modelDropdown) {
@@ -11530,20 +11580,20 @@ function bindEvents() {
         if (window.LabCode && window.LabCode.config) {
           const cfg = await window.LabCode.config.get();
           const ai = cfg?.ai || {};
-          // 网关已登录（云端通道）：按 ai.model 显示对应云端模型（与切换逻辑 GATEWAY_MODEL_MAP 对齐）
+          // 网关已登录（云端通道）：按网关下发的真实模型池显示
           if (ai.gatewayToken && (ai.provider === 'gateway' || !ai.provider)) {
-            // 网关云端通道：只保留真实可用的模型；旧配置里残留的其它 ai.model 一律回退到 qwen3-8b
-            const GW_LABELS = { 'qwen3-8b': '硅基流动 Qwen3-8B（免费）' };
-            const GW_KEYS = { 'qwen3-8b': 'siliconflow' };
-            // 网关用户默认选中硅基流动 Qwen3-8B（免费，开箱即用）；其余模型未配 Key 时回退到此
-            const mdl = (ai.model && GW_KEYS[ai.model]) ? ai.model : 'qwen3-8b';
-            const gwLabel = GW_LABELS[mdl];
-            const gwKey = GW_KEYS[mdl];
+            const gwModels = await fetchGatewayModels();
+            const avail = gwModels.filter(m => m.available);
+            const mdl = (ai.model && avail.some(m => m.id === ai.model))
+              ? ai.model
+              : (avail.length ? avail[0].id : GW_DEFAULT_MODEL);
+            const hit = avail.find(m => m.id === mdl);
+            const gwLabel = hit ? hit.name : 'LabCode 云端';
             document.getElementById('current-model-name').textContent = gwLabel + '（云端）';
             document.querySelectorAll('.model-option').forEach(o =>
-              o.classList.toggle('active', !!gwKey && o.dataset.model === gwKey));
-            if (mdl === 'qwen3-8b' && ai.model !== 'qwen3-8b') {
-              try { window.LabCode.config.set('ai.model', 'qwen3-8b'); } catch (e) {}
+              o.classList.toggle('active', o.dataset.gwModel === mdl));
+            if (ai.model !== mdl) {
+              try { window.LabCode.config.set('ai.model', mdl); } catch (e) {}
             }
             const wsGw = document.querySelector('.model-status-text');
             if (wsGw) wsGw.textContent = `当前模型：${gwLabel}（云端）`;
@@ -11738,6 +11788,8 @@ function bindEvents() {
       const willOpen = modelDropdown.style.display === 'none';
       modelDropdown.style.display = willOpen ? 'block' : 'none';
       if (willOpen) {
+        // 云端模型列表由网关下发：每次展开都刷新一次（网关新增模型即刻可见）
+        try { renderGatewayModelOptions(); } catch (err) {}
         // 云端选项标注：未登录账号且未配 Key → 「未配置 Key」红签，避免选了发不出去
         let gw = false, key = '';
         try {
@@ -11765,6 +11817,44 @@ function bindEvents() {
         refreshLocalModelsInSelector();
         // 本地模型状态签：探测本地引擎与 Ollama 是否真的可用
         refreshLocalStatus();
+      }
+    });
+
+    // 云端模型项（网关下发的动态列表）→ 事件委托，避免每次重建 DOM 都要重新绑定
+    modelDropdown.addEventListener('click', async (e) => {
+      const item = e.target.closest ? e.target.closest('.gw-cloud-item') : null;
+      if (!item) return;
+      const gwId = item.dataset.gwModel;
+      if (!gwId) return;
+      modelSelGen++;   // 切换模型：作废进行中的异步探测回写
+      document.querySelectorAll('.model-option').forEach(o => o.classList.remove('active'));
+      item.classList.add('active');
+      modelDropdown.style.display = 'none';
+      const labelEl = item.querySelector('.model-opt-label');
+      const modelName = (labelEl ? labelEl.textContent : gwId).trim();
+      document.getElementById('current-model-name').textContent = modelName;
+      const wsGw = document.querySelector('.model-status-text');
+      if (wsGw) wsGw.textContent = '当前模型：' + modelName;
+      try {
+        const cfg = await window.LabCode.config.get();
+        const hasTok = !!(cfg && cfg.ai && cfg.ai.gatewayToken);
+        let gwValid = false;
+        try { const st = await window.LabCode.ai.gatewayStatus(); gwValid = !!(st && st.valid); } catch (err) {}
+        await window.LabCode.config.set('ai.provider', 'gateway');
+        await window.LabCode.config.set('ai.model', gwId);
+        if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
+          await state.agent.ai._loadConfig();
+        }
+        if (!gwValid) {
+          // 云端模型必须登录：未登录/登录过期都直接拉起登录遮罩
+          showToast(hasTok ? '登录已过期，请重新登录后使用云端模型' : '云端模型需要登录后使用', 'info');
+          if (window.__showGwLoginOverlay) window.__showGwLoginOverlay();
+        } else {
+          showToast('已切换到 ' + modelName, 'success');
+        }
+        try { refreshLocalStatus(true); } catch (err) {}
+      } catch (err) {
+        showToast('切换失败：' + (err.message || err), 'error');
       }
     });
     document.querySelectorAll('.model-option').forEach(option => {
@@ -11802,7 +11892,7 @@ function bindEvents() {
               // 内置云端：产品方已内置凭据，不需要用户注册，也不需要 Key
               await window.LabCode.config.set('ai.provider', 'gateway');
               await window.LabCode.config.set('ai.model', mapping.model || 'qwen3-8b');
-            } else if (hasGw && isCloudMapping) {
+            } else if (hasGw && isCloudMapping && !mapping.byok) {
               await window.LabCode.config.set('ai.provider', 'gateway');
               await window.LabCode.config.set('ai.model', GATEWAY_MODEL_MAP[modelKey] || 'qwen3-8b');
             } else {

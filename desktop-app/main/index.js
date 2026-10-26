@@ -1619,6 +1619,31 @@ function setupIPC() {
     };
   });
 
+  // 网关真实模型池（/api/models，免鉴权）——云端模型列表不再写死在客户端
+  ipcMain.handle('ai:gatewayModels', async () => {
+    const aiCfg = config.ai || {};
+    const gwBase = (aiCfg.gatewayUrl || process.env.GATEWAY_URL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
+    try {
+      const res = await net.fetch(gwBase + '/api/models');
+      if (!res.ok) return { success: false, error: `网关返回 ${res.status}` };
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.models) ? data.models : [];
+      return {
+        success: true,
+        models: list.map(m => ({
+          id: m.id,
+          name: m.name,
+          desc: m.desc || '',
+          available: !!m.available,
+          costPerCall: Number(m.costPerCall || 0),
+          multiplier: Number(m.multiplier || 1)
+        }))
+      };
+    } catch (e) {
+      return { success: false, error: redactError(e.message || String(e)) };
+    }
+  });
+
   ipcMain.handle('ai:gatewayAuth', async (_, { action, email, password, gatewayUrl, inviteCode, code, username } = {}) => {
     // 优先级：显式传入 > 已保存config.ai.gatewayUrl > 环境变量 > 默认生产域名
     const savedGw = (config.ai || {}).gatewayUrl || '';

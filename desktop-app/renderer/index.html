@@ -943,9 +943,10 @@
                       <svg class="icon icon-xs"><use href="#icon-chevron-down"></use></svg>
                     </button>
                     <div class="model-dropdown" id="model-dropdown" style="display:none;">
-                      <div class="model-option" data-model="gateway"><span class="model-opt-label">☁️ LabCode 内置云端（推荐）</span><span class="model-local-tag pending" data-gw-tag="gateway">检测中</span></div>
+                      <div class="model-group-title" id="gw-model-title" style="padding:6px 10px 2px;font-size:11px;color:var(--text-secondary);">云端模型 · LabCode 免费额度</div>
+                      <div id="gw-model-list"></div>
                       <div class="model-option" data-model="ollama"><span class="model-opt-label">Ollama 本地模型</span><span class="model-info-btn" data-info="ollama" title="这是什么？" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--surface-3);color:var(--text-secondary);font-size:11px;margin-left:6px;cursor:help;">ⓘ</span><span class="model-local-tag pending" data-local-tag="ollama">检测中</span></div>
-                      <div class="model-option" data-model="siliconflow"><span class="model-opt-label">硅基流动 Qwen3-8B（免费）</span></div>
+                      <div class="model-option" data-model="siliconflow"><span class="model-opt-label">🔑 硅基流动 Qwen3-8B（自带 Key 直连）</span></div>
                       <div class="model-option model-add-entry" id="model-ai-hub-entry" data-model="__ai_hub__" style="border-top:1px solid var(--border-color);margin-top:4px;">⚙️ 安装 / 配置 AI…</div>
                       <div class="model-option model-add-entry" id="model-add-entry" data-model="__add_model__" style="color:#059669;font-weight:600;">＋ 添加模型（填 API Key）</div>
                     </div>
