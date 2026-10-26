@@ -10296,7 +10296,7 @@ function bindEvents() {
     } catch (e) { /* 用缓存 */ }
     if (!st) { stateEl.innerHTML = '<span style="color:#888;">内置云端状态未知</span>'; return; }
     if (st.loggedIn && st.valid) {
-      const c = st.creditsLeft != null ? ('剩余额度 ' + st.creditsLeft) : '';
+      const c = st.dailyRemaining != null ? ('今日剩余 ' + st.dailyRemaining + ' 次' + (st.creditsLeft != null ? ' · 本月剩余 ' + st.creditsLeft + ' 次' : '')) : '';
       stateEl.innerHTML = '<span style="color:#10b981;">● 已登录</span>'
         + (st.email ? ' ' + st.email : '')
         + (c ? '<br>' + c : '');
@@ -11714,7 +11714,7 @@ function bindEvents() {
         const tagEl = document.querySelector('[data-gw-tag="gateway"]');
         if (tagEl) {
           if (gw.loggedIn && gw.valid) {
-            tagEl.textContent = gw.creditsLeft != null ? ('额度 ' + gw.creditsLeft) : '已登录';
+            tagEl.textContent = gw.dailyRemaining != null ? ('今日剩余 ' + gw.dailyRemaining + ' 次') : '已登录';
             tagEl.className = 'model-local-tag';
           } else if (gw.valid) {
             tagEl.textContent = '已内置 · 免注册';
@@ -14105,7 +14105,7 @@ function bindEvents() {
           const st = await window.LabCode.ai.gatewayStatus();
           if (st && st.valid) {
             if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 连接成功</span>'
-              + (st.creditsLeft != null ? ' <span style="color:#888;">（剩余额度 ' + st.creditsLeft + '）</span>' : '');
+              + (st.dailyRemaining != null ? ' <span style="color:#888;">（今日剩余 ' + st.dailyRemaining + ' 次）</span>' : '');
           } else if (st && st.available) {
             if (hint) hint.innerHTML = '<span style="color:#f59e0b;">⚠ Key 无效或已过期，请检查</span>';
           } else {
