@@ -9945,10 +9945,14 @@ function bindEvents() {
   function loadCachedMarket() {
     try {
       const v = JSON.parse(localStorage.getItem(MARKET_CACHE_KEY) || '[]');
-      return Array.isArray(v) ? v : [];
-    } catch (e) { return []; }
+      if (Array.isArray(v)) return { plugins: v, hidden: [] };   // 兼容旧版缓存（纯数组）
+      return { plugins: Array.isArray(v.plugins) ? v.plugins : [], hidden: Array.isArray(v.hidden) ? v.hidden : [] };
+    } catch (e) { return { plugins: [], hidden: [] }; }
   }
-  let cachedMarketPlugins = loadCachedMarket();
+  const _marketCache = loadCachedMarket();
+  let cachedMarketPlugins = _marketCache.plugins;
+  let cachedHiddenIds = _marketCache.hidden;
+  let remoteHiddenIds = [];
 
   async function getPluginMarketURL() {
     if (remoteMarketURL) return remoteMarketURL;
@@ -10009,8 +10013,10 @@ function bindEvents() {
         source: 'remote'
       }));
       remoteMarketOnline = true;
+      // 服务端下架清单（listed:false）：在线时用它把客户端内置目录里的同名模型一并抹掉
+      remoteHiddenIds = Array.isArray(data.hidden) ? data.hidden : [];
       // 同步到本地缓存：市场下次不可达时，仍能显示这份最新清单（免发版即可上架新模型）
-      try { localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(remotePlugins)); } catch (e) { /* 忽略配额/隐私模式 */ }
+      try { localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify({ plugins: remotePlugins, hidden: remoteHiddenIds })); } catch (e) { /* 忽略配额/隐私模式 */ }
       console.log('[插件市场] 已从 ' + url + ' 拉取 ' + remotePlugins.length + ' 个远程插件');
     } catch (e) {
       remotePlugins = [];
@@ -10051,6 +10057,9 @@ function bindEvents() {
     OFFICIAL_PLUGINS.forEach(p => { if (!map.has(p.id)) map.set(p.id, { ...p, source: 'builtin' }); });
     cachedMarketPlugins.forEach(p => map.set(p.id, { ...p, source: p.source || 'cache' }));
     remotePlugins.forEach(p => map.set(p.id, p));
+    // 服务端下架（listed:false）：在线时以服务端为准，把内置目录里的同名模型也一并抹掉
+    const hidden = remotePlugins.length ? remoteHiddenIds : cachedHiddenIds;
+    hidden.forEach(id => map.delete(id));
     return Array.from(map.values());
   }
 
