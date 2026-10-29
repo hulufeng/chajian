@@ -267,10 +267,14 @@ contextBridge.exposeInMainWorld('LabCode', {
     // 本地模型服务状态（Ollama 等）：只探测存活与已装模型，不发起推理
     localStatus: (testConfig) => ipcRenderer.invoke('ai:localStatus', testConfig),
     gatewayAuth: (opts) => ipcRenderer.invoke('ai:gatewayAuth', opts),
-    // 网关可用性（是否有内置凭据 / 用户是否登录 / 额度）—— 决定要不要强制注册
+    // 网关可用性（用户是否登录 / 额度）—— 决定要不要强制登录
     gatewayStatus: () => ipcRenderer.invoke('ai:gatewayStatus'),
     // 网关真实模型池（/api/models）——云端模型列表由服务器下发，不写死
     gatewayModels: () => ipcRenderer.invoke('ai:gatewayModels'),
+    // provider 注册表（单一数据源）：返回合并后的完整 provider 列表
+    providers: () => ipcRenderer.invoke('ai:providers'),
+    // 持久化 provider 配置（自定义列表 / 启用状态 / 每 provider 的 apiKey / baseURL 覆盖）
+    providerSave: (payload) => ipcRenderer.invoke('ai:providerSave', payload),
     // 订阅流式事件（SSE 过程推送）
     onStream: (callback) => {
       const listener = (_event, data) => callback(data);
@@ -281,6 +285,25 @@ contextBridge.exposeInMainWorld('LabCode', {
       if (listener) ipcRenderer.removeListener('ai:stream', listener);
     }
   },
+
+  // Agent 引擎（packages/engine，纯模块；护栏原语 + 规范化循环，对齐 TrieCode engine）
+  engine: (() => {
+    const engineLoop = require('../packages/engine/loop');
+    const compression = require('../packages/engine/compression');
+    return {
+      // 规范化 agent 循环（通用骨架，回调注入；可作未来单一循环驱动）
+      runLoop: (opts) => engineLoop.runLoop(opts),
+      // 上下文 LLM 摘要压缩（B1）
+      summarizeOldTurns: (callModel, messages, opts) => compression.summarizeOldTurns(callModel, messages, opts),
+      // plan 门控决策（B2）
+      enforcePlanGate: (toolName, args, planApproved, isPlanGated) => engineLoop.enforcePlanGate(toolName, args, planApproved, isPlanGated),
+      // 是否应触发验证（B3）
+      shouldVerify: (state) => engineLoop.shouldVerify(state)
+      // 注：BudgetTracker 与 makeTimeoutGuard 不在此暴露——其返回实例/带状态对象经 contextBridge
+      // 代理后会失效（方法不可调用 / 隔离上下文计时器置位的 expired 在主世界不可见）。app 运行时使用
+      // 同作用域全局 BudgetTracker 类与内联主世界超时看门狗，规避该问题；引擎内仍保留这两个实现供单测/参考。
+    };
+  })(),
 
   // Arduino 编译/烧录
   compile: {
@@ -307,6 +330,16 @@ contextBridge.exposeInMainWorld('LabCode', {
       const listener = (_e, info) => callback(info);
       ipcRenderer.on('serial:closed', listener);
       return () => ipcRenderer.removeListener('serial:closed', listener);
+    },
+    onPlug: (callback) => {
+      const listener = (_e, info) => callback(info);
+      ipcRenderer.on('serial:plug', listener);
+      return () => ipcRenderer.removeListener('serial:plug', listener);
+    },
+    onUnplug: (callback) => {
+      const listener = (_e, info) => callback(info);
+      ipcRenderer.on('serial:unplug', listener);
+      return () => ipcRenderer.removeListener('serial:unplug', listener);
     }
   },
 

@@ -282,64 +282,27 @@ function showAboutDialog() {
   });
 }
 
-// ============ 内置云端凭据（"第一次用就走内置云端"）===========
-// 商业化取向：新用户零注册、零配置，装完就能用 AI —— 凭据由产品方内置。
-// 凭据来源（打包时注入，便于随时更换 / 限流 / 停用，且不写死在代码里）：
-//   1) 环境变量 LABCODE_GATEWAY_TOKEN / LABCODE_GATEWAY_URL（开发、内测）
-//   2) 打包资源 gateway.json（resources/gateway.json）→ { "token": "...", "url": "..." }
-// 优先级：用户自己登录的 token > 内置凭据
-//   （用户登录后用自己的额度与邀请奖励；未登录则用内置的公共额度）
-let _builtinGatewayCache = null;
-function getBuiltinGateway() {
-  if (_builtinGatewayCache) return _builtinGatewayCache;
-  let token = process.env.LABCODE_GATEWAY_TOKEN || '';
-  let url = process.env.LABCODE_GATEWAY_URL || '';
-  try {
-    // 多个可能位置（开发目录 / 打包后 asar 内 / 打包后 resources 外置）
-    const candidates = [
-      path.join(__dirname, '..', 'resources', 'gateway.json'),
-      path.join(process.resourcesPath || '', 'gateway.json'),
-      path.join(__dirname, '..', 'gateway.json')
-    ];
-    for (const p of candidates) {
-      if (!p) continue;
-      try {
-        if (!fs.existsSync(p)) continue;
-        const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-        if (!token && j && j.token) token = String(j.token);
-        if (!url && j && j.url) url = String(j.url);
-        if (token) break;
-      } catch (e) { /* 换下一个位置 */ }
-    }
-    // 运行时「管理后台」配置的后端 API Key（优先级低于 env / gateway.json，
-    // 高于没有 —— 让管理员无需重新打包即可下发/轮换云端凭据）
-    const cfg = config && config.ai;
-    if (!token && cfg && cfg.backendApiKey) token = String(cfg.backendApiKey);
-    if (!url && cfg && cfg.backendGatewayUrl) url = String(cfg.backendGatewayUrl);
-  } catch (e) { /* 没有内置凭据文件是正常的 */ }
-  _builtinGatewayCache = { token: token || '', url: url || '' };
-  return _builtinGatewayCache;
-}
+// ============ 网关凭据（仅用户自己的登录 token）============
+// 说明：2026-10-28 起彻底移除「内置云端兜底凭据」——云端 AI 仅使用
+// 用户自己登录后的 token；未登录 / token 过期都不再静默回退到任何内置账号。
+// 默认网关地址见 AI_PROVIDERS.gateway.baseURL（硬编码兜底，仅用于登录与寻址）。
 
-// 网关凭据候选（按尝试顺序）：用户自己的 token > 产品内置/管理后台后端 key
-// 用途：用户登录 token 过期（401）时自动回退到管理后台配置的后端 key，云端不中断。
+// 网关凭据候选：仅用户自己的登录 token（不再内置任何兜底凭据）
 function gatewayAuthCandidates(aiCfg) {
   const out = [];
   const own = (aiCfg && aiCfg.gatewayToken) || '';
   if (own) out.push({ token: own, url: (aiCfg && aiCfg.gatewayUrl) || '', kind: 'user' });
-  const b = getBuiltinGateway();
-  if (b.token) out.push({ token: b.token, url: b.url || '', kind: 'backend' });
   return out;
 }
 
-// 取当前可用的网关凭据：用户自己的 > 内置的
+// 取当前可用的网关凭据：仅用户自己的登录 token
 function resolveGatewayAuth(aiCfg) {
   const c = gatewayAuthCandidates(aiCfg);
   if (c.length) return { token: c[0].token, builtin: c[0].kind !== 'user', url: c[0].url || '' };
   return { token: '', builtin: false, url: (aiCfg && aiCfg.gatewayUrl) || '' };
 }
 
-// 网关是否可用（有用户 token 或有内置凭据）
+// 网关是否可用（仅取决于用户是否已登录拿到 token）
 function gatewayAvailable(aiCfg) {
   return !!resolveGatewayAuth(aiCfg || config.ai || {}).token;
 }
@@ -398,10 +361,6 @@ function setupIPC() {
       obj[lastKey] = deepMergeConfig(prevVal, value);
     } else {
       obj[lastKey] = value;
-    }
-    // 管理后台的云端后端 Key / URL 变了 → 清掉凭据缓存，下次请求立即用新值
-    if (keys[0] === 'ai' && (lastKey === 'backendApiKey' || lastKey === 'backendGatewayUrl')) {
-      _builtinGatewayCache = null;
     }
     return saveConfig(config);
   });
@@ -896,14 +855,19 @@ function setupIPC() {
     return { reasoning_effort: effort === 'max' ? 'high' : effort };
   }
 
-  const AI_PROVIDERS = {
-    deepseek: { baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
-    gateway:  { baseURL: process.env.GATEWAY_URL || 'https://bluebubai.work', defaultModel: 'qwen3-8b' },
-    local:    { baseURL: 'http://127.0.0.1:8080/v1', defaultModel: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf' },
-    ollama:   { baseURL: 'http://localhost:11434/v1', defaultModel: 'qwen2.5-coder:7b' },
-    openai:   { baseURL: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini' },
-    custom:   { baseURL: '', defaultModel: '' }
-  };
+  // AI provider 注册表（单一数据源，参考 TrieCode provider-registry）
+  // 合并：内置(builtin) + 用户自定义(config.ai.customProviders) + 未来云端；派生旧版 AI_PROVIDERS 形状
+  const providerRegistry = require('../packages/engine/provider-registry');
+  function refreshProvidersFromConfig() {
+    const ai = (config && config.ai) || {};
+    providerRegistry.setCustom((ai.customProviders || []).map((p) => Object.assign({}, p)));
+    if (ai.providerEnabled) {
+      for (const [id, en] of Object.entries(ai.providerEnabled)) providerRegistry.setOverride(id, { enabled: !!en });
+    }
+  }
+  refreshProvidersFromConfig();
+  function buildAiProviders() { return providerRegistry.toAiProviders(); }
+  let AI_PROVIDERS = buildAiProviders();
 
   // 网关可用模型白名单。旧版默认/残留的 deepseek-flash 等模型在网关上不存在，
   // 会导致对话请求 404 静默失败（用户表现为"发消息没反应"）。统一矫正为真实可用的模型。
@@ -929,7 +893,7 @@ function setupIPC() {
     const aiCfg = config.ai || {};
     const provider = AI_PROVIDERS[aiCfg.provider] || AI_PROVIDERS.deepseek;
     // 网关地址：用户设置 > 内置凭据里的地址 > 默认地址
-    const gwBuiltinUrl = (aiCfg.provider === 'gateway') ? (getBuiltinGateway().url || '') : '';
+    const gwBuiltinUrl = (aiCfg.provider === 'gateway') ? AI_PROVIDERS.gateway.baseURL : '';
     const baseURL = (aiCfg.provider === 'gateway' && (aiCfg.gatewayUrl || gwBuiltinUrl))
       ? (aiCfg.gatewayUrl || gwBuiltinUrl)
       : (resolveAiBaseURL(aiCfg) || provider.baseURL);
@@ -944,10 +908,9 @@ function setupIPC() {
     }
 
     try {
-      // ===== 网关模式（内置云端 → 积分扣费）=====
+      // ===== 网关模式（用户登录后积分扣费）=====
       if (aiCfg.provider === 'gateway') {
-        // 云端凭据候选：用户自己的 token > 管理后台/内置后端 key。
-        // 用户登录 token 过期（401）时自动回退到管理后台配置的后端 key，云端不中断。
+        // 云端凭据仅用户自己的登录 token；未登录或 token 过期则直接失败，不回退任何内置兜底。
         const candidates = gatewayAuthCandidates(aiCfg);
         if (!candidates.length) return { success: false, error: 'not logged in, please login in settings' };
         const gwModel = normalizeGwModel(useModel); // 矫正旧配置残留的不可用模型
@@ -1584,8 +1547,8 @@ function setupIPC() {
   });
 
   // ============ 网关账号（登录/ 注册 / 余额 / 登出）===========
-  // 网关可用性状态：UI 据此决定要不要强制用户先注册。
-  // 商业化取向：有内置凭据时**不拦用户**（装完即用），登录只是可选增强。
+  // 网关可用性状态：UI 据此决定要不要强制用户先登录。
+  // 产品取向：云端 AI 必须登录后才能使用，无内置兜底凭据。
   ipcMain.handle('ai:gatewayStatus', async () => {
     const aiCfg = config.ai || {};
     const candidates = gatewayAuthCandidates(aiCfg);
@@ -1641,6 +1604,52 @@ function setupIPC() {
       };
     } catch (e) {
       return { success: false, error: redactError(e.message || String(e)) };
+    }
+  });
+
+  // ---- provider 注册表（单一数据源）----
+  // 返回合并后的完整 provider 列表（含 enabled / needsApiKey / builtin / custom 等元数据），供渲染端统一注册 UI
+  ipcMain.handle('ai:providers', async () => {
+    refreshProvidersFromConfig();
+    const list = providerRegistry.getProviders().map((p) => ({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      baseURL: p.baseURL || '',
+      defaultModel: p.defaultModel || '',
+      builtin: !!p.builtin,
+      custom: !!p.custom,
+      enabled: p.enabled !== false,
+      needsApiKey: !!p.needsApiKey,
+      description: p.description || ''
+    }));
+    return { providers: list };
+  });
+
+  // 持久化 provider 配置：自定义列表 + 每 provider 启用状态 + 每 provider 的 apiKey/baseURL 覆盖
+  ipcMain.handle('ai:providerSave', async (_, payload) => {
+    if (!payload || typeof payload !== 'object') return { ok: false, error: '无效参数' };
+    try {
+      const ai = config.ai || {};
+      if (Array.isArray(payload.customProviders)) {
+        ai.customProviders = payload.customProviders.map((p) => Object.assign({}, p));
+      }
+      if (payload.apiKeys && typeof payload.apiKeys === 'object') {
+        ai.providerKeys = Object.assign({}, ai.providerKeys || {}, payload.apiKeys);
+      }
+      if (payload.enabledOverrides && typeof payload.enabledOverrides === 'object') {
+        ai.providerEnabled = Object.assign({}, ai.providerEnabled || {}, payload.enabledOverrides);
+      }
+      if (payload.baseUrls && typeof payload.baseUrls === 'object') {
+        ai.providerBaseUrls = Object.assign({}, ai.providerBaseUrls || {}, payload.baseUrls);
+      }
+      config.ai = ai;
+      const ok = saveConfig(config);
+      refreshProvidersFromConfig();
+      AI_PROVIDERS = buildAiProviders();
+      return { ok: !!ok };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
     }
   });
 
@@ -2782,107 +2791,119 @@ function setupIPC() {
     return { exists: fs.existsSync(ARDUINO_CLI), path: ARDUINO_CLI };
   });
 
-  // ============ 串口监视噸============
-  let serialMonitorProc = null;   // 当前打开的串口监视进程
-  let serialMonitorPort = null;
-  let serialMonitorBaud = 115200;
+  // ============ 串口（原生实现，替代 arduino-cli monitor 子进程）============
+  // 多口 / 二进制 / VID-PID 枚举 / 热插拔；不再依赖外部 arduino-cli 是否在场。
+  let activeSerialPort = null;     // 当前打开的原生 SerialPort 实例
+  let activeSerialPath = null;
+  let activeSerialBaud = 115200;
+  const serialLogBuffer = [];      // [{ts, line}] 后台日志缓冲，供 serialLog tail/grep/analyzeCrash 使用
+  const MAX_LOG_LINES = 5000;
+  let lastPlugged = new Set();     // 热插拔轮询基准
+  let hotplugInitialized = false;
+
+  // VID/PID 从 pnpId 解析（Windows: USB\VID_xxxx&PID_yyyy；Linux: usb-...）
+  function parseVidPid(pnpId) {
+    if (!pnpId) return {};
+    const m = pnpId.match(/VID_([0-9A-Fa-f]{4})/i);
+    const p = pnpId.match(/PID_([0-9A-Fa-f]{4})/i);
+    return { vid: m ? m[1].toUpperCase() : null, pid: p ? p[1].toUpperCase() : null };
+  }
+
+  // 懒加载 serialport（原生模块缺失时返回 null，避免影响主进程启动）
+  function loadSerialPort() {
+    try { return require('serialport'); } catch (e) { return null; }
+  }
 
   ipcMain.handle('serial:list', async () => {
-    // 用arduino-cli board list 获取串口
-    if (!fs.existsSync(ARDUINO_CLI)) return { success: true, ports: [] };
-    return await new Promise((resolve) => {
-      execFile(ARDUINO_CLI, ['board', 'list'], { maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
-        const ports = [];
-        if (!err && stdout) {
-          // 解析输出行：Port  Protocol Type  Board Name  FQBN  Core
-          const lines = stdout.split('\n').slice(1);
-          for (const line of lines) {
-            const m = line.match(/(COM\d+)/);
-            if (m) {
-              const boardMatch = line.match(/^\S+\s+\S+\s+\S+\s+(.+?)\s{2,}/);
-              ports.push({ port: m[1], board: boardMatch ? boardMatch[1].trim() : '未知设备' });
-            }
-          }
-        }
-        resolve({ success: true, ports });
+    const sp = loadSerialPort();
+    if (!sp) return { success: false, error: 'serialport 原生模块不可用', ports: [] };
+    try {
+      const list = await sp.SerialPort.list();
+      const ports = list.map((p) => {
+        const vp = parseVidPid(p.pnpId);
+        return {
+          port: p.path,
+          board: p.friendlyName || p.manufacturer || (p.vendorId ? 'VID:' + p.vendorId : '未知设备'),
+          friendlyName: p.friendlyName || '',
+          manufacturer: p.manufacturer || '',
+          vendorId: p.vendorId || vp.vid || null,
+          productId: p.productId || vp.pid || null,
+          pnpId: p.pnpId || ''
+        };
       });
-    });
+      lastPlugged = new Set(list.map((p) => p.path)); // 同步热插拔基准
+      return { success: true, ports };
+    } catch (e) {
+      return { success: false, error: e.message, ports: [] };
+    }
   });
 
   ipcMain.handle('serial:open', async (_, options) => {
     const { port, baud } = options || {};
     if (!port) return { success: false, error: '缺少串口' };
-    if (!fs.existsSync(ARDUINO_CLI)) return { success: false, error: 'arduino-cli not installed' };
-    // 关闭旧串发
-    if (serialMonitorProc) {
-      try { serialMonitorProc.kill(); } catch (e) {}
-      serialMonitorProc = null;
-    }
-    serialMonitorPort = port;
-    serialMonitorBaud = baud || 115200;
+    const sp = loadSerialPort();
+    if (!sp) return { success: false, error: 'serialport 原生模块不可用' };
+    // 关闭已打开的串口
+    if (activeSerialPort) { try { activeSerialPort.close(); } catch (e) {} activeSerialPort = null; }
+    activeSerialPath = port;
+    activeSerialBaud = baud || 115200;
     try {
-      serialMonitorProc = spawn(ARDUINO_CLI, ['monitor', '-p', port, '-c', 'baudrate=' + serialMonitorBaud], {
-        windowsHide: true
+      const SerialPort = sp.SerialPort;
+      const p = new SerialPort({ path: port, baudRate: activeSerialBaud, autoOpen: false });
+      await new Promise((resolve, reject) => { p.open((err) => { if (err) reject(err); else resolve(); }); });
+      activeSerialPort = p;
+      p.on('data', (chunk) => {
+        const text = chunk.toString('utf8');
+        text.split(/\r?\n/).forEach((line) => {
+          if (line.trim()) {
+            serialLogBuffer.push({ ts: Date.now(), line });
+            if (serialLogBuffer.length > MAX_LOG_LINES) serialLogBuffer.shift();
+          }
+        });
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('serial:data', text);
       });
+      p.on('close', () => {
+        activeSerialPort = null;
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('serial:closed', { code: 0 });
+      });
+      // 等待 800ms 看是否打开失败
+      await new Promise((r) => setTimeout(r, 800));
+      if (!activeSerialPort) return { success: false, error: '串口打开失败' };
+      return { success: true, port, baud: activeSerialBaud };
     } catch (e) {
       return { success: false, error: e.message };
     }
-    // 输出转发
-    serialMonitorProc.stdout.on('data', (data) => {
-      const text = data.toString('utf8');
-      // 写入后台日志缓冲
-      text.split(/\r?\n/).forEach(line => {
-        if (line.trim()) {
-          serialLogBuffer.push({ ts: Date.now(), line });
-          if (serialLogBuffer.length > MAX_LOG_LINES) serialLogBuffer.shift();
-        }
-      });
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('serial:data', text);
-      }
-    });
-    serialMonitorProc.stderr.on('data', (data) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('serial:data', data.toString('utf8'));
-      }
-    });
-    serialMonitorProc.on('close', (code) => {
-      serialMonitorProc = null;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('serial:closed', { code });
-      }
-    });
-    // 等待 800ms 看是否启动失败
-    await new Promise(r => setTimeout(r, 800));
-    if (serialMonitorProc && serialMonitorProc.killed) {
-      return { success: false, error: '串口打开失败' };
-    }
-    return { success: true, port, baud: serialMonitorBaud };
   });
 
   ipcMain.handle('serial:close', async () => {
-    if (serialMonitorProc) {
-      try { serialMonitorProc.kill(); } catch (e) {}
-      serialMonitorProc = null;
-    }
+    if (activeSerialPort) { try { activeSerialPort.close(); } catch (e) {} activeSerialPort = null; }
     return { success: true };
   });
 
   ipcMain.handle('serial:write', async (_, data) => {
-    if (!serialMonitorProc) return { success: false, error: '串口未打开' };
+    if (!activeSerialPort) return { success: false, error: '串口未打开' };
     try {
-      serialMonitorProc.stdin.write(data + '\n');
+      activeSerialPort.write(data + '\n'); // 保持原行为：每次写入视为一行
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
     }
   });
 
-  // ===== 后台串口日志缓冲（对齐 TrieCode serialLog）=====
-  const serialLogBuffer = []; // [{ts, line}]
-  const MAX_LOG_LINES = 5000;
-  // 抽serial:data 的输出同时写入缓决
-  // （在 serialMonitorProc.stdout.on 失 push，
+  // 热插拔监听：每 2s 轮询 SerialPort.list()，diff 后发出 serial:plug / serial:unplug
+  setInterval(async () => {
+    const sp = loadSerialPort();
+    if (!sp || !mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      const list = await sp.SerialPort.list();
+      const current = new Set(list.map((p) => p.path));
+      if (!hotplugInitialized) { lastPlugged = current; hotplugInitialized = true; return; }
+      for (const path of current) if (!lastPlugged.has(path)) mainWindow.webContents.send('serial:plug', { port: path });
+      for (const path of lastPlugged) if (!current.has(path)) mainWindow.webContents.send('serial:unplug', { port: path });
+      lastPlugged = current;
+    } catch (e) { /* 枚举失败忽略 */ }
+  }, 2000);
+
   ipcMain.handle('serial:log-tail', async (_, opts) => {
     const n = Math.min((opts && opts.line) || 50, 500);
     return { success: true, lines: serialLogBuffer.slice(-n).map(e => e.line) };

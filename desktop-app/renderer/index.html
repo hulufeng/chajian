@@ -575,9 +575,16 @@
             <div style="font-weight:600;margin-bottom:8px;font-size:13px;">添加 MCP 服务器</div>
             <div style="display:flex;flex-direction:column;gap:6px;">
               <input id="mcp-add-name" placeholder="名称 (如 filesystem)" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
-              <input id="mcp-add-command" placeholder="命令 (如 npx)" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
+              <select id="mcp-add-type" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
+                <option value="stdio">本地进程 (stdio)</option>
+                <option value="http">远程 HTTP (StreamableHTTP)</option>
+                <option value="sse">远程 SSE</option>
+              </select>
+              <input id="mcp-add-command" placeholder="命令 (如 npx) — stdio 必填" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
               <input id="mcp-add-args" placeholder="参数 (空格分隔, 如 -y @modelcontextprotocol/server-filesystem C:\\)" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
-              <input id="mcp-add-cwd" placeholder="工作目录 (可选)" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
+              <input id="mcp-add-url" placeholder="服务器 URL (https://...) — http/sse 必填" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;display:none;">
+              <input id="mcp-add-cwd" placeholder="工作目录 (可选, stdio)" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
+              <input id="mcp-add-extra" placeholder='高级 JSON（可选）: {"headers":{},"auth":{"clientId":""},"toolRules":{}}' style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;">
               <button class="btn btn-primary btn-sm" id="mcp-add-btn">添加并启动</button>
             </div>
             <div id="mcp-add-msg" style="margin-top:6px;font-size:12px;color:var(--text-muted);"></div>
@@ -818,6 +825,12 @@
                 <button id="backend-api-key-test" style="background:#3a3a3a;color:#fff;border:1px solid #555;border-radius:4px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">测试连接</button>
               </div>
               <div id="backend-api-key-hint" style="font-size:11px;margin-top:5px;"></div>
+            </div>
+            <div style="background:#1e1e1e;border:1px solid #3c3c3c;border-radius:6px;padding:12px;margin-bottom:8px;">
+              <div id="ai-provider-manager"></div>
+            </div>
+            <div style="background:#1e1e1e;border:1px solid #3c3c3c;border-radius:6px;padding:12px;margin-bottom:8px;">
+              <div id="ai-guardrails"></div>
             </div>
             <div style="background:#1e1e1e;border:1px solid #3c3c3c;border-radius:6px;padding:12px;margin-bottom:8px;">
               <div style="display:flex;align-items:flex-start;gap:8px;">
@@ -1599,10 +1612,17 @@
           <h4 style="margin:0 0 8px; font-size:13px; color:#ccc;">添加服务器</h4>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
             <input id="mcp-name" placeholder="名称，如 playwright" style="background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px;">
-            <input id="mcp-command" placeholder="命令，如 npx" style="background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px;">
+            <select id="mcp-type" style="background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px;">
+              <option value="stdio">本地进程 (stdio)</option>
+              <option value="http">远程 HTTP (StreamableHTTP)</option>
+              <option value="sse">远程 SSE</option>
+            </select>
           </div>
+          <input id="mcp-command" placeholder="命令，如 npx（stdio 必填）" style="width:100%; background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px; margin-bottom:8px;">
           <input id="mcp-args" placeholder="参数（空格分隔），如 -y @playwright/mcp@latest" style="width:100%; background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px; margin-bottom:8px;">
-          <button class="btn btn-primary" id="mcp-add-btn" style="width:100%;">添加并启动</button>
+          <input id="mcp-url" placeholder="服务器 URL (https://...)（http/sse 必填）" style="width:100%; background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px; margin-bottom:8px; display:none;">
+          <input id="mcp-extra" placeholder='高级 JSON（可选）: {"headers":{},"auth":{"clientId":""},"toolRules":{}}' style="width:100%; background:#2d2d2d; border:1px solid #3c3c3c; color:#ccc; padding:6px 8px; border-radius:4px; margin-bottom:8px;">
+          <button class="btn btn-primary" id="mcp-modal-add-btn" style="width:100%;">添加并启动</button>
         </div>
       </div>
     </div>

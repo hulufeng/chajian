@@ -985,6 +985,27 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { file_path: { type:'string' }, content: { type:'string' } }, required: ['file_path','content'] },
     execute: async (args) => {
       try {
+        // 2026-10-27 修复：禁止把文件写入 labcode_build* 编译暂存目录
+        // （既污染工作区、又易被防覆盖逻辑 isShardCodeBlock 误拦截）。
+        // 兼容两种命名：旧的 labcode_build_<ts> 与新的单一稳定暂存目录 labcode_build；
+        // 命中后把路径重定向到工作区根，并套用主文件/合理文件名。
+        const _segs = String(args.file_path || '').split(/[\\/]/);
+        const _base = _segs[_segs.length - 1] || '';
+        const _isStage = s => s.toLowerCase() === 'labcode_build' || /^labcode_build[_.-]/.test(s.toLowerCase());
+        if (_segs.slice(0, -1).some(_isStage) || /^labcode_build/i.test(_base)) {
+          if (/^labcode_build/i.test(_base)) {
+            const _ino = state.files ? Object.keys(state.files).find(f => /\.ino$/i.test(f)) : null;
+            if (state.projectType === 'arduino' && _ino) args.file_path = _ino;
+            else {
+              const _root = (state.projectPath || 'main').split(/[\\/]/).pop() || 'main';
+              const _ext = state.projectType === 'python' ? 'py' : state.projectType === 'node' ? 'js' : (/\.ino$/i.test(_ino || '') ? 'ino' : 'txt');
+              args.file_path = _root + '.' + _ext;
+            }
+          } else {
+            args.file_path = _base;
+          }
+          addOutputLog('[write_file] 已规范化被污染路径 → ' + args.file_path, 'info');
+        }
         const existed = !!state.files[args.file_path];
         state.files[args.file_path] = { content: args.content, language: getLanguage(args.file_path), dirty: true };
         buildFileTree(); renderFileTree();
@@ -1207,10 +1228,12 @@ const TOOL_DEFS = [
           let compileSketchArg = cwd;
           if (inoFile) {
             try {
-              const tmpDirName = 'labcode_build_' + Date.now();
+              // 2026-10-27 修复：单一稳定暂存目录 labcode_build，避免每次编译生成带时间戳的污染目录
+              const tmpDirName = 'labcode_build';
               tmpSketchDir = cwd + '\\' + tmpDirName;
               tmpInoName = tmpDirName + '.ino';
-              await window.LabCode.fs.mkdir(tmpSketchDir);
+              const _bExists = await window.LabCode.fs.exists(tmpSketchDir).catch(() => false);
+              if (!_bExists) { try { await window.LabCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
               const copyRes = await window.LabCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
               const existsCheck = await window.LabCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
               if (copyRes && copyRes.success && existsCheck) {
@@ -2201,9 +2224,12 @@ const ARDUINO_TOOL_IMPLS = {
     }
     let tmpSketchDir = '', compileArg = cwd;
     try {
-      const tmpDirName = 'labcode_build_' + Date.now();
+      // 2026-10-27 修复：单一稳定暂存目录 labcode_build，避免每次编译生成带时间戳的污染目录
+      const tmpDirName = 'labcode_build';
       tmpSketchDir = cwd + '\\' + tmpDirName;
       const tmpInoName = tmpDirName + '.ino';
+      const _b2Exists = await window.LabCode.fs.exists(tmpSketchDir).catch(() => false);
+      if (!_b2Exists) { try { await window.LabCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
       await window.LabCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
       const existsCheck = await window.LabCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
       if (existsCheck) compileArg = tmpSketchDir;
@@ -2341,13 +2367,14 @@ async function initMcpPanel() {
         const dot = s.status === 'running' ? '🟢' : (s.status === 'error' ? '🔴' : '⚪');
         const toolsN = s.tools || 0;
         const isRun = s.status === 'running';
+        const sDetail = (s.type && s.type !== 'stdio') ? (s.url || ('<' + s.type + '>')) : ((s.command || '') + ' ' + (s.args || []).join(' ')).trim();
         card.innerHTML =
           '<div style="display:flex;align-items:center;gap:6px;">' +
             '<span>' + dot + '</span>' +
             '<strong style="flex:1;font-size:13px;">' + mcpEscapeHtml(s.name) + '</strong>' +
             '<span style="font-size:11px;color:var(--text-muted);">' + mcpEscapeHtml(s.status) + '</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--text-muted);margin:4px 0;word-break:break-all;">' + mcpEscapeHtml(s.command + ' ' + (s.args || []).join(' ')) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);margin:4px 0;word-break:break-all;">' + mcpEscapeHtml(sDetail) + '</div>' +
           '<div style="font-size:11px;color:var(--text-muted);">工具数: ' + toolsN + '</div>' +
           '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
             '<button class="btn btn-secondary btn-sm" data-mcp-act="tools" data-name="' + mcpEscapeAttr(s.name) + '">查看工具</button>' +
@@ -2370,17 +2397,30 @@ function bindMcpPanelControls() {
   if (_mcpControlsBound) return;
   _mcpControlsBound = true;
   const g = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const typeSel = document.getElementById('mcp-add-type');
+  const mcpToggleType = () => {
+    const isStdio = (typeSel && typeSel.value) === 'stdio';
+    const t = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; };
+    t('mcp-add-command', isStdio); t('mcp-add-args', isStdio); t('mcp-add-cwd', isStdio); t('mcp-add-url', !isStdio);
+  };
+  if (typeSel) { typeSel.addEventListener('change', mcpToggleType); mcpToggleType(); }
   const addBtn = document.getElementById('mcp-add-btn');
   if (addBtn) addBtn.addEventListener('click', async () => {
     const name = g('mcp-add-name');
+    const type = (typeSel && typeSel.value) || 'stdio';
     const command = g('mcp-add-command');
     const argsRaw = g('mcp-add-args');
+    const url = g('mcp-add-url');
     const cwd = g('mcp-add-cwd');
+    const extraRaw = g('mcp-add-extra');
     const msg = document.getElementById('mcp-add-msg');
-    if (!name || !command) { msg.textContent = '名称和命令为必填'; msg.style.color = 'var(--danger)'; return; }
-    const args = argsRaw ? argsRaw.split(/\s+/) : [];
-    const r = await window.LabCode.mcp.addServer({ name: name, command: command, args: args, cwd: cwd, env: {} });
-    if (r && r.ok) { msg.textContent = '已添加并启动: ' + name; msg.style.color = 'var(--success)'; refreshMcpToolDefs(); initMcpPanel(); }
+    if (!name) { msg.textContent = '名称为必填'; msg.style.color = 'var(--danger)'; return; }
+    if (type === 'stdio' && !command) { msg.textContent = 'stdio 类型命令为必填'; msg.style.color = 'var(--danger)'; return; }
+    if ((type === 'http' || type === 'sse') && !url) { msg.textContent = type + ' 类型 URL 为必填'; msg.style.color = 'var(--danger)'; return; }
+    const cfg = { name, type, command: command || undefined, args: argsRaw ? argsRaw.split(/\s+/) : [], url: url || undefined, cwd: cwd || '' };
+    if (extraRaw) { try { Object.assign(cfg, JSON.parse(extraRaw)); } catch (e) { msg.textContent = '高级 JSON 解析失败: ' + e.message; msg.style.color = 'var(--danger)'; return; } }
+    const r = await window.LabCode.mcp.addServer(cfg);
+    if (r && r.ok) { msg.textContent = '已添加并启动: ' + name + (r.tools != null ? '（工具 ' + r.tools + ' 个）' : ''); msg.style.color = 'var(--success)'; refreshMcpToolDefs(); initMcpPanel(); }
     else { msg.textContent = '失败: ' + ((r && r.error) || '未知'); msg.style.color = 'var(--danger)'; }
   });
   const refreshBtn = document.getElementById('mcp-refresh');
@@ -4880,8 +4920,8 @@ toolPipeline.registerPre((toolName, args, context) => {
   const mode = context.mode || 'default';
   const planApproved = context.planApproved || false;
   
-  // plan 模式门控
-  if (mode === 'plan' && !planApproved) {
+  // plan 模式门控（B2：可由设置关闭）
+  if (GUARDRAILS.strictPlanGate && mode === 'plan' && !planApproved) {
     if (isPlanGated(toolName, args, planApproved)) {
       return { allow: false, reason: '当前处于 PLAN 模式（只读）。只能调用只读查询工具；请先提交计划并等待批准。' };
     }
@@ -5340,6 +5380,11 @@ class AgentRunner {
     this.lastTestFailed = false;     // 最近一次 run_test 是否失败（供结束闸门判定）
     // 上下文预算
     this.contextBudget = 30000;
+    // ===== 护栏开关（默认保守；run() 启动时从 config.ai.guardrails 覆盖）=====
+    this.useSummaryCompression = false;  // B1：LLM 摘要压缩
+    this.alwaysVerify = false;           // B3：常驻验证代理
+    this.loopTimeoutMs = 0;              // B4：整体循环超时（ms，0=关）
+    this.strictPlanGate = true;          // B2：严格 plan 门控（默认开）
     // ===== 对齐 TrieCode agent-runner：失败决策台账（append-only，防盲改重试）=====
     this.failureLedger = new Map();   // ledgerKey(工具::参数键) → 首次失败原因摘要
     this.budgetHinted = false;        // 预算提前提醒（75%）是否已注入
@@ -5353,6 +5398,40 @@ class AgentRunner {
   }
 
   cancel() { this.cancelled = true; }
+
+  // B3：独立验证代理（参考业界 verification-agent.js）——抽成方法，供"条件触发"与"常驻 alwaysVerify"复用
+  // 返回 verdict 对象（含 level/reasoning）；异常时返回 null。PASS/FAIL 的收尾/修复处理由原调用处负责。
+  async _runVerificationAgent(turn, result, state) {
+    try {
+      this._stream('\n🔍 [系统] 启动独立验证代理，自动验证文件修改...\n', false);
+      const verificationAgent = new VerificationAgent({
+        onStream: (chunk) => this._stream(chunk.content || '', false),
+        onToolStep: (id, name, status, detail) => this._toolStep(id, name, status, detail)
+      });
+      const modifiedFiles = this.messages
+        .filter(m => m.role === 'tool' && /name="(write_file|edit_file)"/.test(m.content))
+        .map(m => {
+          const match = m.content.match(/path="([^"]+)"/);
+          return match ? match[1] : 'unknown';
+        });
+      const claim = `文件修改已完成并验证通过: ${modifiedFiles.join(', ')}`;
+      const toolRunner = async (tc) => {
+        try {
+          const def = getToolDef(tc.tool);
+          if (!def || typeof def.execute !== 'function') return `Error: 工具 ${tc.tool} 不可用`;
+          const out = await def.execute(tc.args || {});
+          return typeof out === 'string' ? out : JSON.stringify(out);
+        } catch (e) { return 'Error: ' + e.message; }
+      };
+      return await verificationAgent.verify(claim, {
+        files: modifiedFiles, messages: this.messages, mode: this.mode, toolRunner,
+        projectType: state ? state.projectType : (this._currentState || {}).projectType
+      });
+    } catch (e) {
+      addOutputLog(`验证代理执行失败: ${e.message}`, 'warn');
+      return null;
+    }
+  }
 
   async run(userInput) {
     try {
@@ -5368,6 +5447,16 @@ class AgentRunner {
     this._startedSteps.clear();        // 每次 run 重置工具 step 追踪
     this.recentReads.clear();          // 每次 run 重置最近读（新任务从干净状态开始）
     this._expectingCodeAfterProject = false;  // 每次 run 重置"项目创建后强制写码"状态
+    // ===== 从设置面板读取护栏开关（覆盖构造函数默认值；下次任务即生效）=====
+    try {
+      const _cfg = await window.LabCode.config.get();
+      const _g = (((_cfg || {}).ai) || {}).guardrails || {};
+      applyGuardrails(_g);
+      this.useSummaryCompression = GUARDRAILS.summaryCompression;
+      this.alwaysVerify = GUARDRAILS.alwaysVerify;
+      this.loopTimeoutMs = (Number(GUARDRAILS.loopTimeoutMsMin) || 0) * 60000;
+      this.strictPlanGate = GUARDRAILS.strictPlanGate;
+    } catch (e) { /* 配置读取失败则保持默认值 */ }
     this.forceCodeNudges = 0;          // 强制写码追问次数
 
     // ===== 工作状态条：任务开始计时与计数归零（对齐 TrieCode 提交后即时显示状态条）=====
@@ -5506,8 +5595,23 @@ class AgentRunner {
       }
     }
 
+    // B4：整体超时看门狗（默认关闭；设置 this.loopTimeoutMs>0 启用）
+    // 注意：必须在主世界内联实现，不能走 window.LabCode.engine.makeTimeoutGuard —— 其返回对象经
+    // contextBridge 代理后，隔离上下文里 setTimeout 置位的 expired 在主世界不可见（实测失效）。
+    const _loopTimeoutMs = this.loopTimeoutMs || 0;
+    const _timeoutGuard = {
+      expired: false, _timer: null,
+      arm() { if (_loopTimeoutMs > 0) { this._timer = setTimeout(() => { this.expired = true; }, _loopTimeoutMs); } },
+      disarm() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } }
+    };
+    _timeoutGuard.arm();
     for (let turn = 0; turn < 20; turn++) {
-      if (this.cancelled) { this._emitDiffSummary(); this._emitWorkStatus('done'); this._stream('已停止。', true); return; }
+      if (this.cancelled || _timeoutGuard.expired) {
+        this._stream(_timeoutGuard.expired ? '[系统] 任务执行超过时限，已强制终止。' : '已停止。', true);
+        this._emitDiffSummary(); this._emitWorkStatus('done');
+        _timeoutGuard.disarm();
+        return;
+      }
 
       // ===== 对齐 TrieCode agent-runner：预算提前提醒（≥75% 注入一次"尽快收尾"）=====
       if (!this.budgetHinted && this.budget.iterations >= Math.floor(this.budget.maxTurns * 0.75)) {
@@ -5547,15 +5651,23 @@ class AgentRunner {
         addOutputLog(`预算耗尽收尾总结: ${breach.reason}`, 'warn');
         this._emitDiffSummary();
         this._emitWorkStatus('done');
+        _timeoutGuard.disarm();
         return;
       }
 
       this.budget.recordIteration();
 
-      // 上下文压缩（简化版）：超预算时删除旧工具结果，保护最近3轮
+      // 上下文压缩—— B1：可选 LLM 摘要压缩（默认关闭，保持原有 compressContext 行为）
       const estTokens = this.estimateTokens();
       if (estTokens > this.contextBudget) {
-        this.messages = this.compressContext(this.messages, 3);
+        if (this.useSummaryCompression) {
+          this.messages = await window.LabCode.engine.summarizeOldTurns(
+            (msgs) => this.ai.generateResponse(null, msgs), this.messages,
+            { keepRecent: 3, tokenBudget: this.contextBudget }
+          );
+        } else {
+          this.messages = this.compressContext(this.messages, 3);
+        }
         addOutputLog(`上下文压缩: ${estTokens} → 约 ${this.estimateTokens()} tokens`, 'warn');
       }
 
@@ -5631,6 +5743,7 @@ class AgentRunner {
       if (result.degraded) {
         this._emitDiffSummary();
         this._emitWorkStatus('done');
+        _timeoutGuard.disarm();
         // 给出自带 Key 的一键入口（BYOK），用户不用自己去设置里翻
         try { appendByokCard('用自己的 API Key 继续'); } catch (e) {}
         return;
@@ -5832,13 +5945,35 @@ class AgentRunner {
         const stuckTail = /(现在(编写|我来|直接|开始|给出|提供|生成|覆盖)|下面(是|给出|直接|展示)|让我(先|查看|读|看)|接下来|即将|马上|先查看|代码如下|完整代码|编写完整|编写完成|代码实现|开始编写|我将(直接|为您|为你|创建|编写|覆盖|生成|写入)|我准备|我打算|我会(直接|使用|创建|编写|覆盖|生成|写入)|我已(了解|明白|理解).{0,40}(代码|程序|文件|需求)|我将(为|要|先|开始)|我会(为|先|开始)|首先(创建|编写|生成|写)|先(创建|编写|生成|写|看一下|查看)|准备(创建|编写|生成|写)|马上(创建|编写|生成|写)|接下来(创建|编写|生成|写)|开始(创建|编写|生成|写))/i.test(finalText.slice(-180));
         // 思考意图兜底：模型在思考里明确决定用写文件工具或直接覆盖，但正文只输出承诺 → 同样视为 stuck
         const thoughtToolIntent = /(使用|调用)\s*(write_file|edit_file)|直接(覆盖|写入)|覆盖主文件|写入主文件|创建完整的|编写完整的|生成完整的|创建.{0,6}(程序|文件|代码)|编写.{0,6}(程序|文件|代码)|生成.{0,6}(程序|文件|代码)/.test(String(this.thinkingAcc || '').slice(-400) + '\n' + finalText.slice(-400));
+        // ===== 2026-10-27 修复：计划批准后"假执行"兜底 =====
+        // 根因：云端模型在计划批准后只回文本（如"我现在为你创建…"），既无工具调用也无代码块，
+        // 又未命中下方 stuckTail/thoughtToolIntent，导致 run 直接收尾、什么都不做（实测 0 工具、45s 空转）。
+        // 修复：批准后一旦本轮回合 0 工具 + 0 代码块，强制要求用 ```代码块 输出完整文件
+        //（autoApplyCodeBlocks 会自动落盘），用一次性标志 _planExecNudged 防死循环。
+        const _lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+        const isSystemInjectedTurn = !!(_lastUserMsg && /^（系统/.test(String(_lastUserMsg.content || '').trim()));
+        if (this.planApproved && !hasCodeBlock && !this._planExecNudged && !isSystemInjectedTurn) {
+          this._planExecNudged = true;
+          this.messages.push({ role: 'assistant', content: finalText });
+          let mainFile = ''; let codeLang = 'python';
+          if (state.projectPath && state.files) {
+            const ino = Object.keys(state.files).find(f => f.endsWith('.ino'));
+            const py = Object.keys(state.files).find(f => f.endsWith('.py'));
+            const js = Object.keys(state.files).find(f => f.endsWith('.js'));
+            if (ino) { mainFile = ino; codeLang = 'ino'; }
+            else if (py) { mainFile = py; codeLang = 'py'; }
+            else if (js) { mainFile = js; codeLang = 'js'; }
+          }
+          if (!mainFile) mainFile = (state.projectType === 'python' ? 'src/main.py' : state.projectType === 'node' ? 'src/main.js' : 'src/main.ino');
+          this.messages.push({ role: 'user', content: `（系统提示：你已获执行授权，但刚才的回复没有产出任何代码或工具调用。请立即按计划输出完整的 ${mainFile} 代码，用 \`\`\`${codeLang} 标注。回复必须以 \`\`\`${codeLang} 开头、以 \`\`\` 结尾，中间只放代码，不要任何解释或过渡句。）` });
+          this._stream('\n[系统] 已批准但未检测到代码产出，正在强制生成完整代码...\n', false);
+          continue;
+        }
         // ===== 2026-09-14 修复：总结/验证轮误触发 stuck =====
         // 编译完成后的总结轮（系统注入"编译结果+总结请求"）模型正常输出无代码的总结文本，
         // 但 thoughtToolIntent 会命中总结文本中"创建/生成/编写代码"等字眼 → 误判"只有思路没代码"
         // → 注入"请直接输出完整代码"提示 → 模型重写代码 → 又编译 → 又总结 → 死循环（实测 2 次）。
         // 修复：当最后一条 user 消息是系统注入轮（以"（系统"开头）时，跳过 stuck 兜底。
-        const _lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-        const isSystemInjectedTurn = !!(_lastUserMsg && /^（系统/.test(String(_lastUserMsg.content || '').trim()));
         const stuckIntent = !isSystemInjectedTurn && !hasCodeBlock && (stuckTail || thoughtToolIntent);
         if (stuckIntent) {
           this.codeRetryNudges = (this.codeRetryNudges || 0) + 1;
@@ -5985,37 +6120,8 @@ class AgentRunner {
           // ===== 增强：独立验证代理集成（参考业界 verification-agent.js）=====
           // 当检测到文件修改未验证时，自动启动独立验证代理生成正式 VERDICT
           if (this.verifyNudges === 1 && this.mode === 'auto') {
-            try {
-              this._stream('\n🔍 [系统] 启动独立验证代理，自动验证文件修改...\n', false);
-              const verificationAgent = new VerificationAgent({
-                onStream: (chunk) => this._stream(chunk.content || '', false),
-                onToolStep: (id, name, status, detail) => this._toolStep(id, name, status, detail)
-              });
-              const modifiedFiles = this.messages
-                .filter(m => m.role === 'tool' && /name="(write_file|edit_file)"/.test(m.content))
-                .map(m => {
-                  const match = m.content.match(/path="([^"]+)"/);
-                  return match ? match[1] : 'unknown';
-                });
-              const claim = `文件修改已完成并验证通过: ${modifiedFiles.join(', ')}`;
-              // 传入 toolRunner：验证代理据此真实调用 run_test（arduino-cli 编译）
-              const toolRunner = async (tc) => {
-                try {
-                  const def = getToolDef(tc.tool);
-                  if (!def || typeof def.execute !== 'function') return `Error: 工具 ${tc.tool} 不可用`;
-                  const out = await def.execute(tc.args || {});
-                  return typeof out === 'string' ? out : JSON.stringify(out);
-                } catch (e) {
-                  return 'Error: ' + e.message;
-                }
-              };
-              const verdict = await verificationAgent.verify(claim, {
-                files: modifiedFiles,
-                messages: this.messages,
-                mode: this.mode,
-                toolRunner,
-                projectType: state.projectType
-              });
+            const verdict = await this._runVerificationAgent(turn, result, state);
+            if (verdict) {
               this._stream(`\n📋 验证代理结论: ${verdict.level}\n`, false);
               if (verdict.level === 'PASS') {
                 this.lastVerifyTurn = turn;
@@ -6037,8 +6143,6 @@ class AgentRunner {
                 this._stream('\n[系统] 编译失败，继续自动修复...\n', false);
                 continue;
               }
-            } catch (e) {
-              addOutputLog(`验证代理执行失败: ${e.message}`, 'warn');
             }
           }
           
@@ -6096,8 +6200,22 @@ class AgentRunner {
         }
         this.messages.push({ role: 'assistant', content: result.content || '' });
         this._stream('', true);
+        // B3：常驻验证钩子（默认关闭；设置 this.alwaysVerify=true 启用）
+        if (this.alwaysVerify && this.lastVerifyTurn < 0 && this.mode === 'auto') {
+          const vVerdict = await this._runVerificationAgent(turn, result, state);
+          if (vVerdict && vVerdict.level === 'PASS') {
+            this.lastVerifyTurn = turn;
+            this.placeholderVerify = false;
+          } else {
+            this.messages.push({ role: 'user', content: '（系统：常驻验证已开启，但本轮验证未通过或未运行，请在收尾前完成真实验证并引用真实输出，不要谎报通过。）' });
+            this._stream('\n[系统] 常驻验证未通过，继续要求验证...\n', false);
+            _timeoutGuard.disarm();
+            continue;
+          }
+        }
         this._emitDiffSummary();
         this._emitWorkStatus('done');
+        _timeoutGuard.disarm();
         return;
       }
 
@@ -6115,8 +6233,8 @@ class AgentRunner {
           continue;
         }
 
-        // PLAN 门控
-        if (isPlanGated(tc.name, tc.arguments, this.planApproved)) {
+        // PLAN 门控（B2：可由设置关闭）
+        if (this.strictPlanGate && isPlanGated(tc.name, tc.arguments, this.planApproved)) {
           const err = 'Error: 当前处于 PLAN 模式（只读）。只能调用只读查询工具；请先提交计划并等待批准。';
           this.messages.push({ role: 'tool', tool_call_id: tc.id, content: err });
           this._toolStep(tc.id, tc.name, 'rejected', err);
@@ -6129,7 +6247,7 @@ class AgentRunner {
         const needsConfirm = computeNeedsConfirm(tc.name, tc.arguments, this.mode, dHits);
         
         // ===== 增强4：权限决策审计（参考业界 approval-audit.js）=====
-        const auditDecision = needsConfirm ? 'ask' : (isPlanGated(tc.name, tc.arguments, this.planApproved) ? 'deny' : 'allow');
+        const auditDecision = needsConfirm ? 'ask' : ((this.strictPlanGate && isPlanGated(tc.name, tc.arguments, this.planApproved)) ? 'deny' : 'allow');
         approvalAudit.recordDecision(tc.name, tc.arguments, this.mode, auditDecision, 
           auditDecision === 'ask' ? '需要用户确认' : auditDecision === 'deny' ? 'PLAN模式只读门控' : '自动放行');
 
@@ -6505,6 +6623,7 @@ class AgentRunner {
       continue;
     }
     // ===== 工作状态条：循环自然结束（达到轮次上限）收尾 =====
+    _timeoutGuard.disarm();
     this._emitWorkStatus('done');
     } finally {
       state._agentRunning = false;
@@ -10323,8 +10442,8 @@ function bindEvents() {
         + (st.email ? ' ' + st.email : '')
         + (c ? '<br>' + c : '');
     } else if (st.valid) {
-      stateEl.innerHTML = '<span style="color:#10b981;">● 已内置，装完即用</span>'
-        + '<br><span style="color:#888;">无需注册；登录可获得更多额度与邀请奖励</span>';
+      stateEl.innerHTML = '<span style="color:#10b981;">● 云端可用</span>'
+        + '<br><span style="color:#888;">请登录后使用云端模型</span>';
     } else if (st.available) {
       // 有凭据但都失效（登录过期 / 后端 Key 无效）→ 提示去更新
       stateEl.innerHTML = '<span style="color:#f59e0b;">● 配置需更新</span>'
@@ -10355,7 +10474,7 @@ function bindEvents() {
 
     // ===== AI 能力安装口（models 视图顶部）=====
     // 商业化取向：所有"接入 AI 的方式"汇聚到一处，用户不必到处找入口：
-    //   ① 内置云端（产品方已内置，装完即用） ② 自带 API Key  ③ 本地模型（下方列表）
+    //   ① 云端模型（登录 LabCode 账号后使用） ② 自带 API Key  ③ 本地模型（下方列表）
     if (currentPluginsTab === 'models') {
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
       html += '<div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border-color);border-radius:8px;">';
@@ -11730,7 +11849,7 @@ function bindEvents() {
       _localStatusCache = { at: now, data: st };
       setLocalTag('ollama', st.ollama.text, !st.ollama.ok);
       setLocalTag('local', st.local.text, !st.local.ok);
-      // 内置云端状态签（下拉第一项）：已内置 / 额度 / 需登录
+      // 网关状态签（下拉第一项）：已登录/额度 / 需登录
       try {
         const gw = await window.LabCode.ai.gatewayStatus();
         const tagEl = document.querySelector('[data-gw-tag="gateway"]');
@@ -11738,14 +11857,11 @@ function bindEvents() {
           if (gw.loggedIn && gw.valid) {
             tagEl.textContent = gw.dailyRemaining != null ? ('今日剩余 ' + gw.dailyRemaining + ' 次') : '已登录';
             tagEl.className = 'model-local-tag';
-          } else if (gw.valid) {
-            tagEl.textContent = '已内置 · 免注册';
-            tagEl.className = 'model-local-tag';
           } else if (gw.available) {
             tagEl.textContent = '配置需更新';
             tagEl.className = 'model-local-tag bad';
           } else {
-            tagEl.textContent = '需登录/配置';
+            tagEl.textContent = '需登录';
             tagEl.className = 'model-local-tag bad';
           }
         }
@@ -11861,14 +11977,14 @@ function bindEvents() {
       try {
         const cfg = await window.LabCode.config.get();
         const hasTok = !!(cfg && cfg.ai && cfg.ai.gatewayToken);
-        let gwValid = false;
-        try { const st = await window.LabCode.ai.gatewayStatus(); gwValid = !!(st && st.valid); } catch (err) {}
+        let gwStatus = null, gwValid = false;
+        try { gwStatus = await window.LabCode.ai.gatewayStatus(); gwValid = !!(gwStatus && gwStatus.valid); } catch (err) {}
         await window.LabCode.config.set('ai.provider', 'gateway');
         await window.LabCode.config.set('ai.model', gwId);
         if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
           await state.agent.ai._loadConfig();
         }
-        if (!gwValid) {
+        if (!gwStatus || !gwStatus.loggedIn) {
           // 云端模型必须登录：未登录/登录过期都直接拉起登录遮罩
           showToast(hasTok ? '登录已过期，请重新登录后使用云端模型' : '云端模型需要登录后使用', 'info');
           if (window.__showGwLoginOverlay) window.__showGwLoginOverlay();
@@ -11912,7 +12028,7 @@ function bindEvents() {
               'siliconflow': 'qwen3-8b'
             };
             if (mapping.provider === 'gateway') {
-              // 内置云端：产品方已内置凭据，不需要用户注册，也不需要 Key
+              // 云端模型：登录 LabCode 账号后使用，不内置任何兜底凭据
               await window.LabCode.config.set('ai.provider', 'gateway');
               await window.LabCode.config.set('ai.model', mapping.model || 'qwen3-8b');
             } else if (hasGw && isCloudMapping && !mapping.byok) {
@@ -12785,6 +12901,12 @@ function bindEvents() {
     serialSendInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendSerial(); });
   }
 
+  // 热插拔：设备插拔时刷新串口下拉（仅未打开时，避免打断会话）
+  if (window.LabCode && window.LabCode.serial && window.LabCode.serial.onPlug) {
+    window.LabCode.serial.onPlug(() => { if (!serialOpened) refreshSerialPorts(); });
+    window.LabCode.serial.onUnplug(() => { if (!serialOpened) refreshSerialPorts(); });
+  }
+
   // ============ 串口绘图仪 ============
   const plotterCv = document.getElementById('plotter-cv');
   const plotterPlaceholder = document.getElementById('plotter-placeholder');
@@ -13231,16 +13353,31 @@ function bindEvents() {
   document.getElementById('mcp-close-btn').addEventListener('click', () => {
     document.getElementById('mcp-modal').style.display = 'none';
   });
-  document.getElementById('mcp-add-btn').addEventListener('click', async () => {
+  const modalTypeSel = document.getElementById('mcp-type');
+  const mcpModalToggleType = () => {
+    const isStdio = (modalTypeSel && modalTypeSel.value) === 'stdio';
+    const t = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? 'block' : 'none'; };
+    t('mcp-command', isStdio); t('mcp-args', isStdio); t('mcp-url', !isStdio);
+  };
+  if (modalTypeSel) { modalTypeSel.addEventListener('change', mcpModalToggleType); mcpModalToggleType(); }
+  document.getElementById('mcp-modal-add-btn').addEventListener('click', async () => {
     const name = document.getElementById('mcp-name').value.trim();
+    const type = (modalTypeSel && modalTypeSel.value) || 'stdio';
     const command = document.getElementById('mcp-command').value.trim();
     const argsStr = document.getElementById('mcp-args').value.trim();
-    if (!name || !command) { showToast('名称和命令必填', 'warn'); return; }
-    const args = argsStr ? argsStr.split(/\s+/) : [];
-    await window.LabCode.mcp.addServer({ name, command, args });
+    const url = document.getElementById('mcp-url').value.trim();
+    const extraRaw = document.getElementById('mcp-extra').value.trim();
+    if (!name) { showToast('名称必填', 'warn'); return; }
+    if (type === 'stdio' && !command) { showToast('stdio 类型命令必填', 'warn'); return; }
+    if ((type === 'http' || type === 'sse') && !url) { showToast(type + ' 类型 URL 必填', 'warn'); return; }
+    const cfg = { name, type, command: command || undefined, args: argsStr ? argsStr.split(/\s+/) : [], url: url || undefined };
+    if (extraRaw) { try { Object.assign(cfg, JSON.parse(extraRaw)); } catch (e) { showToast('高级 JSON 解析失败: ' + e.message, 'warn'); return; } }
+    await window.LabCode.mcp.addServer(cfg);
     document.getElementById('mcp-name').value = '';
     document.getElementById('mcp-command').value = '';
     document.getElementById('mcp-args').value = '';
+    document.getElementById('mcp-url').value = '';
+    document.getElementById('mcp-extra').value = '';
     showToast('已添加 MCP 服务器: ' + name, 'success');
     refreshMcpList();
   });
@@ -15793,6 +15930,151 @@ if (document.readyState === 'loading') {
 })();
 
 
+// ============ provider 注册表统一管理 UI（参考 TrieCode settings-providers）============
+function pmEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+async function refreshProviders() {
+  try { const r = await window.LabCode.ai.providers(); window.__providerList = (r && r.providers) || []; }
+  catch (e) { window.__providerList = []; }
+  return window.__providerList;
+}
+async function renderProviderManager() {
+  const el = document.getElementById('ai-provider-manager');
+  if (!el) return;
+  const list = window.__providerList || [];
+  let ai = {};
+  try { ai = (await window.LabCode.config.get()).ai || {}; } catch (e) {}
+  const keys = ai.providerKeys || {}, enabled = ai.providerEnabled || {}, baseUrls = ai.providerBaseUrls || {};
+  let html = '<div class="device-section-title" style="margin-top:0;">模型供应商（统一管理）</div>';
+  html += '<div style="font-size:11px;color:#888;margin-bottom:8px;">启用/停用、设置各家 API Key 与地址；新增自定义 OpenAI 兼容端点会出现在顶栏模型选择里。</div>';
+  for (const p of list) {
+    const isCustom = !!p.custom;
+    html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<input type="checkbox" data-pid="' + pmEsc(p.id) + '" ' + (p.enabled ? 'checked' : '') + ' class="pm-enable">';
+    html += '<div style="flex:1;"><div style="font-size:13px;font-weight:600;color:#e0e0e0;">' + pmEsc(p.name) + ' <span style="font-size:10px;color:#888;">[' + pmEsc(p.type) + ']</span></div>';
+    if (p.description) html += '<div style="font-size:11px;color:#888;margin-top:2px;">' + pmEsc(p.description) + '</div>';
+    html += '</div>';
+    if (!p.builtin) html += '<button data-pid="' + pmEsc(p.id) + '" class="pm-remove" style="background:#3a3a3a;color:#ef4444;border:1px solid #555;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">删除</button>';
+    html += '</div>';
+    if (p.needsApiKey) html += '<div style="margin-top:6px;"><label style="font-size:11px;color:#888;">API Key</label><input class="device-input pm-key" data-pid="' + pmEsc(p.id) + '" type="password" placeholder="sk-..." value="' + pmEsc(keys[p.id] || '') + '" style="width:100%;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"></div>';
+    if (isCustom) html += '<div style="margin-top:6px;display:flex;gap:6px;"><input class="device-input pm-url" data-pid="' + pmEsc(p.id) + '" placeholder="Base URL" value="' + pmEsc(baseUrls[p.id] || p.baseURL || '') + '" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"><input class="device-input pm-model" data-pid="' + pmEsc(p.id) + '" placeholder="默认模型" value="' + pmEsc(p.defaultModel || '') + '" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"></div>';
+    html += '</div>';
+  }
+  html += '<div style="background:#181818;border:1px dashed #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
+  html += '<div style="font-size:12px;color:#e0e0e0;margin-bottom:6px;">添加自定义供应商</div>';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;"><input id="pm-add-id" placeholder="id (如 groq)" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"><input id="pm-add-name" placeholder="名称" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"><select id="pm-add-type" style="background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"><option value="openai">openai</option><option value="local">local</option><option value="ollama">ollama</option><option value="gateway">gateway</option></select></div>';
+  html += '<div style="display:flex;gap:6px;margin-top:6px;"><input id="pm-add-url" placeholder="Base URL (openai 必填)" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"><input id="pm-add-model" placeholder="默认模型" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size:11px;"></div>';
+  html += '<button id="pm-add-btn" style="margin-top:6px;background:#2d5a27;color:#fff;border:1px solid #3f7a36;border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;">添加</button>';
+  html += '</div>';
+  html += '<button id="pm-save-btn" style="margin-top:10px;background:#3a6ea5;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;cursor:pointer;">保存供应商配置</button>';
+  html += '<span id="pm-save-hint" style="font-size:11px;margin-left:8px;"></span>';
+  el.innerHTML = html;
+  const saveBtn = document.getElementById('pm-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', saveProviderManager);
+  const addBtn = document.getElementById('pm-add-btn');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const id = document.getElementById('pm-add-id').value.trim();
+    const name = document.getElementById('pm-add-name').value.trim();
+    const type = document.getElementById('pm-add-type').value;
+    const url = document.getElementById('pm-add-url').value.trim();
+    const model = document.getElementById('pm-add-model').value.trim();
+    if (!id || !name) { showToast('id 与名称为必填', 'warn'); return; }
+    if (type === 'openai' && !url) { showToast('openai 类型需填写 Base URL', 'warn'); return; }
+    const custom = (window.__providerList || []).filter(p => p.custom).map(p => ({ id: p.id, name: p.name, type: p.type, baseURL: p.baseURL || '', defaultModel: p.defaultModel || '' }));
+    custom.push({ id, name, type, baseURL: url, defaultModel: model });
+    window.LabCode.ai.providerSave({ customProviders: custom }).then(r => {
+      if (r && r.ok) { showToast('已添加 ' + name, 'success'); refreshProviders().then(renderProviderManager); }
+      else showToast('添加失败: ' + ((r && r.error) || '未知'), 'warn');
+    });
+  });
+  el.querySelectorAll('.pm-remove').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.pid;
+    const custom = (window.__providerList || []).filter(p => p.custom && p.id !== id).map(p => ({ id: p.id, name: p.name, type: p.type, baseURL: p.baseURL || '', defaultModel: p.defaultModel || '' }));
+    window.LabCode.ai.providerSave({ customProviders: custom }).then(r => {
+      if (r && r.ok) { showToast('已删除 ' + id, 'success'); refreshProviders().then(renderProviderManager); }
+    });
+  }));
+}
+async function saveProviderManager() {
+  const list = window.__providerList || [];
+  const apiKeys = {}, enabledOverrides = {}, baseUrls = {};
+  list.forEach(p => {
+    const en = document.querySelector('.pm-enable[data-pid="' + pmEsc(p.id) + '"]');
+    if (en) enabledOverrides[p.id] = !!en.checked;
+    if (p.needsApiKey) { const k = document.querySelector('.pm-key[data-pid="' + pmEsc(p.id) + '"]'); if (k) apiKeys[p.id] = k.value.trim(); }
+    if (p.custom) { const u = document.querySelector('.pm-url[data-pid="' + pmEsc(p.id) + '"]'); if (u) baseUrls[p.id] = u.value.trim(); }
+  });
+  const custom = list.filter(p => p.custom).map(p => {
+    const m = document.querySelector('.pm-model[data-pid="' + pmEsc(p.id) + '"]');
+    return { id: p.id, name: p.name, type: p.type, baseURL: (baseUrls[p.id] || p.baseURL || ''), defaultModel: (m ? m.value.trim() : (p.defaultModel || '')) };
+  });
+  const r = await window.LabCode.ai.providerSave({ apiKeys, enabledOverrides, baseUrls, customProviders: custom });
+  const hint = document.getElementById('pm-save-hint');
+  if (r && r.ok) { if (hint) { hint.textContent = '已保存'; hint.style.color = '#4caf50'; } showToast('供应商配置已保存', 'success'); refreshProviders().then(renderProviderManager); }
+  else { if (hint) { hint.textContent = '失败: ' + ((r && r.error) || '未知'); hint.style.color = '#ef4444'; } }
+}
+
+// ============ Agent 护栏（TrieCode 式）设置面板 ============
+// 四项护栏开关写入 config.ai.guardrails，AgentRunner.run() 启动时读取（下次任务生效）。
+// 模块级护栏状态：供「每次工具执行」都跑的全局 toolPipeline pre-hook 同步读取（避免每次工具调 config）。
+const GUARDRAILS = { summaryCompression: false, alwaysVerify: false, loopTimeoutMsMin: 0, strictPlanGate: true };
+function applyGuardrails(p) {
+  if (!p || typeof p !== 'object') return;
+  if (typeof p.summaryCompression === 'boolean') GUARDRAILS.summaryCompression = p.summaryCompression;
+  if (typeof p.alwaysVerify === 'boolean') GUARDRAILS.alwaysVerify = p.alwaysVerify;
+  if (typeof p.loopTimeoutMsMin === 'number') GUARDRAILS.loopTimeoutMsMin = p.loopTimeoutMsMin;
+  if (typeof p.strictPlanGate === 'boolean') GUARDRAILS.strictPlanGate = p.strictPlanGate;
+}
+async function renderGuardrailSettings() {
+  const el = document.getElementById('ai-guardrails');
+  if (!el) return;
+  let g = {};
+  try { const cfg = await window.LabCode.config.get(); g = ((cfg && cfg.ai) || {}).guardrails || {}; } catch (e) {}
+  const summaryCompression = !!g.summaryCompression;
+  const alwaysVerify = !!g.alwaysVerify;
+  const loopTimeoutMin = Number(g.loopTimeoutMsMin) || 0;
+  const strictPlanGate = g.strictPlanGate !== false;
+  let html = '<div class="device-section-title" style="margin-top:0;">Agent 护栏（TrieCode 式）</div>';
+  html += '<div style="font-size:11px;color:#888;margin-bottom:8px;">控制 agent 循环的健壮性护栏；改动在「下一次任务」生效。B2 默认开启。</div>';
+  const row = (id, label, checked, type, extra) => {
+    if (type === 'checkbox') {
+      return '<label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:12px;color:#e0e0e0;cursor:pointer;">'
+        + '<input type="checkbox" id="' + id + '" ' + (checked ? 'checked' : '') + ' style="margin-top:2px;">'
+        + '<span>' + label + '</span></label>';
+    }
+    return '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:#e0e0e0;">'
+      + '<span style="flex:1;">' + label + '</span>'
+      + '<input type="number" id="' + id + '" min="0" step="1" value="' + extra + '" style="width:80px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:4px 6px;font-size:11px;">'
+      + '</label>';
+  };
+  html += row('gr-b1', '<b>B1</b> 上下文 LLM 摘要压缩：token 超阈值时把旧轮次折叠成 LLM 生成的「历史背景摘要」（区别于原仅删旧工具结果）。', summaryCompression, 'checkbox');
+  html += row('gr-b3', '<b>B3</b> 常驻验证代理：每轮收尾前强制真实验证，未通过则不停要求验证（默认仅在检测到未验证修改时触发一次）。', alwaysVerify, 'checkbox');
+  html += row('gr-b4', '<b>B4</b> 整体循环超时（分钟，0 = 关闭）：超过则强制终止任务。', false, 'number', loopTimeoutMin);
+  html += row('gr-b2', '<b>B2</b> 严格 plan 门控：PLAN 模式下未批准则拒执行/写类工具（默认开启；关闭即退化为确认窗）。', strictPlanGate, 'checkbox');
+  html += '<button id="gr-save-btn" style="background:#3a6ea5;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;cursor:pointer;">保存护栏设置</button>';
+  html += '<span id="gr-save-hint" style="font-size:11px;margin-left:8px;"></span>';
+  el.innerHTML = html;
+  const saveBtn = document.getElementById('gr-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const payload = {
+      summaryCompression: document.getElementById('gr-b1').checked,
+      alwaysVerify: document.getElementById('gr-b3').checked,
+      loopTimeoutMsMin: Math.max(0, parseInt(document.getElementById('gr-b4').value, 10) || 0),
+      strictPlanGate: document.getElementById('gr-b2').checked
+    };
+    try {
+      await window.LabCode.config.set('ai.guardrails', payload);
+      applyGuardrails(payload); // 立即同步到模块级状态（全局 pre-hook 下次工具即生效）
+      const hint = document.getElementById('gr-save-hint');
+      if (hint) { hint.textContent = '已保存（下次任务生效）'; hint.style.color = '#4caf50'; }
+      showToast('护栏设置已保存', 'success');
+    } catch (e) {
+      const hint = document.getElementById('gr-save-hint');
+      if (hint) { hint.textContent = '失败: ' + e.message; hint.style.color = '#ef4444'; }
+    }
+  });
+}
+
 // ============ AI 引擎设置（简化用户配置）============
 (function() {
   function loadAIConfig() {
@@ -15810,6 +16092,10 @@ if (document.readyState === 'loading') {
       }
       // 自动检测 Ollama
       checkOllama();
+      // provider 注册表统一管理 UI
+      refreshProviders().then(renderProviderManager);
+      // Agent 护栏设置面板
+      renderGuardrailSettings();
       // 显示本机内置引擎与已装模型（让「本地 AI 引擎」不再是黑盒）
       refreshLocalEngineStatus();
       // 模型目录输入框：标记"用户改过"（避免被自动刷新覆盖）+ 绑定保存按钮

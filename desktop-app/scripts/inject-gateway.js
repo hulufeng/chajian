@@ -1,16 +1,10 @@
 #!/usr/bin/env node
 /**
- * 发布前注入「内置云端凭据」。
+ * 生成 resources/gateway.json。
  *
- * 商业化取向：产品方内置一个云端账号/凭据，新用户装完即用（免注册）；
- * 用户自己的账号登录后优先用自己的额度。
- *
- * 用法（发布前）：
- *   Windows (PowerShell):  $env:LABCODE_GATEWAY_TOKEN='xxx'; $env:LABCODE_GATEWAY_URL='https://...'; npm run build:win
- *   macOS / Linux:         LABCODE_GATEWAY_TOKEN=xxx npm run build
- *
- * 生成的 resources/gateway.json 已被 .gitignore 忽略 —— 凭据不进仓库。
- * 没有设置环境变量时会写入空凭据（= 不启用内置云端，用户仍可登录使用）。
+ * 注意：内置云端兜底凭据已于 2026-10-28 彻底移除——云端 AI 仅使用用户自己
+ * 登录后的 token，未登录 / token 过期都不再静默回退到任何内置账号。
+ * 因此本脚本只写入空凭据，不再注入任何 token（避免内置兜底被重新打包）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,13 +17,10 @@ const url = (process.env.LABCODE_GATEWAY_URL || '').trim();
 
 try {
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(outFile, JSON.stringify({ token, url }, null, 2) + '\n', 'utf8');
-  if (token) {
-    // 只提示前缀，避免把完整凭据打进构建日志
-    console.log('[inject-gateway] 已注入内置云端凭据 ' + token.slice(0, 6) + '…' + (url ? ' @ ' + url : ''));
-  } else {
-    console.log('[inject-gateway] 未设置 LABCODE_GATEWAY_TOKEN → 不启用内置云端（写入空凭据）');
-  }
+  // 内置云端兜底凭据已于 2026-10-28 彻底移除：云端 AI 仅使用用户自己登录后的 token。
+  // 不论是否设置 LABCODE_GATEWAY_TOKEN，都只写入空凭据，避免任何内置兜底被重新打入包内。
+  fs.writeFileSync(outFile, JSON.stringify({ token: '', url: '' }, null, 2) + '\n', 'utf8');
+  console.log('[inject-gateway] 内置云端兜底凭据已移除 → 写入空凭据（云端 AI 仅使用用户登录 token）');
 } catch (e) {
   console.error('[inject-gateway] 写入失败：' + e.message);
   process.exit(1);
