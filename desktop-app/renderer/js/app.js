@@ -13786,15 +13786,221 @@ function bindEvents() {
     });
   }
 
-  // 通知按钮
+  // 通知下拉面板（参考 TrieCode 通知中心：点击铃铛弹出面板；LabCode 暂无真实通知，展示空态）
+  if (!document.getElementById('notification-panel-style')) {
+    const st = document.createElement('style');
+    st.id = 'notification-panel-style';
+    st.textContent = `
+.notification-panel{position:fixed;width:320px;background:var(--bg-secondary,#2a2a2a);border:1px solid var(--border-color,#3c3c3c);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);overflow:hidden;font-size:13px;color:var(--text,#e0e0e0);}
+.notification-panel-header{padding:10px 14px;font-weight:600;border-bottom:1px solid var(--border-color,#3c3c3c);}
+.notification-panel-body{max-height:360px;overflow-y:auto;padding:6px 0;}
+.notification-empty{padding:28px 14px;text-align:center;color:var(--text-secondary,#999);font-size:13px;}`;
+    document.head.appendChild(st);
+  }
+  let notifPanel = null;
+  let notifPanelOpen = false;
+  function closeNotifPanel() {
+    if (notifPanel) notifPanel.style.display = 'none';
+    notifPanelOpen = false;
+    const badge = document.getElementById('notification-badge');
+    if (badge) badge.style.display = 'none';
+  }
+  function openNotifPanel() {
+    if (!notifPanel) {
+      notifPanel = document.createElement('div');
+      notifPanel.id = 'notification-panel';
+      notifPanel.className = 'notification-panel';
+      notifPanel.innerHTML = '<div class="notification-panel-header">通知</div><div class="notification-panel-body" id="notification-panel-body"></div>';
+      document.body.appendChild(notifPanel);
+    }
+    const body = notifPanel.querySelector('#notification-panel-body');
+    if (body) body.innerHTML = '<div class="notification-empty">暂无新通知</div>';
+    const btn = document.getElementById('notification-btn');
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      notifPanel.style.top = (r.bottom + 6) + 'px';
+      notifPanel.style.right = (window.innerWidth - r.right) + 'px';
+      notifPanel.style.zIndex = '99999';
+    }
+    notifPanel.style.display = 'block';
+    notifPanelOpen = true;
+  }
   const notificationBtn = document.getElementById('notification-btn');
   if (notificationBtn) {
-    notificationBtn.addEventListener('click', () => {
-      showToast('暂无新通知', 'info');
-      const badge = document.getElementById('notification-badge');
-      if (badge) badge.style.display = 'none';
+    notificationBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (notifPanelOpen) closeNotifPanel(); else openNotifPanel();
     });
   }
+  document.addEventListener('click', (e) => {
+    if (notifPanelOpen && notifPanel && !notifPanel.contains(e.target) && e.target !== notificationBtn) closeNotifPanel();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && notifPanelOpen) closeNotifPanel(); });
+
+  // 账号按钮（参考 TrieCode：未登录先弹 popover「登录 AI 账号」，已登录→账号区块）
+  if (!document.getElementById('user-popover-style')) {
+    const st = document.createElement('style');
+    st.id = 'user-popover-style';
+    st.textContent = `
+.user-popover{position:fixed;width:250px;background:var(--bg-secondary,#2a2a2a);border:1px solid var(--border-color,#3c3c3c);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:14px;}
+.user-popover-tip{font-size:13px;color:var(--text,#e0e0e0);text-align:center;margin-bottom:12px;}
+.user-popover-btn{width:100%;background:var(--accent,#3b82f6);color:#fff;border:none;border-radius:8px;padding:9px 0;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+.user-popover-btn:hover{filter:brightness(1.12);}`;
+    document.head.appendChild(st);
+  }
+  let userPopover = null;
+  let userPopoverOpen = false;
+  function closeUserPopover() {
+    if (userPopover) userPopover.style.display = 'none';
+    userPopoverOpen = false;
+  }
+  function openUserPopover() {
+    if (!userPopover) {
+      userPopover = document.createElement('div');
+      userPopover.id = 'user-popover';
+      userPopover.className = 'user-popover';
+      userPopover.innerHTML = '<div class="user-popover-tip">登录后可同步 AI 用量与套餐</div>'
+        + '<button class="user-popover-btn"><svg class="icon icon-xs"><use href="#icon-user"></use></svg>登录 AI 账号</button>';
+      document.body.appendChild(userPopover);
+      userPopover.querySelector('.user-popover-btn').addEventListener('click', () => {
+        closeUserPopover();
+        if (window.__showGwLoginOverlay) window.__showGwLoginOverlay();
+      });
+    }
+    const btn = document.getElementById('user-avatar-btn');
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      userPopover.style.top = (r.bottom + 8) + 'px';
+      userPopover.style.right = (window.innerWidth - r.right) + 'px';
+      userPopover.style.zIndex = '99999';
+    }
+    userPopover.style.display = 'block';
+    userPopoverOpen = true;
+  }
+  window.__openUserPopover = openUserPopover;   // 供外部/测试拉起账号 popover
+  const userBtn = document.getElementById('user-avatar-btn');
+  if (userBtn) {
+    userBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      let loggedIn = false;
+      try {
+        const cfg = await window.LabCode.config.get();
+        loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
+      } catch (err) { /* 读不到配置按未登录处理 */ }
+      if (!loggedIn) {
+        if (userPopoverOpen) closeUserPopover(); else openUserPopover();
+      } else {
+        closeUserPopover();
+        openAccountPopover();
+      }
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (userPopoverOpen && userPopover && !userPopover.contains(e.target) && e.target !== userBtn) closeUserPopover();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && userPopoverOpen) closeUserPopover(); });
+
+  // 账号下拉卡（参考 TrieCode 已登录态：环形用量 + 账号 + 积分 + 设置/退出登录）
+  if (!document.getElementById('account-popover-style')) {
+    const ast = document.createElement('style');
+    ast.id = 'account-popover-style';
+    ast.textContent = `
+.account-popover{position:fixed;width:280px;background:var(--bg-secondary,#2a2a2a);border:1px solid var(--border-color,#3c3c3c);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:14px;color:var(--text,#e0e0e0);font-size:13px;}
+.account-popover-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.account-popover-email{font-weight:600;word-break:break-all;}
+.account-popover-sub{font-size:11px;color:var(--text-secondary,#999);margin-top:2px;line-height:1.5;}
+.account-popover-row{display:flex;align-items:center;gap:8px;background:rgba(128,128,128,0.12);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;}
+.account-popover-row:hover{background:rgba(128,128,128,0.22);}
+.account-popover-row.danger{color:#e5484d;}
+.account-popover-row svg{flex:none;}`;
+    document.head.appendChild(ast);
+  }
+  let acctPopover = null;
+  let acctPopoverOpen = false;
+  function closeAccountPopover() {
+    if (acctPopover) acctPopover.style.display = 'none';
+    acctPopoverOpen = false;
+  }
+  function openAccountPopover() {
+    if (!acctPopover) {
+      acctPopover = document.createElement('div');
+      acctPopover.id = 'account-popover';
+      acctPopover.className = 'account-popover';
+      acctPopover.innerHTML =
+        '<div class="account-popover-head">'
+        + '<svg width="44" height="44" viewBox="0 0 44 44">'
+        + '<circle cx="22" cy="22" r="18" fill="none" stroke="rgba(128,128,128,0.35)" stroke-width="5"/>'
+        + '<circle id="acct-ring-fg" cx="22" cy="22" r="18" fill="none" stroke="#3b82f6" stroke-width="5" stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="113" transform="rotate(-90 22 22)"/>'
+        + '<text id="acct-ring-text" x="22" y="26" text-anchor="middle" font-size="10" fill="currentColor">--</text></svg>'
+        + '<div><div class="account-popover-email" id="acct-email">…</div><div class="account-popover-sub" id="acct-sub"></div></div></div>'
+        + '<div class="account-popover-row" id="acct-open-settings"><svg class="icon icon-xs"><use href="#icon-settings"></use></svg>设置</div>'
+        + '<div class="account-popover-row danger" id="acct-logout"><svg class="icon icon-xs"><use href="#icon-log-out"></use></svg>退出登录</div>';
+      document.body.appendChild(acctPopover);
+      acctPopover.addEventListener('click', (e) => e.stopPropagation());
+      document.getElementById('acct-open-settings').addEventListener('click', () => {
+        closeAccountPopover();
+        try { openSettingsModal(); } catch (err) {}
+      });
+      document.getElementById('acct-logout').addEventListener('click', async () => {
+        closeAccountPopover();
+        try {
+          const r = await window.LabCode.ai.gatewayAuth({ action: 'logout' });
+          if (r && r.success) {
+            try { await refreshGatewayUI(); } catch (err) {}
+            try { await refreshCreditsBadge(); } catch (err) {}
+            try { updateDailyCredits(null); } catch (err) {}
+            showToast('已退出登录', 'info');
+          } else {
+            showToast((r && r.error) || '退出失败', 'error');
+          }
+        } catch (err) { showToast('退出失败', 'error'); }
+      });
+    }
+    const abtn = document.getElementById('user-avatar-btn');
+    if (abtn) {
+      const ar = abtn.getBoundingClientRect();
+      acctPopover.style.top = (ar.bottom + 8) + 'px';
+      acctPopover.style.right = (window.innerWidth - ar.right) + 'px';
+      acctPopover.style.zIndex = '99999';
+    }
+    acctPopover.style.display = 'block';
+    acctPopoverOpen = true;
+    // 数据：邮箱先用本地缓存回显，积分/用量异步刷新
+    (async () => {
+      try { const cfg = await window.LabCode.config.get(); const em = (cfg.ai && cfg.ai.gatewayEmail) || ''; const el0 = document.getElementById('acct-email'); if (el0 && em) el0.textContent = em; } catch (err) {}
+      try {
+        const r = await window.LabCode.ai.gatewayAuth({ action: 'me' });
+        const emailEl = document.getElementById('acct-email');
+        const subEl = document.getElementById('acct-sub');
+        if (r && r.success && r.user) {
+          const u = r.user;
+          if (emailEl && u.email) emailEl.textContent = u.email;
+          const parts = [];
+          if (typeof u.dailyRemaining === 'number') parts.push('今日剩余 ' + u.dailyRemaining + ' 次');
+          if (typeof u.planCredits === 'number') parts.push('套餐积分（剩余）' + u.planCredits);
+          if (typeof u.rechargeCredits === 'number') parts.push('充值积分 ' + u.rechargeCredits);
+          if (subEl) subEl.textContent = parts.join(' · ') || '已登录';
+          if (typeof u.dailyRemaining === 'number' && typeof u.dailyUsed === 'number') {
+            const total = u.dailyRemaining + u.dailyUsed;
+            if (total > 0) {
+              const pct = Math.round(u.dailyUsed / total * 100);
+              const fg = document.getElementById('acct-ring-fg');
+              const tx = document.getElementById('acct-ring-text');
+              if (fg) fg.style.strokeDashoffset = String(113 * (1 - pct / 100));
+              if (tx) tx.textContent = pct + '%';
+            }
+          }
+        } else if (subEl) {
+          subEl.textContent = '登录态已失效，请重新登录';
+        }
+      } catch (err) { const subEl = document.getElementById('acct-sub'); if (subEl) subEl.textContent = '账号信息获取失败'; }
+    })();
+  }
+  window.__openAccountPopover = openAccountPopover;   // 供外部/测试拉起账号卡
+  document.addEventListener('click', (e) => {
+    if (acctPopoverOpen && acctPopover && !acctPopover.contains(e.target)) closeAccountPopover();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && acctPopoverOpen) closeAccountPopover(); });
 
   // 编辑器保存按钮
   const editorSaveBtn = document.getElementById('editor-save-btn');
@@ -14020,16 +14226,6 @@ function bindEvents() {
     }
   });
 
-  // 标题栏用户头像：此前完全无绑定（点了没反应），复用账号徽标的同一套行为
-  const avatarBtn = document.getElementById('user-avatar-btn');
-  if (avatarBtn) {
-    avatarBtn.addEventListener('click', () => {
-      const badge = document.getElementById('gw-credits-badge');
-      if (badge) badge.click();
-      else { try { openSettingsModal(); } catch (e) {} }
-    });
-  }
-
   async function refreshGatewayUI() {
     try {
       const gwLoginForm = document.getElementById('gw-login-form');
@@ -14204,6 +14400,25 @@ function bindEvents() {
   const settingsModal = document.getElementById('settings-modal');
   if (settingsModal) {
     document.getElementById('settings-close').addEventListener('click', () => { settingsModal.style.display = 'none'; });
+    // 设置侧栏：分类导航 + 搜索过滤 + 面板切换（对齐 TrieCode 设置布局）
+    const sNavItems = settingsModal.querySelectorAll('.settings-nav-item');
+    sNavItems.forEach((it) => {
+      it.addEventListener('click', () => {
+        sNavItems.forEach((n) => n.classList.remove('active'));
+        it.classList.add('active');
+        settingsModal.querySelectorAll('.settings-panel').forEach((p) => p.classList.remove('active'));
+        const tp = settingsModal.querySelector('#' + it.dataset.target);
+        if (tp) tp.classList.add('active');
+      });
+    });
+    const sSearch = settingsModal.querySelector('#settings-search');
+    if (sSearch) sSearch.addEventListener('input', () => {
+      const q = sSearch.value.trim().toLowerCase();
+      sNavItems.forEach((it) => {
+        const t = (it.textContent || '').toLowerCase();
+        it.style.display = (!q || t.indexOf(q) !== -1) ? '' : 'none';
+      });
+    });
     document.getElementById('settings-cancel').addEventListener('click', () => { settingsModal.style.display = 'none'; });
     document.getElementById('ai-provider').addEventListener('change', updateAiSettingsVisibility);
     document.getElementById('ai-apikey').addEventListener('input', updateAiSettingsVisibility);

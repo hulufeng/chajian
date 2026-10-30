@@ -28,6 +28,7 @@
         <!-- 用户与设置 -->
         <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
         <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+        <symbol id="icon-log-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
         <!-- 编辑操作 -->
         <symbol id="icon-device-floppy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h10l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><circle cx="12" cy="14" r="2"/><polyline points="14 4 14 8 8 8 8 4"/></symbol>
         <symbol id="icon-arrow-back-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="14" x2="4" y2="9"/><line x1="4" y1="9" x2="11" y2="9"/><path d="M4 9v6a5 5 0 0 0 5 5h7"/></symbol>
@@ -1307,16 +1308,30 @@
 
   <!-- AI 设置模态框 -->
   <div class="modal-overlay" id="settings-modal" style="display:none;">
-    <div class="modal" style="width:560px;">
+    <div class="modal" style="width:920px;">
       <div class="modal-header">
         <h3><svg class="icon icon-xs"><use href="#icon-settings"></use></svg> 设置</h3>
         <button class="modal-close" id="settings-close"><svg class="icon icon-xs"><use href="#icon-x"></use></svg></button>
       </div>
-      <div class="modal-body" style="max-height:60vh;overflow-y:auto;">
-        <!-- 账号（登录后可切换云端模型；对齐 DeepSeek 简洁登录） -->
-        <div style="margin-bottom:20px;padding:14px;border:1px solid var(--border-color);border-radius:10px;background:rgba(155,187,244,0.06);">
-          <h4 style="margin:0 0 10px 0;font-size:14px;color:var(--text-color);">账号</h4>
-          <div id="gw-login-form" style="display:flex;flex-direction:column;gap:10px;">
+      <div class="modal-body">
+        <div class="settings-layout">
+          <aside class="settings-sidebar">
+            <input type="text" class="settings-search" id="settings-search" placeholder="搜索设置…">
+            <div class="settings-nav-group">
+              <div class="settings-nav-group-title">个人</div>
+              <div class="settings-nav-item active" data-target="panel-account">账户与计费</div>
+            </div>
+            <div class="settings-nav-group">
+              <div class="settings-nav-group-title">AI</div>
+              <div class="settings-nav-item" data-target="panel-model">模型配置</div>
+              <div class="settings-nav-item" data-target="panel-agent">智能体市场</div>
+            </div>
+          </aside>
+          <div class="settings-panels">
+            <div class="settings-panel active" id="panel-account">
+              <div style="margin-bottom:20px;padding:14px;border:1px solid var(--border-color);border-radius:10px;background:rgba(155,187,244,0.06);">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:var(--text-color);">账号</h4>
+                <div id="gw-login-form" style="display:flex;flex-direction:column;gap:10px;">
             <div style="display:flex;gap:6px;">
               <button class="btn btn-secondary gw-tab" id="gw-tab-login" style="flex:1;background:var(--accent);color:#fff;">登录</button>
               <button class="btn btn-secondary gw-tab" id="gw-tab-register" style="flex:1;">注册</button>
@@ -1352,14 +1367,12 @@
             </div>
           </div>
         </div>
-        <div style="margin-bottom:20px;">
-          <h4 style="margin:0 0 12px 0;font-size:14px;color:var(--text-color);">AI 模型配置</h4>
-          <div style="margin-bottom:16px;">
-            <div style="font-size:12px;font-weight:600;color:var(--text-color);margin-bottom:8px;">从市场选择 AI 智能体</div>
-            <div id="agent-market-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
-          </div>
-          <div style="font-size:12px;color:var(--text-secondary);margin:2px 0 10px;">— 或手动配置 —</div>
-          <div style="display:flex;flex-direction:column;gap:12px;">
+              </div>
+              <div class="settings-panel" id="panel-model">
+                <div style="margin-bottom:20px;">
+                  <h4 style="margin:0 0 12px 0;font-size:14px;color:var(--text-color);">AI 模型配置</h4>
+                  <div style="font-size:12px;color:var(--text-secondary);margin:2px 0 10px;">— 或手动配置 —</div>
+                  <div style="display:flex;flex-direction:column;gap:12px;">
             <div>
               <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">AI 提供商</label>
               <select id="ai-provider" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-color);color:var(--text-color);font-size:13px;">
@@ -1423,7 +1436,16 @@
           • 本地 AI 引擎：LabCode 内置 llama.cpp 引擎，到插件市场安装大模型（国内直链下载）即可使用，无需安装任何外部软件<br>
           • 配置保存后，AI 智能体将使用真实模型进行对话和工具调用
         </div>
-      </div>
+              </div>
+              <div class="settings-panel" id="panel-agent">
+                <div>
+                  <h4 style="margin:0 0 12px 0;font-size:14px;color:var(--text-color);">从市场选择 AI 智能体</h4>
+                  <div id="agent-market-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="settings-cancel">取消</button>
         <button class="btn btn-primary" id="settings-save">保存</button>
