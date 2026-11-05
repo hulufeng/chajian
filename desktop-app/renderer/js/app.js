@@ -11612,6 +11612,29 @@ function bindEvents() {
       }).join('');
     }
     const caps = (ps.listCapabilities ? ps.listCapabilities(pluginId) : []) || [];
+    // ---- 外部依赖状态（manifest.dependencies → deps:install）----
+    // 只展示声明与已解析路径；不主动下载，由用户点「检查并安装依赖」触发
+    let depsUnsub = null;
+    const depList = (ps.getPluginDependencies ? ps.getPluginDependencies(pluginId) : []) || [];
+    let depHtml = '';
+    if (depList.length) {
+      const rows = depList.map(d => {
+        const badge = d.ready
+          ? '<span style="color:var(--success);">已就绪</span>'
+          : '<span style="color:var(--warning,#d97706);">待安装 / 未校验</span>';
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;">' +
+          '<code style="color:var(--text-color);min-width:90px;">' + escapeHtml(String(d.name)) + '</code>' +
+          '<span data-dep-badge="' + escapeHtml(String(d.name)) + '">' + badge + '</span>' +
+          '<span data-dep-path="' + escapeHtml(String(d.name)) + '" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-tertiary);font-family:Consolas,monospace;" title="' + escapeHtml(String(d.path || '')) + '">' + escapeHtml(String(d.path || '')) + '</span>' +
+          '</div>';
+      }).join('');
+      depHtml = '<div style="border-top:1px solid var(--border-color);padding-top:12px;margin-top:10px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text-color);margin-bottom:8px;">外部依赖</div>' + rows +
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
+          '<button id="plgset-deps-install" class="btn btn-secondary btn-sm">检查并安装依赖</button>' +
+          '<span id="plgset-deps-msg" style="font-size:10.5px;color:var(--text-tertiary);"></span>' +
+        '</div></div>';
+    }
     wrap.innerHTML =
       '<div style="width:560px;max-height:80vh;overflow-y:auto;background:var(--bg-color);border:1px solid var(--border-color);border-radius:10px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
@@ -11621,6 +11644,7 @@ function bindEvents() {
         (manifest.description ? '<div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6;">' + escapeHtml(manifest.description) + '</div>' : '') +
         (caps.length ? '<div style="font-size: 11px;color:var(--text-tertiary);margin-bottom:12px;">能力：' + caps.map(c => '<span style="display:inline-block;padding:1px 7px;margin-right:4px;background:rgba(37,99,235,.12);color:var(--primary);border-radius:4px;">' + escapeHtml(String(c)) + '</span>').join('') + '</div>' : '') +
         '<div style="border-top:1px solid var(--border-color);padding-top:12px;">' + formHtml + '</div>' +
+        depHtml +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;border-top:1px solid var(--border-color);padding-top:12px;">' +
           '<span id="plgset-active" style="font-size: 11.5px;color:var(--text-secondary);"></span>' +
           '<button id="plgset-toggle" class="btn btn-secondary btn-sm"></button>' +
@@ -11628,8 +11652,12 @@ function bindEvents() {
       '</div>';
     document.body.appendChild(wrap);
     const closeBtn = wrap.querySelector('#plgset-close');
-    if (closeBtn) closeBtn.addEventListener('click', () => wrap.remove());
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
+    const closeModal = () => {
+      if (depsUnsub) { try { depsUnsub(); } catch (e) {} depsUnsub = null; }
+      wrap.remove();
+    };
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) closeModal(); });
     // 回填当前值
     for (const field of wrap.querySelectorAll('[data-key]')) {
       try {
@@ -11661,6 +11689,47 @@ function bindEvents() {
       toggleBtn.textContent = active ? '禁用插件' : '启用插件';
     };
     paintActive();
+    // 外部依赖：检查/安装 + 进度反馈（关闭弹窗时由 closeModal 取消订阅）
+    if (depList.length) {
+      const depsBtn = wrap.querySelector('#plgset-deps-install');
+      const depsMsg = wrap.querySelector('#plgset-deps-msg');
+      const depsApi = window.LabCode && window.LabCode.deps;
+      if (depsApi && typeof depsApi.onProgress === 'function') {
+        depsUnsub = depsApi.onProgress((p) => {
+          if (!p || !depsMsg) return;
+          if (p.name && !depList.some(d => d.name === p.name)) return;
+          depsMsg.textContent = (p.message || p.stage || '') + (p.percent != null ? ' · ' + p.percent + '%' : '');
+        });
+      }
+      const paintDeps = () => {
+        const cur = (ps.getPluginDependencies ? ps.getPluginDependencies(pluginId) : []) || [];
+        wrap.querySelectorAll('[data-dep-badge]').forEach(el => {
+          const d = cur.find(x => x.name === el.getAttribute('data-dep-badge'));
+          if (d) el.innerHTML = d.ready
+            ? '<span style="color:var(--success);">已就绪</span>'
+            : '<span style="color:var(--warning,#d97706);">待安装 / 未校验</span>';
+        });
+        wrap.querySelectorAll('[data-dep-path]').forEach(el => {
+          const d = cur.find(x => x.name === el.getAttribute('data-dep-path'));
+          if (d && d.path) { el.textContent = d.path; el.title = d.path; }
+        });
+        const pending = cur.filter(d => !d.ready).length;
+        if (depsMsg) depsMsg.textContent = pending ? (pending + ' 项待安装') : '全部就绪';
+      };
+      if (depsBtn) depsBtn.addEventListener('click', async () => {
+        depsBtn.disabled = true;
+        if (depsMsg) depsMsg.textContent = '检查中…';
+        try {
+          const r = await ps.ensurePluginDependencies(pluginId);
+          if (r && r.ok) showToast('依赖已就绪', 'success');
+          else {
+            const why = (r && r.error) || ((r && r.results) || []).filter(x => !x.ok).map(x => x.error).join('; ') || '未知原因';
+            showToast('依赖未就绪：' + why, 'error');
+          }
+        } catch (e) { showToast('依赖检查失败：' + (e && e.message), 'error'); }
+        finally { depsBtn.disabled = false; paintDeps(); }
+      });
+    }
     toggleBtn.addEventListener('click', async () => {
       const list = ps.listPlugins().find(p => p.id === pluginId);
       const next = !(list && list.active);

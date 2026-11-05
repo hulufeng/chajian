@@ -38,17 +38,49 @@ function getMcpService() {
   return instance;
 }
 
+// ============ MCP env 黑名单（对齐 TrieCode mcp-manager 的 env sanitize）============
+// 插件/服务器配置的 env 不允许覆盖这些变量：它们能让子进程在启动前加载任意代码、
+// 劫持命令解释器或运行时。Windows 环境变量名不区分大小写，统一大写比对。
+// PATH 有意不列入：便携运行时（deps:install 装的工具链）合法需要它；
+// 若要收紧，正确做法是「追加到宿主 PATH 尾部」而不是直接禁用。
+const MCP_ENV_BLOCKLIST = new Set([
+  'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT',
+  'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
+  'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE',
+  'PYTHONPATH', 'PYTHONSTARTUP', 'PYTHONHOME',
+  'BASH_ENV', 'ENV', 'SHELL', 'IFS', 'CDPATH',
+  'COMSPEC', 'PATHEXT', 'SYSTEMROOT', 'WINDIR'
+].map(s => s.toUpperCase()));
+
+/**
+ * 过滤 MCP 服务器配置里的危险 env 键。
+ * @returns {{env:object, blocked:string[]}} blocked 为被拒绝的原始键名（供日志/UI 提示）
+ */
+function sanitizeMcpEnv(rawEnv) {
+  if (!rawEnv || typeof rawEnv !== 'object' || Array.isArray(rawEnv)) return { env: {}, blocked: [] };
+  const env = {}, blocked = [];
+  for (const [k, v] of Object.entries(rawEnv)) {
+    if (MCP_ENV_BLOCKLIST.has(String(k).toUpperCase())) { blocked.push(String(k)); continue; }
+    env[String(k)] = v == null ? '' : String(v);
+  }
+  return { env, blocked };
+}
+
 // ============ 配置归一化 ============
 function normalizeMCPServerConfig(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('无效的 MCP 服务器配置');
   const name = String(raw.name || '').trim();
   if (!name) throw new Error('缺少 name');
   const type = String(raw.type || (raw.command ? 'stdio' : 'http')).toLowerCase();
+  const envSan = sanitizeMcpEnv(raw.env);
+  if (envSan.blocked.length) {
+    console.warn('[MCP] 配置 ' + name + ' 忽略了被禁用的 env 变量: ' + envSan.blocked.join(', '));
+  }
   const out = {
     name,
     type,
     enabled: raw.enabled !== false,
-    env: raw.env && typeof raw.env === 'object' ? raw.env : {},
+    env: envSan.env,
     cwd: raw.cwd || '',
     headers: raw.headers && typeof raw.headers === 'object' ? raw.headers : {},
     toolRules: raw.toolRules || null,
@@ -115,7 +147,12 @@ class StdioTransport {
   }
   async connect() {
     const cfg = this.cfg;
-    const env = Object.assign({}, process.env, cfg.env || {});
+    // 二次过滤（纵深防御）：cfg 可能由外部构造绕过 normalize
+    const envSan = sanitizeMcpEnv(cfg.env);
+    if (envSan.blocked.length) {
+      console.warn('[MCP] 启动 ' + cfg.name + ' 时忽略了被禁用的 env 变量: ' + envSan.blocked.join(', '));
+    }
+    const env = Object.assign({}, process.env, envSan.env);
     const proc = spawn(cfg.command, cfg.args || [], {
       env,
       cwd: cfg.cwd || undefined,
@@ -603,4 +640,4 @@ class McpService {
   }
 }
 
-module.exports = { getMcpService, initMcp, normalizeMCPServerConfig, ssrfCheck, extractText };
+module.exports = { getMcpService, initMcp, normalizeMCPServerConfig, ssrfCheck, extractText, MCP_ENV_BLOCKLIST, sanitizeMcpEnv };
