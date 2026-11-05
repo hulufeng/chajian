@@ -444,9 +444,10 @@ A/B/C/D 的全部改动标记都在，且**与源码逐字节一致**（`SOURCE_
 - 验证（运行态 CDP）：`typeof getInternalService('projectStats') === 'object'`；`summary({})` 调用成功返回 `Error: 未打开工程，且未传 path`（服务入口工作，打开工程即出真实报告）。
 
 ### 诚实留档
-- A/B/C/D 四项均为渲染层/插件加载层 + 主进程 handler 改动，经 asar 热修生效；未提交（codelab-desktop 提交需用户确认，origin=git@github.com:hulufeng/chajian.git）。
-- 分发需重新构建发布（建议升 `1.2.31`），仅本机运行实例生效。
+- A/B/C/D 四项均为渲染层/插件加载层 + 主进程 handler 改动；已随 **v1.2.31** 提交（`b8377f0`）并推送到 `chajian.git`，构建产物 `LabCode-Setup-1.2.31.exe` 已发布到 `bluebubai.work/updates`（latest.yml 校验通过，自动更新用户将收到 1.2.31）。
 - 第十三节「诚实留档」里写的 `deps:status 聚合状态页…仍未做` 已被本条补做。
+- 唯一未闭环：**easyeda 真实 EDA 客户端联调**——桥传输层已解出并验证结构化错误，但立创EDA 客户端反嵌入，需用户在装有该客户端的机器上连接本地桥端口做图形联调（非本机可自动化）。
+- 已知历史现状（非本次回归）：`serialport` 原生模块在 node_modules 与打包产物中均缺失编译产物，与 1.2.30 一致；不影响应用启动，仅串口相关 native 功能受限。
 
 ---
 
