@@ -526,13 +526,36 @@ function setupIPC() {
   ipcMain.handle('mcp:remove-server', (_, name) => mcpService.removeServer(name));
   ipcMain.handle('mcp:list-tools', (_, name) => mcpService.listTools(name));
   ipcMain.handle('mcp:call-tool', (_, serverName, toolName, args) => mcpService.callTool(serverName, toolName, args));
-  ipcMain.handle('mcp:start-all', () => mcpService.startAll());
+  ipcMain.handle('mcp:start-all', () => mcpService.connectAll());
   ipcMain.handle('mcp:stop-all', () => { mcpService.stopAll(); return true; });
   ipcMain.handle('mcp:start-server', (_, name) => {
     const cfgs = (config.extra && config.extra.mcpServers) || [];
-    const cfg = cfgs.find(s => s.name === name);
-    if (!cfg) return { ok: false, error: '未找到服务器配置: ' + name };
-    return mcpService.startServer(cfg);
+    let cfg = cfgs.find(s => s.name === name);
+    let cfgDir = null;   // 插件 server 所在目录，用于注入 cwd
+    // 插件声明的 mcpServers 不写入 config.extra（宿主启动时临时拉起），
+    // 因此这里也要从已启用插件目录里找，否则「启动单个服务器」永远找不到插件 server。
+    if (!cfg) {
+      try {
+        const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+        const disabled = (config.pluginStates && Array.isArray(config.pluginStates.disabled)) ? config.pluginStates.disabled : [];
+        if (fs.existsSync(pluginsDir)) {
+          for (const dir of fs.readdirSync(pluginsDir)) {
+            const pj = path.join(pluginsDir, dir, 'plugin.json');
+            if (!fs.existsSync(pj)) continue;
+            let m; try { m = JSON.parse(fs.readFileSync(pj, 'utf8')); } catch (e) { continue; }
+            if (!m || !Array.isArray(m.mcpServers)) continue;
+            if (m.id && disabled.includes(m.id)) continue;
+            cfg = m.mcpServers.find(s => s && s.name === name);
+            if (cfg) { cfgDir = path.join(pluginsDir, dir); break; }
+          }
+        }
+      } catch (e) { /* 插件目录不可读时退回原有错误 */ }
+      if (!cfg) return { ok: false, error: '未找到服务器配置: ' + name };
+    }
+    // 插件自带脚本（如 easyeda/server.cjs）用相对路径，必须把插件目录作为 cwd，
+    // 否则 node 会在宿主的进程工作目录里找文件而报 Cannot find module。
+    const eff = cfgDir ? Object.assign({}, cfg, { cwd: cfg.cwd || cfgDir }) : cfg;
+    return mcpService.startServer(eff);
   });
   ipcMain.handle('mcp:stop-server', (_, name) => { mcpService.stopServer(name); return true; });
   ipcMain.handle('mcp:testConnection', async (_, name) => {
@@ -735,10 +758,24 @@ function setupIPC() {
   });
   ipcMain.handle('dap:toolPath', (_, name) => {
     const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const ext = process.platform === 'win32' ? '.exe' : '';
     return new Promise((resolve) => {
       execFile(cmd, [name], { timeout: 5000 }, (err, stdout) => {
-        if (err) resolve({ found: false, path: '' });
-        else resolve({ found: true, path: (stdout || '').toString().split(/\r?\n/)[0].trim() });
+        if (!err && stdout) { resolve({ found: true, path: (stdout || '').toString().split(/\r?\n/)[0].trim() }); return; }
+        // 方案 C 收尾：PATH 未命中时扫描用户工具目录（deps:install 装到这里），
+        // 使「一键安装」后的 arm-none-eabi-gdb / openocd 能被检测到，无需手动加 PATH。
+        try {
+          const tools = path.join(app.getPath('userData'), 'tools');
+          if (fs.existsSync(tools)) {
+            for (const sub of fs.readdirSync(tools)) {
+              const inBin = path.join(tools, sub, 'bin', name + ext);
+              if (fs.existsSync(inBin)) { resolve({ found: true, path: inBin }); return; }
+              const inRoot = path.join(tools, sub, name + ext);
+              if (fs.existsSync(inRoot)) { resolve({ found: true, path: inRoot }); return; }
+            }
+          }
+        } catch (e) {}
+        resolve({ found: false, path: '' });
       });
     });
   });
@@ -2912,6 +2949,46 @@ function setupIPC() {
     };
   });
 
+  // 方案 C 收尾：统一依赖/工具链聚合状态（deps:install 装到 TOOLS_DIR 的工具 + arduino-cli）
+  ipcMain.handle('deps:status', async () => {
+    const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
+    const items = [];
+    const duSync = (d) => {
+      let total = 0;
+      try {
+        for (const e of fs.readdirSync(d)) {
+          const fp = path.join(d, e);
+          try { const st = fs.statSync(fp); if (st.isDirectory()) total += duSync(fp); else total += st.size; } catch (_) {}
+        }
+      } catch (_) {}
+      return total;
+    };
+    try {
+      if (fs.existsSync(TOOLS_DIR)) {
+        for (const sub of fs.readdirSync(TOOLS_DIR)) {
+          const dir = path.join(TOOLS_DIR, sub);
+          let isDir = false;
+          try { isDir = fs.statSync(dir).isDirectory(); } catch (_) {}
+          if (!isDir) continue;
+          const binDir = path.join(dir, 'bin');
+          let hasBin = false, mainExe = '';
+          try {
+            if (fs.existsSync(binDir) && fs.statSync(binDir).isDirectory()) {
+              hasBin = true;
+              const exe = fs.readdirSync(binDir).find(f => /\.exe$/i.test(f));
+              if (exe) mainExe = exe;
+            }
+          } catch (_) {}
+          let sizeBytes = 0;
+          try { sizeBytes = duSync(dir); } catch (_) {}
+          items.push({ name: sub, hasBin, mainExe, sizeBytes });
+        }
+      }
+    } catch (e) {}
+    const p = resolveArduinoCli();
+    return { toolsDir: TOOLS_DIR, exists: fs.existsSync(TOOLS_DIR), items, arduino: { cliExists: fs.existsSync(p), path: p } };
+  });
+
   // ============ Coding-Agent CLI 安装/检测（对齐 Ekko Agent Manager：npm 安装真实 CLI）============
   const CLI_AGENTS = [
     { id: 'claude-code', name: 'Claude Code', command: 'claude', packageName: '@anthropic-ai/claude-code', docs: '', manual: false },
@@ -3213,6 +3290,94 @@ function setupIPC() {
       send({ message: '安装失败：' + e.message });
       return { ok: false, error: e.message };
     }
+  });
+
+  // ===== 方案 C：通用外部依赖一键安装（复用 downloadFile/extractZip 底座）=====
+  // 与 toolchain:installCli 完全独立：不改动旧进度事件，新开 deps:progress channel，
+  // payload 统一 {stage, percent, message, name}，避免影响 ESP32 安装条与全局 modal。
+  const depsAbort = new Map();
+  function sendDepsProgress(name, stage, percent, message) {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('deps:progress', { name, stage, percent, message });
+      }
+    } catch (e) {}
+  }
+  async function installDependency(opts) {
+    const o = opts || {};
+    const name = String(o.name || '');
+    const send = (stage, percent, message) => sendDepsProgress(name, stage, percent, message);
+    if (!name || !o.url || !o.exeRelPath) {
+      return { ok: false, name, stage: 'args', error: '缺少 name/url/exeRelPath' };
+    }
+    const destDir = o.destDir || path.join(TOOLS_DIR, name);
+    const exePath = path.join(destDir, o.exeRelPath);
+    const mirrors = Array.isArray(o.mirrors) && o.mirrors.length ? o.mirrors : [o.url];
+    const controller = new AbortController();
+    depsAbort.set(name, controller);
+    try {
+      send('checking', 0, '检查是否已安装');
+      if (fs.existsSync(exePath)) {
+        send('done', 100, '已安装，跳过下载');
+        return { ok: true, name, path: exePath, cached: true, skipped: true };
+      }
+      fs.mkdirSync(destDir, { recursive: true });
+      const tmp = path.join(destDir, 'dl-' + Date.now() + (o.archive === 'tar.gz' ? '.tgz' : '.zip'));
+      let lastErr = null;
+      for (let i = 0; i < mirrors.length; i++) {
+        if (controller.signal.aborted) return { ok: false, name, cancelled: true, stage: 'cancelled', error: '用户取消' };
+        try {
+          send('downloading', 5, '下载中（源 ' + (i + 1) + '/' + mirrors.length + '）');
+          await downloadFile(mirrors[i], tmp);
+          const size = fs.statSync(tmp).size;
+          if (size < (o.minBytes || 1000000)) throw new Error('下载内容过小(' + size + 'B)，疑似错误页');
+          if (o.sha256) {
+            send('verifying', 80, '校验 sha256');
+            const digest = require('crypto').createHash('sha256').update(fs.readFileSync(tmp)).digest('hex');
+            if (digest.toLowerCase() !== String(o.sha256).toLowerCase()) throw new Error('sha256 校验失败');
+          }
+          send('extracting', 90, '解压中');
+          if (o.archive === 'tar.gz') {
+            await new Promise((resolve, reject) => {
+              const cp = require('child_process');
+              cp.execFile('tar', ['-xzf', tmp, '-C', destDir], { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+            });
+          } else {
+            await extractZip(tmp, destDir);
+            // 顶层单目录时铺平（clangd 型 zip），避免 exeRelPath 落空
+            if (o.flatten) {
+              const entries = fs.readdirSync(destDir).filter(n => n !== path.basename(tmp));
+              if (entries.length === 1 && fs.statSync(path.join(destDir, entries[0])).isDirectory()) {
+                const inner = path.join(destDir, entries[0]);
+                for (const f of fs.readdirSync(inner)) {
+                  try { fs.renameSync(path.join(inner, f), path.join(destDir, f)); } catch (e) {}
+                }
+                try { fs.rmdirSync(inner); } catch (e) {}
+              }
+            }
+          }
+          try { fs.unlinkSync(tmp); } catch (e) {}
+          if (!fs.existsSync(exePath)) throw new Error('解压后未找到 ' + o.exeRelPath + '（可尝试 flatten:true）');
+          send('done', 100, '安装完成');
+          return { ok: true, name, path: exePath, cached: false, skipped: false };
+        } catch (e) {
+          if (controller.signal.aborted) return { ok: false, name, cancelled: true, stage: 'cancelled', error: '用户取消' };
+          lastErr = e.message;
+          try { fs.unlinkSync(tmp); } catch (e2) {}
+        }
+      }
+      send('error', 0, '安装失败：' + lastErr);
+      return { ok: false, name, stage: 'download', error: lastErr || '未知错误', triedUrls: mirrors.length };
+    } finally {
+      depsAbort.delete(name);
+    }
+  }
+  ipcMain.handle('deps:install', async (_e, opts) => installDependency(opts));
+  ipcMain.handle('deps:cancel', async (_e, payload) => {
+    const name = String((payload && payload.name) || '');
+    const c = depsAbort.get(name);
+    if (c) { c.abort(); sendDepsProgress(name, 'cancelled', 0, '已取消'); return { ok: true, name, cancelled: true }; }
+    return { ok: false, name, error: '没有进行中的安装' };
   });
 
   // Windows: arduino-cli / CMake / python subprocesses fail silently on
@@ -4969,10 +5134,38 @@ app.whenReady().then(() => {
 
   // 启动已配置的 MCP 服务器（stdio）
   try {
-    require('./mcp').getMcpService().startAll();
+    require('./mcp').getMcpService().connectAll();
     console.log('[MCP] server check complete');
   } catch (e) {
     console.error('MCP 启动失败:', e.message);
+  }
+
+  // 启动插件声明的 MCP 服务器（对齐 TrieCode browser-toolchain：插件在 plugin.json 里自带
+  // mcpServers，宿主在主进程侧自动拉起，无需用户手填 config.extra.mcpServers；被 disabled 的插件跳过）
+  try {
+    const mcpService = require('./mcp').getMcpService();
+    const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+    if (fs.existsSync(pluginsDir)) {
+      const disabled = (config.pluginStates && Array.isArray(config.pluginStates.disabled)) ? config.pluginStates.disabled : [];
+      for (const dir of fs.readdirSync(pluginsDir)) {
+        const pj = path.join(pluginsDir, dir, 'plugin.json');
+        if (!fs.existsSync(pj)) continue;
+        let manifest; try { manifest = JSON.parse(fs.readFileSync(pj, 'utf8')); } catch (e) { continue; }
+        if (!manifest || !Array.isArray(manifest.mcpServers)) continue;
+        if (manifest.id && disabled.includes(manifest.id)) continue;
+        for (const s of manifest.mcpServers) {
+          // 插件自带脚本用相对路径 → 注入插件目录为 cwd（mcp.js StdioTransport 已支持 cfg.cwd）
+          const eff = Object.assign({}, s, { cwd: s.cwd || path.join(pluginsDir, dir) });
+          // startServer 是 async：必须 .then/.catch 才能拿到真实结果并捕获异步失败，
+          // 同时保持多个 server 并行启动（await 会串行等待，最坏拖到超时）。
+          mcpService.startServer(eff)
+            .then(r => console.log('[MCP] plugin server started:', s.name, JSON.stringify(r)))
+            .catch(e => console.error('[MCP] plugin server start failed:', s.name, e.message));
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[MCP] plugin mcpServers scan failed:', e.message);
   }
 
   app.on('activate', () => {

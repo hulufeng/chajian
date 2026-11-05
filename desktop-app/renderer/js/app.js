@@ -223,6 +223,13 @@ function syncWelcomePanel() {
     const hasProject = !!(state && (state.projectPath || (state.files && Object.keys(state.files).length > 0)));
     if (welcomePanel) welcomePanel.style.display = hasProject ? 'none' : 'flex';
     if (fileTree) fileTree.style.display = hasProject ? 'block' : 'none';
+    // 侧栏头部随欢迎态切换（1:1 对齐 ChipCode：无项目显示「源代码管理」+刷新，有项目显示「文件」+打开文件夹）
+    const sidebarTitle = document.getElementById('sidebar-title');
+    const scmRefresh = document.getElementById('scm-refresh-btn');
+    const openFolderBtn = document.getElementById('open-folder-btn');
+    if (sidebarTitle) sidebarTitle.textContent = hasProject ? '文件' : '源代码管理';
+    if (scmRefresh) scmRefresh.style.display = hasProject ? 'none' : '';
+    if (openFolderBtn) openFolderBtn.style.display = hasProject ? '' : 'none';
     // 欢迎态布局对齐 TrieCode：无项目时隐藏中央"开始你的开发"卡，AI 欢迎区占满中央
     document.body.classList.toggle('app-welcome', !hasProject);
   } catch (e) { console.error('同步欢迎页显隐失败:', e); }
@@ -250,10 +257,8 @@ async function loadProjectFromDisk(projectPath) {
     } catch (e) { /* 无 .labcode.json 时忽略 */ }
     buildFileTree();
     renderFileTree();
-    document.getElementById('file-tree').style.display = '';
-    // 修复：项目加载后隐藏欢迎页，避免与文件树同时显示
-    const wp = document.getElementById('welcome-panel');
-    if (wp) wp.style.display = 'none';
+    // 修复：项目加载后隐藏欢迎页、显示文件树、切换侧栏标题（统一走 syncWelcomePanel）
+    syncWelcomePanel();
     // 同步欢迎态布局（修复「编辑区丢失」）：必须移除 body.app-welcome——其 CSS 为
     // #welcome-screen{display:none!important}，不移除则主区始终被 AI 面板占满、编辑器空态卡永不可见
     document.body.classList.remove('app-welcome');
@@ -714,9 +719,8 @@ async function createProject(type, name, location) {
     }
     buildFileTree();
     renderFileTree();
-    // 修复：浏览器模式创建项目后隐藏欢迎页
-    const wp2 = document.getElementById('welcome-panel');
-    if (wp2) wp2.style.display = 'none';
+    // 修复：浏览器模式创建项目后隐藏欢迎页（统一走 syncWelcomePanel 切换标题/显隐）
+    syncWelcomePanel();
     // 打开第一个文件
     const firstFile = Object.keys(state.files).find(f => f.endsWith('.ino') || f.endsWith('.py') || f.endsWith('.c') || f.endsWith('.js'));
     if (firstFile) openFile(firstFile);
@@ -3180,6 +3184,41 @@ class TestResultParser {
 }
 const testResultParser = new TestResultParser();
 
+// ===== 方案 B：统一的测试/编译输出判定 =====
+// 此前三处正则各自为政（VerificationAgent / 主循环工具结果 / 自动编译），其中 /失败|错误/i
+// 会命中 run_test 成功输出里的「0 失败, 0 错误」统计行 → 编译成功被误判失败并白跑修复轮次；
+// 环境缺失（无项目目录 / 无 arduino-cli / 非 Electron）也被当成代码 bug。
+// 统一规则：优先读 [TEST_RESULT] 结构化块；其次排除统计行后判真实错误；既无成功标记也无错误 → 不可验证。
+function classifyTestOutcome(out) {
+  const s = String(out == null ? '' : out);
+  const m = s.match(/\[TEST_RESULT\]([\s\S]*?)\[\/TEST_RESULT\]/);
+  if (m) {
+    try {
+      const tr = JSON.parse(m[1]);
+      const bad = Number(tr.failed || 0) + (Array.isArray(tr.failures) ? tr.failures.length : 0);
+      if (tr.exitCode === 0 && bad === 0) return { status: 'pass', reason: '结构化结果 exitCode=0 且无失败' };
+      return { status: 'fail', reason: `结构化结果 exitCode=${tr.exitCode ?? '?'} failed=${tr.failed ?? '?'}` };
+    } catch (e) { /* 落到文本判定 */ }
+  }
+  // 环境/能力缺失 ≠ 代码失败：属于「无法验证」
+  if (/非 Electron 环境|测试执行不可用|未打开项目目录|工具 .*不可用|缺少 toolRunner|无法调用真实编译|请先安装插件|未找到.*(?:arduino-cli|python|gcc)|command not found|不是内部或外部命令/i.test(s)) {
+    return { status: 'unverifiable', reason: '缺少运行环境或工具链' };
+  }
+  // 去掉「N 通过, N 失败, N 错误 (退出码 N)」统计行，避免 0 值被当错误
+  const stat = s.replace(/(\d+)\s*通过[^\n]*?(\d+)\s*失败[^\n]*?(\d+)\s*错误\s*\(退出码\s*(\d+)\)/g, '统计:$1通过/$2失败/$3错误(退出码$4)');
+  const hasError = /error:|Error:|FATAL|fatal error|collect2:|退出码 [1-9]|exit code [1-9]|compilation terminated|SyntaxError|Traceback|undefined reference|no matching function|main file missing/i.test(stat)
+    || /(?:^|[^\d])([1-9]\d*)\s*失败/.test(stat)
+    || /(?:^|[^\d])([1-9]\d*)\s*错误/.test(stat);
+  if (hasError) return { status: 'fail', reason: '输出含真实错误标记' };
+  if (/(Sketch uses|program storage|exit code 0|退出码 0|测试完成:|编译通过|\bPASS\b)/i.test(s)) {
+    return { status: 'pass', reason: '输出含明确成功标记' };
+  }
+  // 空输出 / echo ok / 无标记 → 不冒充通过
+  return { status: 'unverifiable', reason: '输出无明确成功或失败标记' };
+}
+// 调试/验收钩子：便于运行态注入样本验证判定逻辑（不改变行为）
+window.classifyTestOutcome = classifyTestOutcome;
+
 // ============ 增强：AI 调用错误分类器 ============
 // 参考业界 error-classification.js: transient可重试/deterministic不重试/unknown
 class AIErrorClassifier {
@@ -3738,7 +3777,7 @@ async function redoLastAgentTurn() {
 // ============ 命令面板（Ctrl+Shift+P / 菜单「命令面板」）============
 // 对齐 TrieCode/VS Code：顶部命令输入 + 模糊过滤 + 上下键选择 + Enter 执行
 const COMMAND_PALETTE_COMMANDS = [
-  { label: '新建文件', group: '文件', run: () => { const btn = document.getElementById('quick-new-file'); if (btn) btn.click(); } },
+  { label: '新建文件', group: '文件', run: () => { const btn = document.getElementById('new-file-btn') || document.getElementById('quick-new-file'); if (btn) btn.click(); else showToast('未找到新建文件入口', 'warn'); } },
   { label: '打开项目…', group: '文件', run: () => { const btn = document.getElementById('welcome-open-project'); if (btn) btn.click(); else { const di = document.querySelector('.dropdown-item[data-action="open-project"]'); if (di) di.click(); } } },
   { label: '保存文件', group: '文件', run: () => { const btn = document.getElementById('editor-save-btn'); if (btn) btn.click(); } },
   { label: '全部保存', group: '文件', run: () => saveAllFiles() },
@@ -3754,13 +3793,9 @@ const COMMAND_PALETTE_COMMANDS = [
   { label: '打开资源管理器', group: '面板', run: () => switchPanel('explorer', 'activity') },
   { label: '打开 Git 面板', group: '面板', run: () => switchPanel('git', 'activity') },
   { label: '打开插件市场', group: '面板', run: () => switchPanel('plugins', 'activity') },
-  { label: '打开 AI 模型', group: '面板', run: () => switchPanel('models', 'activity') },
-  { label: '打开 MCP 服务', group: '面板', run: () => switchPanel('mcp', 'activity') },
+  { label: '打开 MCP 服务', group: '面板', run: () => { try { if (window.openMcpModal) window.openMcpModal(); else showToast('MCP 模块未就绪', 'warn'); } catch (e) { showToast('MCP 模块未就绪', 'warn'); } } },
   { label: '打开设备面板', group: '面板', run: () => switchPanel('device', 'activity') },
-  { label: '打开上下文面板', group: '面板', run: () => switchPanel('context', 'activity') },
-  { label: '打开调度面板', group: '面板', run: () => switchPanel('schedule', 'activity') },
-  { label: '打开群聊', group: '面板', run: () => switchPanel('groupchat', 'activity') },
-  { label: '打开工作流', group: '面板', run: () => switchPanel('workflow', 'activity') },
+  { label: '打开看板 · 项目统计', group: '面板', run: () => { try { if (window.LabCodeUI && window.LabCodeUI.openDashboard) window.LabCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
   { label: '检查更新', group: '帮助', run: () => { if (window.LabCode && window.LabCode.update) window.LabCode.update.check(); } },
   { label: '打开文档', group: '帮助', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://www.labcode.com/docs'); } },
   { label: '访问官网', group: '帮助', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://www.labcode.com'); } }
@@ -5297,7 +5332,7 @@ class ToolPipeline {
     // ===== pre 阶段：策略判定 =====
     let currentArgs = { ...args };
     for (const pre of this.preHooks) {
-      const result = pre(toolName, currentArgs, context);
+      const result = await pre(toolName, currentArgs, context);
       if (result && result.allow === false) {
         return { success: false, error: result.reason || 'pre阶段拒绝', stage: 'pre' };
       }
@@ -5350,7 +5385,7 @@ class ToolPipeline {
 const toolPipeline = new ToolPipeline();
 
 // 注册默认 pre 钩子：权限检查
-toolPipeline.registerPre((toolName, args, context) => {
+toolPipeline.registerPre(async (toolName, args, context) => {
   const mode = context.mode || 'default';
   const planApproved = context.planApproved || false;
   
@@ -5368,7 +5403,19 @@ toolPipeline.registerPre((toolName, args, context) => {
       return { allow: false, reason: `权限规则拒绝: ${ruleResult.rules.map(r => `${r.action}:${r.resource}`).join(', ')}` };
     }
     if (ruleResult.effect === 'ask' && mode !== 'auto') {
-      return { allow: false, reason: '权限规则要求确认' };
+      // 方案 C 收尾：把「ask」效果从静默拒绝改为真实交互确认（复用 askUserConfirm 弹窗）。
+      // 自动模式（auto）下跳过确认直接放行；非自动模式弹窗等用户决断。
+      const r = await askUserConfirm(
+        `工具「${toolName}」需要你确认才能执行（匹配权限规则：${ruleResult.rules.map(x => `${x.action}:${x.resource}`).join(', ')}）`,
+        [
+          { label: '允许本次', description: '仅本次执行该工具' },
+          { label: '始终允许', description: '本会话后续自动放行，不再询问' },
+          { label: '拒绝', description: '不允许执行' }
+        ]
+      );
+      if (r === '始终允许') { try { permissionRuleEngine.addRule(toolName, '*', 'allow', 'session', 'always'); } catch (e) {} return { allow: true }; }
+      if (r === '允许本次') return { allow: true };
+      return { allow: false, reason: '用户拒绝了权限规则要求的确认' };
     }
   }
   
@@ -5476,29 +5523,38 @@ class VerificationAgent {
               tool: 'run_test',
               args: { projectType: projectType || (window.state ? state.projectType : '') }
             });
-            results.push({ tool: 'run_test', output: out, success: !/失败|error|Error|ERROR|错误|FATAL/i.test(String(out)) });
+            // 统一判定：不再用 /失败|错误/i 误伤「0 失败, 0 错误」统计行
+            const oc = classifyTestOutcome(out);
+            results.push({
+              tool: 'run_test', output: String(out),
+              success: oc.status === 'pass',
+              // executed=真实跑了命令；missing=环境/工具链缺失，不能算真实验证
+              evidenceKind: oc.status === 'unverifiable' ? 'missing' : 'executed',
+              outcome: oc.status, reason: oc.reason
+            });
           } catch (e) {
-            results.push({ tool: 'run_test', output: 'run_test 调用失败: ' + e.message, success: false });
+            results.push({ tool: 'run_test', output: 'run_test 调用失败: ' + e.message, success: false, evidenceKind: 'missing', outcome: 'unverifiable', reason: e.message });
           }
         } else {
-          // 无 runner 兜底：仍走真实 executeRunTest 工具（若有），否则标记不可验证
-          results.push({ tool: 'run_test', output: '验证代理无法调用真实编译（缺少 toolRunner），请手动运行编译验证。', success: false });
+          // 无 runner 兜底：明确标记「不可验证」，不再推 success:false 被误判为代码 FAIL
+          results.push({ tool: 'run_test', output: '验证代理无法调用真实编译（缺少 toolRunner），请手动运行编译验证。', success: false, evidenceKind: 'missing', outcome: 'unverifiable', reason: '缺少 toolRunner' });
         }
         break;
       }
       case 'check_file': {
-        // 真实检查文件是否存在且非空
+        // 真实检查文件是否存在且非空（静态旁证，最高只能给 PARTIAL/UNVERIFIABLE）
         const fp = context && context.files && context.files.length ? context.files[0] : '';
         if (fp && window.state && window.state.files && window.state.files[fp]) {
           const len = String(window.state.files[fp].content || '').length;
-          results.push({ tool: 'list_dir', output: `文件 ${fp} 存在，内容 ${len} 字符`, success: len > 20 });
+          results.push({ tool: 'list_dir', output: `文件 ${fp} 存在，内容 ${len} 字符`, success: len > 20, evidenceKind: 'static', outcome: 'static' });
         } else {
-          results.push({ tool: 'list_dir', output: `文件 ${fp || '(未指定)'} 不存在或为空`, success: false });
+          results.push({ tool: 'list_dir', output: `文件 ${fp || '(未指定)'} 不存在或为空`, success: false, evidenceKind: 'static', outcome: 'missing-file' });
         }
         break;
       }
       default:
-        results.push({ tool: 'read_file', output: '代码审查完成（静态检查）', success: true });
+        // 静态代码审查：只能作为低置信度旁证，绝不能单独判 PASS
+        results.push({ tool: 'read_file', output: '代码审查完成（静态检查）', success: true, evidenceKind: 'static', outcome: 'static' });
     }
     
     return results;
@@ -5506,35 +5562,49 @@ class VerificationAgent {
   
   // 生成 VERDICT（PASS/FAIL/PARTIAL/UNVERIFIABLE + 证据）
   generateVerdict(claim, evidence, verificationResult) {
-    const allSuccess = verificationResult.every(r => r.success);
-    const hasEvidence = verificationResult.length > 0;
-    
-    let level, reasoning;
-    
-    if (!hasEvidence) {
+    const result = Array.isArray(verificationResult) ? verificationResult : [];
+    const executed = result.filter(r => r.evidenceKind === 'executed');
+    const allSuccess = result.every(r => r.success);
+    // 只有「至少一条真实执行且成功」的证据才允许 PASS；静态审查/环境缺失一律不可验证。
+    const hasExecutedEvidence = executed.length > 0;
+
+    let level, reasoning, confidence;
+
+    if (!hasExecutedEvidence) {
+      // 旧实现每个分支都会 push 至少 1 条结果 → hasEvidence 恒 true → 本分支永远不可达。
+      // 现在改为按 evidenceKind 判定：无真实执行证据即 UNVERIFIABLE。
       level = 'UNVERIFIABLE';
-      reasoning = '无法获取验证证据，声明未经验证。';
+      confidence = 'none';
+      const why = result.map(r => r.reason || r.outcome || r.evidenceKind || '未知').filter(Boolean).join('；');
+      reasoning = `未取得任何真实执行证据（${why || '无证据'}），声明未经验证；静态检查不能作为通过依据，请在结论中显式列出「未验证项」及客观原因。`;
     } else if (allSuccess) {
       level = 'PASS';
-      reasoning = `所有验证步骤通过。证据：${verificationResult.map(r => `${r.tool}: ${r.output.substring(0, 50)}`).join('; ')}`;
-    } else if (verificationResult.some(r => r.success)) {
+      confidence = 'high';
+      reasoning = `所有验证步骤通过（真实执行）。证据：${result.map(r => `${r.tool}: ${String(r.output || '').substring(0, 50)}`).join('; ')}`;
+    } else if (result.some(r => r.success)) {
       level = 'PARTIAL';
-      reasoning = `部分验证通过，部分失败。通过：${verificationResult.filter(r => r.success).length}/${verificationResult.length}`;
+      confidence = 'medium';
+      reasoning = `部分验证通过，部分失败。通过：${result.filter(r => r.success).length}/${result.length}`;
     } else {
       level = 'FAIL';
-      reasoning = `验证失败。失败步骤：${verificationResult.filter(r => !r.success).map(r => r.tool).join(', ')}`;
+      confidence = 'high';
+      reasoning = `验证失败。失败步骤：${result.filter(r => !r.success).map(r => r.tool).join(', ')}`;
     }
-    
+
     return {
       level,
       claim,
       reasoning,
+      confidence,
+      evidenceKinds: result.map(r => r.evidenceKind || 'static'),
       evidence,
       timestamp: new Date().toISOString(),
       verifier: 'VerificationAgent'  // 明确标记：只有verifier发verdict
     };
   }
 }
+// 调试/验收钩子：便于运行态构造证据验证 VERDICT 判定（不改变行为）
+window.VerificationAgent = VerificationAgent;
 
 // ============ 增强：只读子智能体 ============
 // 参考业界 subagent.js: 只读子智能体，运行时硬门，结构化输出契约
@@ -6181,6 +6251,16 @@ class AgentRunner {
         _timeoutGuard.disarm();
         // 给出自带 Key 的一键入口（BYOK），用户不用自己去设置里翻
         try { appendByokCard('用自己的 API Key 继续'); } catch (e) {}
+        // 方案 C：本地引擎/模型缺失时，追加「一键安装」卡（按降级文案分诊），
+        // 把纯文本提示升级为可点、真实执行插件安装。
+        try {
+          const txt = String(result.content || '');
+          if (/本地 AI 引擎还没安装|找不到内置引擎|llama-runtime/i.test(txt)) {
+            appendPluginInstallCard('llama-runtime', '一键安装本地 AI 引擎', '安装 llama-runtime 后即可离线使用本地模型，无需 API Key。');
+          } else if (/还没下载模型|找不到模型|Qwen|qwen|模型文件/i.test(txt)) {
+            appendPluginInstallCard('qwen25-coder-7b', '一键下载本地模型', '模型文件较大（GB 级），下载断点续传，请保持网络与磁盘空间充足。');
+          }
+        } catch (e) {}
         return;
       }
 
@@ -6515,16 +6595,17 @@ class AgentRunner {
               addOutputLog('自动验证输出: ' + outStr.slice(0, 260), 'info');
               this.messages.push({ role: 'assistant', content: result.content || '' });
               this.messages.push({ role: 'tool', tool_call_id: 'auto_verify_' + turn, name: 'run_test', content: outStr });
-              // ===== 修复：失败判定排除"0 通过, 0 失败, 0 错误 (退出码 0)"统计行 =====
-              // 此前 /失败/、/错误/ 会命中成功输出里的"0 失败 / 0 错误"→ 编译成功被误判失败，白白消耗修复轮次。
-              const statLine = String(outStr).replace(/(\d+)\s*通过[^\n]*?(\d+)\s*失败[^\n]*?(\d+)\s*错误\s*\(退出码\s*(\d+)\)/g, '统计:$1通过/$2失败/$3错误(退出码$4)');
-              const failed = /error:|Error:|FATAL|退出码 [1-9]|exit code [1-9]|compilation terminated|SyntaxError|Traceback|undefined reference|no matching function/i.test(String(outStr))
-                || /(?:^|[^\d])([1-9]\d*)\s*失败/.test(statLine)
-                || /(?:^|[^\d])([1-9]\d*)\s*错误/.test(statLine);
-              if (failed) {
+              // ===== 方案 B：统一走 classifyTestOutcome（排除统计行误判 + 区分环境缺失）=====
+              const outcome = classifyTestOutcome(outStr);
+              if (outcome.status === 'fail') {
                 this.lastTestFailed = true;
                 this.testFixRounds = Math.min(this.testFixRounds + 1, this.MAX_TEST_FIX_ROUNDS + 1);
                 this._stream(`\n[系统] 自动编译未通过（第 ${this.testFixRounds}/${this.MAX_TEST_FIX_ROUNDS} 轮），继续自动修复...\n`, false);
+              } else if (outcome.status === 'unverifiable') {
+                // 环境/工具链缺失 ≠ 代码 bug，也 ≠ 通过：不进修复循环、不解除写码闸、不置 lastVerifyTurn
+                this._stream(`\n[系统] 自动验证未能执行（${outcome.reason}），不计为通过，请在结论中如实标注未验证项。\n`, false);
+                this.messages.push({ role: 'user', content: `（系统：自动验证未能执行（${outcome.reason}）。不得声称编译/测试通过；请在最终回复中显式列出「未验证项」及客观原因。）` });
+                this.verifyNudges = this.MAX_VERIFY_NUDGES;
               } else {
                 this.lastTestFailed = false;
                 this.lastVerifyTurn = turn;
@@ -6558,12 +6639,41 @@ class AgentRunner {
             const verdict = await this._runVerificationAgent(turn, result, state);
             if (verdict) {
               this._stream(`\n📋 验证代理结论: ${verdict.level}\n`, false);
+              // 方案 B 收尾：置信度可视化徽章（none/low/medium/high → 灰/红/黄/绿）
+              try {
+                const badge = document.createElement('div');
+                const conf = (verdict.confidence || 'none');
+                const color = conf === 'high' ? '#52C41A' : conf === 'medium' ? '#FAAD14' : conf === 'low' ? '#EA6668' : '#8C8C8C';
+                const label = { high: '高', medium: '中', low: '低', none: '无' }[conf] || '无';
+                badge.style.cssText = 'display:inline-block;margin:6px 0;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;color:#fff;background:' + color + ';';
+                badge.textContent = '验证结论: ' + verdict.level + ' · 置信度: ' + label;
+                const area = document.getElementById('ai-chat-area');
+                if (area) { area.appendChild(badge); area.scrollTop = area.scrollHeight; }
+              } catch (e) {}
               if (verdict.level === 'PASS') {
                 this.lastVerifyTurn = turn;
                 this.placeholderVerify = false;
                 this.messages.push({ role: 'assistant', content: result.content || '' });
                 this._stream('', true);
                 this._emitDiffSummary();
+                return;
+              }
+              // ===== 方案 B：UNVERIFIABLE 显式分支 =====
+              // 旧实现无此分支 → 落到普通 nudge（既不算 PASS 也不算 FAIL，等于静默吞掉）。
+              // 现在：不设 lastVerifyTurn（不算通过）、不设 lastTestFailed（不白跑修复循环），
+              // 但要求模型在结论中如实列出未验证项，随后照常收尾。
+              if (verdict.level === 'UNVERIFIABLE') {
+                this._stream(`\n[系统] 验证代理结论 UNVERIFIABLE（置信度 ${verdict.confidence || 'none'}）：${String(verdict.reasoning || '').slice(0, 300)}\n`, false);
+                this.messages.push({ role: 'assistant', content: result.content || '' });
+                this.messages.push({ role: 'user', content: `（系统：独立验证代理结论 UNVERIFIABLE —— 当前环境无法执行真实编译/测试（${String(verdict.reasoning || '').slice(0, 300)}）。请在最终回复中显式列出「未验证项」与客观原因，不得声称已通过验证、不得编造编译结果。若已写出代码，可说明代码已完成但尚未验证。）` });
+                this._stream('\n[系统] 无法执行真实验证，请在结论中如实标注未验证项。\n', false);
+                // 跳过后续 nudge 与修复循环，直接进入收尾
+                this.verifyNudges = this.MAX_VERIFY_NUDGES;
+                this.lastVerifyTurn = -1;
+                this._stream('', true);
+                this._emitDiffSummary();
+                this._emitWorkStatus('done');
+                _timeoutGuard.disarm();
                 return;
               }
               // ===== P0-1：验证代理失败（真实编译失败）→ 记录失败状态，交给失败修复循环 =====
@@ -6826,7 +6936,13 @@ class AgentRunner {
         }
         // 工具结果 XML 边界包装（关键工具结果包 <tool_result name success>）
         const WRAP_TOOLS = new Set(['terminal','read_file','run_test','write_file','edit_file','web_search','web_fetch','run_subagent']);
-        const isFailed = /Error|错误|失败|Traceback|Exception/i.test(String(toolResult));
+        // 方案 B：测试/编译类输出统一判定，避免 /失败|错误/i 命中「0 失败, 0 错误」统计行
+        const isTestOrCompile = tc.name === 'run_test' ||
+          (tc.name === 'terminal' && /(pytest|npm test|jest|go test|cargo test|arduino-cli|gcc|g\+\+|compile|build|make|python -m pytest)/i.test(String(tc.arguments?.command || '')));
+        const testOutcome = isTestOrCompile ? classifyTestOutcome(toolResult) : null;
+        const isFailed = testOutcome
+          ? testOutcome.status === 'fail'
+          : /Error|错误|失败|Traceback|Exception/i.test(String(toolResult));
         let injected = String(toolResult);
         
         // ===== 增强：大输出受管目录（参考业界 tool-output.js）=====
@@ -6884,8 +7000,6 @@ class AgentRunner {
         // ===== 自研本体 P0-1：测试失败→自动修复→重跑闭环（对齐 TrieCode 实测行为）=====
         // TrieCode 实测：编译失败 → AI 识别根因（宏冲突/API不兼容）→ 改代码 → 自动重编译直到成功
         // 这里在 run_test / 编译类命令失败时注入"修复并重跑"的强制指令，并限制最大修复轮次防死循环
-        const isTestOrCompile = tc.name === 'run_test' ||
-          (tc.name === 'terminal' && /(pytest|npm test|jest|go test|cargo test|arduino-cli|gcc|g\+\+|compile|build|make|python -m pytest)/i.test(String(tc.arguments?.command || '')));
         if (isFailed && isTestOrCompile) {
           this.lastTestFailed = true;
           this.testFixRounds++;
@@ -6904,8 +7018,11 @@ class AgentRunner {
               `- 已尝试的修复内容\n- 仍然存在的错误（引用真实输出）\n- 需要用户介入或手动排查的项`;
             if (this.onToolFlow) this.onToolFlow({ tool: 'auto_fix', status: 'done', args: { round: this.testFixRounds, max: this.MAX_TEST_FIX_ROUNDS, exhausted: true } });
           }
-        } else if (!isFailed && isTestOrCompile) {
-          // 测试通过 → 清除失败标记，Flow 面板显示通过
+        } else if (isTestOrCompile && testOutcome && testOutcome.status === 'unverifiable') {
+          // 环境/工具链缺失：既不算失败也不算通过，不计入修复轮次
+          addOutputLog(`测试未能执行(${testOutcome.reason})：不计入自动修复`, 'info');
+        } else if (!isFailed && isTestOrCompile && testOutcome && testOutcome.status === 'pass') {
+          // 测试真实通过 → 清除失败标记，Flow 面板显示通过
           this.lastTestFailed = false;
           if (this.onToolFlow && this.testFixRounds > 0) this.onToolFlow({ tool: 'auto_fix', status: 'done', args: { round: this.testFixRounds, max: this.MAX_TEST_FIX_ROUNDS, passed: true } });
         }
@@ -7541,7 +7658,10 @@ function triggerAutoCompile() {
   if (state._autoCompileTimer) return;
   // ===== 立即标记验证已运行：阻止验证闸门注入"文件修改但未运行验证"提示带偏模型 =====
   // （自动编译会在 800ms 后真实运行，这里先占住 lastVerifyTurn，避免 agent 循环在编译完成前注入提示）
+  // 方案 B：记录预占前的值，编译异常/未判通过时回滚，避免"编译根本没跑成却算已验证"的空验证窗口。
+  let prevVerifyTurn = null;
   if (state.agent && typeof state.agent.lastFileModTurn === 'number') {
+    prevVerifyTurn = state.agent.lastVerifyTurn;
     state.agent.lastVerifyTurn = state.agent.lastFileModTurn;
   }
   state._autoCompileTimer = setTimeout(async () => {
@@ -7555,35 +7675,39 @@ function triggerAutoCompile() {
       if (compileTool && compileTool.execute) {
         const out = await compileTool.execute({});
         const outStr = String(out);
-        let ok = false;
-        const trMatch = outStr.match(/\[TEST_RESULT\]([\s\S]*?)\[\/TEST_RESULT\]/);
-        if (trMatch) {
-          try {
-            const tr = JSON.parse(trMatch[1]);
-            ok = tr.exitCode === 0 && (tr.failed === 0 || tr.errors === 0);
-          } catch (e) { ok = false; }
-        } else {
-          const hasRealError = /error:\s*\d+|fatal error|main file missing|collect2:|undefined reference/i.test(outStr)
-            && !/0\s*(失败|错误)/.test(outStr);
-          ok = !hasRealError && /(Sketch uses|program storage|exit code 0|退出码 0)/i.test(outStr);
-        }
-        state.lastCompileResult = { ok, exitCode: ok ? 0 : 1, output: outStr.slice(0, 3000), at: Date.now(), projectType: state.projectType };
+        // 方案 B：统一判定（原逻辑 `tr.failed === 0 || tr.errors === 0` 用 || 会在 failed>0 但 errors=0 时误判通过）
+        const compileOutcome = classifyTestOutcome(outStr);
+        const ok = compileOutcome.status === 'pass';
+        if (!ok) addOutputLog(`[自动编译] 未判为通过: ${compileOutcome.status} (${compileOutcome.reason})`, 'info');
+        state.lastCompileResult = { ok, outcome: compileOutcome.status, exitCode: ok ? 0 : 1, output: outStr.slice(0, 3000), at: Date.now(), projectType: state.projectType };
         if (state.agent) {
-          state.agent.lastVerifyTurn = (typeof state.agent._streamTurn === 'number') ? state.agent._streamTurn : 0;
-          if (ok) { state.agent.lastTestFailed = false; state.agent.testFixRounds = 0; }
-          else { state.agent.lastTestFailed = true; }
+          if (ok) {
+            state.agent.lastVerifyTurn = (typeof state.agent._streamTurn === 'number') ? state.agent._streamTurn : 0;
+            state.agent.lastTestFailed = false;
+            state.agent.testFixRounds = 0;
+          } else if (compileOutcome.status === 'unverifiable') {
+            // 编译没真正跑起来：回滚预占，既不冒充通过也不触发自动修复循环
+            if (prevVerifyTurn !== null) state.agent.lastVerifyTurn = prevVerifyTurn;
+            state.agent.lastTestFailed = false;
+            state.agent.verifyNudges = state.agent.MAX_VERIFY_NUDGES || 0;
+          } else {
+            state.agent.lastVerifyTurn = (typeof state.agent._streamTurn === 'number') ? state.agent._streamTurn : 0;
+            state.agent.lastTestFailed = true;
+          }
           if (typeof state.agent.onToolFlow === 'function') {
-            state.agent.onToolFlow({ tool: 'run_test', status: ok ? 'done' : 'error', args: { projectType: state.projectType }, result: outStr.slice(0, 500) });
+            state.agent.onToolFlow({ tool: 'run_test', status: ok ? 'done' : (compileOutcome.status === 'unverifiable' ? 'skipped' : 'error'), args: { projectType: state.projectType }, result: outStr.slice(0, 500) });
           }
         }
-        addOutputLog(`[自动编译] ${ok ? '✓ 编译通过' : '✗ 编译失败'}: ${outStr.slice(0, 200)}`, ok ? 'info' : 'warn');
+        addOutputLog(`[自动编译] ${ok ? '✓ 编译通过' : (compileOutcome.status === 'unverifiable' ? '— 无法验证(' + compileOutcome.reason + ')' : '✗ 编译失败')}: ${outStr.slice(0, 200)}`, ok ? 'info' : 'warn');
         // ===== 编译完成后：若 agent 已结束，重新触发一轮让模型总结结果（成功）或修复代码（失败）=====
         // 延迟 1.5s 等 agent 当前轮次自然收尾，避免并发冲突
         setTimeout(() => {
           if (!state.agent || state._agentRunning) return;
           const summary = ok
             ? `（系统自动编译已完成，结果：✓ 编译通过。\n\n${outStr.slice(0, 600)}\n\n请用 2-3 句话向用户总结：项目已创建、代码已生成、编译通过，并简要说明代码功能和使用方法。）`
-            : `（系统自动编译失败，错误输出如下，请修复代码后重新输出完整代码块。\n\n编译错误:\n${outStr.slice(0, 1500)}\n\n请直接输出修复后的完整代码块，无需调用工具。）`;
+            : compileOutcome.status === 'unverifiable'
+              ? `（系统自动编译未能执行：${compileOutcome.reason}。当前环境无法验证代码，请在最终回复中显式列出「未验证项」及客观原因，不得声称编译通过、也不要臆造编译错误去修改代码。）`
+              : `（系统自动编译失败，错误输出如下，请修复代码后重新输出完整代码块。\n\n编译错误:\n${outStr.slice(0, 1500)}\n\n请直接输出修复后的完整代码块，无需调用工具。）`;
           try {
             state.agent.run(summary);
           } catch (e) {
@@ -7593,6 +7717,8 @@ function triggerAutoCompile() {
       }
     } catch (e) {
       addOutputLog(`[自动编译] 异常: ${e.message}`, 'warn');
+      // 方案 B：编译抛异常时回滚预占，让验证闸门仍能触发（原来异常后 lastVerifyTurn 保持预占 → 空验证窗口）
+      if (state.agent && prevVerifyTurn !== null) state.agent.lastVerifyTurn = prevVerifyTurn;
     }
   }, 800);
 }
@@ -10565,7 +10691,9 @@ function bindEvents() {
     { id: 'qwen25-coder-14b', name: 'Qwen2.5-Coder 14B（高性能）', description: '通义千问代码模型 14B，更强的代码理解和生成能力，需 12GB+ 显存或 32GB 内存', version: '1.0.0', author: 'LabCode', icon: '🚀', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/master/qwen2.5-coder-14b-instruct-q4_k_m.gguf', minRamGB: 16, minDiskGB: 9, recommendedFor: 'high' },
     { id: 'qwen35-9b', name: 'Qwen3.5-9B（强推理）', description: '通义千问 3.5 系列 9B，代码理解与多步推理更强，支持思考模式，需 10GB+ 显存或 24GB 内存', version: '1.0.0', author: 'LabCode', icon: '🧠', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code', 'reasoning'], requires: 'llama-runtime', modelName: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', ggufFile: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', downloadUrl: 'https://modelscope.cn/models/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf', minRamGB: 10, minDiskGB: 7, recommendedFor: 'strong' },
     { id: 'serial-monitor', name: '串口监视器', description: '列出本机串口、打开/读取/发送数据、崩溃日志分析；装好后 AI 可直接查串口日志', version: '1.0.0', author: 'LabCode', icon: '📟', category: 'tool', channels: ['internal'], capabilities: ['serial', 'debug', 'tool'] },
-    // 工程统计暂不上架：加载该插件会导致渲染进程崩溃，定位前不上线
+    // 方案 D：project-stats 曾有「加载导致渲染进程崩溃」的记录，历史上曾从市场清单剔除。
+    // 现统一口径：不进 own-site 市场白名单（官网无对应 zip，加进去会 404），
+    // 但内置 manifest 与 projectStats 服务保留，供看板 / 本地内部调用；加载统一经沙箱隔离（见 plugin-loader.js）。
     { id: 'demo-echo', name: '插件开发示例', description: '插件系统自带示例（回显参数），验证 manifest → 工具注册 → AI 调用整条链路', version: '1.0.0', author: 'LabCode', icon: '🧩', category: 'tool', channels: ['internal'], capabilities: ['demo', 'tool'] },
     { id: 'ai-hardware-lab', name: 'AI 硬件拆解工坊', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览/模块选型/接线示意/示例代码/组装步骤/避坑提示；安装后活动栏出现「AI 硬件拆解工坊」入口，可随时卸载', version: '1.0.0', author: 'LabCode', icon: '🤖', category: 'tool', channels: ['internal'], capabilities: ['hwlab', 'ai'] }
   ];
@@ -10576,13 +10704,13 @@ function bindEvents() {
   // 自有官网（codelab-site）默认域名；可在 config.json 的 pluginMarketURL 覆盖
   const OWN_MARKET_ORIGIN = 'https://bluebubai.work';
   const MARKET_CATALOG = {
-    'plugin-dev-toolchain': { name: '插件开发工具链', version: '0.1.1', icon: '🧩', category: 'tool', description: '让 AI 帮你创建插件：AI 完全主导插件脚手架、manifest 与工具实现' },
+    'plugin-dev-toolchain': { name: '插件开发工具链', version: '0.1.2', icon: '🧩', category: 'tool', description: '查询已装插件、查看 manifest 规范、校验 plugin.json（内置服务，开箱即用）' },
     'arduino-cli-toolchain': { name: 'Arduino CLI 工具链', version: '0.3.11', icon: '♾️', category: 'tool', description: 'Arduino CLI 工具链插件：声明式工具后端（arduino-cli 编译 / 上传 / 板卡管理）' },
-    'browser-toolchain': { name: '浏览器自动化', version: '0.1.5', icon: '🌐', category: 'tool', description: '给 AI 一个可控的真实浏览器：打开网页、点击、读取页面内容与截图' },
+    'browser-toolchain': { name: '浏览器自动化', version: '0.1.6', icon: '🌐', category: 'tool', description: '给 AI 一个可控的真实浏览器：打开网页、点击、读取页面内容、截图（自带 playwright MCP）' },
     'espressif-idf-toolchain': { name: 'ESP-IDF 工具链', version: '0.1.11', icon: '📡', category: 'tool', description: 'ESP-IDF 嵌入式工具链：图形化 Kconfig 配置、编译、烧录与串口监控' },
     'stm32-cube-toolchain': { name: 'STM32Cube 工具链', version: '0.1.2', icon: '🔧', category: 'tool', description: 'STM32Cube 原生工具链：编译 / 烧录 STM32 HAL 工程' },
     'wokwi-simulator': { name: 'Wokwi 模拟器', version: '0.1.4', icon: '⚡', category: 'tool', description: 'Wokwi 嵌入式电路模拟器：用 wokwi-cli 仿真 ESP32 / Arduino 电路与固件' },
-    'easyeda-toolchain': { name: '立创EDA', version: '0.2.3', icon: '☁️', category: 'tool', description: '把立创EDA(EasyEDA)接入 AI：工程 / 原理图 / PCB 协同与扩展导入' },
+    'easyeda-toolchain': { name: '立创EDA', version: '0.3.0', icon: '☁️', category: 'tool', description: '自带零依赖 MCP 桥：连接立创EDA 扩展后可通过 code 真实执行 EDA API' },
     'openscad-toolchain': { name: 'OpenSCAD 工具链', version: '0.1.2', icon: '📦', category: 'tool', description: 'OpenSCAD 程序化建模：把机械外壳 / 结构件写成可参数化代码' },
     'sdcc-51-toolchain': { name: '51 单片机工具链', version: '0.3.3', icon: '🔶', category: 'tool', description: '51 系列单片机（8051）通用开发工具链：SDCC 编译 / 烧录 / 仿真' },
     'ai-hardware-lab': { name: 'AI 硬件拆解工坊', version: '1.0.0', icon: '🤖', category: 'tool', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览 / 模块选型 / 接线示意 / 示例代码 / 组装步骤 / 避坑提示' }
@@ -10661,7 +10789,9 @@ function bindEvents() {
         { name: 'serial-debug', description: '串口调试流程', prompt: '调试串口问题：先 list_ports 确认端口 → open 打开（波特率按代码里的设置）→ tail/grep 看日志 → 异常重启时 analyze_crash。结束记得 close。', metadata: { keywords: ['串口', 'serial', '日志', '崩溃'] } }
       ]
     },
-    // 之前的崩溃是偶发的渲染进程重启，已用隔离实验确认本插件加载与执行都正常，恢复上架
+    // 方案 D：内置保留（不在市场白名单，用户看不到也装不上，但看板与内部能力可直接用）。
+    // 早期注释「已恢复上架」与「暂不上架」互相矛盾且与 MARKET_IDS 事实不符，已统一。
+    // 插件加载现经 plugin-loader.js 的 try/catch 沙箱，单个 manifest 异常不会拖垮渲染进程。
     'project-stats': {
       id: 'project-stats', name: '工程统计', version: '1.0.0', icon: '📊', category: 'tool',
       description: '统计当前工程的目录/文件数、语言分布、体积与代码行数',
@@ -10831,7 +10961,8 @@ function bindEvents() {
     // 1:1 对齐 ChipCode：市场只保留白名单 10 个功能 + AI 模型（模型 tab）；其余内置/远程/缓存条目全部不显示
     const list = Array.from(map.values())
       .filter(p => p.category === 'ai-model' || MARKET_IDS.has(p.id))
-      .map(p => MARKET_CATALOG[p.id] ? { ...p, ...MARKET_CATALOG[p.id] } : p);
+      // 服务端清单为权威：本地 MARKET_CATALOG 只兜底缺失字段，避免本地旧版本号覆盖线上新版本
+      .map(p => MARKET_CATALOG[p.id] ? { ...MARKET_CATALOG[p.id], ...p } : p);
     // 官网清单不可达时补齐白名单：仍带官网真实 zip 地址，点「安装」会去官网下载真实包（失败明确报错，不假安装）
     Object.keys(MARKET_CATALOG).forEach(id => {
       if (!list.some(p => p.id === id)) {
@@ -13964,7 +14095,8 @@ function bindEvents() {
           try {
             if (window.LabCode.toolchain && window.LabCode.toolchain.onProgress) {
               window.LabCode.toolchain.onProgress((d) => {
-                if (prog && d && d.message) prog.textContent = d.message + (d.progress ? ' (' + d.progress + '%)' : '');
+                const p = normProgress(d);
+                if (prog && p.message) prog.textContent = p.message + (p.percent != null ? ' (' + p.percent + '%)' : '');
               });
             }
             const r = await window.LabCode.toolchain.installCli();
@@ -14750,7 +14882,8 @@ function bindEvents() {
     });
   }
 
-  document.getElementById('run-btn').addEventListener('click', async () => {
+  const runBtn = document.getElementById('run-btn');
+  if (runBtn) runBtn.addEventListener('click', async () => {
     if (!state.activeTab) { showToast('请先打开一个文件','error'); return; }
     const fileName = state.activeTab;
     const projectPath = state.projectPath || 'C:/Users/Administrator/LabCodeProjects/untitled';
@@ -14962,9 +15095,10 @@ function bindEvents() {
     document.getElementById('plan-modal').classList.remove('active');
   });
 
-  // ===== MCP 服务器配置面板 =====
+  // ===== MCP 服务器配置弹窗（#mcp-modal）=====
   async function refreshMcpList() {
-    const el = document.getElementById('mcp-server-list');
+    // 侧栏 #mcp-panel 也有一个 #mcp-server-list；弹窗必须用自己唯一的容器，否则列表渲染到隐藏面板里
+    const el = document.getElementById('mcp-modal-server-list');
     if (!el) return;
     try {
       const servers = await window.LabCode.mcp.listServers();
@@ -15601,7 +15735,7 @@ function bindEvents() {
 
   // ===== 命令面板（对齐 TrieCode command.invoke）=====
   const COMMANDS = [
-    { id: 'new-project', title: '新建项目', group: '项目', keywords: 'new project 新建 工程', run: () => { const b = document.getElementById('welcome-new-project'); if (b) b.click(); else showToast('请先回到欢迎页', 'warn'); } },
+    { id: 'new-project', title: '新建项目', group: '项目', keywords: 'new project 新建 工程', run: () => { if (typeof showNewProjectModal === 'function') showNewProjectModal(); } },
     { id: 'open-project', title: '打开项目', group: '项目', keywords: 'open 打开', run: () => { const b = document.getElementById('welcome-open-project'); if (b) b.click(); } },
     { id: 'new-file', title: '新建文件', group: '项目', keywords: 'new file 新建文件', run: () => { const b = document.getElementById('welcome-new-file'); if (b) b.click(); } },
     { id: 'compile', title: '编译', group: '开发', keywords: 'compile build 编译', run: () => runCapBtn('compile') },
@@ -15610,11 +15744,63 @@ function bindEvents() {
     { id: 'export-bin', title: '导出固件', group: '开发', keywords: 'export binary 导出 固件', run: () => runExportBinary() },
     { id: 'wokwi-sim', title: 'Wokwi 仿真运行', group: '开发', keywords: 'wokwi simulate 仿真 模拟 运行', run: () => runWokwiSim() },
     { id: 'hw-lab', title: 'AI 硬件拆解工坊', group: 'AI', keywords: '硬件 拆解 选型 接线 手搓 hwlab 工坊', run: () => openHwLab() },
+    { id: 'panel-dashboard', title: '打开看板 · 项目统计', group: '视图', keywords: 'dashboard 看板 统计 工程统计', run: () => { try { if (window.LabCodeUI && window.LabCodeUI.openDashboard) window.LabCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
     { id: 'focus-ai-input', title: '聚焦 AI 输入框', group: '导航', keywords: 'ai input 聚焦 输入框', run: () => { const el = document.getElementById('ai-input'); if (el) el.focus(); } },
     { id: 'about-labcode', title: '关于 LabCode', group: '帮助', keywords: 'about 关于 版本', run: () => { alert('LabCode'); } },
     { id: 'check-update', title: '检查更新', group: '帮助', keywords: 'update 更新', run: async () => { try { const r = await window.LabCode.updater.check(); showToast((r && r.version) ? ('最新版本 ' + r.version) : ('检查完成：' + (r && r.error || '当前已是最新')), 'info'); } catch (e) { showToast('检查失败: ' + e.message, 'error'); } } },
     { id: 'open-website', title: '打开官网', group: '帮助', keywords: 'website 官网 主页', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://chipcode.cn'); } },
+    { id: 'deps-status', title: '查看依赖与工具链状态', group: '开发', keywords: 'deps status 依赖 工具链 状态 安装', run: () => showDepsStatus() },
+    { id: 'project-stats', title: '生成工程统计报告', group: '开发', keywords: 'project stats 工程 统计 报告 行数', run: () => showProjectStats() },
   ];
+
+  // 方案 C 收尾：依赖/工具链聚合状态卡片
+  async function showDepsStatus() {
+    const area = document.getElementById('ai-chat-area');
+    if (!area) return;
+    let data;
+    try { data = await window.LabCode.deps.status(); }
+    catch (e) { showToast('获取依赖状态失败: ' + e.message, 'warn'); return; }
+    const fmt = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB');
+    let rows;
+    if (!data.exists || !data.items.length) {
+      rows = '<div style="color:var(--text-secondary);font-size:12px;padding:6px 0;">尚未安装任何外部依赖（用户工具目录为空）。可在调试配置里选择「一键安装」获取 gdb / OpenOCD 等。</div>';
+    } else {
+      rows = data.items.map(it => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:12.5px;">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.name)}</span>
+        <span style="color:${it.hasBin ? '#52C41A' : '#EA6668'};white-space:nowrap;">${it.hasBin ? (it.mainExe || '已就绪') : '未就绪'}</span>
+        <span style="color:var(--text-secondary);white-space:nowrap;">${fmt(it.sizeBytes)}</span>
+      </div>`).join('');
+    }
+    const card = document.createElement('div');
+    card.className = 'dep-status-card';
+    card.style.cssText = 'margin:10px 0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border-color);border-radius:8px;';
+    card.innerHTML =
+      '<div style="font-weight:600;margin-bottom:8px;">依赖与工具链状态</div>' +
+      `<div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:8px;">工具目录：${escapeHtml(data.toolsDir || '')}</div>` +
+      rows +
+      `<div style="margin-top:10px;font-size:12px;">Arduino CLI：${data.arduino.cliExists ? '<span style="color:#52C41A;">已安装</span> ' + escapeHtml(data.arduino.path || '') : '<span style="color:#EA6668;">未安装</span>'}</div>`;
+    area.appendChild(card);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  // 方案 D 收尾：工程统计报告（调已实现的内置 projectStats 服务，零崩溃风险；
+  // 不强行 loadPluginManifest 历史有崩溃记录的 project-stats 插件，能力经此入口真实可用）
+  async function showProjectStats() {
+    const area = document.getElementById('ai-chat-area');
+    if (!area) return;
+    const ps = window.PluginSystem;
+    const svc = ps && (ps.getInternalService ? ps.getInternalService('projectStats') : (ps.services && ps.services['projectStats']));
+    if (!svc || !svc.summary) { showToast('工程统计服务不可用', 'warn'); return; }
+    let report;
+    try { report = await svc.summary({}); }
+    catch (e) { showToast('统计失败: ' + e.message, 'warn'); return; }
+    const card = document.createElement('div');
+    card.className = 'project-stats-card';
+    card.style.cssText = 'margin:10px 0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border-color);border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;color:var(--text-primary);';
+    card.textContent = String(report || '(空)');
+    area.appendChild(card);
+    area.scrollTop = area.scrollHeight;
+  }
 
   // ===== AI 硬件拆解工坊（黄白手搓风：一句话 → 六段方案，进度点逐亮）=====
   function openHwLab() {
@@ -15686,9 +15872,8 @@ function bindEvents() {
     { id: 'panel-terminal', title: '打开终端', group: '视图', keywords: 'terminal 终端', run: () => switchPanel('terminal', 'bottom') },
     { id: 'panel-mcp', title: '打开 MCP 服务器', group: '视图', keywords: 'mcp server 服务器', run: () => { try { window.openMcpModal(); } catch (e) { showToast('MCP 模块未就绪', 'warn'); } } },
     { id: 'panel-plugins', title: '打开插件市场', group: '视图', keywords: 'plugins 插件 扩展', run: () => { const b = document.getElementById('open-plugins-panel'); if (b) b.click(); else { const a = document.querySelector('.activity-btn[data-panel="plugins"]'); if (a) a.click(); } } },
-    { id: 'panel-models', title: '打开模型管理', group: '视图', keywords: 'models 模型 ai', run: () => { const a = document.querySelector('.activity-btn[data-panel="models"]'); if (a) a.click(); } },
-    { id: 'panel-mcp', title: '打开 MCP 服务', group: '视图', keywords: 'mcp', run: () => { const a = document.querySelector('.activity-btn[data-panel="mcp"]'); if (a) a.click(); } },
-    { id: 'panel-dashboard', title: '打开看板', group: '视图', keywords: 'dashboard 看板 统计', run: () => { const a = document.querySelector('.activity-btn[data-panel="dashboard"]'); if (a) a.click(); } },
+    // 已移除 3 条指向不存在活动栏面板的死命令（panel-models / 重复的 panel-mcp / panel-dashboard）；
+    // MCP 服务由上方 id:panel-mcp 的 window.openMcpModal() 正常提供。
     { id: 'search', title: '搜索', group: '视图', keywords: 'search 搜索', run: () => { const b = document.getElementById('search-btn'); if (b) b.click(); } },
     // 对齐 TrieCode 命令面板默认项（顶部常显导航快捷）：显示所有命令 / 转到文件 / 切换终端 / 打开设置 / 开始调试
     { id: 'show-all-commands', title: '显示所有命令', group: '命令', keywords: 'command 命令 显示所有 all', run: () => {} },
@@ -15879,6 +16064,12 @@ function bindEvents() {
         showToast('打开文件夹失败: ' + ((e && e.message) || e), 'error');
       }
     });
+  }
+
+  // 无项目态「刷新」按钮（对齐 ChipCode 源代码管理面板）：重新同步欢迎态布局
+  const scmRefreshBtn = document.getElementById('scm-refresh-btn');
+  if (scmRefreshBtn) {
+    scmRefreshBtn.addEventListener('click', () => { try { syncWelcomePanel(); } catch (e) {} });
   }
 
   // 快速打开文件夹按钮
@@ -18405,6 +18596,18 @@ if (document.readyState === 'loading') {
   init();
 }
 
+// ============ 进度事件归一化（方案 C）============
+// 历史上主进程有两套字段：ESP32 用 percent、installCli 用 progress。
+// 接收侧统一兼容，绝不改主进程旧字段（否则会打坏设备面板安装条）。
+function normProgress(d) {
+  const o = d || {};
+  return {
+    stage: o.stage || '',
+    percent: (o.percent != null ? o.percent : (o.progress != null ? o.progress : null)),
+    message: o.message || ''
+  };
+}
+
 // ============ ESP32 工具链自动安装进度 ============
 (function setupToolchainProgress() {
   const modal = document.getElementById('toolchain-modal');
@@ -18412,21 +18615,24 @@ if (document.readyState === 'loading') {
   const pct = document.getElementById('toolchain-pct');
   const msg = document.getElementById('toolchain-msg');
   const closeBtn = document.getElementById('toolchain-close');
-  function show() { modal.style.display = 'flex'; }
-  function hide() { modal.style.display = 'none'; }
+  function show() { if (modal) modal.style.display = 'flex'; }
+  function hide() { if (modal) modal.style.display = 'none'; }
   if (closeBtn) closeBtn.addEventListener('click', hide);
-  if (window.labcode && window.labcode.toolchain && window.labcode.toolchain.onProgress) {
-    window.labcode.toolchain.onProgress((data) => {
+  // 修复：preload 暴露的是 window.LabCode（大写），此处原写 window.labcode 导致订阅从未注册
+  if (window.LabCode && window.LabCode.toolchain && window.LabCode.toolchain.onProgress) {
+    window.LabCode.toolchain.onProgress((data) => {
+      const p = normProgress(data);
       show();
-      if (data.percent != null) { bar.style.width = data.percent + '%'; pct.textContent = data.percent + '%'; }
-      if (data.message) msg.textContent = data.message;
-      if (data.stage === 'done') {
-        bar.style.width = '100%'; pct.textContent = '100%';
-        msg.textContent = data.message || '完成';
+      if (p.percent != null && bar && pct) { bar.style.width = p.percent + '%'; pct.textContent = p.percent + '%'; }
+      if (p.message && msg) msg.textContent = p.message;
+      if (p.stage === 'done') {
+        if (bar) bar.style.width = '100%';
+        if (pct) pct.textContent = '100%';
+        if (msg) msg.textContent = p.message || '完成';
         setTimeout(hide, 2000);
-      } else if (data.stage === 'error') {
-        pct.textContent = '失败'; pct.style.color = '#ef4444';
-        closeBtn.style.display = 'inline-block';
+      } else if (p.stage === 'error') {
+        if (pct) { pct.textContent = '失败'; pct.style.color = '#ef4444'; }
+        if (closeBtn) closeBtn.style.display = 'inline-block';
       }
     });
   }
@@ -18491,8 +18697,77 @@ if (document.readyState === 'loading') {
         log('C/C++ 嵌入式调试：检测工具链...');
         const gdb = await window.LabCode.dap.toolPath('arm-none-eabi-gdb');
         const ocd = await window.LabCode.dap.toolPath('openocd');
-        if (!gdb.found) { log('未找到 arm-none-eabi-gdb（需安装 GNU Arm Embedded 工具链）'); showToast('缺少 arm-none-eabi-gdb', 'error'); return; }
-        if (!ocd.found) { log('未找到 openocd（需安装 OpenOCD 以驱动调试探针 CMSIS-DAP/ST-Link）'); showToast('缺少 openocd', 'error'); return; }
+        if (!gdb.found || !ocd.found) {
+          // 方案 C：从「只 toast」升级为可点引导卡。不编造下载包 URL / sha256，
+          // 只给官方发布页入口 + 重新检测（都可真实执行）。
+          const missing = [!gdb.found && 'arm-none-eabi-gdb', !ocd.found && 'openocd'].filter(Boolean);
+          log('缺少调试工具链: ' + missing.join(', '));
+          const area = document.getElementById('ai-chat-area');
+          if (area) {
+            const card = document.createElement('div');
+            card.className = 'chat-message ai';
+            card.innerHTML =
+              '<div class="chat-avatar" style="background:linear-gradient(135deg,#dc2626,#f97316);">🐞</div>' +
+              '<div class="chat-bubble" style="max-width:480px;">' +
+                '<div style="font-size:12.5px;font-weight:600;margin-bottom:6px;">C/C++ 调试缺少工具链：' + missing.join('、') + '</div>' +
+                '<div style="font-size:11.5px;opacity:.85;line-height:1.7;margin-bottom:10px;">' +
+                  'arm-none-eabi-gdb 与 OpenOCD 需本机安装（调试适配器二进制亦未内置）。' +
+                  '请从官方发布页下载并加入 PATH，或在本机用 winget/choco 安装后点「重新检测」。' +
+                '</div>' +
+                '<button data-dbg-gdb style="padding:6px 12px;background:#374151;color:#fff;border:none;border-radius:6px;font-size:11.5px;cursor:pointer;margin-right:6px;">GDB 发布页</button>' +
+                '<button data-dbg-ocd style="padding:6px 12px;background:#374151;color:#fff;border:none;border-radius:6px;font-size:11.5px;cursor:pointer;margin-right:6px;">OpenOCD 发布页</button>' +
+                '<button data-dbg-retry style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:11.5px;cursor:pointer;">重新检测</button>' +
+              '</div>';
+            area.appendChild(card); area.scrollTop = area.scrollHeight;
+            const open = (u) => { try { if (window.LabCode.shell && window.LabCode.shell.openExternal) window.LabCode.shell.openExternal(u); else showToast('请手动打开: ' + u, 'info'); } catch (e) {} };
+            const gb = card.querySelector('[data-dbg-gdb]'); if (gb) gb.addEventListener('click', () => open('https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases'));
+            const ob = card.querySelector('[data-dbg-ocd]'); if (ob) ob.addEventListener('click', () => open('https://github.com/xpack-dev-tools/openocd-xpack/releases'));
+            const rb = card.querySelector('[data-dbg-retry]'); if (rb) rb.addEventListener('click', async () => { log('重新检测调试工具链…'); await startDebug(); });
+            // 方案 C 收尾：每个缺失项追加「一键安装」卡。源用 xpack-dev-tools 官方发布（与上方
+            // 发布页链接同一可信源，arm-none-eabi-gcc-xpack v15.2.1-1.1 / openocd-xpack v0.12.0-7）。
+            // 装到用户工具目录，再由 dap:toolPath 扫描该目录检测（见 main/index.js 改动）。
+            // 注：sha256 未填——本机受限无法联网校核，用 minBytes 防错误页；联网环境可补。
+            const recheck = async () => { log('工具链安装完成，重新检测…'); await startDebug(); };
+            if (!gdb.found) {
+              appendDepInstallCard({
+                title: '一键安装 arm-none-eabi-gdb',
+                desc: '从 xpack-dev-tools 官方发布下载 GNU Arm 交叉编译调试器（约 90MB），自动装到本机工具目录。',
+                opts: {
+                  name: 'arm-none-eabi-gdb',
+                  url: 'https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v15.2.1-1.1/xpack-arm-none-eabi-gcc-15.2.1-1.1-win32-x64.zip',
+                  mirrors: [
+                    'https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v15.2.1-1.1/xpack-arm-none-eabi-gcc-15.2.1-1.1-win32-x64.zip',
+                    'https://ghproxy.net/https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v15.2.1-1.1/xpack-arm-none-eabi-gcc-15.2.1-1.1-win32-x64.zip'
+                  ],
+                  exeRelPath: 'bin/arm-none-eabi-gdb.exe',
+                  flatten: true,
+                  minBytes: 60000000
+                },
+                onDone: recheck
+              });
+            }
+            if (!ocd.found) {
+              appendDepInstallCard({
+                title: '一键安装 OpenOCD',
+                desc: '从 xpack-dev-tools 官方发布下载 Open On-Chip Debugger（约 20MB），自动装到本机工具目录。',
+                opts: {
+                  name: 'openocd',
+                  url: 'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-win32-x64.zip',
+                  mirrors: [
+                    'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-win32-x64.zip',
+                    'https://ghproxy.net/https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-win32-x64.zip'
+                  ],
+                  exeRelPath: 'bin/openocd.exe',
+                  flatten: true,
+                  minBytes: 10000000
+                },
+                onDone: recheck
+              });
+            }
+          }
+          showToast('缺少 ' + missing.join('、'), 'error');
+          return;
+        }
         log('已检测到 GDB: ' + gdb.path);
         log('已检测到 OpenOCD: ' + ocd.path);
         log('完整 launch 需 cortex-debug/cppdbg 适配器二进制（当前环境网络受限未内置），将在工具链就位后启用');
@@ -19499,6 +19774,90 @@ function appendByokCard(title) {
   area.scrollTop = area.scrollHeight;
   const b = card.querySelector('#byok-cta-btn');
   if (b) b.addEventListener('click', () => window.__labByok.open());
+}
+
+// ============ 方案 C：外部依赖 / 插件 一键引导卡 ============
+// 与 appendByokCard 同族：在对话区给一个可点按钮，把「只提示缺什么」升级为「一键装」。
+// deps 卡：调用主进程 deps:install，进度实时回显，成功后回调 onDone（重入调试/检测）。
+// plugin 卡：直接连现有 __labPluginAPI.install(id)（用户点卡即授权，跳过二次确认）。
+function appendDepInstallCard({ title, desc, opts, onDone }) {
+  const area = document.getElementById('ai-chat-area');
+  if (!area || !window.LabCode || !window.LabCode.deps) return;
+  const card = document.createElement('div');
+  card.className = 'chat-message ai';
+  card.innerHTML =
+    '<div class="chat-avatar" style="background:linear-gradient(135deg,#2563eb,#3b82f6);">🔧</div>' +
+    '<div class="chat-bubble" style="max-width:460px;">' +
+      '<div style="font-size: 12.5px;font-weight:600;margin-bottom:6px;"></div>' +
+      '<div style="font-size: 11.5px;opacity:.85;line-height:1.7;margin-bottom:10px;"></div>' +
+      '<button data-dep-btn style="padding:7px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size: 11.5px;font-weight:600;cursor:pointer;">一键安装</button>' +
+      '<div data-dep-progress style="font-size:11px;opacity:.75;margin-top:8px;display:none;"></div>' +
+    '</div>';
+  card.querySelector('[style*="font-weight:600"]').textContent = title || '安装缺失依赖';
+  card.querySelector('[style*="line-height:1.7"]').textContent = desc || '点击下方按钮自动下载并安装到本机工具目录。';
+  area.appendChild(card);
+  area.scrollTop = area.scrollHeight;
+  const btn = card.querySelector('[data-dep-btn]');
+  const prog = card.querySelector('[data-dep-progress]');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = '安装中…';
+    if (prog) { prog.style.display = 'block'; prog.textContent = '准备中…'; }
+    let off = null;
+    if (window.LabCode.deps.onProgress) {
+      off = window.LabCode.deps.onProgress((d) => {
+        const p = normProgress(d);
+        if (p.name && p.name !== opts.name) return;
+        if (prog) prog.textContent = p.message + (p.percent != null ? ' (' + p.percent + '%)' : '');
+      });
+    }
+    try {
+      const r = await window.LabCode.deps.install(opts);
+      if (prog) prog.textContent = r && r.ok ? ('安装完成：' + (r.path || '')) : ('安装失败：' + ((r && r.error) || '未知错误'));
+      btn.textContent = r && r.ok ? '已安装' : '重试';
+      btn.disabled = !!(r && r.ok);
+      if (r && r.ok && typeof onDone === 'function') { try { await onDone(r); } catch (e) {} }
+    } catch (e) {
+      if (prog) prog.textContent = '安装异常：' + e.message;
+      btn.textContent = '重试'; btn.disabled = false;
+    } finally { if (typeof off === 'function') off(); }
+  });
+}
+
+function appendPluginInstallCard(pluginId, title, desc) {
+  const area = document.getElementById('ai-chat-area');
+  if (!area || !window.__labPluginAPI || !pluginId) return;
+  const card = document.createElement('div');
+  card.className = 'chat-message ai';
+  card.innerHTML =
+    '<div class="chat-avatar" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">🧩</div>' +
+    '<div class="chat-bubble" style="max-width:460px;">' +
+      '<div style="font-size: 12.5px;font-weight:600;margin-bottom:6px;"></div>' +
+      '<div style="font-size: 11.5px;opacity:.85;line-height:1.7;margin-bottom:10px;"></div>' +
+      '<button data-pi-btn style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size: 11.5px;font-weight:600;cursor:pointer;">一键安装</button>' +
+      '<div data-pi-progress style="font-size:11px;opacity:.75;margin-top:8px;display:none;"></div>' +
+    '</div>';
+  card.querySelector('[style*="font-weight:600"]').textContent = title || '安装本地 AI 能力';
+  card.querySelector('[style*="line-height:1.7"]').textContent = desc || ('点击下方按钮安装「' + pluginId + '」，安装在本机，不上传数据。');
+  area.appendChild(card);
+  area.scrollTop = area.scrollHeight;
+  const btn = card.querySelector('[data-pi-btn]');
+  const prog = card.querySelector('[data-pi-progress]');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = '安装中…';
+    if (prog) { prog.style.display = 'block'; prog.textContent = '正在下载，大文件可能需要几分钟…'; }
+    try {
+      const r = await window.__labPluginAPI.install(pluginId);
+      const ok = !r || r.success !== false;
+      if (prog) prog.textContent = ok ? '安装完成，可在「AI 模型」中启用。' : ('安装失败：' + ((r && r.error) || '未知错误'));
+      btn.textContent = ok ? '已安装' : '重试';
+      btn.disabled = ok;
+    } catch (e) {
+      if (prog) prog.textContent = '安装异常：' + e.message;
+      btn.textContent = '重试'; btn.disabled = false;
+    }
+  });
 }
 
 

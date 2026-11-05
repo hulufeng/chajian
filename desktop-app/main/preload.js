@@ -173,6 +173,18 @@ contextBridge.exposeInMainWorld('LabCode', {
     onProgress: (cb) => ipcRenderer.on('toolchain:progress', (_e, data) => cb(data))
   },
 
+  // 方案 C：外部依赖一键引导（与主进程 deps:install / deps:progress 对应）
+  deps: {
+    install: (opts) => ipcRenderer.invoke('deps:install', opts),
+    cancel: (name) => ipcRenderer.invoke('deps:cancel', { name }),
+    status: () => ipcRenderer.invoke('deps:status'),
+    onProgress: (cb) => {
+      const h = (_e, data) => cb(data);
+      ipcRenderer.on('deps:progress', h);
+      return () => ipcRenderer.removeListener('deps:progress', h);
+    }
+  },
+
   // MCP 服务器（Model Context Protocol stdio 接入）
   mcp: {
     listServers: () => ipcRenderer.invoke('mcp:list-servers'),

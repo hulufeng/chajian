@@ -119,7 +119,9 @@ class StdioTransport {
     const proc = spawn(cfg.command, cfg.args || [], {
       env,
       cwd: cfg.cwd || undefined,
-      shell: /^(npx|npm|node|python|python3)$/i.test(cfg.command) ? false : undefined,
+      // Windows 上 npx/npm/node 实为 .cmd/.exe，必须以 shell 启动（cmd /c）才能解析；
+      // 否则 spawn 静默失败、initialize 握手超时且无 stderr（影响所有 stdio MCP 服务器）。
+      shell: process.platform === 'win32' ? true : (/^(npx|npm|node|python|python3)$/i.test(cfg.command) ? false : undefined),
       stdio: ['pipe', 'pipe', 'pipe']
     });
     this.proc = proc;
@@ -133,9 +135,9 @@ class StdioTransport {
     });
     await this.request('initialize', {
       protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'LabCode', version: '1.0.0' }
-    }, 15000);
+    }, 30000);
     this.notify('notifications/initialized', {});
-    const res = await this.request('tools/list', {}, 15000);
+    const res = await this.request('tools/list', {}, 30000);
     this.tools = (res && Array.isArray(res.tools)) ? res.tools : [];
     this.status = 'running';
     return this;
@@ -425,6 +427,7 @@ class McpService {
       entry.status = 'error';
       entry.stderr = (entry.stderr + '\n' + err.message).slice(-4000);
       entry.cooldownUntil = Date.now() + 15000;
+      console.error('[MCP] server start error:', cfg.name, '| msg:', err.message, '| stderr:', entry.stderr);
       return { ok: false, status: 'error', error: err.message };
     }
   }

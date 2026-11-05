@@ -327,10 +327,32 @@ async function runCapability(cap, params, opts) {
 
 /**
  * 把 plugin.json 清单加载进运行时。
+ * 方案 D：外层沙箱 —— 任何单个 manifest 的异常都只影响它自己，绝不冒泡拖垮渲染进程
+ * （历史上有插件加载导致渲染进程重启的记录）。内部实现逐 tool/skill 也各有 try/catch。
  * @param {object} manifest
  * @returns {loaded:{tools:number, skills:number, errors:string[]}}
  */
 function loadPluginManifest(manifest) {
+  try {
+    return loadPluginManifestUnsafe(manifest);
+  } catch (e) {
+    // 回滚该插件已部分注册的工具/技能，避免半加载状态污染全局
+    const id = manifest && manifest.id;
+    if (id) {
+      for (let i = PLUGIN_TOOL_DEFS.length - 1; i >= 0; i--) {
+        if (PLUGIN_TOOL_DEFS[i]._pluginId === id) PLUGIN_TOOL_DEFS.splice(i, 1);
+      }
+      for (let i = PLUGIN_SKILLS.length - 1; i >= 0; i--) {
+        if (PLUGIN_SKILLS[i].pluginId === id) PLUGIN_SKILLS.splice(i, 1);
+      }
+      PLUGIN_REGISTRY.delete(id);
+    }
+    try { console.error('[PluginSystem] manifest 加载被沙箱拦截:', id || '?', e && e.message); } catch (e2) {}
+    return { loaded: { tools: 0, skills: 0, errors: ['沙箱拦截: ' + (e && e.message || String(e))] } };
+  }
+}
+
+function loadPluginManifestUnsafe(manifest) {
   const errors = [];
   if (!manifest || typeof manifest !== 'object') {
     return { loaded: { tools: 0, skills: 0, errors: ['manifest 不是对象'] } };
@@ -645,6 +667,8 @@ function isActive(id) {
 // 暴露到 window 供 app.js 调用
 window.PluginSystem = {
   registerInternalService,
+  // 方案 D 收尾：让 UI（如「生成工程统计报告」命令）能取到已注册的内部服务实例
+  getInternalService: (name) => INTERNAL_SERVICES.get(name),
   loadPluginManifest,
   loadPluginsFromDir,
   // ---- 安装 / 卸载 / 启用禁用 ----

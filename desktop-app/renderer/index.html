@@ -45,6 +45,14 @@
         <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10.7l-5.5 3.5 1.6 6.3L12 17l-4.1 3.5 1.6-6.3L4 10.7l6.1-1.9L12 3z"/><path d="M19 3l.7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7L19 3z"/></symbol>
         <symbol id="icon-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" stroke="none"/></symbol>
         <symbol id="icon-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1.6"/><circle cx="17" cy="6.5" r="3"/><rect x="14.5" y="14.5" width="6" height="6" rx="1.6"/><path d="M6.5 9.5v4.7a3.3 3.3 0 0 0 3.3 3.3h4.7"/><path d="M17 9.5v5"/></symbol>
+        <!-- 盒子（对齐 ChipCode 活动栏第 2 图标：设备/工具链入口） -->
+        <symbol id="icon-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/></symbol>
+        <!-- LabCode App 图标（仿 ChipCode：深色圆角方形 + 白色闪电） -->
+        <symbol id="icon-app-logo" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" fill="#222a35"/><path d="M13 4l-8 10h6l-1 6 8-10h-6l1-6z" fill="#ffffff"/></symbol>
+        <!-- 布局切换：侧栏（◫） -->
+        <symbol id="icon-sidebar-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></symbol>
+        <!-- 布局切换：面板（⊞） -->
+        <symbol id="icon-panel-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="14.5" y1="9.5" x2="14.5" y2="20"/></symbol>
         <!-- 通用操作 -->
         <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
         <symbol id="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></symbol>
@@ -118,13 +126,11 @@
   <!-- 自定义标题栏 -->
   <div class="titlebar">
     <div class="titlebar-left">
-      <span class="app-icon"><svg class="icon icon-sm"><use href="#icon-bolt"></use></svg></span>
+      <span class="app-icon"><svg class="icon icon-sm"><use href="#icon-app-logo"></use></svg></span>
       <span class="app-name">LabCode</span>
       <div class="titlebar-quick-actions">
-        <button class="titlebar-icon-btn" id="quick-new-file" title="新建文件"><svg class="icon icon-xs"><use href="#icon-file"></use></svg></button>
-        <button class="titlebar-icon-btn" id="quick-open-folder" title="打开文件夹"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg></button>
-        <button class="titlebar-icon-btn" id="tb-toggle-sidebar" title="切换左侧文件树">☰</button>
-        <button class="titlebar-icon-btn" id="tb-toggle-editor" title="折叠/还原编辑器">▢</button>
+        <button class="titlebar-icon-btn" id="tb-toggle-sidebar" title="切换左侧文件树"><svg class="icon icon-xs"><use href="#icon-sidebar-toggle"></use></svg></button>
+        <button class="titlebar-icon-btn" id="tb-toggle-editor" title="折叠/还原编辑器"><svg class="icon icon-xs"><use href="#icon-panel-toggle"></use></svg></button>
       </div>
       <div class="titlebar-divider"></div>
       <div class="menubar">
@@ -132,6 +138,11 @@
         <button class="menu-item" data-menu="edit">编辑</button>
         <button class="menu-item" data-menu="view">视图</button>
         <button class="menu-item" data-menu="help">帮助</button>
+      </div>
+      <div class="toolbar">
+        <button class="toolbar-btn" id="serial-toggle-btn" title="串口监视器"><svg class="icon icon-xs"><use href="#icon-monitor"></use></svg></button>
+        <button class="toolbar-btn" id="terminal-toggle-btn" title="终端"><svg class="icon icon-xs"><use href="#icon-terminal"></use></svg></button>
+        <button class="toolbar-btn" id="search-btn" title="搜索"><svg class="icon icon-xs"><use href="#icon-search"></use></svg></button>
       </div>
       <!-- 下拉菜单 -->
       <div class="dropdown-menu" id="dropdown-file">
@@ -305,15 +316,7 @@
         </div>
       </div>
     </div>
-    <div class="titlebar-center">
-      <div class="toolbar">
-        <button class="toolbar-btn" id="run-btn" title="运行"><svg class="icon icon-xs"><use href="#icon-player-play"></use></svg></button>
-        <button class="toolbar-btn" id="upload-btn" title="烧录"><svg class="icon icon-xs"><use href="#icon-upload-bar-up"></use></svg></button>
-        <button class="toolbar-btn" id="serial-toggle-btn" title="串口监视器"><svg class="icon icon-xs"><use href="#icon-monitor"></use></svg></button>
-        <button class="toolbar-btn" id="terminal-toggle-btn" title="终端"><svg class="icon icon-xs"><use href="#icon-terminal"></use></svg></button>
-        <button class="toolbar-btn" id="search-btn" title="搜索"><svg class="icon icon-xs"><use href="#icon-search"></use></svg></button>
-      </div>
-    </div>
+    <div class="titlebar-center" style="display:none;"></div>
     <div class="titlebar-right">
       <!-- 账号/积分数字徽章（对齐 TrieCode ①：蓝底白字圆徽章，真实今日剩余额度，点击=账号卡；无通知系统不放假角标） -->
       <button class="titlebar-btn credits-pill" id="credits-pill" title="LabCode 账号（今日剩余额度）" style="display:none;">–</button>
@@ -328,17 +331,12 @@
 
   <!-- 主内容区 -->
   <div class="main-container">
-    <!-- 活动栏（对标 TrieCode：文件/源代码管理/插件 + 工具链独立项 + 动态插件入口） -->
+    <!-- 活动栏（1:1 对齐 ChipCode：文件 / 盒子(设备) / 源代码管理 / 插件，共 4 项，消除工具链与动态插件入口的功能重复） -->
     <div class="activity-bar">
       <button class="activity-btn active" data-panel="explorer" title="文件"><svg class="icon"><use href="#icon-folder"></use></svg><span class="activity-label">文件</span></button>
+      <button class="activity-btn" data-panel="device" title="设备"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
-      <button class="activity-btn" data-panel="device" data-toolchain="arduino-cli-toolchain" title="Arduino CLI 工具链"><svg class="icon"><use href="#icon-infinity"></use></svg><span class="activity-label">Arduino CLI 工具链</span></button>
-      <button class="activity-btn" data-panel="device" data-toolchain="esp-idf-toolchain" title="ESP-IDF 工具链"><svg class="icon"><use href="#icon-chip"></use></svg><span class="activity-label">ESP-IDF 工具链</span></button>
-      <!-- 已安装插件动态入口（TrieCode 式：装了就显示，卸载即消失），含立创EDA 等 -->
-      <div id="plugin-activity-btns" style="display:contents;"></div>
-      <button class="activity-btn" data-panel="wokwi" title="Wokwi 模拟器"><svg class="icon"><use href="#icon-bolt"></use></svg><span class="activity-label">Wokwi 模拟器</span></button>
-      <button class="activity-btn" data-panel="product-factory" title="AI 硬件拆解工坊"><svg class="icon"><use href="#icon-chip"></use></svg><span class="activity-label">AI 硬件拆解工坊</span></button>
     </div>
 
     <!-- 群聊 / 多 Agent 房间（全屏覆盖视图，对标 Ekko「群聊」） -->
@@ -433,12 +431,10 @@
         </div>
         <div class="wf-sidebar-actions">
           <button class="btn btn-sm" id="wf-new">新建</button>
-          <button class="btn btn-sm" id="wf-import">导入</button>
-          <button class="btn btn-sm" id="wf-export">导出</button>
+          <button class="btn btn-sm" id="wf-import" title="从 JSON 导入工作流">导入</button>
+          <button class="btn btn-sm" id="wf-export" title="导出工作流为 JSON">导出</button>
           <button class="btn btn-sm" id="wf-save">保存</button>
           <button class="btn btn-sm btn-primary" id="wf-run">运行</button>
-          <button class="btn btn-sm" id="wf-export" title="导出工作流为 JSON">导出</button>
-          <button class="btn btn-sm" id="wf-import" title="从 JSON 导入工作流">导入</button>
         </div>
         <div class="wf-sidebar-actions" style="margin-top:8px;">
           <button class="btn btn-sm" id="wf-agents-btn" title="管理可用的多 Agent 运行时（对齐 Ekko Agent Manager）">Agent 管理</button>
@@ -509,36 +505,25 @@
     <!-- 侧边栏 -->
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <span>文件</span>
+        <span id="sidebar-title">文件</span>
         <div class="sidebar-actions">
           <!-- 已移除无实现的「新建文件夹」按钮，避免点了没反应 -->
           <button class="icon-btn" id="open-folder-btn" title="打开文件夹"><svg class="icon"><use href="#icon-folder-open"></use></svg></button>
+          <!-- 无项目态（对齐 ChipCode 源代码管理空状态）显示的刷新按钮 -->
+          <button class="icon-btn" id="scm-refresh-btn" title="刷新" style="display:none;"><svg class="icon"><use href="#icon-refresh"></use></svg></button>
         </div>
       </div>
       <div class="file-tree" id="file-tree">
         <!-- 文件树动态生成 -->
       </div>
-      <!-- 欢迎面板（1:1 复刻 ChipCode「开始你的开发」） -->
+      <!-- 欢迎面板（1:1 复刻 ChipCode「源代码管理」无项目空状态） -->
       <div class="welcome-panel" id="welcome-panel">
-        <div class="welcome-panel-icon"><svg class="icon icon-lg"><use href="#icon-folder"></use></svg></div>
-        <h3 class="welcome-panel-title">开始你的开发</h3>
-        <p class="welcome-panel-desc"><span>打开或创建一个项目，AI 智能体将在这里</span><span>编写代码、执行命令、运行测试。</span></p>
-        <div class="welcome-panel-actions">
-          <button class="btn btn-primary btn-full" id="welcome-new-project"><svg class="icon icon-xs"><use href="#icon-plus"></use></svg> 新建项目</button>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-secondary" style="flex:1;" id="welcome-open-project"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg> 打开项目</button>
-            <button class="btn btn-secondary" style="flex:1;" id="welcome-clone-project"><svg class="icon icon-xs"><use href="#icon-git-branch"></use></svg> 克隆项目</button>
-          </div>
-        </div>
-        <!-- 最近打开（运行时由 config.recentProjects 动态渲染） -->
-        <div class="recent-panel" id="recent-panel">
-          <div class="recent-header"><svg class="icon icon-xs"><use href="#icon-clock"></use></svg> 最近打开</div>
-          <div class="recent-list" id="recent-list">
-            <div class="recent-item"><svg class="icon icon-xs"><use href="#icon-folder"></use></svg> TestBlink</div>
-            <div class="recent-item"><svg class="icon icon-xs"><use href="#icon-folder"></use></svg> voice_robot</div>
-            <div class="recent-item"><svg class="icon icon-xs"><use href="#icon-folder"></use></svg> TrieCodeProjects</div>
-            <div class="recent-item"><svg class="icon icon-xs"><use href="#icon-folder"></use></svg> Downloads</div>
-            <div class="recent-item"><svg class="icon icon-xs"><use href="#icon-folder"></use></svg> WPS云盘</div>
+        <div class="scm-empty">
+          <h3 class="scm-empty-title">还没有打开项目</h3>
+          <p class="scm-empty-desc">源代码管理用于你打开的那个项目（一个项目一个仓库）。先打开一个项目，或者从远端拉一下来。</p>
+          <div class="scm-empty-actions">
+            <button class="btn btn-secondary" id="welcome-open-project"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg> 打开项目...</button>
+            <button class="btn btn-secondary" id="welcome-clone-project"><svg class="icon icon-xs"><use href="#icon-git-branch"></use></svg> 从 Git 克隆项目...</button>
           </div>
         </div>
       </div>
@@ -1230,13 +1215,13 @@
       </div>
       <!-- 编辑器 -->
       <div class="editor-wrapper" id="editor-wrapper">
-        <!-- 空状态提示（对齐 TrieCode 无项目态：品牌 logo + 名称 + 「打开或新建项目开始编程」，按钮保留既有绑定） -->
+        <!-- 空状态提示（1:1 对齐 ChipCode 无项目态：浅蓝芯片图标 + 品牌名 + 「打开或新建项目开始编程」） -->
         <div class="welcome-screen" id="welcome-screen">
           <div class="welcome-content">
-            <div class="welcome-empty-icon" style="width:56px;height:56px;border-radius:14px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;">
-              <svg class="icon" style="width:30px;height:30px;color:var(--primary);"><use href="#icon-bolt"></use></svg>
+            <div class="welcome-empty-icon" style="width:64px;height:64px;border-radius:0;background:transparent;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+              <svg class="icon" style="width:58px;height:58px;color:#b3c5e8;"><use href="#icon-chip"></use></svg>
             </div>
-            <h2 class="welcome-empty-title" style="font-size:15px;">LabCode</h2>
+            <h2 class="welcome-empty-title" style="font-size:16px;font-weight:500;">LabCode</h2>
             <p class="welcome-empty-desc">打开或新建项目开始编程</p>
             <div class="welcome-actions">
               <button class="welcome-action-btn primary" id="welcome-new-file">
@@ -2116,7 +2101,8 @@
         <button class="modal-close" id="mcp-close-btn"><svg class="icon icon-xs"><use href="#icon-x"></use></svg></button>
       </div>
       <div class="modal-body">
-        <div id="mcp-server-list" style="margin-bottom:12px;"></div>
+        <!-- 与侧栏 #mcp-panel 的 #mcp-server-list 区分：两套独立 UI 各有自己的列表容器 -->
+        <div id="mcp-modal-server-list" style="margin-bottom:12px;"></div>
         <div style="border-top:1px solid #3c3c3c; padding-top:12px;">
           <h4 style="margin:0 0 8px; font-size: 12.5px; color:#ccc;">添加服务器</h4>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">

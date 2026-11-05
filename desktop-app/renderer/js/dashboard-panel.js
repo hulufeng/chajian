@@ -120,14 +120,16 @@
   }
 
   function init() {
+    // 方案 D：活动栏已 1:1 对齐 ChipCode 精简为 4 项，没有 data-panel="dashboard" 按钮。
+    // 旧实现因 !btn 直接 return，导致刷新/关闭按钮与 openDashboard 全都没绑定（死 UI）。
+    // 现在始终绑定，看板改由命令面板「打开看板」调用 window.LabCodeUI.openDashboard 打开。
     const btn = document.querySelector('.activity-btn[data-panel="dashboard"]');
-    if (!btn) return;
     document.querySelectorAll('.activity-btn').forEach(b => {
       b.addEventListener('click', () => {
         if (b.dataset.panel !== 'dashboard') hideDashboard();
       });
     });
-    btn.addEventListener('click', showDashboard);
+    if (btn) btn.addEventListener('click', showDashboard);
     const rf = el('dash-refresh'); if (rf) rf.addEventListener('click', refresh);
     const cl = el('dash-close');
     if (cl) cl.addEventListener('click', () => {
@@ -140,6 +142,7 @@
     });
     window.LabCodeUI = window.LabCodeUI || {};
     window.LabCodeUI.openDashboard = showDashboard;
+    window.LabCodeUI.closeDashboard = hideDashboard;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
