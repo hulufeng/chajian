@@ -21,12 +21,15 @@
     // 技能遵循 Hermes SKILL.md 规范：frontmatter(name/description/metadata.keywords) + 可选 references（懒加载参考文档）
 //     "projectTypes": [ ... ],
 //     "views": [ ... ],
-//     "dependencies": [ ... ]
+//     "dependencies": [ { name, url, sha256, exeRelPath?, mirrors?[], archive?, flatten?, minBytes?, destDir? } ]
 //   }
+//   dependencies 声明即登记、绝不阻塞启动；首次使用（cli.command 里引用了它）时经
+//   主进程 deps:install 惰性下载（已装则秒回 cached），并把 {<name>}/{deps.<name>}
+//   占位符替换为实际 exe 绝对路径。见 ensurePluginDependencies。
 //
 // transport 路线图（对齐 TrieCode 7 通道）：
 //   ✅ internal —— 调用宿主预注册的 service 函数（本阶段实现）
-//   🔜 cli      —— spawn 外部命令，占位符 {argName}/{settings.x}/{projectPath}
+//   🔜 cli      —— spawn 外部命令，占位符 {argName}/{settings.x}/{projectPath}/{deps.<name>}
 //   🔜 http     —— REST fetch
 //   🔜 mcp      —— MCP server stdio/websocket
 //   🔜 grpc     —— 插件自带 daemon
@@ -51,6 +54,104 @@ const PLUGIN_TOOL_DEFS = [];   // {name, description, parameters, category, exec
 const PLUGIN_REGISTRY = new Map(); // id -> manifest
 const PLUGIN_SKILLS = [];        // {name, description, prompt, pluginId}
 const PLUGIN_VIEWS = new Map();  // "pluginId:viewId" -> {pluginId,id,title,webviewUrl}
+
+// ============================================================
+// 插件外部依赖（manifest.dependencies → 主进程 deps:install）
+// ------------------------------------------------------------
+// 设计约束（方案 D 沙箱 + 本机网络受限）：
+//  1) loadPluginManifest 是同步加载，启动时**绝不发网络请求**，只登记声明；
+//  2) 路径在首次使用 / 显式预热时惰性解析——deps:install 自带 exePath 存在检查，
+//     已安装秒回 cached:true 且零网络，未安装才真正下载；
+//  3) 安装失败不抛、不阻塞插件注册，返回结构化结果供 UI 展示；
+//  4) 同名依赖并发只装一次（inflight 去重）。
+// manifest 形状：dependencies: [{name, url, sha256, exeRelPath?, mirrors?[],
+//                              archive?:'zip'|'tar.gz', flatten?, minBytes?, destDir?}]
+// 占位符：cli.command 里的 {<depName>} 或 {deps.<depName>} 会替换为实际 exe 绝对路径。
+// ============================================================
+const PLUGIN_DEPENDENCIES = new Map();  // pluginId -> normalized dep[]
+const PLUGIN_DEP_PATHS = new Map();     // "pluginId:depName" -> exePath
+const PLUGIN_DEP_INFLIGHT = new Map();  // "pluginId:depName" -> Promise
+
+/** 把 manifest 简写补成 deps:install 的 opts（主进程强制要求 name/url/exeRelPath） */
+function normalizePluginDependency(d) {
+  if (!d || typeof d !== 'object') return null;
+  const name = String(d.name || '').trim();
+  if (!name) return null;
+  return {
+    name,
+    url: String(d.url || ''),
+    // Windows 发布物：默认同目录 <name>.exe；可携子目录（如 "bin/node.exe"）
+    exeRelPath: String(d.exeRelPath || (name + '.exe')),
+    sha256: String(d.sha256 || ''),
+    mirrors: Array.isArray(d.mirrors) ? d.mirrors.slice() : [],
+    archive: d.archive === 'tar.gz' ? 'tar.gz' : 'zip',
+    flatten: !!d.flatten,
+    minBytes: d.minBytes || 1000000,
+    destDir: String(d.destDir || '')
+  };
+}
+
+/** 已解析的依赖路径；优先本插件，其次全局（跨插件共享同一运行时，如 node） */
+function resolveDependencyPath(name, pluginId) {
+  if (!name) return '';
+  if (pluginId) {
+    const own = PLUGIN_DEP_PATHS.get(pluginId + ':' + name);
+    if (own) return own;
+  }
+  for (const [k, v] of PLUGIN_DEP_PATHS) {
+    if (k.slice(k.indexOf(':') + 1) === name) return v;
+  }
+  return '';
+}
+
+/**
+ * 确保某插件的外部依赖就绪（幂等、失败不抛）。
+ * @returns {Promise<{ok:boolean, pluginId:string, results:Array, skipped?:boolean, error?:string}>}
+ */
+async function ensurePluginDependencies(pluginId) {
+  const deps = PLUGIN_DEPENDENCIES.get(pluginId) || [];
+  const results = [];
+  if (!deps.length) return { ok: true, pluginId, results, skipped: true };
+  const api = window.LabCode && window.LabCode.deps;
+  if (!api || typeof api.install !== 'function') {
+    return { ok: false, pluginId, results, needsUpgrade: true, error: '主进程 deps 桥不可用（需 1.2.31+）' };
+  }
+  let allOk = true;
+  for (const d of deps) {
+    const key = pluginId + ':' + d.name;
+    if (PLUGIN_DEP_PATHS.has(key)) {
+      results.push({ name: d.name, ok: true, path: PLUGIN_DEP_PATHS.get(key), cached: true });
+      continue;
+    }
+    let inflight = PLUGIN_DEP_INFLIGHT.get(key);
+    if (!inflight) {
+      inflight = (async () => {
+        try { return await api.install(Object.assign({}, d)); }
+        catch (e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
+      })();
+      PLUGIN_DEP_INFLIGHT.set(key, inflight);
+      inflight.finally(() => PLUGIN_DEP_INFLIGHT.delete(key)).catch(() => {});
+    }
+    let r;
+    try { r = await inflight; } catch (e) { r = { ok: false, error: String(e) }; }
+    if (r && r.ok && r.path) {
+      PLUGIN_DEP_PATHS.set(key, r.path);
+      results.push({ name: d.name, ok: true, path: r.path, cached: !!(r.cached || r.skipped) });
+    } else {
+      allOk = false;
+      results.push({ name: d.name, ok: false, error: (r && r.error) || '依赖安装失败' });
+    }
+  }
+  return { ok: allOk, pluginId, results };
+}
+
+/** 供 UI/设置页展示：某插件声明了哪些依赖、当前是否就绪 */
+function getPluginDependencies(pluginId) {
+  return (PLUGIN_DEPENDENCIES.get(pluginId) || []).map(d => Object.assign({}, d, {
+    ready: !!resolveDependencyPath(d.name, pluginId),
+    path: resolveDependencyPath(d.name, pluginId)
+  }));
+}
 
 // ============================================================
 // transport 分发（plugin 工具 execute 与 capabilities 路由共用）
@@ -98,13 +199,21 @@ async function dispatchTool(t, id, autoName, args) {
       } catch (e) { /* 设置读取失败按未配置处理 */ }
       const getDeep = (obj, path) => String(path).split('.').reduce((o, k) => (o == null || o[k] == null ? undefined : o[k]), obj);
       const unresolved = [];
+      const depUnresolved = [];
+      const declaredDeps = PLUGIN_DEPENDENCIES.get(id) || [];
       // 引号感知分词后按 token 替换；占位符支持点路径（{settings.toolchain.active.pythonExe}）
+      // 依赖占位符 {<depName>} / {deps.<depName>} 解析为便携运行时 exe 绝对路径
       const argv = tokenize(cmdTpl).map(tok => tok.replace(/\{([\w.]+)\}/g, (m, k) => {
         if (k.indexOf('settings.') === 0) {
           const v = getDeep(pset, k.slice(9));
           if (v == null || v === '') { unresolved.push(k); return m; }
           return String(v);
         }
+        const depKey = k.indexOf('deps.') === 0 ? k.slice(5) : k;
+        const depPath = resolveDependencyPath(depKey, id);
+        if (depPath) return depPath;
+        // 该插件声明了此依赖但还没就绪 → 记住，下面惰性安装后二次替换
+        if (declaredDeps.some(d => d.name === depKey)) { depUnresolved.push(depKey); return m; }
         return (ctx[k] != null ? String(ctx[k]) : m);
       }));
       // resolve: 用宿主已有的路径解析器替换命令首段（arduino-cli 不在 PATH，必须解析）
@@ -116,6 +225,21 @@ async function dispatchTool(t, id, autoName, args) {
         } catch (e) { /* 解析失败就用原命令 */ }
       }
       if (!argv.length || !argv[0]) return 'Error: cli.command 解析后为空';
+      // 外部依赖惰性安装：仅当命令确实引用了已声明依赖时触发；
+      // deps:install 自带 exePath 存在检查，已装则秒回 cached 且零网络。
+      if (depUnresolved.length) {
+        await ensurePluginDependencies(id);
+        for (let i = 0; i < argv.length; i++) {
+          argv[i] = argv[i].replace(/\{([\w.]+)\}/g, (m, k) => {
+            const depKey = k.indexOf('deps.') === 0 ? k.slice(5) : k;
+            return resolveDependencyPath(depKey, id) || m;
+          });
+        }
+        const still = depUnresolved.filter(k => !resolveDependencyPath(k, id));
+        if (still.length) {
+          return 'Error: 外部依赖未就绪——{' + still.join('},{') + '} 无法解析。请在插件面板点「安装依赖」，或检查网络/镜像源后重试。';
+        }
+      }
       if (unresolved.length) {
         return 'Error: 工具链未配置——占位符 {' + unresolved.join('},{') + '} 无值（pluginSettings.' + id + ' 中未找到）。请先在「设备」面板完成该工具链的检测/一键安装，或在插件设置中手动填写路径（如 IDF_PATH / pythonExe）。';
       }
@@ -346,6 +470,10 @@ function loadPluginManifest(manifest) {
         if (PLUGIN_SKILLS[i].pluginId === id) PLUGIN_SKILLS.splice(i, 1);
       }
       PLUGIN_REGISTRY.delete(id);
+      PLUGIN_DEPENDENCIES.delete(id);
+      for (const k of Array.from(PLUGIN_DEP_PATHS.keys())) {
+        if (k.indexOf(id + ':') === 0) PLUGIN_DEP_PATHS.delete(k);
+      }
     }
     try { console.error('[PluginSystem] manifest 加载被沙箱拦截:', id || '?', e && e.message); } catch (e2) {}
     return { loaded: { tools: 0, skills: 0, errors: ['沙箱拦截: ' + (e && e.message || String(e))] } };
@@ -370,6 +498,21 @@ function loadPluginManifestUnsafe(manifest) {
   }
 
   let toolCount = 0, skillCount = 0;
+
+  // ---- dependencies：只登记声明，绝不在此发网络请求（启动零阻塞）----
+  // 幂等：清掉同 id 旧声明与已解析路径，重新登记
+  PLUGIN_DEPENDENCIES.delete(id);
+  for (const k of Array.from(PLUGIN_DEP_PATHS.keys())) {
+    if (k.indexOf(id + ':') === 0) PLUGIN_DEP_PATHS.delete(k);
+  }
+  const depDecls = Array.isArray(manifest.dependencies) ? manifest.dependencies : [];
+  const depNorm = [];
+  for (const d of depDecls) {
+    const n = normalizePluginDependency(d);
+    if (n) depNorm.push(n);
+    else errors.push('dependencies 条目缺 name，已跳过');
+  }
+  if (depNorm.length) PLUGIN_DEPENDENCIES.set(id, depNorm);
 
   // ---- tools ----
   const tools = Array.isArray(manifest.tools) ? manifest.tools : [];
@@ -636,6 +779,10 @@ async function uninstall(id) {
     if (k.startsWith(id + ':')) PLUGIN_VIEWS.delete(k);
   }
   PLUGIN_REGISTRY.delete(id);
+  PLUGIN_DEPENDENCIES.delete(id);
+  for (const k of Array.from(PLUGIN_DEP_PATHS.keys())) {
+    if (k.indexOf(id + ':') === 0) PLUGIN_DEP_PATHS.delete(k);
+  }
   PLUGIN_DISABLED.delete(id);
   await savePluginStates();
   // 2) 删目录（deleteFile 对目录是递归删）
@@ -671,6 +818,10 @@ window.PluginSystem = {
   getInternalService: (name) => INTERNAL_SERVICES.get(name),
   loadPluginManifest,
   loadPluginsFromDir,
+  // ---- 外部依赖（manifest.dependencies → deps:install，惰性解析 / 显式预热）----
+  ensurePluginDependencies,
+  getPluginDependencies,
+  resolveDependencyPath,
   // ---- 安装 / 卸载 / 启用禁用 ----
   getPluginsRoot,
   findManifestDir,

@@ -18496,7 +18496,8 @@ function init() {
           '  skills: [{name, description, prompt}]  // 注入系统提示词',
           '  projectTypes: [string]  // 激活条件',
           '  views: [{id, webviewUrl}]  // sidebar webview',
-          '  dependencies: [{name, url, sha256}]  // 外部依赖',
+          '  dependencies: [{name, url, sha256, exeRelPath?, mirrors?[], archive?, flatten?}]  // 外部依赖(声明即登记,首次使用惰性下载)',
+          '    // cli.command 里用 {<name>} 或 {deps.<name>} 引用该依赖的 exe 绝对路径',
         ].join('\n'),
         validate: async (args) => {
           const m = args.manifest;
