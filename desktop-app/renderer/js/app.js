@@ -1720,6 +1720,15 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { todos: { type:'array', items: { type:'object', properties: { id:{type:'string'}, title:{type:'string'}, status:{type:'string', enum:['pending','in_progress','completed','skipped']} } } } }, required: ['todos'] },
     execute: (args) => {
       state.todoList = args.todos;
+      // Phase B+：同步计划进度面板并持久化到当前会话（跨轮/切换不丢失）
+      try {
+        if (typeof planProgressManager !== 'undefined' && planProgressManager && typeof planProgressManager.setSteps === 'function') {
+          planProgressManager.setSteps(args.todos.map(t => ({ title: t.title, status: t.status })));
+        }
+        if (window.SessionStore && typeof window.SessionStore.syncCurrent === 'function') {
+          window.SessionStore.syncCurrent(window._chatLog || [], { todoList: args.todos.slice() });
+        }
+      } catch (e) {}
       const done = args.todos.filter(t => t.status === 'completed' || t.status === 'skipped').length;
       return `任务清单已更新 (${done}/${args.todos.length} 完成)`;
     }
@@ -3756,6 +3765,49 @@ class FileChangeTracker {
   }
 
   clear(sessionId = 'default') { this.turns.delete(sessionId); this.redoStacks.delete(sessionId); this.activeTurn.delete(sessionId); this.currentTurn = 0; }
+
+  // ===== Phase B+ · turn 批次按会话持久化（对齐 ChipCode turns/<sessionId>.json）=====
+  // 内部仍保留 'default'/'stream' 两个逻辑通道，但整体作为一个会话快照存取，避免串味。
+  // before/after 是整文件全文，限制快照体积：单个 change 内容超过 200KB 时只存元数据。
+  snapshotTurns() {
+    const LIMIT = 200000;
+    const packChanges = (arr) => (arr || []).map(c => ({
+      path: c.path,
+      before: typeof c.before === 'string' && c.before.length > LIMIT ? null : (c.before == null ? null : c.before),
+      after: typeof c.after === 'string' && c.after.length > LIMIT ? null : (c.after == null ? null : c.after),
+      action: c.action, timestamp: c.timestamp,
+      truncated: (typeof c.before === 'string' && c.before.length > LIMIT) || (typeof c.after === 'string' && c.after.length > LIMIT) || false
+    }));
+    const turns = {};
+    this.turns.forEach((v, k) => {
+      turns[k] = v.map(t => ({ turn: t.turn, timestamp: t.timestamp, rolledBack: !!t.rolledBack, changes: packChanges(t.changes) }));
+    });
+    const redoStacks = {};
+    this.redoStacks.forEach((v, k) => { redoStacks[k] = v.map(packChanges); });
+    return { version: 1, currentTurn: this.currentTurn, turns, redoStacks, savedAt: Date.now() };
+  }
+
+  restoreTurns(snap) {
+    // 先全清，再按快照恢复；activeTurn 一律置 false（避免恢复出「半开 turn」）
+    this.turns.clear(); this.redoStacks.clear(); this.activeTurn.clear();
+    this.currentTurn = 0;
+    if (!snap || snap.version !== 1) return false;
+    Object.keys(snap.turns || {}).forEach(k => {
+      this.turns.set(k, (snap.turns[k] || []).map(t => ({
+        turn: Number(t.turn) || 0, timestamp: t.timestamp || Date.now(),
+        rolledBack: !!t.rolledBack, changes: (t.changes || []).filter(c => !c.truncated)
+      })));
+    });
+    Object.keys(snap.redoStacks || {}).forEach(k => {
+      this.redoStacks.set(k, (snap.redoStacks[k] || []).map(arr => (arr || []).filter(c => !c.truncated)));
+    });
+    this.currentTurn = Number(snap.currentTurn) || 0;
+    return true;
+  }
+
+  clearAll() {
+    this.turns.clear(); this.redoStacks.clear(); this.activeTurn.clear(); this.currentTurn = 0;
+  }
 }
 const fileChangeTracker = new FileChangeTracker();
 window.LabCodeUI = window.LabCodeUI || {};
@@ -4669,8 +4721,32 @@ class RealAIClient {
           '可用产品工具: propose_criteria / propose_shape / propose_bom / record_evidence / build_package。\n';
       }
     } catch (e) { /* 产品状态不可用时不注入 */ }
+    // Phase B+ · PLAN STATE 动态块（对齐 ChipCode planStore 每轮注入防失忆）
+    // _buildMessages() 每次 LLM 调用都重建 system prompt，因此这里是天然的「每轮注入」点。
+    let planProgressSection = '';
+    try {
+      const plan = state.currentPlan;
+      const todos = Array.isArray(state.todoList) ? state.todoList : [];
+      const ppm = (typeof planProgressManager !== 'undefined' && planProgressManager) ? planProgressManager : null;
+      const steps = (plan && Array.isArray(plan.steps) && plan.steps.length) ? plan.steps
+        : (ppm && Array.isArray(ppm.steps) ? ppm.steps : []);
+      const mark = (s) => ({ completed: '✓ 已完成', done: '✓ 已完成', in_progress: '▶ 进行中', running: '▶ 进行中', skipped: '－ 跳过' }[s] || '○ 待办');
+      let lines = [];
+      if (plan && plan.text) lines.push('- 计划: ' + String(plan.text).slice(0, 200).replace(/\n+/g, ' '));
+      if (plan && plan.status) lines.push('- 计划状态: ' + plan.status);
+      if (steps.length) {
+        lines.push('- 步骤进度 (' + steps.filter(s => mark(s.status).indexOf('✓') === 0).length + '/' + steps.length + '):');
+        steps.slice(0, 12).forEach((s, i) => lines.push('  [' + (i + 1) + '] ' + mark(s.status) + ' ' + String(s.title || '').slice(0, 80)));
+      }
+      if (todos.length) {
+        const done = todos.filter(t => t.status === 'completed' || t.status === 'skipped').length;
+        lines.push('- Todo (' + done + '/' + todos.length + '):');
+        todos.slice(0, 12).forEach(t => lines.push('  · ' + mark(t.status) + ' ' + String(t.title || '').slice(0, 80)));
+      }
+      if (lines.length) planProgressSection = '\n## 当前计划进度（每轮自动注入，防止跨轮失忆）\n' + lines.join('\n') + '\n';
+    } catch (e) { /* 计划状态不可用时不注入 */ }
     return `${identity}
-${memorySection}${productStageSection}
+${memorySection}${productStageSection}${planProgressSection}
 ## 当前项目
 - 项目类型: ${projectTypeDesc}
 - 产品阶段: ${(window.ProductFactory && window.ProductFactory.snapshot && window.ProductFactory.snapshot.isProduct) ? (window.ProductFactory.activeStage || 'idea') : '未设置'}
@@ -12795,6 +12871,8 @@ function bindEvents() {
   // ===== 会话历史持久化（对齐 TrieCode 历史会话）=====
   // ===== Phase B：会话保存统一走 window.SessionStore（磁盘权威 + 同步内存镜像，单一写者）=====
   function saveCurrentSessionToHistory() {
+    // Phase B+：会话级收敛点（新对话 / 打开历史面板都经过），排队自动提炼记忆
+    try { if (window.AutoMemory && typeof window.AutoMemory.queueExtract === 'function') window.AutoMemory.queueExtract(); } catch (e) {}
     try {
       const log = window._chatLog || [];
       if (!window.SessionStore) return;
@@ -12803,11 +12881,21 @@ function bindEvents() {
         projectPath: state.projectPath || null,
         projectType: state.projectType || null,
         plan: state.currentPlan || null,
-        mode: state.mode || 'default'
+        mode: state.mode || 'default',
+        // Phase B+：turn 批次快照 + todo 清单随会话保存
+        turns: (function () {
+          try {
+            const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
+            return ft && typeof ft.snapshotTurns === 'function' ? ft.snapshotTurns() : null;
+          } catch (e) { return null; }
+        })(),
+        todoList: Array.isArray(state.todoList) ? state.todoList : []
       });
     } catch (e) { /* 历史保存失败不影响主流程 */ }
   }
   function loadSession(id) {
+    // Phase B+：切换前先把当前会话的自动记忆提炼排队（fire-and-forget，不阻塞）
+    try { if (window.AutoMemory && typeof window.AutoMemory.queueExtract === 'function') window.AutoMemory.queueExtract(); } catch (e) {}
     try {
       const S = window.SessionStore;
       const s = S ? S.get(id) : null;
@@ -12840,8 +12928,11 @@ function bindEvents() {
         state.agent.sessionTitle = s.title || '';
         if (Array.isArray(s.workLog)) state.agent.workLog = s.workLog.slice();
       }
+      // Phase B+：恢复该会话自己的 turn 批次（此前是清空，导致跨会话串味且撤销历史丢失）
       const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
-      if (ft && typeof ft.clear === 'function') { ft.clear('default'); ft.clear('stream'); }
+      if (ft && typeof ft.restoreTurns === 'function') ft.restoreTurns(s.turns || null);
+      else if (ft && typeof ft.clear === 'function') { ft.clear('default'); ft.clear('stream'); }
+      state.todoList = Array.isArray(s.todoList) ? s.todoList.slice() : [];
       showToast('已载入历史会话：' + (s.title || '').slice(0, 20), 'info');
     } catch (e) { showToast('载入历史失败: ' + e.message, 'error'); }
   }
@@ -12863,7 +12954,10 @@ function bindEvents() {
       const d = new Date(s.ts || s.updatedAt || Date.now());
       const t = (d.getMonth()+1) + '/' + d.getDate() + ' ' + ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
       const hit = hitMap[s.id];
-      const snip = (hit && hit.snippet && q) ? '<div style="font-size:11px;opacity:.7;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(hit.snippet) + '</div>' : '';
+      // Phase B+：主进程返回的 snippetHl 已转义且仅含 <mark>，可安全内联；无则用纯文本兜底
+      const snipHtml = (hit && q && hit.snippetHl) ? hit.snippetHl
+        : ((hit && hit.snippet && q) ? escapeHtml(hit.snippet) : '');
+      const snip = snipHtml ? '<div style="font-size:11px;opacity:.8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + snipHtml + '</div>' : '';
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 4px;border-bottom:1px solid var(--border-color);">' +
         '<div style="flex:1;overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(s.title) + '</div>' +
         '<div style="font-size:11px;opacity:.6;">' + t + ' · ' + (s.messages ? s.messages.length : 0) + ' 条' + (s.modelId ? ' · ' + escapeHtml(s.modelId) : '') + '</div>' + snip + '</div>' +
@@ -12976,6 +13070,10 @@ function bindEvents() {
     window._chatLog = [];
     window._currentSessionId = null; // 新对话 = 新会话身份
     if (window.SessionStore) window.SessionStore.newSession();
+    // Phase B+：新会话不继承上一会话的 turn 批次与 todo
+    const ft0 = window.LabCodeUI && window.LabCodeUI.fileTracker;
+    if (ft0 && typeof ft0.clearAll === 'function') ft0.clearAll();
+    state.todoList = [];
     if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
     showToast('已开始新对话', 'info');
   }
@@ -15227,6 +15325,8 @@ function bindEvents() {
   document.getElementById('plan-approve-btn').addEventListener('click', () => {
     document.getElementById('plan-modal').classList.remove('active');
     state.planApproved = true;
+    // Phase B+：同步计划状态，让每轮注入的 PLAN STATE 反映真实进度
+    if (state.currentPlan) { state.currentPlan.status = 'approved'; state.currentPlan.approvedAt = Date.now(); }
     if (state.agent) state.agent.approvePlan();
     showToast('计划已批准，AI 开始执行', 'success');
     addOutputLog('计划已批准', 'success');
@@ -15236,6 +15336,8 @@ function bindEvents() {
     // 计划先行：带修改意见拒绝，AI 重新出计划
     const feedbackInput = document.getElementById('plan-feedback-input');
     const feedback = feedbackInput ? feedbackInput.value.trim() : '';
+    // Phase B+：拒绝计划时同步状态（保留反馈，供下一轮注入参考）
+    if (state.currentPlan) { state.currentPlan.status = 'rejected'; state.currentPlan.feedback = feedback; }
     if (state.agent && typeof state.agent.rejectPlan === 'function') {
       state.agent.rejectPlan(feedback);
       if (feedback) addChatMessage('ai', '计划已拒绝，请按修改意见重新规划：' + feedback);

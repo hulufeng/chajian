@@ -50,7 +50,10 @@
       plan: s.plan || null,
       thinking: s.thinking || null,
       workLog: Array.isArray(s.workLog) ? s.workLog : [],
-      usage: s.usage || null
+      usage: s.usage || null,
+      // Phase B+：turn 批次快照与 todo 清单随会话持久化（跨重启/切换恢复）
+      turns: s.turns || null,
+      todoList: Array.isArray(s.todoList) ? s.todoList : []
     };
   }
 

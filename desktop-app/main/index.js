@@ -222,43 +222,23 @@ function reviseSession(id, ops) {
 }
 
 /**
- * 全文检索（对齐 ChipCode searchSessions：每会话一条命中 + snippet + 过滤）。
- * 线性扫描适配当前 JSON 文件量级；独立 FTS5 索引库为后续可选增强。
+ * 全文检索（对齐 ChipCode searchSessions：3-gram 中文分词 + BM25 相关性排序 + 命中高亮）。
+ * Electron 28 内置 Node 18 不支持 node:sqlite/FTS5，故用零依赖内存索引（main/search-index.js）。
  */
+const searchIndex = require('./search-index');
+let searchCache = null; // { key, sessions } —— 以会话文件目录 mtime 粗略失效
 function searchSessions(query, opts) {
-  const q = String(query || '').trim().toLowerCase();
   const o = opts || {};
-  const limit = Math.min(Math.max(Number(o.limit) || 20, 1), 50);
-  const results = [];
-  for (const s of loadSessions()) {
-    if (o.excludeSessionId && s.id === o.excludeSessionId) continue;
-    if (o.projectPath && s.projectPath && s.projectPath !== o.projectPath) continue;
-    if (String(s.id).startsWith('sched_')) continue; // 定时任务会话不进历史列表
-    let hit = null;
-    if (!q || (s.title || '').toLowerCase().indexOf(q) >= 0) {
-      hit = { snippet: s.title || '', messageSeq: -1 };
-    } else {
-      const msgs = s.messages || [];
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        const c = String((msgs[i] && msgs[i].content) || '');
-        const p = c.toLowerCase().indexOf(q);
-        if (p >= 0) {
-          const start = Math.max(0, p - 40), end = Math.min(c.length, p + q.length + 60);
-          hit = { snippet: (start ? '…' : '') + c.slice(start, end) + (end < c.length ? '…' : ''), messageSeq: i };
-          break;
-        }
-      }
-    }
-    if (!hit) continue;
-    results.push({
-      id: s.id, title: s.title || '未命名对话', ts: s.updatedAt || s.timestamp || 0,
-      messageCount: (s.messages || []).length, messageSeq: hit.messageSeq,
-      snippet: hit.snippet, projectPath: s.projectPath || null,
-      mode: s.mode || null, modelId: s.modelId || null
-    });
-    if (results.length >= limit) break;
+  try {
+    // 每次读盘取最新（量级小），并以 id+updatedAt 组合键做缓存失效
+    const sessions = loadSessions();
+    const key = sessions.map(s => s.id + ':' + (s.updatedAt || 0)).join('|');
+    if (!searchCache || searchCache.key !== key) searchCache = { key, sessions };
+    return searchIndex.search(searchCache.sessions, query, o);
+  } catch (e) {
+    console.error('会话检索失败:', e.message);
+    return [];
   }
-  return results;
 }
 
 // ============ 托盘（常规·关闭窗口时=最小化到托盘） ============
