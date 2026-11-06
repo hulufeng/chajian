@@ -201,3 +201,38 @@
 - **自动记忆提炼**：ChipCode 会话结束按 sessionId 调 LLM 提炼 ≤5 条记忆；LabCode 的 remember/forget 仍是工具驱动（Phase A A1），未做自动提炼。
 - **planStore**：会话切换已恢复 `state.currentPlan`，但未做 ChipCode 那样每轮注入进度防失忆。
 - **契约脚本既有 4 项 FAIL** 待单独清理。
+
+---
+
+## 十、Phase C（MQTT 长连接 / 订阅套餐）与提交记录（2026-11-06）
+
+### 10.1 提交
+- `f094f68`「feat(ai): 对齐 ChipCode 的 AI Agent 交互层(Phase A)与完整会话 store(Phase B)」：精确 14 个文件（11 代码 + 3 交接文档）。
+- **刻意排除** 4 个历史遗留项：`cdp_ws.txt`、`package.json`、`release-build/`、`welcome_chipcode_compare.png`。
+- 注意：根仓库 `D:\work\daimaLABshiyanshi` 的 `.gitignore` 是 `*` + 白名单（只留 `.github/` 与 `.codebuddy/skills/pc-autopilot/`），`.handoff` 有意不入库；交接文档放 `codelab-desktop/.handoff/`（该目录本来就是本仓库惯例）才随代码提交。
+
+### 10.2 Phase C 调研结论（2 个只读子代理）
+- **MQTT 不是从零**：`package.json:41` 已有 `mqtt ^5.16.1`，`main/index.js:2589` 已有 `plugin:mqttCall` 一次性请求/应答 transport，`plugin-loader.js:313` 已调用。缺的是**持久连接 + 状态/消息推送 + 用户面板**（UI 层 0 命中）。
+- **payment 不是从零**：登录/积分/权益/套餐展示/60s 轮询全闭环（`gw-*` 徽标、`ai:gatewayAuth`、`renderGwEntitlement`）。缺的是**桌面内订阅 IPC**（`gw-upgrade-btn` 只是纯外链）与套餐面板。
+- ChipCode 参照：MQTT 是「插件 manifest → main mqtt manager → tool transport」，只有 `mqtt:getStatus`/`mqtt:testConnection` 两个 invoke + `mqtt:status` 推送，**无独立 MQTT 面板**；发布走 `allowedPublishTopics` **fail-closed**，消息缓冲 `maxMessages:200`。账号侧是远端服务客户端，`payment.getPlans()` 只读套餐，`auth:openPaymentPage` 只允许 `lite|pro|max`，**没有本地 checkout/订单/订阅状态机**。
+
+### 10.3 落地清单（未提交，用户本轮只要求提交 A+B）
+| 文件 | 改动 |
+|---|---|
+| `main/index.js` | 新增 6 个 `mqtt:*` handler（connect/subscribe/publish/disconnect/getStatus/testConnection）+ `mqtt:status`/`mqtt:message` 推送；协议白名单 `mqtt/mqtts/ws/wss/tcp/tls`；发布白名单 fail-closed；消息缓冲 200 条；`keepalive/reconnectPeriod/clean`；新增 2 个 `payment:*`（getPlans 远端+内置兜底、openPortal 带 plan 白名单） |
+| `main/preload.js` | 新增 `mqtt` 命名空间（含 `onStatus`/`onMessage`）与 `payment` 命名空间 |
+| **新增** `renderer/js/mqtt-panel.js` | 底栏 MQTT tab + 面板：连接/测试/断开、订阅、发布、消息时间线、状态灯；复用 `app.js:10708` 的 `data-panel` 泛化切换 |
+| **新增** `renderer/js/subscription-panel.js` | 设置「订阅与套餐」子页：当前套餐/积分、套餐卡片、购买按钮走 `payment:openPortal`；复用 `settings-nav-item` 委托 |
+| `renderer/index.html` / `app.js` | 挂载 2 模块；`gw-upgrade-btn` 外链改为优先走 `payment:openPortal`（失败降级原外链） |
+
+### 10.4 验证
+- `node --check` 5 个改动文件全 0；IPC 契约 `[channels] NONE` / `[main] duplicate NONE`（残留 4 项 preload FAIL 经 `git grep HEAD` 确认为历史既有）。
+- **回归 `D:\work\tmp\verify_phasec.js` → pass=40 fail=0**（主进程 MQTT 协议白名单/订阅/发布 fail-closed/缓冲上限/状态推送/testConnection、payment 兜底与 plan 白名单、两个面板的 DOM 构建与按钮绑定）。
+- Phase A `28/28`、Phase B `46/46` 仍全绿，无回归。
+- **运行时**：asar 热修（main/preload + renderer 两处，共 10 文件）后重启，应用正常启动（4 进程），`mqtt` 依赖确认在 asar 内。
+- ⚠️ **诚实标注**：设置齿轮的 GUI 点击未打开弹窗（坐标换算偏差），MQTT/订阅面板**未做 GUI 逐点实测**；UI 构建与交互由 40/40 逻辑回归覆盖。这不影响 Phase A/B 此前已完成的 GUI 验证结论。
+
+### 10.5 踩坑
+- PowerShell 5.1 里 `if` 不能作表达式：`Join-Path $s (if(...) {...} else {...})` 直接语法错误 → 拆分或用 `@(...)` 列表 + 预构造路径。
+- `execute_command` 内联 PowerShell 的 `$` 变量会被外层吞掉 → .NET 图像处理一律写 `.ps1` 文件执行。
+- `Get-FileHash -Algorithm MD5` 被本机 FIPS 策略禁用（返回 null 造出假 MATCH），一律 SHA256。

@@ -337,6 +337,7 @@
       <button class="activity-btn" data-panel="device" title="设备"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
+      <button class="activity-btn" data-panel="product-factory" title="产品工厂"><svg class="icon"><use href="#icon-chip"></use></svg><span class="activity-label">产品工厂</span></button>
     </div>
 
     <!-- 群聊 / 多 Agent 房间（全屏覆盖视图，对标 Ekko「群聊」） -->
@@ -448,21 +449,8 @@
     </div>
 
     <!-- AI 硬件拆解工坊（ai-hardware-lab 插件的覆盖视图；插件安装后活动栏才出现入口） -->
-    <div id="product-factory-view" class="workflow-view" style="display:none;flex-direction:column;">
-      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--border);">
-        <span style="font-weight:600;color:var(--text);">AI 硬件拆解工坊</span>
-        <span style="font-size:11px;color:var(--text-secondary);">描述你想做的电子产品，AI 帮你选型 / 出原理图 / 写固件</span>
-        <button class="btn btn-sm" id="pf-close" style="margin-left:auto;">关闭</button>
-      </div>
-      <div style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;max-width:720px;margin:0 auto;width:100%;box-sizing:border-box;">
-        <div class="dev-card" style="padding:16px;background:var(--bg-elevated);border:1px solid var(--border-color);border-radius:10px;">
-          <div style="font-weight:600;margin-bottom:10px;color:var(--text);">产品构想</div>
-          <textarea id="pf-idea" rows="4" placeholder="例如：一个用 ESP32 做的桌面温湿度气象站，带 OLED 显示，USB 供电…" style="width:100%;box-sizing:border-box;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:10px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
-          <button id="pf-generate" class="btn btn-primary btn-sm" style="margin-top:12px;">让 AI 生成方案</button>
-        </div>
-        <div id="pf-output" style="font-size:13px;color:var(--text);white-space:pre-wrap;"></div>
-      </div>
-    </div>
+    <!-- Phase D · 五阶段产品工厂（内容由 product-factory.js 渲染；保留 id/class 兼容既有视图互斥逻辑） -->
+    <div id="product-factory-view" class="workflow-view" style="display:none;flex-direction:column;"></div>
 
     <!-- 看板 / 项目统计（对齐 Ekko 看板） -->
     <style>
@@ -2139,6 +2127,7 @@
   <script src="js/terminal.js"></script>
   <script src="js/plugin-loader.js"></script>
   <script src="js/session-store.js"></script>
+  <script src="js/product-ai-tools.js"></script>
   <script src="js/app.js"></script>
   <script src="js/ipc-bridge.js"></script>
   <script src="js/context-panel.js"></script>
@@ -2151,6 +2140,9 @@
   <script src="js/ai-memory-panel.js"></script>
   <script src="js/ai-rewind.js"></script>
   <script src="js/ai-revise.js"></script>
+  <script src="js/mqtt-panel.js"></script>
+  <script src="js/subscription-panel.js"></script>
+  <script src="js/product-factory.js"></script>
 
   <style id="labcode-align-extras">
     .ai-side-panel{position:absolute;top:46px;right:10px;width:320px;max-height:70%;overflow:auto;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.28);z-index:60;padding:0;}
@@ -2182,6 +2174,58 @@
     .chat-message:hover .ai-message-actions{display:flex;}
     .ai-message-action-btn{font-size:11px;line-height:1.4;padding:2px 8px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:4px;}
     .ai-message-action-btn:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+    #product-factory-view{background:var(--surface-1);color:var(--text-primary);}
+    .pf-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);flex-shrink:0;}
+    .pf-title{font-weight:600;font-size:13px;}
+    .pf-sub{font-size:11px;color:var(--text-secondary);}
+    .pf-actions{display:flex;gap:6px;margin-left:auto;}
+    .pf-btn{font-size:11.5px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-elevated);color:var(--text-primary);cursor:pointer;}
+    .pf-btn:hover{border-color:var(--accent);color:var(--accent);}
+    .pf-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+    .pf-btn.outline{background:transparent;}
+    .pf-body{flex:1;min-height:0;display:flex;overflow:hidden;}
+    .pf-nav{width:330px;flex-shrink:0;overflow:auto;border-right:1px solid var(--border-color);padding:12px;box-sizing:border-box;}
+    .pf-nav__meter{font-size:11.5px;color:var(--text-secondary);margin-bottom:14px;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary);}
+    .pf-nav__meter b{float:right;color:var(--text-primary);}
+    .pf-nav__meter-bar{height:5px;border-radius:3px;background:var(--bg-tertiary);margin:8px 0 6px;overflow:hidden;}
+    .pf-nav__meter-bar i{display:block;height:100%;background:var(--accent);}
+    .pf-nav__progress{font-size:10.5px;}
+    .pf-nav__stages{display:flex;flex-direction:column;gap:6px;}
+    .pf-nav__stage{display:grid;grid-template-columns:26px 10px 1fr auto;align-items:center;gap:7px;width:100%;text-align:left;padding:9px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;}
+    .pf-nav__stage:hover{border-color:var(--accent);}
+    .pf-nav__stage.is-active{border-color:var(--accent);background:var(--bg-tertiary);}
+    .pf-nav__stage--done{opacity:.85;}
+    .pf-nav__stage--blocked{border-left:3px solid #ef4444;}
+    .pf-nav__idx{font-family:monospace;font-size:11px;color:var(--text-secondary);}
+    .pf-nav__dot{width:8px;height:8px;border-radius:50%;background:var(--text-secondary);display:inline-block;}
+    .pf-nav__dot--done{background:#52C41A;}
+    .pf-nav__dot--in_progress{background:#3b82f6;}
+    .pf-nav__dot--blocked{background:#ef4444;}
+    .pf-nav__dot--not_started{background:var(--border-color);}
+    .pf-nav__name{font-size:12.5px;font-weight:600;}
+    .pf-nav__state{font-size:10.5px;color:var(--text-secondary);}
+    .pf-nav__note{grid-column:3 / 5;font-size:10.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .pf-nav__files-toggle{margin-top:12px;font-size:11.5px;background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:4px 0;}
+    .pf-files{font-size:11px;color:var(--text-secondary);padding:6px 8px;background:var(--bg-secondary);border-radius:6px;line-height:1.7;}
+    .pf-file-group{margin-bottom:6px;}
+    .pf-file-group b{color:var(--text-primary);}
+    .pf-nav__empty{display:flex;flex-direction:column;align-items:center;gap:12px;margin:auto;text-align:center;max-width:340px;padding:30px;}
+    .pf-nav__empty-ico{width:56px;height:56px;border-radius:16px;background:rgba(37,99,235,.12);color:var(--accent);font-size:26px;display:flex;align-items:center;justify-content:center;}
+    .pf-nav__empty-title{font-size:15px;font-weight:600;}
+    .pf-nav__empty-hint{font-size:12.5px;color:var(--text-secondary);line-height:1.7;}
+    .pf-board{flex:1;min-width:0;overflow:auto;padding:16px;}
+    .pf-card{border:1px solid var(--border-color);border-radius:10px;padding:14px;background:var(--bg-secondary);}
+    .pf-card-title{font-weight:600;font-size:12.5px;margin-bottom:8px;}
+    .pf-kv,.pf-dim,.pf-warn{font-size:11.5px;color:var(--text-secondary);margin:6px 0;}
+    .pf-warn{color:#f59e0b;}
+    .pf-pre{white-space:pre-wrap;font-size:12px;line-height:1.7;max-height:260px;overflow:auto;}
+    .pf-list{font-size:12px;line-height:1.8;padding-left:18px;}
+    .pf-table{width:100%;border-collapse:collapse;font-size:11.5px;}
+    .pf-table th,.pf-table td{border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;}
+    .pf-mesh{font-size:11.5px;padding:10px;border:1px dashed var(--border-color);border-radius:8px;margin:8px 0;}
+    .pf-views{display:flex;gap:8px;flex-wrap:wrap;}
+    .pf-view{font-size:11px;border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;}
+    .pf-view-img{display:block;max-width:180px;max-height:140px;margin-top:6px;}
   </style>
 
   <!-- 首屏登录（视觉对齐 TrieCode：居中、字段带 label、pill 标签、聚焦光环、成功/错误软色提示；使用 LabCode 真实主题 token） -->

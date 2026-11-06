@@ -2642,6 +2642,213 @@ function setupIPC() {
     }
   });
 
+  // ===== Phase C · MQTT 长连接（对齐 ChipCode mqtt manager：持久 client + 状态/消息推送）=====
+  // 与上面 plugin:mqttCall 的一次性请求/应答并存：那个给插件工具用，这个给用户面板用。
+  const MQTT_URL_PREFIXES = ['mqtt://', 'mqtts://', 'ws://', 'wss://', 'tcp://', 'tls://'];
+  const mqttClients = new Map(); // id -> { client, url, topics, allowPublish, buffer, status, error }
+  const MQTT_BUFFER_MAX = 200;   // 对齐 ChipCode mqtt.js:2-9 默认 maxMessages
+
+  function mqttSend(channel, payload) {
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload); } catch (e) {}
+  }
+  function mqttStatuses() {
+    const out = [];
+    mqttClients.forEach((v, id) => out.push({
+      id, url: v.url, status: v.status, error: v.error || null,
+      topics: v.topics.slice(), allowPublish: v.allowPublish.slice(),
+      messageCount: v.buffer.length
+    }));
+    return out;
+  }
+  function mqttPushStatus() { mqttSend('mqtt:status', { statuses: mqttStatuses() }); }
+  function mqttPushMessage(id, topic, text) {
+    const v = mqttClients.get(id);
+    if (!v) return;
+    v.buffer.push({ topic, payload: text, ts: Date.now() });
+    if (v.buffer.length > MQTT_BUFFER_MAX) v.buffer.shift();
+    mqttSend('mqtt:message', { id, topic, payload: text, ts: Date.now() });
+  }
+  function mqttSetStatus(id, status, error) {
+    const v = mqttClients.get(id);
+    if (!v) return;
+    v.status = status;
+    v.error = error || null;
+    mqttPushStatus();
+  }
+
+  ipcMain.handle('mqtt:connect', async (_, opts) => {
+    const o = opts || {};
+    const url = String(o.url || '').trim();
+    if (!MQTT_URL_PREFIXES.some(p => url.toLowerCase().startsWith(p))) {
+      return { success: false, error: '不支持的 broker 协议（仅 mqtt/mqtts/ws/wss/tcp/tls）' };
+    }
+    const id = String(o.id || 'default').slice(0, 64);
+    if (mqttClients.has(id)) {
+      try { mqttClients.get(id).client.end(true); } catch (e) {}
+      mqttClients.delete(id);
+    }
+    let mqtt;
+    try { mqtt = require('mqtt'); }
+    catch (e) { return { success: false, error: 'mqtt 依赖未安装: ' + e.message }; }
+    const entry = {
+      client: null, url,
+      topics: Array.isArray(o.topics) ? o.topics.filter(t => typeof t === 'string' && t) : [],
+      allowPublish: Array.isArray(o.allowedPublishTopics) ? o.allowedPublishTopics.filter(t => typeof t === 'string' && t) : [],
+      buffer: [], status: 'connecting', error: null
+    };
+    mqttClients.set(id, entry);
+    try {
+      const client = mqtt.connect(url, {
+        username: o.username || undefined,
+        password: o.password || undefined,
+        clientId: o.clientId || ('labcode-' + id + '-' + Math.random().toString(16).slice(2, 8)),
+        keepalive: Number(o.keepalive) || 60,
+        clean: o.clean !== false,
+        reconnectPeriod: Number(o.reconnectPeriod) || 2000,
+        connectTimeout: 10000
+      });
+      entry.client = client;
+      client.on('connect', () => {
+        mqttSetStatus(id, 'connected');
+        if (entry.topics.length) {
+          client.subscribe(entry.topics, { qos: Number(o.qos) || 0 }, (err) => {
+            if (err) mqttSetStatus(id, 'connected', '订阅失败: ' + err.message);
+          });
+        }
+      });
+      client.on('reconnect', () => mqttSetStatus(id, 'reconnecting'));
+      client.on('offline', () => mqttSetStatus(id, 'offline'));
+      client.on('close', () => { const v = mqttClients.get(id); if (v && v.status !== 'disconnected') mqttSetStatus(id, 'offline'); });
+      client.on('error', (e) => mqttSetStatus(id, 'error', e.message));
+      client.on('message', (topic, message) => mqttPushMessage(id, topic, message.toString()));
+      mqttPushStatus();
+      return { success: true, id };
+    } catch (e) {
+      mqttClients.delete(id);
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('mqtt:disconnect', async (_, id) => {
+    const key = String(id || 'default');
+    const v = mqttClients.get(key);
+    if (!v) return { success: true, already: true };
+    try { v.client.end(true); } catch (e) {}
+    mqttClients.delete(key);
+    mqttPushStatus();
+    return { success: true };
+  });
+
+  ipcMain.handle('mqtt:subscribe', async (_, opts) => {
+    const o = opts || {};
+    const v = mqttClients.get(String(o.id || 'default'));
+    if (!v) return { success: false, error: '未连接' };
+    const topic = String(o.topic || '').trim();
+    if (!topic) return { success: false, error: 'topic 不能为空' };
+    return new Promise(resolve => {
+      v.client.subscribe(topic, { qos: Number(o.qos) || 0 }, (err) => {
+        if (err) return resolve({ success: false, error: err.message });
+        if (v.topics.indexOf(topic) < 0) v.topics.push(topic);
+        mqttPushStatus();
+        resolve({ success: true });
+      });
+    });
+  });
+
+  ipcMain.handle('mqtt:publish', async (_, opts) => {
+    const o = opts || {};
+    const v = mqttClients.get(String(o.id || 'default'));
+    if (!v) return { success: false, error: '未连接' };
+    const topic = String(o.topic || '').trim();
+    if (!topic) return { success: false, error: 'topic 不能为空' };
+    // 对齐 ChipCode fail-closed：配置了白名单时，仅允许白名单内主题发布
+    if (v.allowPublish.length && v.allowPublish.indexOf(topic) < 0) {
+      return { success: false, error: 'topic 不在允许发布白名单内' };
+    }
+    const payload = typeof o.payload === 'string' ? o.payload : JSON.stringify(o.payload || {});
+    return new Promise(resolve => {
+      v.client.publish(topic, payload, { qos: Number(o.qos) || 0, retain: !!o.retain }, (err) => {
+        if (err) return resolve({ success: false, error: err.message });
+        mqttPushMessage(String(o.id || 'default'), topic, '[TX] ' + payload); // 本地回显
+        resolve({ success: true });
+      });
+    });
+  });
+
+  ipcMain.handle('mqtt:getStatus', () => mqttStatuses());
+
+  ipcMain.handle('mqtt:testConnection', async (_, opts) => {
+    const o = opts || {};
+    const url = String((o.config && o.config.url) || o.url || '').trim();
+    if (!MQTT_URL_PREFIXES.some(p => url.toLowerCase().startsWith(p))) {
+      return { success: false, error: '不支持的 broker 协议' };
+    }
+    let mqtt;
+    try { mqtt = require('mqtt'); } catch (e) { return { success: false, error: 'mqtt 依赖未安装' }; }
+    return new Promise(resolve => {
+      const client = mqtt.connect(url, {
+        username: o.config && o.config.username || undefined,
+        password: o.config && o.config.password || undefined,
+        reconnectPeriod: 0, connectTimeout: 8000
+      });
+      const done = (r) => { try { client.end(true); } catch (e) {} resolve(r); };
+      const timer = setTimeout(() => done({ success: false, error: '连接超时 (8s)' }), 8000);
+      client.once('connect', () => { clearTimeout(timer); done({ success: true }); });
+      client.once('error', (e) => { clearTimeout(timer); done({ success: false, error: e.message }); });
+    });
+  });
+
+  // ===== Phase C · 账户订阅 / 套餐（对齐 ChipCode payment:getPlans + auth:openPaymentPage）=====
+  // 桌面端不做本地 checkout/订单（ChipCode 亦如此）：套餐列表取远端，购买入口打开外部账户页。
+  const PAYMENT_PLANS_FALLBACK = [
+    { id: 'free', name: '免费版', price: 0, credits: 0, features: ['每日免费积分', '自带 Key 模型'] },
+    { id: 'lite', name: '轻量版', price: null, credits: null, features: ['更多套餐积分', '账号模型'] },
+    { id: 'pro', name: '专业版', price: null, credits: null, features: ['更高额度', '优先队列'] },
+    { id: 'max', name: '旗舰版', price: null, credits: null, features: ['最高额度', '全部能力'] }
+  ];
+  const PAYMENT_PORTAL_PLANS = ['lite', 'pro', 'max'];
+
+  ipcMain.handle('payment:getPlans', async () => {
+    const savedGw = (config.ai || {}).gatewayUrl || '';
+    const gwBase = (savedGw || process.env.GATEWAY_URL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
+    const token = (config.ai || {}).gatewayToken || '';
+    try {
+      const res = await net.fetch(gwBase + '/api/payment/plans', {
+        headers: token ? { Authorization: 'Bearer ' + token } : {}
+      });
+      const data = await res.json().catch(() => ({}));
+      const plans = Array.isArray(data.plans) ? data.plans : (Array.isArray(data) ? data : null);
+      if (plans && plans.length) return { success: true, plans, source: 'gateway' };
+    } catch (e) { /* 远端不可用时用内置兜底，不阻塞 UI */ }
+    return { success: true, plans: PAYMENT_PLANS_FALLBACK, source: 'fallback' };
+  });
+
+  ipcMain.handle('payment:openPortal', async (_, opts) => {
+    const o = opts || {};
+    const plan = PAYMENT_PORTAL_PLANS.indexOf(o.plan) >= 0 ? o.plan : '';
+    const savedGw = (config.ai || {}).gatewayUrl || '';
+    const gwBase = (savedGw || process.env.GATEWAY_URL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
+    const url = gwBase + '/pricing' + (plan ? '?plan=' + plan : '');
+    try { await shell.openExternal(url); return { success: true, url }; }
+    catch (e) { return { success: false, error: e.message }; }
+  });
+
+  // ===== Phase D · 产品工厂（磁盘为状态唯一真相）=====
+  const productFactory = require('./product-factory');
+  const pfSend = (payload) => {
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('product:files-changed', payload); } catch (e) {}
+  };
+  ipcMain.handle('product:state', (_, opts) => {
+    try { return { success: true, ...productFactory.computeStages((opts || {}).root) }; }
+    catch (e) { return { success: false, error: e.message }; }
+  });
+  ipcMain.handle('product:create', (_, opts) => productFactory.createScaffold((opts || {}).root, (opts || {}).name));
+  ipcMain.handle('product:package', (_, opts) => productFactory.buildPackage((opts || {}).root));
+  ipcMain.handle('product:readFile', (_, opts) => productFactory.readStateFile((opts || {}).root, (opts || {}).rel));
+  ipcMain.handle('product:writeFile', (_, opts) => productFactory.writeStateFile((opts || {}).root, (opts || {}).rel, (opts || {}).content));
+  ipcMain.handle('product:watch', (_, opts) => productFactory.startWatch((opts || {}).root, pfSend));
+  ipcMain.handle('product:unwatch', () => productFactory.stopWatch());
+
   // unzip: plugins are usually distributed as a ZIP; extraction needs OS access
   ipcMain.handle('plugin:unzip', async (_, opts) => {
     try {

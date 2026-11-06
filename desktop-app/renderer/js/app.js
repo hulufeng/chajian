@@ -2261,6 +2261,13 @@ const TOOL_DEFS = [
     }
   }
 ];
+// Phase D · 产品工厂 5 个工具（定义在 product-ai-tools.js，此处仅注册）
+// getToolDef / _buildToolDefs / _buildSystemPrompt / 权限 / toolStep UI 全部按 TOOL_DEFS 动态消费，无需另改分派
+if (window.ProductAITools && Array.isArray(window.ProductAITools.defs)) {
+  window.ProductAITools.defs.forEach(function (t) {
+    if (!TOOL_DEFS.some(function (x) { return x.name === t.name; })) TOOL_DEFS.push(t);
+  });
+}
 
 // 统一的「向用户确认」弹窗助手（ask_user 工具与 install_plugin 工具共用）
 async function askUserConfirm(question, options, header) {
@@ -4647,10 +4654,26 @@ class RealAIClient {
     }
 
     const identity = this.customSystemPrompt || '你是 LabCode（代码实验室）的 AI 编程助手。你可以使用工具来读写文件、执行命令、联网搜索等。';
+    // Phase D · PRODUCT STATE 动态块（对齐 ChipCode main:1562）：产品项目时把五阶段焦点与磁盘状态注入
+    let productStageSection = '';
+    try {
+      const pfSnap = window.ProductFactory && window.ProductFactory.snapshot;
+      if (pfSnap && pfSnap.isProduct) {
+        const focus = (window.ProductFactory && window.ProductFactory.activeStage) ||
+          (pfSnap.stages.find(s => s.state !== 'done') || {}).id || 'integration';
+        const lines = pfSnap.stages.map(s => '- 0' + s.index + ' ' + s.label + ': ' + s.state + '（' + s.note + '）').join('\n');
+        productStageSection = '\n## 产品工厂状态（PRODUCT STATE）\n' +
+          '当前焦点阶段: ' + focus + '\n五步固定流程（磁盘文件为唯一真相，不要在对话里声称阶段已完成）：\n' + lines + '\n' +
+          '- 验收覆盖: ' + pfSnap.meter.hit + '/' + pfSnap.meter.total +
+          (pfSnap.unproven.length ? '\n- 未证明条件: ' + pfSnap.unproven.join(', ') : '') + '\n' +
+          '可用产品工具: propose_criteria / propose_shape / propose_bom / record_evidence / build_package。\n';
+      }
+    } catch (e) { /* 产品状态不可用时不注入 */ }
     return `${identity}
-${memorySection}
+${memorySection}${productStageSection}
 ## 当前项目
 - 项目类型: ${projectTypeDesc}
+- 产品阶段: ${(window.ProductFactory && window.ProductFactory.snapshot && window.ProductFactory.snapshot.isProduct) ? (window.ProductFactory.activeStage || 'idea') : '未设置'}
 - ${mainFileHint || '请根据项目类型创建正确格式的文件。'}
 
 ## 可用工具
@@ -10336,40 +10359,15 @@ function bindEvents() {
         if (sidebarHeader) sidebarHeader.style.display = 'none';
         wfShowView();
       } else if (panel === 'product-factory') {
+        // Phase D · 五阶段产品工厂（新模块自管 DOM 与刷新；旧「AI 硬件拆解工坊」插件门槛已解耦）
         sidebar.style.display = 'none';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
         const pf = document.getElementById('product-factory-view');
         if (pf) {
           pf.style.display = 'flex';
-          const pfClose = document.getElementById('pf-close');
-          if (pfClose) pfClose.onclick = function(){ pf.style.display = 'none'; };
-          const pfGen = document.getElementById('pf-generate');
-          if (pfGen) pfGen.onclick = async function(){
-            const idea = ((document.getElementById('pf-idea')||{}).value || '').trim();
-            const out = document.getElementById('pf-output');
-            if (!idea) { if (out) out.textContent = '请先描述你想做的产品构想。'; return; }
-            // 真插件：功能由 ai-hardware-lab 插件提供，未安装不能用
-            if (!isPluginInstalled('ai-hardware-lab')) {
-              if (out) out.textContent = '尚未安装「AI 硬件拆解工坊」插件。请到插件市场安装后使用。';
-              showToast('请先安装「AI 硬件拆解工坊」插件', 'warning');
-              return;
-            }
-            if (out) out.textContent = 'AI 正在拆解方案，请稍候…';
-            pfGen.disabled = true;
-            try {
-              const PS = window.PluginSystem;
-              const r = await PS.dispatchTool(
-                { transport: 'internal', internal: { service: 'hwlab', method: 'dissect' } },
-                'plugin_ai-hardware-lab_dissect_hardware_idea',
-                'plugin_ai-hardware-lab_dissect_hardware_idea',
-                { idea: idea }
-              );
-              if (!(r && (r.success || typeof r === 'string'))) throw new Error((r && r.error) || '拆解失败');
-              if (out) out.textContent = typeof r === 'string' ? r : (r.markdown || r.content || JSON.stringify(r, null, 2));
-            } catch (e) {
-              if (out) out.textContent = '拆解失败：' + e.message;
-            } finally { pfGen.disabled = false; }
-          };
+          if (window.ProductFactory && typeof window.ProductFactory.refresh === 'function') {
+            window.ProductFactory.refresh();
+          }
         }
       } else {
         // settings 等其他按钮
@@ -12318,9 +12316,9 @@ function bindEvents() {
     // Wokwi 模拟器：对齐 ChipCode——可安装/卸载插件，未安装不显示活动栏入口
     const wokwiBtn = document.querySelector('.activity-btn[data-panel="wokwi"]');
     if (wokwiBtn) wokwiBtn.style.display = isPluginInstalled('wokwi-simulator') ? '' : 'none';
-    // AI 硬件拆解工坊（原「产品工厂」）：由 ai-hardware-lab 真插件提供入口与能力
-    const hwlabBtn = document.querySelector('.activity-btn[data-panel="product-factory"]');
-    if (hwlabBtn) hwlabBtn.style.display = isPluginInstalled('ai-hardware-lab') ? '' : 'none';
+    // Phase D：产品工厂改为内置五阶段视图，不再依赖 ai-hardware-lab 插件（该插件的命令面板入口仍保留）
+    const pfBtn = document.querySelector('.activity-btn[data-panel="product-factory"]');
+    if (pfBtn) pfBtn.style.display = '';
   }
 
   // ============ 暴露插件 API 给 AI 工具（agent 自主插件管理）============
@@ -13088,13 +13086,9 @@ function bindEvents() {
   });
   const welcomePillProduct = document.getElementById('welcome-pill-product');
   if (welcomePillProduct) welcomePillProduct.addEventListener('click', function(){
+    // Phase D：产品工厂已内置，不再要求安装 ai-hardware-lab 插件
     const pfBtn = document.querySelector('.activity-btn[data-panel="product-factory"]');
-    if (!pfBtn || pfBtn.style.display === 'none' || !isPluginInstalled('ai-hardware-lab')) {
-      showToast('请先到插件市场安装「AI 硬件拆解工坊」插件', 'warning');
-      const pluginsBtn = document.querySelector('.activity-btn[data-panel="plugins"]');
-      if (pluginsBtn) pluginsBtn.click();
-      return;
-    }
+    if (!pfBtn) { showToast('产品工厂入口不可用', 'warning'); return; }
     pfBtn.click();
   });
 
@@ -16830,7 +16824,16 @@ function bindEvents() {
   (function bindGwAccountActions() {
     const open = (u) => { try { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal(u); } catch (e) {} };
     const ub = document.getElementById('gw-upgrade-btn');
-    if (ub) ub.addEventListener('click', () => open('https://bluebubai.work/pricing'));
+    if (ub) ub.addEventListener('click', async () => {
+      // Phase C：优先走 payment:openPortal（统一网关地址 + plan 白名单），不可用时降级外链
+      try {
+        if (window.LabCode && window.LabCode.payment && window.LabCode.payment.openPortal) {
+          const r = await window.LabCode.payment.openPortal({});
+          if (r && r.success) return;
+        }
+      } catch (e) {}
+      open('https://bluebubai.work/pricing');
+    });
     const ab = document.getElementById('gw-account-center');
     if (ab) ab.addEventListener('click', () => open('https://bluebubai.work'));
   })();

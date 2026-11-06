@@ -62,6 +62,33 @@ contextBridge.exposeInMainWorld('LabCode', {
     cliCall: (opts) => ipcRenderer.invoke('plugin:cliCall', opts),
     unzip: (opts) => ipcRenderer.invoke('plugin:unzip', opts)
   },
+  // Phase C · MQTT 长连接（用户面板）
+  mqtt: {
+    connect: (opts) => ipcRenderer.invoke('mqtt:connect', opts),
+    disconnect: (id) => ipcRenderer.invoke('mqtt:disconnect', id),
+    subscribe: (opts) => ipcRenderer.invoke('mqtt:subscribe', opts),
+    publish: (opts) => ipcRenderer.invoke('mqtt:publish', opts),
+    getStatus: () => ipcRenderer.invoke('mqtt:getStatus'),
+    testConnection: (opts) => ipcRenderer.invoke('mqtt:testConnection', opts),
+    onStatus: (cb) => ipcRenderer.on('mqtt:status', (_e, data) => cb(data)),
+    onMessage: (cb) => ipcRenderer.on('mqtt:message', (_e, data) => cb(data))
+  },
+  // Phase C · 账户订阅 / 套餐
+  payment: {
+    getPlans: () => ipcRenderer.invoke('payment:getPlans'),
+    openPortal: (opts) => ipcRenderer.invoke('payment:openPortal', opts)
+  },
+  // Phase D · 产品工厂
+  product: {
+    state: (opts) => ipcRenderer.invoke('product:state', opts),
+    create: (opts) => ipcRenderer.invoke('product:create', opts),
+    package: (opts) => ipcRenderer.invoke('product:package', opts),
+    readFile: (opts) => ipcRenderer.invoke('product:readFile', opts),
+    writeFile: (opts) => ipcRenderer.invoke('product:writeFile', opts),
+    watch: (opts) => ipcRenderer.invoke('product:watch', opts),
+    unwatch: () => ipcRenderer.invoke('product:unwatch'),
+    onFilesChanged: (cb) => ipcRenderer.on('product:files-changed', (_e, data) => cb(data))
+  },
   fs: {
     readFile: (filePath, encoding) => ipcRenderer.invoke('fs:readFile', filePath, encoding),
     readImageDataUrl: (filePath) => ipcRenderer.invoke('fs:read-image-data-url', filePath),
