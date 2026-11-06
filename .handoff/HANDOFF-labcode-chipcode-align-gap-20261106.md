@@ -309,3 +309,30 @@
 - **238/238 全绿**：A 28 + B 46 + C 40 + D 68 + 契约 8 + B+ 48。
 - 契约 `[PASS]`；6 个 JS `node --check` 全过。
 - 测试 stub 两次随源码变化修过（`verify_phaseb.js` / `verify_phasec.js` 的 vm 截取块新增 `require('./search-index')` / `require('./product-factory')`），均用真实模块注入。
+
+---
+
+## 十三、部署收口：正式构建替换热修 asar（2026-11-06）
+
+### 13.1 部署
+- 此前安装版一直运行**热修 asar**（393MB，手动 pack 整个解包目录、含 node_modules），而 dist169 是正式 `electron-builder` 产物（**343MB**，正确排除 devDependencies）。
+- 关键核对：dist169 与安装版的 `app.asar.unpacked`（native 模块）**字节数完全一致（48,855,023）** → 只需替换 `app.asar`，unpacked 一并同步无害。
+- 部署脚本 `D:\work\tmp\deploy_dist169.ps1`：停实例 → 备份热修版为 `app.asar.hotfix` → 复制 dist169 的 `app.asar` + `app.asar.unpacked` → 重启。
+
+### 13.2 三级回滚点（安装目录 `resources\`）
+| 文件 | 内容 | 大小 |
+|---|---|---|
+| `app.asar`（现役） | **正式构建 dist169**，与源码 8d91d64 一致 | 342,955,263 |
+| `app.asar.hotfix` | 我们的手动热修版（全部改动，含 node_modules） | 393,205,815 |
+| `app.asar.bak` | 最初原始安装版（无任何改动） | 342,811,553 |
+
+### 13.3 部署后验证
+- LabCode 正常启动（4 进程），无崩溃/白屏。
+- GUI 确认：欢迎页历史会话列表（Phase B 数据）、积分徽标（今日剩余 3 积分）、输入栏、模型选择器（Qwen2.5-Coder 3B 本地）全部正常；活动栏 **5 个图标齐全**，第 5 个芯片图标即 Phase D 产品工厂。
+- **双轨消除**：运行物 = 正式发行物 = 源码 8d91d64，三者一致。
+
+### 13.4 工程最终状态（全链闭环）
+- 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
+- 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。
+- **未处理项（保持排除，需用户确认归属）**：`cdp_ws.txt`、`package.json`、`release-build/`、`welcome_chipcode_compare.png` 四个历史遗留改动，四次提交均未混入。
+- dist169 安装包本体（`LabCode-Setup-1.2.31.exe` 389MB）保留在 `desktop-app/dist169/`（gitignore），可直接分发安装。
