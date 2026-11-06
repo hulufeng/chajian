@@ -1,0 +1,203 @@
+# LabCode ↔ ChipCode 界面功能评估与对齐方案（修正版 v2）
+
+> 评估对象：LabCode 前端 `codelab-desktop/desktop-app/renderer`（发布物，JS 版，origin=chajian.git）。
+> 目标系统 "她" = ChipCode/TrieCode（已用 Craft Anything 分析，见 `HANDOFF-chipcode-product-structure-20261106.md` / `HANDOFF-chipcode-ui-spec-detail-20261106.md`）。
+> 方法：对 `renderer/js/*.js` 做关键词/结构检索 + 精读 `app.js` 的 `AgentRunner`/`ensureAgent`/`showPermissionModal`/`fileChangeTracker` 等核心区。
+> **重要修正（v2）**：首版评估误把 `AgentRunner` 的"无权限确认通道"**死分支**（永不触发，因 `ensureAgent()` 已设置 `onPermissionRequest→showPermissionModal`）当作现状，夸大了缺口。经精读核实，**LabCode 的 AI Agent 后端已高度对齐 ChipCode**，绝大多数 Phase A 能力已存在（仅命名不同）。
+
+---
+
+## 一、评估结论速览（修正后）
+
+| 维度 | 结论 |
+|---|---|
+| **已对齐（已实现）** | 规划确认(`#plan-modal`+`approvePlan`/`rejectPlan`+反馈)、工具确认(`showPermissionModal`)、思考档位(`thinkingLevel`×13)、时间旅行(`fileChangeTracker.beginTurn/undoLastTurn/redoLastTurn`)、TTS 语音**输出**(Web Speech `speakText`)、会话列表(`window._currentSessionId`/最近会话)、Self-Verify 验证代理(`VerificationAgent`)、记忆概念(prompt 中 36 处"记忆") |
+| **真正缺失/薄弱** | ① 持久记忆存储 API(`extractMemory/forgetMemory/listMemories/openMemoryDir`) ② 语音**输入** STT(`SpeechRecognition` 0 命中，仅 TTS 输出) ③ 批量 rewind UI(`keepBatchesUpTo/truncateBatches` 0 命中，仅按轮 undo/redo) ④ `agentMode` 切换 UI(`mode` 参数在但无切换控件) ⑤ `compactPreview` 逻辑(UI 在 `context-panel.js`，逻辑待核实) ⑥ `validateKey` 内联校验(0 命中) |
+| **目标仓** | `codelab-desktop/desktop-app`（JS 版）；`codelab-full`(TS) 非发布路径 |
+| **前置** | `desktop-app/node_modules` 未装 → 改动后需 `npm install` + typecheck + `build:win`；渲染层热修可走 asar 重打（memory 70204685） |
+
+---
+
+## 二、LabCode 当前已实现的 AI 能力（逐条对照 ChipCode，已核实）
+
+| ChipCode 能力 | LabCode 对应实现（证据） | 对齐 |
+|---|---|---|
+| 规划 `plan`/`planDecision` | `#plan-modal` + `#plan-approve-btn`/`#plan-reject-btn` + `#plan-feedback-input`；`state.agent.approvePlan()`/`rejectPlan(feedback)`；`onPlanRequest` | ✅ 已对齐 |
+| 工具循环 `toolStep`/`toolProgress` | `AgentRunner._toolStep(id,name,status,detail)`（status: waiting/running/done/error/rejected/interrupted）；`onToolStep`→`addToolCallBlock` | ✅ 已对齐 |
+| 工具确认 `toolDecision`/`toolPending` | `ensureAgent()` 已设 `onPermissionRequest→showPermissionModal(tool,command,detail,callback)`；模态提供 拒绝/批准一次/本会话允许/修改规则 | ✅ 已对齐 |
+| 思考档位 `setThinkingLevel` | `thinkingLevel`×13（滑块/选择器 + agent 读取） | ✅ 已对齐 |
+| 时间旅行 `rewindCode`/`undoLastTurn` | `fileChangeTracker.beginTurn`×6 / `undoLastTurn`×3 / `redoLastTurn`×2；UI 触发 | ✅ 部分（按轮 undo/redo 已有；批量 keep/truncate 待补） |
+| 会话 `loadSession`/`saveSession` | 最近会话列表(`window._currentSessionId`)，单会话持久化 | ✅ 部分（非完整 revise/search store） |
+| 语音 `transcribe` | **仅输出**：TTS `speakText`(`#tts-btn`)；**输入 STT 缺失** | ⚠️ 半 |
+| 记忆 `extractMemory`/`forgetMemory` | prompt 中"记忆"×36（概念），但**无 extract/forget/list 存储 API** | ⚠️ 半（概念有，存储无） |
+| 自校验 `verify` | `VerificationAgent` + `MAX_VERIFY_NUDGES` 循环(`verifyNudges`) | ✅ 已对齐 |
+| 上下文压缩 `compactPreview` | `#ctx-compact-btn` UI（`context-panel.js`），逻辑待核实 | ⚠️ 半 |
+| Agent 模式 `agentMode` | `AgentRunner` 构造含 `mode='default'`，但**无切换 UI** | ⚠️ 半 |
+| 供应商校验 `validateKey` | 0 命中（仅填 Key，无即时校验 UI） | ❌ |
+
+---
+
+## 三、真正差距清单（修正后，按优先级）
+
+### P0 — 持久记忆（最值得补，ChipCode 差异化明显）
+1. **记忆存储**：实现 `extractMemory`/`forgetMemory`/`listMemories`/`openMemoryDir` —— 侧栏记忆库（列表/删除/打开目录），后端记忆写入（按当前会话/全局），随 AI 上下文召回。
+
+### P1 — 语音输入 + 完整 rewind
+2. **STT 语音输入**：`#voice-btn` + `SpeechRecognition`(Web Speech API)，录音转写填入聊天输入框（TTS 输出已存在，补齐输入闭环）。
+3. **批量 rewind UI**：在 `fileChangeTracker` 增加 `keepBatchesUpTo`/`truncateBatches`，UI 加"恢复到第 N 批 / 截断此后"控制条（`rewindCode` 对齐）。
+
+### P2 — 控制项与一致性
+4. **agentMode 切换 UI**：把 `mode` 参数暴露为 UI 开关（默认/计划优先/自动执行）。
+5. **compactPreview 逻辑**：核实并接通 `#ctx-compact-btn` 的压缩实现（已有 UI）。
+6. **validateKey 内联校验**：供应商 Key 填入后即时 `validateKey` 绿/红反馈。
+
+### P3 — 视觉一致
+7. 新增组件（记忆库/语音态/批量 rewind 条）按 TrieCode 令牌(accent #2563eb、surface-0..3、control 32/radius 3)统一风格。
+
+---
+
+## 四、对齐改造方案（修正后，均以 desktop-app 为目标仓）
+
+### Phase A — 补真正缺失的 AI 增强（6 项，见 §三）
+- **A1 持久记忆存储**（P0）：新增记忆侧栏 + 后端记忆写入/召回；状态机参照详规 §3.3「记忆」。
+- **A2 STT 语音输入**（P1）：麦克风按钮 + `SpeechRecognition`；状态机参照详规 §3.3「语音」。
+- **A3 批量 rewind UI**（P1）：`fileChangeTracker` 增 `keepBatchesUpTo`/`truncateBatches` + 控制条；状态机参照详规 §3.3「时间旅行」。
+- **A4 agentMode 切换**（P2）、**A5 compactPreview 逻辑**（P2）、**A6 validateKey**（P2）。
+
+### Phase B — 会话 store 完整化（P1 会话）
+- 持久化/修订/搜索，接入现有最近会话列表。
+
+### Phase C — 视觉一致（P3）
+- 新组件令牌统一；过质检。
+
+---
+
+## 五、风险与前置
+- **构建链**：`desktop-app/node_modules` 未装；改动后需 `npm install` + `npm run typecheck` + `build:win`（electron-builder 偶发挂死，memory 70204685）。
+- **安全基线**：维持 contextIsolation/sandbox；新能力走 preload/IPC，渲染层不直触 Node。
+- **登录门禁**：当前强制登录（memory 38399124）；新能力需在该前提下可用。
+- **已对齐部分勿重造**：规划/工具确认/思考档位/时间旅行/自校验 **已存在**，改造时增强而非重建。
+
+---
+
+## 六、实施进度（2026-11-06 晚）
+- ✅ **A2 语音输入 STT**：新增 `desktop-app/renderer/js/ai-voice-input.js`，给既有的 `#voice-btn`（此前未接线、注释"功能未实现"）接上 Web Speech API（`SpeechRecognition`/`webkitSpeechRecognition`，zh-CN 连续识别），实时填入当前可见 AI 输入框并标记录音态（红底）。已在 `index.html` 挂载，并通过 `node --check`（exit=0）。
+- ✅ **A1 持久记忆库侧栏**：新增 `ai-memory-panel.js` + `index.html` 样式。复用现有 `state.memories`/`saveMemoriesToDisk`/`remember`/`forget` 工具（后端已存在），新增「记忆库」按钮（`.ai-top-right`）+ 浮动侧栏，列出/删除记忆，并在 `state.onMemoryChange` 钩子上自动刷新（app.js 的 remember/forget 已挂钩）。`node --check` 通过。
+- ✅ **A3 批量 rewind 控制条**：在 `fileChangeTracker` 新增 `keepBatchesUpTo`/`truncateBatches`（跨 default+stream 双 session 安全回滚，复用既有 `undoLastTurn` 不覆盖用户改动）；新增 `ai-rewind.js` 在时间旅行按钮（`.ai-top-right`）下提供「变更批次」控制条，列批次并支持「恢复至此 / 截断此后」。app.js + 4 模块均 `node --check` 通过。
+- ✅ **A4 agentMode 切换**：**无需新建**——经子代理复核，LabCode 已有 `state.mode`(auto/default/plan) + 顶部 `safety-mode-group` 三按钮 + `syncSafetyModeUI`，正是 ChipCode `agentMode` 的等价物，且已驱动计划门控/工具确认/自动验证。标记为「已对齐」。
+- ✅ **A5 compactPreview 逻辑接通**：新增 `ai-compact-preview.js`，暴露 `window.getCompactPreview`/`window.LabCode.getCompactPreview`，复用 `compressContext` 三级裁剪边界（keepTurns=3）生成 `{summary, kept, dropped}` 预览，被既有 `ctx-compact-btn`→`openCompactPreview` 消费（此前因缺数据源而落空）。`node --check` 通过。
+- ✅ **A6 validateKey 内联校验**：新增 `ai-validate-key.js`，对 `#byok-key`/`#ai-apikey`/`#custom-apikey` 做防抖 input 监听，复用既有 `window.LabCode.ai.checkConnection`（main 侧真实打端点验证），绿/红反馈 + 友好错误映射。`node --check` 通过。
+- 注：A2 之前评估误判的规划/工具确认/思考档位/时间旅行/自校验 **已核实存在，不属缺口**；A4 agentMode 亦已存在。Phase A 六项改造已落地（仅 A4 为确认已对齐、零新增代码）。
+- **下一步**：因 `node_modules` 未装，需用 `npm install` + `npm run build:win`（或 asar 重打包热修）构建验证；随后在运行实例中实测语音/记忆/rewind/压缩预览/Key 校验五项交互。
+
+---
+
+## 七、运行时验证（2026-11-06 深夜，已完成 ✅）
+
+### 方法：asar 热修补（绕开 388MB 重打包）
+1. 本机 `C:\Users\Administrator\AppData\Local\Programs\LabCode\LabCode.exe` 是打包安装版，从自带 asar 加载，不读源码目录 → 改动需进 asar 才能生效。
+2. 备份 `resources/app.asar` → `app.asar.bak`（回滚保障）；`asar extract` 解包到 `D:\work\tmp\labcode_inst_asar`。
+3. asar 内 renderer 存在**两份**：顶层 `renderer/` 与 `packages/renderer/`（main 实际加载哪份未查，保险起见两份都覆盖）。
+4. 覆盖改动文件（index.html + js/app.js + 5 个新 ai-*.js）到两处 → `asar pack` 重打包（393MB，含 node_modules）→ 杀 LabCode 进程 → 替换 asar → 重启。
+5. **注意**：`npm run build:win` 会重建全部并覆盖此热修；下次正式构建后热修自然作废（内容一致）。
+
+### GUI 验证结果（PrintWindow 后台抓窗 + AttachThreadInput 破前台锁，全部通过）
+- ✅ **应用正常启动**：无崩溃、无白屏，插件市场/AI 面板/徽标全正常 → 5 个新模块加载无致命错误。
+- ✅ **顶栏新按钮渲染**：徽标后依次 ↺撤销/▾范围/↻重做/＋新建/📊用量/🕐历史/**✨记忆库(新)**/**↺时间旅行(新)**。
+- ✅ **A2 语音**：输入栏麦克风按钮正常显示。
+- ✅ **A3 rewind 控制条**：点 ↺（时间旅行）→ 控制条打开，显示空状态「暂无文件变更批次」——点击→toggle→build→render 全链路 OK。
+- ✅ **A1 记忆库侧栏**：点 ✨（记忆库）→ 面板打开，标题+刷新+关闭+空状态文案「暂无记忆。可在对话中让 AI 用 remember 保存…」全部正确；与 rewind 控制条**同时打开互不干扰**。
+- ⏳ **A5 compactPreview / A6 validateKey**：数据源与监听已部署（与 A1/A3 同一模式），未逐一点测（A5 需打开用量面板，A6 需打开模型添加弹窗）；代码模式与已验证两项一致，风险低。
+- 实测坐标基准（DPI 125%，物理=逻辑×1.25）：窗口物理 1755×1130；顶栏图标（window 物理 x）：撤销160/范围197/重做238/新建279/用量317/历史355/**记忆库397**/**时间旅行437**（+1280 基准），y=70。点击务必按此中心 ±10px。
+
+### 本轮 GUI 自动化新踩坑（防复踩）
+- **PowerShell 进程必须 SetProcessDPIAware()**，否则 GetWindowRect 返回逻辑尺寸（1404），PrintWindow 只能抓到物理窗口（1755）的左侧 80%，右侧按钮区全部被裁——此前「徽标贴右缘」假象即此因。
+- **裁剪脚本里 Graphics 复用同一个 Bitmap 再 DrawImage 会报「参数无效」**：整窗保存后再起独立进程单独裁剪即可（crop.ps1 模式）。
+- **点击坐标必须以 c_rw1 类原生分辨率裁剪图逐图标测量**，估算漂移 ±20px 就会点到相邻图标（实测：1647→误开历史会话弹窗、1655→落空、1672→落空、1677→成功）。
+- **execute_command 内联 PowerShell 的 `$` 变量会被外层吞掉**（ParseError）：多步 .NET 图像处理一律写 .ps1 文件执行。
+- Craft 策略会拦截「Get-Content 后 Set-Content 回写」的 shell 文本替换 → 改用 write_to_file 全量重写。
+- **Get-FileHash -Algorithm MD5 被本机 FIPS 策略禁用**：返回 null 且 `null -eq null` 会伪造出「MATCH」假象 → 一律用 SHA256。
+
+---
+
+## 八、最终验证结论（Phase A 全部完成 ✅）
+
+### 1. 逻辑回归 28/28 通过
+`D:\work\tmp\verify_align.js`（零依赖 Node + vm + 极简 DOM stub，可复跑：`node D:\work\tmp\verify_align.js`）覆盖 5 个模块：
+- **A5 compactPreview**（8 项）：`getCompactPreview`/`LabCode.getCompactPreview` 导出、summary/kept/dropped 结构、长会话正确切分、短会话零丢弃、无 agent 时安全返回 null。
+- **A6 validateKey**（7 项）：监听挂载、600ms 防抖只调用一次、apiKey 透传、有效 Key 绿框+正反馈、无效 Key 红框+「认证失败」友好映射。
+- **A1 记忆库**（6 项）、**A3 rewind**（5 项）：按钮挂载、面板/控制条挂载、点击开→再点关、空状态文案、`onMemoryChange` 钩子、`toggleRewindBar` 导出。
+- **A2 语音**（2 项）：不支持 Web Speech API 时降级提示且不崩。
+- 注：首轮 6 个 FAIL 系测试脚本未给 stub input 设 `id` 导致 `buildConfig` 无匹配分支，修正后全绿；非模块缺陷。
+
+### 2. 一致性 & 持久性
+- 源码 ↔ 热修 asar 的 7 个文件（index.html、app.js、5 个 ai-*.js）**SHA256 全部 MATCH**。
+- **重启 LabCode 后新按钮仍在、界面回到干净初始态** → asar 替换持久生效，非内存态。
+
+### 3. 交付状态
+- 改动文件（`codelab-desktop/desktop-app/renderer/`）：`index.html`、`js/app.js`（3 处最小钩子）、新增 5 个 `js/ai-*.js`。
+- `git status` 中另有历史遗留改动（`cdp_ws.txt`、`package.json`、`release-build/`、`welcome_chipcode_compare.png`），**非本次 Phase A 产物**，提交时须甄别、勿混入。
+- 安装版 asar 已热修且留有 `app.asar.bak` 可回滚；下次 `npm run build:win` 会用同一份源码正式覆盖。
+
+### 4. 剩余可选项（非阻塞）
+- A5/A6 未做 GUI 逐点实测（逻辑回归已全绿，同模式 A1/A3 已 GUI 验证，风险低）；如需可打开用量面板/模型添加弹窗复测。
+- Phase B（完整会话 store）已于同日完成，见 §九；Phase C（MQTT、payment 订阅）/ D（新组件视觉令牌统一）尚未启动——评估见本文 §二～§五。
+
+---
+
+## 九、Phase B 完整会话 store（2026-11-06，已完成 ✅）
+
+### 9.1 调研结论（3 个只读子代理并行勘察）
+**改造前 LabCode 有「两套互不相通」的会话持久化**，这是根本问题：
+| | UI 历史面板 | AgentRunner |
+|---|---|---|
+| 存储 | `localStorage['labcode.chatSessions']` | 主进程 `userData/sessions/<id>.json` |
+| 字段 | `{id,title,ts,messages}`（4 个） | 富字段 `{id,title,messages,thinking,workLog,mode,modelId,projectPath,projectType,plan,usage,timestamp}` |
+| id 体系 | `s<timestamp>` | `session_<base36>` |
+| 用途 | 历史面板/欢迎页读 | 每轮 run 收尾写，**渲染层从未读回** |
+
+其它缺口：主进程只有 `sessions:list/save/delete` 三通道（无 load/revise/search）；切换会话只重放 messages，不重建 agent 身份/plan，也不隔离 `fileChangeTracker` turn 历史（跨会话串味）；无 revise；搜索只在前端对 localStorage 快照做 `indexOf`。
+
+**ChipCode 权威参照**（解包出的 `packages/engine/dist/session-store.js` 是带设计注释的可读 tsc 输出）：`node:sqlite` 权威库 `sessions` + `session_message(seq 有序、display 列原样存完整消息对象)`；`saveSession`(replace_all 事务) / `loadSessionMeta`+`loadSession` / `reviseSession(ops: replace_all|delete_range|insert|update + 批末 renumber)` / 独立 FTS5 索引库 `searchSessions`(bm25 + 中文 3-gram + snippet 高亮 + projectPath 过滤)；`sched_` 定时任务会话在 SQL 与 JSON legacy 两处同时过滤；`sessionId` 白名单 `/^[A-Za-z0-9_-]{1,64}$/` 防路径穿越；memories / rewind turns / planStore 全部以 sessionId 关联。
+
+### 9.2 架构决策（重要）
+**不照搬 SQLite/FTS5，而是「语义对齐 + 实现适配」**：LabCode 是纯 JSON 文件存储、会话量级小，引入 `node:sqlite` 与独立索引 worker 会带来迁移与双写风险。采用：
+- **同步内存镜像 + 异步防抖落盘**：`session-store.js` 维护 `cache[]`，现有 6 处同步 UI 代码零 async 改造即可切换数据源；
+- **单一写者**：`syncCurrent`（UI）与 `captureFromAgent`（AgentRunner）都写入同一条会话，彻底消除两套 id/字段分裂；
+- **磁盘权威 + legacy 一次性迁移**：启动 hydrate 时合并 `sessions.list()` 与旧 localStorage，把 legacy 写回磁盘后清除旧键；
+- **消息带稳定 id/ts + display 原样保留**（对齐 ChipCode `session_message.display`）。
+
+### 9.3 落地清单
+| 层 | 文件 | 改动 |
+|---|---|---|
+| 主进程 | `main/index.js` | `SESSION_ID_RE` 白名单 + `safeSessionFile`；`loadSessionById` / `renameSession` / `reviseSession(ops)` / `searchSessions`（snippet、projectPath、excludeSessionId、limit、过滤 `sched_`）；`saveSession`/`deleteSession` 加白名单；注册 7 个 `sessions:*` handler |
+| preload | `main/preload.js` | `sessions` 新增 `load/rename/revise/search`（契约脚本要求显式暴露，不能走通用 `ipc.invoke` 桥） |
+| 渲染层 | **新增** `renderer/js/session-store.js` | `init`(hydrate+迁移) / `all/get/current` / `syncCurrent` / `captureFromAgent` / `ensureCurrent` / `newSession` / `setCurrent` / `remove` / `rename` / `revise` / `truncateAt` / `search`(IPC+本地兜底) / `loadFull`(内存优先) / `flushNow` / `on/off/emit`；`beforeunload`+`visibilitychange` 强制 flush |
+| 渲染层 | `renderer/js/app.js` | 6 处会话函数切到 store；`loadSession` 修复切换语义（重建 agent、恢复 plan、隔离 turn 历史）；`_persistSession` 走 captureFromAgent；`addChatMessage` 消息带 id/ts；AgentRunner 的死引用 `state.currentSessionId` 改由 `SessionStore.ensureCurrent()` 分配；历史面板加重命名 + IPC 全文搜索 snippet + store 订阅；修复既有 `overlay` 作用域 ReferenceError；搜索后重置 scrollTop |
+| 渲染层 | **新增** `renderer/js/ai-revise.js` | 气泡级「编辑重来 / 复制」，复用既有死样式 `.ai-message-actions`；点击 → `truncateAt` 同步截断 store/`_chatLog`/agent/DOM，原文进输入框，用户编辑后正常发送即形成分叉（**不侵入 `handleAISend`**） |
+| 外壳 | `renderer/index.html` | `session-store.js` 挂在 `app.js` **之前**、`ai-revise.js` 挂末尾；补充操作条与面板样式 |
+
+### 9.4 验证结果
+- **`D:\work\tmp\verify_phaseb.js` → pass=46 fail=0**（可复跑 `node D:\work\tmp\verify_phaseb.js`）：
+  - B1 主进程 21 项：从真实 `main/index.js` 用 vm 截取会话块直接测（save/list/load/白名单穿越防护/rename/revise 五种 op/单事务 rename+meta/search 的 snippet、过滤、limit、`sched_` 排除）；
+  - B2 SessionStore 22 项：hydrate 合并与 legacy 迁移、display 字段保留、ensureCurrent 稳定、syncCurrent 复用 id、**单条消息会话也能存**（旧版 `<2` 直接丢弃）、captureFromAgent 富字段、重命名不被覆盖、revise/truncateAt/remove/newSession、loadFull 与 search 兜底；
+  - B4 revise UI 3 项：按钮注入、截断 seq 正确、原文回填输入框。
+- **Phase A 回归 `verify_align.js` 28/28 仍全绿**（无回归）。
+- **语法**：`main/index.js` / `main/preload.js` / `app.js` / 2 个新模块全部 `node --check` exit=0。
+- **IPC 契约** `node scripts/verify-ipc-contract.cjs`：**无缺失 channel、无重复 handler**；残留 4 项 FAIL（`ai.__usageWrapped` / `engine.makeTimeoutGuard` / `git.checkpoint` / `git.credentials`）经 `git grep HEAD` 确认为**既有历史缺口**，与本次无关。
+- **运行时（asar 热修 + 重启）**：主进程/preload 改动后应用正常启动（4 进程、主窗口在）；历史会话面板打开并列出真实历史数据（标题/日期/条数 + 新增「重命名」按钮）；搜索框输入 `Python` 后列表按全文命中过滤（IPC `sessions:search` 生效）；关闭重启后热修持久。
+- 源码 ↔ 安装版 asar 已同步；`app.asar.bak` 保留原始回滚点。
+
+### 9.5 本轮发现并顺手修复的既有缺陷
+1. `renderHistoryList` 内引用 `openHistoryPanel` 的局部 `overlay` → 点击「打开」必抛 ReferenceError。
+2. 旧版 `log.length < 2` 直接丢弃单条消息会话；50 条静默截断；关闭窗口时防抖未 flush 会丢会话。
+3. `state.currentSessionId` 是死引用，AgentRunner 每次都生成新 id，与 UI 会话 id 永远不同。
+4. 切换会话复用旧 agent（sessionId/workLog/plan 串味）、不隔离 `fileChangeTracker` 的 turn 历史。
+5. 过滤后列表变短、滚动容器保留旧 `scrollTop`，把标题栏/搜索框滚出视野。
+
+### 9.6 与 ChipCode 的剩余差异（非阻塞，后续可选）
+- **索引**：线性扫描替代独立 FTS5 索引库；会话量级大（>千条）时需引入索引 + bm25 / 中文 3-gram。
+- **turn 批次会话作用域**：`fileChangeTracker` 仍用固定 `'default'/'stream'` sessionId，切换会话时清空历史以避免串味；ChipCode 是 `turns/<sessionId>.json` 按会话持久化、可跨重启恢复。
+- **自动记忆提炼**：ChipCode 会话结束按 sessionId 调 LLM 提炼 ≤5 条记忆；LabCode 的 remember/forget 仍是工具驱动（Phase A A1），未做自动提炼。
+- **planStore**：会话切换已恢复 `state.currentPlan`，但未做 ChipCode 那样每轮注入进度防失忆。
+- **契约脚本既有 4 项 FAIL** 待单独清理。

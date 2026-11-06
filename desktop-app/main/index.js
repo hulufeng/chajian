@@ -124,9 +124,23 @@ function loadSessions() {
   }
 }
 
+// ===== Phase B：完整会话 store（对齐 ChipCode session-store.js 的 load/save/revise/search 语义）=====
+// sessionId 白名单：防路径穿越（与 ChipCode auto-memory.js / file-change-tracker.js 同源边界）
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+function safeSessionFile(id) {
+  if (!SESSION_ID_RE.test(String(id || ''))) return null;
+  return path.join(SESSIONS_PATH, `${id}.json`);
+}
+function readSession(id) {
+  const fp = safeSessionFile(id);
+  if (!fp || !fs.existsSync(fp)) return null;
+  try { return { id, ...JSON.parse(fs.readFileSync(fp, 'utf-8')) }; } catch (e) { return null; }
+}
+
 function saveSession(session) {
   try {
-    const filePath = path.join(SESSIONS_PATH, `${session.id}.json`);
+    const filePath = safeSessionFile(session && session.id);
+    if (!filePath) return false;
     session.updatedAt = Date.now();
     fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
     return true;
@@ -138,13 +152,113 @@ function saveSession(session) {
 
 function deleteSession(id) {
   try {
-    const filePath = path.join(SESSIONS_PATH, `${id}.json`);
+    const filePath = safeSessionFile(id);
+    if (!filePath) return false;
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     return true;
   } catch (e) {
     console.error('删除会话失败:', e.message);
     return false;
   }
+}
+
+/** 单会话全量读取（含 messages 的展示字段；对齐 ChipCode loadSession 的 display 原样重建语义） */
+function loadSessionById(id) { return readSession(id); }
+
+function renameSession(id, title) {
+  const s = readSession(id);
+  if (!s) return false;
+  s.title = String(title || '').slice(0, 120);
+  return saveSession(s);
+}
+
+/**
+ * 修订（单一写者；对齐 ChipCode reviseSession 的 ops 语义）。
+ * ops: replace_all{messages,meta} | delete_range{fromSeq,toSeq} | insert{atSeq,messages}
+ *      | update{seq,message} | rename{title} | meta{...}
+ * 单事务：所有 op 在内存数组按序应用后一次写盘；数组下标即 seq，天然连续（等价 ChipCode 批末 renumber）。
+ */
+function reviseSession(id, ops) {
+  const s = readSession(id);
+  if (!s || !Array.isArray(ops)) return false;
+  const msgs = Array.isArray(s.messages) ? s.messages.slice() : [];
+  for (const op of ops) {
+    if (!op || !op.type) continue;
+    switch (op.type) {
+      case 'replace_all':
+        msgs.length = 0;
+        (op.messages || []).forEach(m => msgs.push(m));
+        if (op.meta) Object.assign(s, op.meta);
+        break;
+      case 'delete_range': {
+        const from = Math.max(0, Number(op.fromSeq) || 0);
+        const to = op.toSeq == null ? msgs.length - 1 : Math.min(msgs.length - 1, Number(op.toSeq));
+        if (from <= to && from < msgs.length) msgs.splice(from, to - from + 1);
+        break;
+      }
+      case 'insert': {
+        const at = Math.min(msgs.length, Math.max(-1, Number(op.atSeq) || 0));
+        msgs.splice(at + 1, 0, ...(op.messages || []));
+        break;
+      }
+      case 'update': {
+        const seq = Number(op.seq);
+        if (seq >= 0 && seq < msgs.length) msgs[seq] = Object.assign({}, msgs[seq], op.message || {});
+        break;
+      }
+      case 'rename':
+        s.title = String(op.title || '').slice(0, 120);
+        break;
+      case 'meta': {
+        // 兼容两种写法：{type:'meta', meta:{...}} 与 {type:'meta', plan:...}
+        const src = op.meta || op;
+        for (const k of Object.keys(src)) if (k !== 'type') s[k] = src[k];
+        break;
+      }
+    }
+  }
+  s.messages = msgs;
+  return saveSession(s);
+}
+
+/**
+ * 全文检索（对齐 ChipCode searchSessions：每会话一条命中 + snippet + 过滤）。
+ * 线性扫描适配当前 JSON 文件量级；独立 FTS5 索引库为后续可选增强。
+ */
+function searchSessions(query, opts) {
+  const q = String(query || '').trim().toLowerCase();
+  const o = opts || {};
+  const limit = Math.min(Math.max(Number(o.limit) || 20, 1), 50);
+  const results = [];
+  for (const s of loadSessions()) {
+    if (o.excludeSessionId && s.id === o.excludeSessionId) continue;
+    if (o.projectPath && s.projectPath && s.projectPath !== o.projectPath) continue;
+    if (String(s.id).startsWith('sched_')) continue; // 定时任务会话不进历史列表
+    let hit = null;
+    if (!q || (s.title || '').toLowerCase().indexOf(q) >= 0) {
+      hit = { snippet: s.title || '', messageSeq: -1 };
+    } else {
+      const msgs = s.messages || [];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const c = String((msgs[i] && msgs[i].content) || '');
+        const p = c.toLowerCase().indexOf(q);
+        if (p >= 0) {
+          const start = Math.max(0, p - 40), end = Math.min(c.length, p + q.length + 60);
+          hit = { snippet: (start ? '…' : '') + c.slice(start, end) + (end < c.length ? '…' : ''), messageSeq: i };
+          break;
+        }
+      }
+    }
+    if (!hit) continue;
+    results.push({
+      id: s.id, title: s.title || '未命名对话', ts: s.updatedAt || s.timestamp || 0,
+      messageCount: (s.messages || []).length, messageSeq: hit.messageSeq,
+      snippet: hit.snippet, projectPath: s.projectPath || null,
+      mode: s.mode || null, modelId: s.modelId || null
+    });
+    if (results.length >= limit) break;
+  }
+  return results;
 }
 
 // ============ 托盘（常规·关闭窗口时=最小化到托盘） ============
@@ -2286,10 +2400,14 @@ function setupIPC() {
     }
   });
 
-  // 会话
+  // 会话（Phase B：list / load / save / revise / search / rename / delete）
   ipcMain.handle('sessions:list', () => loadSessions());
+  ipcMain.handle('sessions:load', (_, id) => loadSessionById(id));
   ipcMain.handle('sessions:save', (_, session) => saveSession(session));
   ipcMain.handle('sessions:delete', (_, id) => deleteSession(id));
+  ipcMain.handle('sessions:rename', (_, id, title) => renameSession(id, title));
+  ipcMain.handle('sessions:revise', (_, id, ops) => reviseSession(id, ops));
+  ipcMain.handle('sessions:search', (_, query, opts) => searchSessions(query, opts));
 
   // 文件操作
   ipcMain.handle('dialog:openFile', async () => {

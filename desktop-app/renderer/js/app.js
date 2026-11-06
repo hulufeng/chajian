@@ -1743,6 +1743,7 @@ const TOOL_DEFS = [
       else state.memories.unshift(entry);
       state.memoryVersion = (state.memoryVersion || 0) + 1;
       try { await saveMemoriesToDisk(state.memories); } catch (e) { console.warn('save memories failed', e); }
+      if (state.onMemoryChange) state.onMemoryChange();
       return `记忆已保存: ${args.name} (${args.content.length} 字符)`;
     }
   },
@@ -1756,6 +1757,7 @@ const TOOL_DEFS = [
       state.memories.splice(idx, 1);
       state.memoryVersion = (state.memoryVersion || 0) + 1;
       try { await saveMemoriesToDisk(state.memories); } catch (e) { console.warn('save memories failed', e); }
+      if (state.onMemoryChange) state.onMemoryChange();
       return `记忆已删除: ${args.name}`;
     }
   },
@@ -3720,9 +3722,37 @@ class FileChangeTracker {
     return sessionTurns.map(t => ({ turn: t.turn, changeCount: t.changes.length, timestamp: t.timestamp, rolledBack: t.rolledBack || false, files: t.changes.map(c => ({ path: c.path, action: c.action })) }));
   }
 
+  // 批量 rewind：恢复到第 N 批（回滚 turn > N 的所有批次；安全不覆盖用户改动）
+  // permanent=true 时同时清空 redo 栈，使回退不可重做（对齐 ChipCode rewindCode / truncate）
+  async keepBatchesUpTo(targetTurn, sessionId, permanent) {
+    const sessions = sessionId ? [sessionId] : ['default', 'stream'];
+    let rolledBack = 0;
+    for (const sid of sessions) {
+      const sessionTurns = this.turns.get(sid);
+      if (!sessionTurns) continue;
+      let guard = 0;
+      while (guard++ < 500) {
+        const last = sessionTurns[sessionTurns.length - 1];
+        if (!last || last.turn <= targetTurn) break;
+        const r = await this.undoLastTurn(sid);
+        if (!r.success) break;
+        rolledBack += (r.rolledBack || 0);
+      }
+      if (permanent && this.redoStacks.has(sid)) this.redoStacks.delete(sid);
+    }
+    return { success: true, rolledBack };
+  }
+
+  // 截断：回滚 turn > N 并清空 redo 栈（永久丢弃此后变更，不可重做）
+  truncateBatches(targetTurn, sessionId) {
+    return this.keepBatchesUpTo(targetTurn, sessionId, true);
+  }
+
   clear(sessionId = 'default') { this.turns.delete(sessionId); this.redoStacks.delete(sessionId); this.activeTurn.delete(sessionId); this.currentTurn = 0; }
 }
 const fileChangeTracker = new FileChangeTracker();
+window.LabCodeUI = window.LabCodeUI || {};
+window.LabCodeUI.fileTracker = fileChangeTracker;
 
 // 全局撤销/重做入口（UI 按钮 + agent 工具共用）
 // 双栈感知：'default'（工具调用轮）与 'stream'（流式写码轮）统一进撤销/重做，取最新
@@ -5868,7 +5898,9 @@ class AgentRunner {
     this._replanDoneFor = -1;       // 已做过计划回顾的轮次
     // ===== 2026-09-14 对齐 TrieCode 会话持久化：workLog 全程记录 + 会话 JSON 落盘 =====
     this.workLog = [];
-    this.sessionId = (state.currentSessionId) || ('session_' + Date.now().toString(36));
+    // Phase B：会话身份统一由 SessionStore 分配（消除此前 state.currentSessionId 死引用 + 两套 id 分裂）
+    this.sessionId = (window.SessionStore && typeof window.SessionStore.ensureCurrent === 'function'
+      ? window.SessionStore.ensureCurrent() : null) || state.currentSessionId || ('session_' + Date.now().toString(36));
     this.sessionTitle = '';
     this._persistTimer = null;
     // 验证闸门状态（P0-4）：跟踪最近文件修改轮次和最近真实验证轮次
@@ -7223,8 +7255,16 @@ class AgentRunner {
         usage: this.usageAcc || null,
         timestamp: Date.now()
       };
-      await window.LabCode.sessions.save(session);
-      if (typeof addOutputLog === 'function') addOutputLog('会话已持久化: ' + session.id + '（' + session.messages.length + ' 条消息 / ' + session.workLog.length + ' 条工具记录）', 'debug');
+      // Phase B 单一写者：富字段经 SessionStore 合并进 UI 同一条会话（消除双写 id 分裂）
+      if (window.SessionStore && typeof window.SessionStore.captureFromAgent === 'function') {
+        window.SessionStore.captureFromAgent(this, {
+          modelId: session.modelId, projectPath: session.projectPath,
+          projectType: session.projectType, plan: session.plan, usage: session.usage
+        });
+      } else {
+        await window.LabCode.sessions.save(session);
+      }
+      if (typeof addOutputLog === 'function') addOutputLog('会话已持久化（' + session.messages.length + ' 条消息 / ' + session.workLog.length + ' 条工具记录）', 'debug');
     } catch (e) {
       if (typeof addOutputLog === 'function') addOutputLog('会话持久化失败: ' + e.message, 'error');
     }
@@ -7610,7 +7650,13 @@ function addChatMessage(role, content) {
   area.scrollTop = area.scrollHeight;
   // 会话历史：把每条消息写入日志（新对话/历史面板据此持久化）
   if (!window._chatLog) window._chatLog = [];
-  window._chatLog.push({ role: role === 'ai' ? 'assistant' : 'user', content: content || '' });
+  // Phase B：消息带稳定 id / ts（对齐 ChipCode session_message 的展示字段完整性）
+  window._chatLog.push({
+    role: role === 'ai' ? 'assistant' : 'user',
+    content: content || '',
+    id: 'm' + Date.now().toString(36) + '_' + window._chatLog.length,
+    ts: Date.now()
+  });
   // 上下文占用环随消息更新（对齐 TrieCode 上下文圆环）
   if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
   return bubble;
@@ -12749,30 +12795,24 @@ function bindEvents() {
   });
 
   // ===== 会话历史持久化（对齐 TrieCode 历史会话）=====
+  // ===== Phase B：会话保存统一走 window.SessionStore（磁盘权威 + 同步内存镜像，单一写者）=====
   function saveCurrentSessionToHistory() {
     try {
       const log = window._chatLog || [];
-      if (log.length < 2) return;
-      const list = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
-      const firstUser = log.find(function(m){ return m.role === 'user'; });
-      const title = (firstUser && firstUser.content ? firstUser.content : '对话').slice(0, 40);
-      const sid = window._currentSessionId;
-      const idx = sid ? list.findIndex(function(x){ return x.id === sid; }) : -1;
-      if (idx >= 0) {
-        // 已有会话：更新该条，而不是每次生成新 id（否则删除后又被当作新会话写回）
-        list[idx] = { id: sid, title: title, ts: Date.now(), messages: log.slice() };
-      } else {
-        if (sid) { window._currentSessionId = null; } // 指向已删除的会话：尊重删除，不写回
-        list.unshift({ id: 's' + Date.now(), title: title, ts: Date.now(), messages: log.slice() });
-        window._currentSessionId = list[0].id;
-      }
-      localStorage.setItem('labcode.chatSessions', JSON.stringify(list.slice(0, 50)));
+      if (!window.SessionStore) return;
+      window.SessionStore.syncCurrent(log, {
+        modelId: state.modelId || state.model || '',
+        projectPath: state.projectPath || null,
+        projectType: state.projectType || null,
+        plan: state.currentPlan || null,
+        mode: state.mode || 'default'
+      });
     } catch (e) { /* 历史保存失败不影响主流程 */ }
   }
   function loadSession(id) {
     try {
-      const list = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
-      const s = list.find(function(x){ return x.id === id; });
+      const S = window.SessionStore;
+      const s = S ? S.get(id) : null;
       if (!s) return;
       const area = document.getElementById('ai-chat-area');
       Array.from(area.children).forEach(function(c){ if (c.id !== 'ai-welcome') c.remove(); });
@@ -12788,19 +12828,29 @@ function bindEvents() {
         }
         welcome.style.display = 'none';
       }
+      // Phase B 切换语义修复：重建 agent 身份 / 恢复 plan / 隔离上一会话的文件变更 turn 历史
+      state.agent = null;
+      state.currentSessionId = id;
+      state.currentPlan = s.plan || null;
+      S.setCurrent(id);
       window._chatLog = [];
-      window._currentSessionId = id; // 跟踪会话身份：后续保存更新该条而非新增
       (s.messages || []).forEach(function(m){ addChatMessage(m.role === 'assistant' ? 'ai' : 'user', m.content); });
-      // 重建 agent 上下文，使「继续对话」可用
       ensureAgent();
       if (state.agent) {
         state.agent.messages = (s.messages || []).map(function(m){ return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' }; });
+        state.agent.sessionId = id;
+        state.agent.sessionTitle = s.title || '';
+        if (Array.isArray(s.workLog)) state.agent.workLog = s.workLog.slice();
       }
+      const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
+      if (ft && typeof ft.clear === 'function') { ft.clear('default'); ft.clear('stream'); }
       showToast('已载入历史会话：' + (s.title || '').slice(0, 20), 'info');
     } catch (e) { showToast('载入历史失败: ' + e.message, 'error'); }
   }
-  function renderHistoryList(listEl, list, q) {
+  function renderHistoryList(listEl, list, q, hits) {
     q = (q || '').trim().toLowerCase();
+    const hitMap = {};
+    (hits || []).forEach(function(h){ hitMap[h.id] = h; });
     const filtered = q
       ? list.filter(function(s){
           if ((s.title || '').toLowerCase().indexOf(q) >= 0) return true;
@@ -12812,29 +12862,41 @@ function bindEvents() {
       return;
     }
     listEl.innerHTML = filtered.map(function(s){
-      const d = new Date(s.ts);
+      const d = new Date(s.ts || s.updatedAt || Date.now());
       const t = (d.getMonth()+1) + '/' + d.getDate() + ' ' + ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+      const hit = hitMap[s.id];
+      const snip = (hit && hit.snippet && q) ? '<div style="font-size:11px;opacity:.7;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(hit.snippet) + '</div>' : '';
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 4px;border-bottom:1px solid var(--border-color);">' +
         '<div style="flex:1;overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(s.title) + '</div>' +
-        '<div style="font-size:11px;opacity:.6;">' + t + ' · ' + (s.messages ? s.messages.length : 0) + ' 条</div></div>' +
+        '<div style="font-size:11px;opacity:.6;">' + t + ' · ' + (s.messages ? s.messages.length : 0) + ' 条' + (s.modelId ? ' · ' + escapeHtml(s.modelId) : '') + '</div>' + snip + '</div>' +
         '<button class="hist-load" data-sid="' + s.id + '" style="margin-left:8px;">打开</button>' +
+        '<button class="hist-rename" data-sid="' + s.id + '" style="margin-left:6px;">重命名</button>' +
         '<button class="hist-del" data-sid="' + s.id + '" style="margin-left:6px;">删除</button></div>';
     }).join('');
-    listEl.querySelectorAll('.hist-load').forEach(function(b){ b.onclick = function(){ loadSession(b.getAttribute('data-sid')); overlay.style.display = 'none'; }; });
+    listEl.querySelectorAll('.hist-load').forEach(function(b){ b.onclick = function(){
+      loadSession(b.getAttribute('data-sid'));
+      const ov = document.getElementById('history-overlay');
+      if (ov) ov.style.display = 'none';
+    }; });
     listEl.querySelectorAll('.hist-del').forEach(function(b){ b.onclick = function(){
       const id = b.getAttribute('data-sid');
-      let l = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
-      l = l.filter(function(x){ return x.id !== id; });
-      localStorage.setItem('labcode.chatSessions', JSON.stringify(l));
+      if (window.SessionStore) window.SessionStore.remove(id);
       // 删除的是当前会话：丢弃其日志，避免下次保存以新 id 写回（「删了又出现」）
-      if (id === window._currentSessionId) { window._chatLog = []; window._currentSessionId = null; }
+      if (window.SessionStore && id === window.SessionStore.current()) window._chatLog = [];
+      else if (!window.SessionStore && id === window._currentSessionId) { window._chatLog = []; window._currentSessionId = null; }
       if (typeof window.renderWelcomeHistory === 'function') window.renderWelcomeHistory('');
+      openHistoryPanel();
+    }; });
+    listEl.querySelectorAll('.hist-rename').forEach(function(b){ b.onclick = function(){
+      const id = b.getAttribute('data-sid');
+      const s = window.SessionStore && window.SessionStore.get(id);
+      const t = window.prompt('重命名会话', s ? s.title : '');
+      if (t && t.trim() && window.SessionStore) window.SessionStore.rename(id, t.trim());
       openHistoryPanel();
     }; });
   }
   function openHistoryPanel() {
     saveCurrentSessionToHistory();
-    const list = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
     let overlay = document.getElementById('history-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -12850,9 +12912,32 @@ function bindEvents() {
     overlay.innerHTML = ''; overlay.appendChild(box); overlay.style.display = 'flex';
     const listEl = box.querySelector('#history-list');
     const searchEl = box.querySelector('#history-search');
-    renderHistoryList(listEl, list, '');
-    searchEl.addEventListener('input', function(){ renderHistoryList(listEl, list, searchEl.value); });
-    overlay.onclick = function(e){ if (e.target === overlay || e.target.id === 'history-close') overlay.style.display = 'none'; };
+    const allList = function(){ return window.SessionStore ? window.SessionStore.all() : []; };
+    renderHistoryList(listEl, allList(), '');
+    let searchTimer = null;
+    searchEl.addEventListener('input', function(){
+      const q = searchEl.value;
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(function(){
+        if (!window.SessionStore || !window.SessionStore.search) { renderHistoryList(listEl, allList(), q); return; }
+        window.SessionStore.search(q, { limit: 20 }).then(function(hits){
+          renderHistoryList(listEl, allList(), q, hits); // IPC 全文检索结果补命中片段
+          // 过滤后列表变短，重置滚动位置，避免标题栏/搜索框被滚出视野
+          if (box.scrollTop) box.scrollTop = 0;
+        });
+      }, 220);
+    });
+    let refresh = null;
+    if (window.SessionStore && window.SessionStore.on) {
+      refresh = function(){ if (overlay.style.display !== 'none') renderHistoryList(listEl, allList(), searchEl.value); };
+      window.SessionStore.on(refresh);
+    }
+    overlay.onclick = function(e){
+      if (e.target === overlay || e.target.id === 'history-close') {
+        if (refresh && window.SessionStore) window.SessionStore.off(refresh);
+        overlay.style.display = 'none';
+      }
+    };
   }
 
   // 新对话
@@ -12892,6 +12977,7 @@ function bindEvents() {
     state.agent = null;
     window._chatLog = [];
     window._currentSessionId = null; // 新对话 = 新会话身份
+    if (window.SessionStore) window.SessionStore.newSession();
     if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
     showToast('已开始新对话', 'info');
   }
@@ -12946,7 +13032,7 @@ function bindEvents() {
       const listEl = document.getElementById('welcome-history-list');
       if (!listEl) return;
       q = (q || '').trim().toLowerCase();
-      let list = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
+      let list = window.SessionStore ? window.SessionStore.all().slice() : [];
       if (q) list = list.filter(function(s){
         if ((s.title || '').toLowerCase().indexOf(q) >= 0) return true;
         return (s.messages || []).some(function(m){ return (m.content || '').toLowerCase().indexOf(q) >= 0; });
@@ -12974,11 +13060,10 @@ function bindEvents() {
         btn.addEventListener('click', function(e){
           e.stopPropagation();
           const id = btn.getAttribute('data-sid');
-          let l = JSON.parse(localStorage.getItem('labcode.chatSessions') || '[]');
-          l = l.filter(function(x){ return x.id !== id; });
-          localStorage.setItem('labcode.chatSessions', JSON.stringify(l));
+          if (window.SessionStore) window.SessionStore.remove(id);
           // 删除的是当前会话：丢弃其日志，避免下次保存以新 id 写回（「删了又出现」）
-          if (id === window._currentSessionId) { window._chatLog = []; window._currentSessionId = null; }
+          if (window.SessionStore && id === window.SessionStore.current()) window._chatLog = [];
+          else if (!window.SessionStore && id === window._currentSessionId) { window._chatLog = []; window._currentSessionId = null; }
           renderWelcomeHistory(document.getElementById('welcome-history-search').value);
         });
       });
@@ -12988,6 +13073,13 @@ function bindEvents() {
   const welcomeHistorySearch = document.getElementById('welcome-history-search');
   if (welcomeHistorySearch) welcomeHistorySearch.addEventListener('input', function(){ renderWelcomeHistory(welcomeHistorySearch.value); });
   renderWelcomeHistory('');
+  // Phase B：store hydrate 完成 / 任意变更后自动刷新最近会话（无需手工互刷）
+  if (window.SessionStore && window.SessionStore.on) {
+    window.SessionStore.on(function(){
+      const whs = document.getElementById('welcome-history-search');
+      renderWelcomeHistory(whs ? whs.value : '');
+    });
+  }
   // pill：写代码 → 聚焦输入框；做产品 → 打开产品工厂
   const welcomePillCode = document.getElementById('welcome-pill-code');
   if (welcomePillCode) welcomePillCode.addEventListener('click', function(){

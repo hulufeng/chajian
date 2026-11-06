@@ -22,11 +22,15 @@ contextBridge.exposeInMainWorld('LabCode', {
     save: (config) => ipcRenderer.invoke('config:save', config)
   },
 
-  // 会话
+  // 会话（Phase B 完整 store）
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list'),
+    load: (id) => ipcRenderer.invoke('sessions:load', id),
     save: (session) => ipcRenderer.invoke('sessions:save', session),
-    delete: (id) => ipcRenderer.invoke('sessions:delete', id)
+    delete: (id) => ipcRenderer.invoke('sessions:delete', id),
+    rename: (id, title) => ipcRenderer.invoke('sessions:rename', id, title),
+    revise: (id, ops) => ipcRenderer.invoke('sessions:revise', id, ops),
+    search: (query, opts) => ipcRenderer.invoke('sessions:search', query, opts)
   },
 
   // 对话框
