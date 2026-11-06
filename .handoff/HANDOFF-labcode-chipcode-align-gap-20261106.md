@@ -397,5 +397,5 @@
 | 产品工厂·生成产品包 | 调导出 API，磁盘生成 5 文件且内容正确 | ✅ 真通 |
 | 撤销/回滚 | ai-rewind 时间旅行面板，底层 fileTracker.undoLastTurn 安全回滚 | ✅ **端到端已验证**：记录批次→撤销→内存与磁盘文件均恢复到 before（安全校验：仅当当前内容===after 才回滚，不覆盖用户改动） |
 | 会话搜索 | 注入含关键词会话→`window.SessionStore.search` 返回命中（main BM25 或 renderer 本地镜像） | ✅ **端到端已验证**：`search(VERIFY_KEYWORD_xxx)` 返回 1 命中且标题含关键词 |
-| 记忆(auto-memory) | 自动提炼逻辑（Phase C 回归已覆盖） | 🔶 待实时（需对话数据触发） |
+| 记忆(auto-memory) | 模拟 LLM 返回→`parseReply` 解析+白名单→`remember` 工具入库（`state.memories`+落盘） | ✅ **端到端已验证**：`parseReply` 容错解析 ```json 围栏、过滤非法条目、`remember.execute` 真写入 `state.memories`（before+2=after, allFound） |
 | 语音/订阅 | 需麦克风/账号，本机受限 | 🔶 待实时（环境限制） |
