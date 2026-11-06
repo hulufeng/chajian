@@ -236,3 +236,41 @@
 - PowerShell 5.1 里 `if` 不能作表达式：`Join-Path $s (if(...) {...} else {...})` 直接语法错误 → 拆分或用 `@(...)` 列表 + 预构造路径。
 - `execute_command` 内联 PowerShell 的 `$` 变量会被外层吞掉 → .NET 图像处理一律写 `.ps1` 文件执行。
 - `Get-FileHash -Algorithm MD5` 被本机 FIPS 策略禁用（返回 null 造出假 MATCH），一律 SHA256。
+
+---
+
+## 十一、收尾：契约脚本修复 + GUI 缺口补齐（2026-11-06）
+
+### 11.1 IPC 契约脚本从 `[FAIL]` 修到 `[PASS]`
+查明此前 4 项残留 FAIL **全部是脚本误报，不是断链功能**：
+| 误报 | 真相 |
+|---|---|
+| `window.LabCode.engine.makeTimeoutGuard` | 只在注释 `app.js:6159`，脚本把注释当引用 |
+| `window.LabCode.git.checkpoint` | preload `preload.js:259` 真实存在，但它是三层嵌套**对象**，`walk()` 只收录函数路径 |
+| `window.LabCode.git.credentials` | 同上，`preload.js:265` |
+| `window.LabCode.ai.__usageWrapped` | 渲染层 `app.js:18348` 自己挂的运行时标记，不是 preload API |
+
+`scripts/verify-ipc-contract.cjs` 三处修复：
+1. `walk()` 对**对象路径也 `out.add(full)`**（以后三段式 API 不再误报）；
+2. 新增 `inLineComment(src, idx)` 逐行判定，扫描时跳过注释内匹配（比全局状态机稳——1.1MB 渲染主文件里模板字符串/正则极多，状态机会误判）；
+3. 新增 `reSelfAssigned` 收集 `window.LabCode.x.y = ...` 赋值型标记并从 `usedApiPaths` 排除。
+
+结果：`main handlers 205 / renderer channels 200 / preload API paths 281`，`[channels] NONE`、`[preload] NONE`、`[main] duplicate NONE`，**`[PASS]` exit=0**。
+`D:\work\tmp\verify_contract.cjs` **8/8**，含**负向测试**：临时造一个真实缺失的 `__missing__.method` 引用，脚本必须仍 `exit=1` 并报出该路径 → 证明校验没有被「改松」。
+
+### 11.2 补齐此前诚实标注的 GUI 缺口（CDP 直连）
+用 `LabCode.exe --remote-debugging-port=9223` + Node 24 全局 `WebSocket` 连 `Runtime.evaluate` / `Page.captureScreenshot`，绕开原生目录对话框与多进程 PrintWindow 抓错窗口的问题。
+
+- **产品工厂五阶段视图**：注入 `state.projectPath='D:/work/tmp/pf_demo'` 后，CDP 截图确认 5 张阶段卡片（创意/造型/硬件/软件/联调）全部「完成」绿点、证据覆盖 `1/1`、阶段进度 `5/5`、详情板显示需求原文与验收条件。DOM 读数 `stageButtons:5, emptyState:false`。
+- **MQTT 底栏面板**：CDP 截图确认 `MQTT` tab 激活、broker/用户名/密码输入、连接/测试/清空、订阅 topic、发布 topic/payload 全部渲染。
+- **订阅与套餐面板**：DOM 读数 `navExists:true, panelExists:true, buyButtons:4`，文本含「当前套餐：免费版 / 可用积分：100 / 今日剩余 3 积分」及免费/轻量/专业/旗舰四张卡片。设置弹窗打开时 `Page.captureScreenshot` 超时（8s），但 DOM 证据完整。
+
+验证后已用不带调试端口的方式重启 LabCode，恢复正常状态（4 进程）。
+
+### 11.3 最终验证总账
+`28 + 46 + 40 + 68 + 8 = 190/190` 全绿；契约 `[PASS]`；9+1 个 JS `node --check` 全过；应用重启后正常。
+
+### 11.4 剩余可选项（非阻塞，未做）
+- Phase B 的剩余差异：独立 FTS5 索引库、`turns/<sessionId>.json` 按会话持久化 turn 批次、会话结束自动提炼记忆、planStore 每轮注入进度防失忆。
+- 正式 `npm run build:win`（目前所有运行时验证走 asar 热修；`app.asar.bak` 保留原始回滚点）。
+- 4 个历史遗留未暂存项（`cdp_ws.txt`、`package.json`、`release-build/`、`welcome_chipcode_compare.png`）保持原样，未提交、未改动。

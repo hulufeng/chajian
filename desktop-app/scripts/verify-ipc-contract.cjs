@@ -61,14 +61,31 @@ function walk(obj, prefix, out) {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
     const full = prefix ? prefix + '.' + key : key;
+    // 对象路径也要收录：渲染层会用 `window.LabCode.git.checkpoint` 这类三段式存在性判断
+    out.add(full);
     if (typeof val === 'function') {
-      out.add(full);
       try { val('__probe__', '__probe__', '__probe__', '__probe__'); } catch (e) { /* ignore */ }
     } else if (val && typeof val === 'object') {
       walk(val, full, out);
     }
   }
   return out;
+}
+
+// 注释里提到 `window.LabCode.x.y` 不代表真的调用了它。
+// 逐行判断比全局状态机更稳（1MB+ 渲染主文件里模板字符串/正则极多，状态机易误判）。
+function inLineComment(src, idx) {
+  const lineStart = src.lastIndexOf('\n', idx) + 1;
+  const line = src.slice(lineStart, idx);
+  const slash = line.indexOf('//');
+  if (slash >= 0) return true;
+  // 块注释：匹配点之前最后一个 /* 没有对应的 */
+  const open = src.lastIndexOf('/*', idx);
+  if (open >= 0) {
+    const close = src.lastIndexOf('*/', idx);
+    if (close < open) return true;
+  }
+  return false;
 }
 const preloadPaths = walk(exposedApi, '', new Set());
 // remove artifacts produced by our own probe calls (generic ipc.invoke passthrough)
@@ -91,11 +108,25 @@ const usedApiPaths = new Set();
 const reInvoke = /invoke\(\s*'([^']+)'/g;
 const reApi = /window\.LabCode\.(\w+)\.(\w+)/g;
 
+// 渲染层自己往 `window.LabCode.<ns>.<prop> = ...` 挂的运行时标记（如 ai.__usageWrapped）
+// 不是 preload 暴露的 API，不应计入 PRELOAD 契约。
+const reSelfAssigned = /window\.LabCode\.(\w+)\.(\w+)\s*=(?!=)/g;
+
 for (const file of rendererFiles) {
   const src = fs.readFileSync(file, 'utf-8');
+  const selfAssigned = new Set();
   let r;
-  while ((r = reInvoke.exec(src)) !== null) usedChannels.add(r[1]);
-  while ((r = reApi.exec(src)) !== null) usedApiPaths.add(r[1] + '.' + r[2]);
+  while ((r = reSelfAssigned.exec(src)) !== null) {
+    if (!inLineComment(src, r.index)) selfAssigned.add(r[1] + '.' + r[2]);
+  }
+  while ((r = reInvoke.exec(src)) !== null) {
+    if (!inLineComment(src, r.index)) usedChannels.add(r[1]);
+  }
+  while ((r = reApi.exec(src)) !== null) {
+    if (inLineComment(src, r.index)) continue;
+    const p = r[1] + '.' + r[2];
+    if (!selfAssigned.has(p)) usedApiPaths.add(p);
+  }
 }
 // preload itself also invokes channels
 const preloadSrc = fs.readFileSync(PRELOAD, 'utf-8');
