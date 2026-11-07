@@ -37,6 +37,8 @@
   --primary-light: rgba(59, 130, 246, 0.14);   /* 蓝色浅底（选中/头像） */
   --primary-lighter: rgba(59, 130, 246, 0.07);
   --accent: var(--primary);                      /* 暗 #3b82f6 / 亮 #2563eb */
+  /* 品牌 logo 专用墨色（对齐 ChipCode .brand-logo：亮 #17171A，暗 filter:invert(1) → #e8e8e5） */
+  --brand-ink: #e8e8e5;
 
   /* ② 中性骨架：界面每一层背景（对齐 TrieCode --surface-0..3） */
   --surface-0: #0d1117;        /* canvas / 最底 */
@@ -151,6 +153,7 @@
   --text-tertiary: #9aa2ad;
   --text-quaternary: #9aa2ad;
   --text-inverse: #ffffff;
+  --brand-ink: #17171A;                          /* ChipCode 亮色主题品牌 logo 墨黑 */
 
   --success: #16a34a;
   --success-bg: rgba(22, 163, 74, 0.10);
@@ -358,7 +361,7 @@ button span + .icon {
 .app-icon .icon {
   width: 18px;
   height: 18px;
-  color: var(--primary);
+  color: var(--brand-ink);                  /* ChipCode 品牌 logo 中性墨色，非强调蓝 */
 }
 
 html, body {
@@ -1223,7 +1226,7 @@ input, textarea {
 .welcome-panel-icon {
   width: 52px; height: 52px; border-radius: 50%;
   background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.10) */
-  color: var(--accent);
+  color: var(--brand-ink);                   /* ChipCode 品牌 logo 中性墨色 */
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 12px;
 }
