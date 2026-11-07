@@ -37,21 +37,13 @@
     view.innerHTML =
       '<div class="pf-header">' +
       '<div class="pf-title">产品工厂</div>' +
-      '<div class="pf-sub">从创意到样机 · 五阶段证据驱动</div>' +
       '<div class="pf-actions">' +
-      '<button class="pf-btn" id="pf-new" title="新建产品项目">+ 新建产品项目</button>' +
-      '<button class="pf-btn" id="pf-open" title="打开已有项目">打开已有项目</button>' +
-      '<button class="pf-btn" id="pf-refresh" title="刷新">⟳</button>' +
-      '<button class="pf-btn" id="pf-export" title="生成产品包">导出产品包</button>' +
-      '<button class="pf-btn" id="pf-close">×</button>' +
+      '<button class="pf-btn" id="pf-open" title="打开已有项目" style="padding:3px 10px;font-size:12px">打开</button>' +
+      '<button class="pf-btn" id="pf-new" title="新建产品项目" style="padding:3px 10px;font-size:12px">新建</button>' +
       '</div></div>' +
       '<div class="pf-body" id="pf-body"></div>';
-    // 复用既有互斥隐藏：点击关闭只隐藏视图
-    document.getElementById('pf-close').addEventListener('click', function () { view.style.display = 'none'; });
     document.getElementById('pf-new').addEventListener('click', createProject);
     document.getElementById('pf-open').addEventListener('click', openProject);
-    document.getElementById('pf-refresh').addEventListener('click', function () { refresh(true); });
-    document.getElementById('pf-export').addEventListener('click', exportPackage);
     ensureActivityTab();
   }
 
@@ -182,6 +174,11 @@
     const m = snapshot.meter;
     const pct = Math.round((m.total ? m.hit / m.total : 0) * 100);
     body.innerHTML =
+      '<div class="pf-nav__actions">' +
+      '<button class="pf-btn" id="pf-refresh" style="padding:3px 10px;font-size:12px">刷新</button>' +
+      '<button class="pf-btn primary" id="pf-export" style="padding:3px 10px;font-size:12px">生成产品包</button>' +
+      '<button class="pf-btn" id="pf-close-view" style="padding:3px 10px;font-size:12px">关闭</button>' +
+      '</div>' +
       '<div class="pf-nav">' +
       '<div class="pf-nav__meter"><span>证据覆盖</span><b>' + m.hit + ' / ' + m.total + '</b>' +
       '<div class="pf-nav__meter-bar"><i style="width:' + pct + '%"></i></div>' +
@@ -193,6 +190,9 @@
         esc(snapshot.stages.find(s => s.id === k).label) + '</b>' + STAGE_FILES[k].map(f => '<div>· ' + esc(f) + '</div>').join('') + '</div>').join('') +
       '</div></div>' +
       '<div class="pf-board" id="pf-board">' + (boardOpen ? previewHtml(snapshot.data, activeStage) : '') + '</div>';
+    const ex = document.getElementById('pf-export'); if (ex) ex.addEventListener('click', exportPackage);
+    const rf = document.getElementById('pf-refresh'); if (rf) rf.addEventListener('click', function () { refresh(true); });
+    const cv = document.getElementById('pf-close-view'); if (cv) cv.addEventListener('click', function () { view.style.display = 'none'; });
     body.querySelectorAll('.pf-nav__stage').forEach(function (b) {
       b.addEventListener('click', function () {
         activeStage = b.dataset.stage;
