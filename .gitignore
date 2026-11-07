@@ -24,3 +24,10 @@ desktop-app/resources/llama/LICENSE-LLVM-OpenMP
 
 # 内置云端凭据（发布时由 desktop-app/scripts/inject-gateway.js 生成，不进仓库）
 desktop-app/resources/gateway.json
+
+desktop-app/release-build/
+desktop-app/dist168/
+desktop-app/win-unpacked/
+desktop-app/dist168_*/
+desktop-app/node_modules/
+desktop-app/pty_stdout*.txt
