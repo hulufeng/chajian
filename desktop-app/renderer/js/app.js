@@ -18171,6 +18171,13 @@ function bindEvents() {
   const gitEmptyClone = document.getElementById('git-empty-clone');
   if (gitEmptyClone) gitEmptyClone.addEventListener('click', () => { const b = document.getElementById('welcome-clone-project'); if (b) b.click(); });
 
+  // 硬件收敛（UI 对齐 ChipCode 活动栏 4 tab）：设备面板入口移入状态栏——点击「开发板/工具链」段打开设备面板，功能保留可用
+  const openDevicePanel = () => { const b = document.querySelector('.activity-btn[data-panel="device"]'); if (b) b.click(); };
+  const statusBoard = document.getElementById('status-board');
+  if (statusBoard) statusBoard.addEventListener('click', openDevicePanel);
+  const statusToolchain = document.getElementById('status-toolchain');
+  if (statusToolchain) statusToolchain.addEventListener('click', openDevicePanel);
+
   // 最近打开：从配置持久化读取并渲染（对齐 TrieCode 真实历史，替换原写死列表）
   async function renderRecentProjects() {
     const recentList = document.getElementById('recent-list');

@@ -21,6 +21,7 @@
   var refreshTimer = null;
   var watchedRoot = null;
   var fileTreeOpen = false;
+  var viewClosed = false;
 
   var STAGE_FILES = {
     idea: ['spec.md', 'spec.json'],
@@ -38,8 +39,8 @@
       '<div class="pf-header">' +
       '<div class="pf-title">产品工厂</div>' +
       '<div class="pf-actions">' +
-      '<button class="pf-btn" id="pf-open" title="打开已有项目" style="padding:3px 10px;font-size:12px">打开</button>' +
-      '<button class="pf-btn" id="pf-new" title="新建产品项目" style="padding:3px 10px;font-size:12px">新建</button>' +
+      '<button class="pf-btn icon" id="pf-open" title="打开已有项目"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg></button>' +
+      '<button class="pf-btn icon" id="pf-new" title="新建产品项目"><svg class="icon icon-xs"><use href="#icon-plus"></use></svg></button>' +
       '</div></div>' +
       '<div class="pf-body" id="pf-body"></div>';
     document.getElementById('pf-new').addEventListener('click', createProject);
@@ -54,8 +55,45 @@
     btn.className = 'activity-btn';
     btn.dataset.panel = 'product-factory';
     btn.title = '产品工厂';
-    btn.innerHTML = '<svg class="icon"><use href="#icon-chip"></use></svg>';
+    btn.innerHTML = '<svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">产品工厂</span>';
     bar.appendChild(btn);
+  }
+
+  // 产品名称输入模态（Electron 不支持 window.prompt，自制模态对齐克隆流程做法；返回 Promise，取消/关闭安全收尾）
+  function promptProductName(defaultName) {
+    return new Promise(resolve => {
+      const old = document.getElementById('pf-name-modal');
+      if (old) old.remove();
+      let done = false;
+      const finish = (val) => { if (done) return; done = true; wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(val || null); };
+      const wrap = document.createElement('div');
+      wrap.id = 'pf-name-modal';
+      wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+      wrap.innerHTML =
+        '<div style="width:440px;background:var(--bg-color);border:1px solid var(--border-color);border-radius:10px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);">' +
+          '<div style="font-size: 13px;font-weight:600;color:var(--text-color);margin-bottom:12px;">新建产品项目</div>' +
+          '<label style="display:block;font-size: 11.5px;color:var(--text-secondary);margin-bottom:6px;">产品名称</label>' +
+          '<input id="pf-name-input" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-elevated);color:var(--text-color);font-size: 12.5px;outline:none;" />' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
+            '<button id="pf-name-cancel" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border-color);background:transparent;color:var(--text-secondary);cursor:pointer;font-size: 12px;">取消</button>' +
+            '<button id="pf-name-ok" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size: 12px;">创建</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      const input = wrap.querySelector('#pf-name-input');
+      input.value = defaultName || '我的产品';
+      setTimeout(() => { input.focus(); input.select(); }, 30);
+      const ok = () => finish(input.value.trim());
+      wrap.querySelector('#pf-name-ok').addEventListener('click', ok);
+      wrap.querySelector('#pf-name-cancel').addEventListener('click', () => finish(null));
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) finish(null); });
+      const onKey = (e) => {
+        if (done) return;
+        if (e.key === 'Enter') { e.preventDefault(); ok(); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+      };
+      document.addEventListener('keydown', onKey, true);
+    });
   }
 
   async function createProject() {
@@ -64,7 +102,7 @@
     try { parent = await window.LabCode.dialog.openDirectory(); } catch (e) {}
     if (!parent) return;
     if (typeof parent === 'object') parent = parent.path || parent.filePaths && parent.filePaths[0];
-    const name = window.prompt('产品名称', '我的产品');
+    const name = await promptProductName('我的产品');
     if (!name) return;
     const r = await a.create({ root: parent, name: name });
     if (!r.success) return toast('创建失败: ' + r.error, 'error');
@@ -72,6 +110,7 @@
       try { await window.loadProjectFromDisk(r.path); } catch (e) {}
     }
     toast('产品项目已创建：' + r.name, 'success');
+    viewClosed = false;
     await refresh(true);
   }
 
@@ -83,6 +122,7 @@
     if (typeof window.loadProjectFromDisk === 'function') {
       try { await window.loadProjectFromDisk(dir); } catch (e) {}
     }
+    viewClosed = false;
     await refresh(true);
   }
 
@@ -100,7 +140,7 @@
       ? '正在打开「' + esc(projectName) + '」。产品工厂需要新建或打开一个产品项目。'
       : '先新建或打开一个产品项目，才会出现五阶段导航。';
     return '<div class="pf-nav__empty">' +
-      '<div class="pf-nav__empty-ico">◈</div>' +
+      '<div class="pf-nav__empty-ico"><svg class="icon" style="width:28px;height:28px;"><use href="#icon-box"></use></svg></div>' +
       '<div class="pf-nav__empty-title">当前不是产品项目</div>' +
       '<div class="pf-nav__empty-hint">' + hint + '</div>' +
       '<button class="pf-btn primary" id="pf-empty-new">+ 新建产品项目</button>' +
@@ -163,8 +203,8 @@
   function render() {
     const body = document.getElementById('pf-body');
     if (!body) return;
-    if (!snapshot || !snapshot.isProduct) {
-      body.innerHTML = emptyHtml(root() ? String(root()).split(/[\\/]/).pop() : '');
+    if (viewClosed || !snapshot || !snapshot.isProduct) {
+      body.innerHTML = emptyHtml(viewClosed ? '' : (root() ? String(root()).split(/[\\/]/).pop() : ''));
       const n = document.getElementById('pf-empty-new');
       const o = document.getElementById('pf-empty-open');
       if (n) n.addEventListener('click', createProject);
@@ -192,7 +232,7 @@
       '<div class="pf-board" id="pf-board">' + (boardOpen ? previewHtml(snapshot.data, activeStage) : '') + '</div>';
     const ex = document.getElementById('pf-export'); if (ex) ex.addEventListener('click', exportPackage);
     const rf = document.getElementById('pf-refresh'); if (rf) rf.addEventListener('click', function () { refresh(true); });
-    const cv = document.getElementById('pf-close-view'); if (cv) cv.addEventListener('click', function () { view.style.display = 'none'; });
+    const cv = document.getElementById('pf-close-view'); if (cv) cv.addEventListener('click', function () { viewClosed = true; snapshot = null; render(); });
     body.querySelectorAll('.pf-nav__stage').forEach(function (b) {
       b.addEventListener('click', function () {
         activeStage = b.dataset.stage;

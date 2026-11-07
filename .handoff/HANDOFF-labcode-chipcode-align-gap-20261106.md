@@ -337,7 +337,7 @@
 
 | 页面 / 视图 | LabCode（实机） | ChipCode（实机） | 判定 |
 |---|---|---|---|
-| 活动栏 tabs | 文件 / **设备** / 源代码管理 / 插件 / 产品工厂 + 底栏 输出·问题·串口·绘图仪·终端·调试·MQTT | 文件 / 产品工厂 / 源代码管理 / 插件（无 设备；串口/终端在顶栏） | 🔶 LabCode 多「设备」+底栏硬件面板（硬件增强，非缺口） |
+| 活动栏 tabs | 文件 / 产品工厂 / 源代码管理 / 插件（4 项）+ 底栏 输出·问题·串口·绘图仪·终端·调试·MQTT | 文件 / 产品工厂 / 源代码管理 / 插件（4 项） | ✅ **已对齐**（2026-11-07：设备 tab 从活动栏移除、功能收敛至状态栏点击入口；见 14.11） |
 | 顶栏 | 文件/编辑/视图/帮助 + 串口监视器/终端/搜索 + 设置 + **Wokwi 仿真运行 / 🤖 编排** | 同左但无 Wokwi 仿真运行 / 编排 | 🔶 硬件增强项 |
 | 文件（欢迎页） | 开始你的开发 + 新建/打开/克隆 + 最近打开 | 逐字一致 | ✅ 一致 |
 | 产品工厂 | 空态 2 按钮(打开/新建)+无副标题；导出等移入产品视图 | 逐字一致 | ✅ 已对齐(见 14.8) |
@@ -357,6 +357,17 @@
 - **⚠️ 关键教训（务必规避）**：首次打包部署后点击完全失效（按钮无反应、面板不切换）。根因是 `refreshGitStatus` 改动**误加了重复的 `const r = await window.LabCode.git.status(cwd)`**（原文件该声明在插入处下一行已存在），导致 `SyntaxError: Identifier 'r' has already been declared`，**整个 app.js 解析失败、全部事件监听未挂载**。修复后 `node --check` 通过（EXIT=0）。
   - 经验：修改含 `await` 的函数后，**必须** `node --check` 校验语法再打包；asar 打包不会报 JS 语法错误（仅打包字节），运行时整文件崩溃极难排查。本次靠 CDP `Runtime.exceptionThrown` 捕获到 SyntaxError 才定位。
 - 部署：局部 asar 注入（app_new.asar 基于 unpacked 目录，备份原 asar 为 `.prev`），源码改动待提交。
+
+### 14.11 活动栏/空态图标 UI 对齐 + 硬件项收敛 + 产品工厂功能实测（2026-11-07）
+- 用户对照 ChipCode 截图（活动栏产品工厂图标圈红）指出仍不一致。实机取证（LabCode CDP / ChipCode 截图）确认 4 处真实差异：① 活动栏顺序 ChipCode=文件/产品工厂(第2位)/源代码管理/插件，LabCode=文件/**设备**/源代码管理/插件/产品工厂(第5位)；② 产品工厂图标 ChipCode=立方体 box，LabCode=`#icon-chip`；③ 空态图标 ChipCode=SVG 立方体，LabCode=「◈」文本；④ 头部 ChipCode=2 个纯图标按钮，LabCode=「打开/新建」文字按钮。
+- **UI 改动**：`index.html` 活动栏重排为 文件/产品工厂(`#icon-box`)/源代码管理/插件 4 项；`product-factory.js` 头部改 2 个纯图标按钮（folder-open / +，新增 `.pf-btn.icon` 幽灵样式）、空态图标换 `#icon-box` SVG；`ensureActivityTab()` 动态 tab 图标同步 box。
+- **硬件增强项收敛**：移除活动栏「设备」tab（`display:none` 保留 DOM 与监听），**功能不丢失**——`app.js` 给状态栏 `#status-board`/`#status-toolchain` 绑定点击打开设备面板，`style.css` 加 `cursor:pointer` + hover 反馈。MQTT/串口/绘图仪等底栏面板、Wokwi 仿真等顶栏入口保持（LabCode 硬件能力保留，仅活动栏视觉收敛到 ChipCode 4 tab）。
+- **功能实测发现的真实 bug 并修复（重点）**：
+  1. **新建产品项目点不动**：`createProject()` 用了 `window.prompt('产品名称')`，**Electron 不支持 prompt**，按钮静默失败。改为自制 `promptProductName()` 模态（Promise + 取消/遮罩/Esc/Enter 安全收尾，对齐克隆流程 `showGitCloneModal` 做法）。
+  2. **「关闭」语义错误**：原 handler 是 `view.style.display='none'`，把整个产品工厂视图（含头部打开/新建按钮）隐藏，用户无法回空态再打开项目。改为模块内 `viewClosed` 标志：`render()` 强制空态、不隐藏 view，头部按钮保持可点；新建/打开成功后清除标志。刻意**不动全局 `projectPath`**（避免破坏文件树/git/终端）。
+- **端到端实机验证（CDP + 桌面自动化操作真实原生对话框）**：新建（输入名称→真实创建 11 个文件含 `spec.md`「# 测试产品A」）→ 五阶段渲染(创意/造型/硬件/软件/联调) → 打开已有项目 → 刷新 → **生成产品包真实落盘 5 文件**（`.manifest.json`/`bom.csv`/`evidence.md`/`README.md`/`requirements.md`）→ 关闭回空态（view 可见、4 按钮可点、文案「当前不是产品项目」）→ 再次打开恢复五阶段；状态栏点击打开设备面板（7 个板卡下拉）；活动栏 4 tab 顺序/图标、空态 SVG、头部图标按钮全部对齐截图；全过程 `Runtime.exceptionThrown` 无异常。
+- **踩坑**：① `window.LabCode.dialog` 是 contextBridge 暴露的**只读对象**，CDP 里 stub `openDirectory` 赋值静默失败，无法用假目录测原生流程——只能用 clawdcursor 操作真实「选择文件夹」对话框；② Windows 文件夹对话框输入路径后需 **两次 Return**（第一次导航进入、第二次确认选择）；③ 重复点击会堆叠多个原生对话框，需逐个 Escape 清理；④ 每次换前台窗口后 `type_text` 会因 `FOREGROUND_CHANGED` 拒绝，需先 `focus_window` 到新 pid。
+- 部署：局部 asar 注入（app_new.asar 基于 unpacked，备份 `.prev`），源码改动待提交。
 
 ### 13.4 工程最终状态（全链闭环）
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。

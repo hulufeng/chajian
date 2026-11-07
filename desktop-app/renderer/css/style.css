@@ -3033,6 +3033,19 @@ body.no-open-file .editor-toolbar { display: none !important; }
   opacity: 1;
 }
 
+/* 硬件收敛（对齐 ChipCode 活动栏 4 tab）：设备入口移入状态栏，开发板/工具链可点击打开设备面板 */
+.statusbar .status-item#status-board,
+.statusbar .status-item#status-toolchain {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.statusbar .status-item#status-board:hover,
+.statusbar .status-item#status-toolchain:hover {
+  background: rgba(128, 128, 128, 0.18);
+}
+
 /* ============ 模型安装进度弹窗（对齐 Qwen 安装界面）============ */
 #install-modal .install-dialog {
   width: 340px;

@@ -331,13 +331,13 @@
 
   <!-- 主内容区 -->
   <div class="main-container">
-    <!-- 活动栏（1:1 对齐 ChipCode：文件 / 盒子(设备) / 源代码管理 / 插件，共 4 项，消除工具链与动态插件入口的功能重复） -->
+    <!-- 活动栏（1:1 对齐 ChipCode：文件 / 产品工厂(box) / 源代码管理 / 插件，共 4 项；设备入口收敛至状态栏「开发板/工具链」点击打开） -->
     <div class="activity-bar">
       <button class="activity-btn active" data-panel="explorer" title="文件"><svg class="icon"><use href="#icon-folder"></use></svg><span class="activity-label">文件</span></button>
-      <button class="activity-btn" data-panel="device" title="设备"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
+      <button class="activity-btn" data-panel="product-factory" title="产品工厂"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">产品工厂</span></button>
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
-      <button class="activity-btn" data-panel="product-factory" title="产品工厂"><svg class="icon"><use href="#icon-chip"></use></svg><span class="activity-label">产品工厂</span></button>
+      <button class="activity-btn" data-panel="device" title="设备" style="display:none;"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
     </div>
 
     <!-- 群聊 / 多 Agent 房间（全屏覆盖视图，对标 Ekko「群聊」） -->
@@ -2194,6 +2194,8 @@
     .pf-btn:hover{border-color:var(--accent);color:var(--accent);}
     .pf-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
     .pf-btn.outline{background:transparent;}
+    .pf-btn.icon{border:none;background:transparent;padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);}
+    .pf-btn.icon:hover{background:var(--bg-tertiary);color:var(--text-primary);border:none;}
     .pf-body{flex:1;min-height:0;display:flex;overflow:hidden;}
     .pf-nav{width:330px;flex-shrink:0;overflow:auto;border-right:1px solid var(--border-color);padding:12px;box-sizing:border-box;}
     .pf-nav__meter{font-size:11.5px;color:var(--text-secondary);margin-bottom:14px;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary);}
