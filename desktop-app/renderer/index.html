@@ -596,10 +596,19 @@
             <button class="icon-btn" id="git-refresh" title="刷新"><svg class="icon"><use href="#icon-refresh"></use></svg></button>
           </div>
         </div>
+        <!-- 无项目空态（1:1 对齐 ChipCode 源代码管理空状态：还没有打开项目 + 打开/克隆入口） -->
+        <div class="scm-empty" id="git-empty" style="display:none;padding:16px 14px;">
+          <h3 class="scm-empty-title">还没有打开项目</h3>
+          <p class="scm-empty-desc">源代码管理用于你打开的那个项目（一个项目一个仓库）。先打开一个项目，或者从远端拉一下来。</p>
+          <div class="scm-empty-actions">
+            <button class="btn btn-secondary" id="git-empty-open"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg> 打开项目...</button>
+            <button class="btn btn-secondary" id="git-empty-clone"><svg class="icon icon-xs"><use href="#icon-git-branch"></use></svg> 从 Git 克隆项目...</button>
+          </div>
+        </div>
         <div id="git-status" style="padding:8px;font-size: 11.5px;color:var(--text-tertiary);">未选择仓库</div>
         <div id="git-files" style="flex:1;overflow:auto;padding:4px 8px;"></div>
         <!-- Git 操作区（对齐 TrieCode：主流程=全部暂存→commit 框→生成+状态+提交 一行；推送/拉取/分支/克隆/AI 增强全收「更多」折叠） -->
-        <div style="padding:10px;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:8px;">
+        <div id="git-actions" style="padding:10px;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary btn-sm" id="git-stage-all-btn" style="width:100%;font-size: 11.5px;">全部暂存</button>
           <textarea id="git-commit-msg" rows="2" placeholder="先在改动列表里暂存要提交的内容…" style="width:100%;box-sizing:border-box;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:7px 9px;border-radius:6px;font-size: 11.5px;resize:vertical;font-family:inherit;"></textarea>
           <div style="display:flex;gap:6px;align-items:center;">

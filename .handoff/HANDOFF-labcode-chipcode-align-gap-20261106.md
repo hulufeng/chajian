@@ -331,6 +331,33 @@
 - GUI 确认：欢迎页历史会话列表（Phase B 数据）、积分徽标（今日剩余 3 积分）、输入栏、模型选择器（Qwen2.5-Coder 3B 本地）全部正常；活动栏 **5 个图标齐全**，第 5 个芯片图标即 Phase D 产品工厂。
 - **双轨消除**：运行物 = 正式发行物 = 源码 8d91d64，三者一致。
 
+### 14.9 全页面 UI 逐页对比（2026-11-07，实机取证）
+- **方法**：LabCode 经 CDP 遍历（`http://127.0.0.1:9223`，已部署对齐版 app.asar）；ChipCode 经 clawdcursor mcp 逐视图打开（pid 24536，TrieCode 安装版）。逐一打开活动栏各 tab / 顶栏 / 设置窗口取证。
+- **结论**：双方**同源结构**，共有页面 UI 与功能一致；差异集中在 LabCode 的「硬件增强维度」与个别空态呈现。
+
+| 页面 / 视图 | LabCode（实机） | ChipCode（实机） | 判定 |
+|---|---|---|---|
+| 活动栏 tabs | 文件 / **设备** / 源代码管理 / 插件 / 产品工厂 + 底栏 输出·问题·串口·绘图仪·终端·调试·MQTT | 文件 / 产品工厂 / 源代码管理 / 插件（无 设备；串口/终端在顶栏） | 🔶 LabCode 多「设备」+底栏硬件面板（硬件增强，非缺口） |
+| 顶栏 | 文件/编辑/视图/帮助 + 串口监视器/终端/搜索 + 设置 + **Wokwi 仿真运行 / 🤖 编排** | 同左但无 Wokwi 仿真运行 / 编排 | 🔶 硬件增强项 |
+| 文件（欢迎页） | 开始你的开发 + 新建/打开/克隆 + 最近打开 | 逐字一致 | ✅ 一致 |
+| 产品工厂 | 空态 2 按钮(打开/新建)+无副标题；导出等移入产品视图 | 逐字一致 | ✅ 已对齐(见 14.8) |
+| **源代码管理（空态）** | 「还没有打开项目」+ 描述 + 打开项目… / 从 Git 克隆项目…（git 控件隐藏） | 逐字一致 | ✅ **已对齐**（2026-11-07：无项目时隐藏 git 操作区、显示 ChipCode 式空态；有项目/非仓库时保持原行为） |
+| 插件市场 | 官方市场/已安装 + 卡片(图标+名+版本+描述+安装) | 同结构 + 同插件集 | ✅ 一致（**修正**：ChipCode 同样内置全部硬件工具链 Arduino CLI/ESP-IDF/STM32Cube/Wokwi/立创EDA/OpenSCAD/51单片机/插件开发/浏览器自动化） |
+| AI 面板 | 示例/写代码/做产品 + 语音/代理/模型/工作空间 + 提示词；模型 Qwen2.5-Coder 3B(本地) | 同结构；模型 Minimax M2.7(云端) | ✅ 结构一致；模型差为本地优先部署策略 |
+| 撤销/回滚 | AI 面板顶部 撤销上一轮(含文件回滚)/选择撤销范围/重做 | 同位置同功能(disabled 态) | ✅ 一致 |
+| 设置 | 左侧分组导航（个人/AI/集成/开发）+ 搜索 + 保存 | 同结构：个人(账户/常规/外观/语音) AI(模型/补全/记忆/技能/搜索) 集成(MCP/插件) 开发(编辑器/版本控制/终端/解释器/钩子/定时任务) | ✅ 同源结构（LabCode 应多硬件分类，待确认） |
+
+- **需对齐项（真差异）**：仅「源代码管理空态」——LabCode 在未打开项目时仍渲染 git 操作控件（全部暂存/提交/更多），而 ChipCode 显示干净空态（还没有打开项目 + 打开/克隆入口）。建议将 LabCode 源代码管理空态改为与 ChipCode 一致。
+- **其余差异均为 LabCode 硬件增强维度（设备/底栏硬件面板/Wokwi/编排）或本地模型部署策略，非 UI 对齐缺口**。
+- 部署状态：LabCode 运行对齐版 app.asar（dist169 基线，备份 `.prev`），源码改动 `c0118aa` 已提交。
+
+### 14.10 源代码管理空态对齐（2026-11-07）
+- **改动**（`renderer/index.html` + `renderer/js/app.js`）：在 `git-panel` 内新增 `#git-empty` 空态块（复用 `.scm-empty` 样式，文案与 ChipCode 逐字一致：「还没有打开项目」+ 描述 + 打开项目…/从 Git 克隆项目…）；给 git 操作区加 `id="git-actions"`；在 `refreshGitStatus()` 中无项目时调用 `showEmpty(true)` 隐藏 git-status/git-files/git-actions/checkpoint 按钮、显示 `#git-empty`，有项目时 `showEmpty(false)` 恢复原行为（非仓库仍给「在此初始化仓库」真实入口）。空态两个按钮复用 `welcome-open-project`/`welcome-clone-project` 入口。
+- **验证（CDP 实机）**：部署修复版 asar 后，点源代码管理 tab → `gitBtnActive:true`、`gitPanelDisp:flex`、`gitEmptyDisp:block`（空态可见）、`gitActionsDisp:none`（git 控件隐藏）、`git-empty` 文案与按钮逐字等于 ChipCode（`actionsHidden:true`）——**已 1:1 对齐，无功能回归**。
+- **⚠️ 关键教训（务必规避）**：首次打包部署后点击完全失效（按钮无反应、面板不切换）。根因是 `refreshGitStatus` 改动**误加了重复的 `const r = await window.LabCode.git.status(cwd)`**（原文件该声明在插入处下一行已存在），导致 `SyntaxError: Identifier 'r' has already been declared`，**整个 app.js 解析失败、全部事件监听未挂载**。修复后 `node --check` 通过（EXIT=0）。
+  - 经验：修改含 `await` 的函数后，**必须** `node --check` 校验语法再打包；asar 打包不会报 JS 语法错误（仅打包字节），运行时整文件崩溃极难排查。本次靠 CDP `Runtime.exceptionThrown` 捕获到 SyntaxError 才定位。
+- 部署：局部 asar 注入（app_new.asar 基于 unpacked 目录，备份原 asar 为 `.prev`），源码改动待提交。
+
 ### 13.4 工程最终状态（全链闭环）
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
 - 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。

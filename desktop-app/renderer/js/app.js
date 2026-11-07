@@ -15491,7 +15491,22 @@ function bindEvents() {
     const cwd = state.projectPath;
     const statusEl = document.getElementById('git-status');
     const filesEl = document.getElementById('git-files');
-    if (!cwd || !window.LabCode.git) { if (statusEl) statusEl.textContent = '未选择项目'; return; }
+    const emptyEl = document.getElementById('git-empty');
+    const actionsEl = document.getElementById('git-actions');
+    const checkpointBtn = document.getElementById('git-checkpoint-btn');
+    const showEmpty = (show) => {
+      if (emptyEl) emptyEl.style.display = show ? '' : 'none';
+      if (statusEl) statusEl.style.display = show ? 'none' : '';
+      if (filesEl) filesEl.style.display = show ? 'none' : '';
+      if (actionsEl) actionsEl.style.display = show ? 'none' : '';
+      if (checkpointBtn) checkpointBtn.style.display = show ? 'none' : '';
+    };
+    if (!cwd || !window.LabCode.git) {
+      if (statusEl) statusEl.textContent = '未选择项目';
+      showEmpty(true);
+      return;
+    }
+    showEmpty(false);
     const r = await window.LabCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口
@@ -18149,6 +18164,12 @@ function bindEvents() {
       else showToast('克隆模块未就绪', 'error');
     });
   }
+
+  // Git 面板无项目空态按钮：复用打开项目/克隆入口（1:1 对齐 ChipCode 源代码管理空状态）
+  const gitEmptyOpen = document.getElementById('git-empty-open');
+  if (gitEmptyOpen) gitEmptyOpen.addEventListener('click', () => { const b = document.getElementById('welcome-open-project'); if (b) b.click(); });
+  const gitEmptyClone = document.getElementById('git-empty-clone');
+  if (gitEmptyClone) gitEmptyClone.addEventListener('click', () => { const b = document.getElementById('welcome-clone-project'); if (b) b.click(); });
 
   // 最近打开：从配置持久化读取并渲染（对齐 TrieCode 真实历史，替换原写死列表）
   async function renderRecentProjects() {
