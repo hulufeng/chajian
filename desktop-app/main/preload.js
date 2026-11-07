@@ -277,7 +277,32 @@ contextBridge.exposeInMainWorld('LabCode', {
     aiResolveConflicts: (cwd) => ipcRenderer.invoke('git:aiResolveConflicts', cwd),
     aiPrDescription: (cwd) => ipcRenderer.invoke('git:aiPrDescription', cwd),
     issuesList: (cwd, limit) => ipcRenderer.invoke('git:issues:list', cwd, limit),
-    prCreate: (cwd, opts) => ipcRenderer.invoke('git:pr:create', cwd, opts)
+    prCreate: (cwd, opts) => ipcRenderer.invoke('git:pr:create', cwd, opts),
+    review: (cwd, sessionId, opts) => ipcRenderer.invoke('git:review', cwd, sessionId, opts),
+    reviewApply: (cwd, decisions, opts) => ipcRenderer.invoke('git:review:apply', cwd, decisions, opts),
+    fetch: (cwd) => ipcRenderer.invoke('git:fetch', cwd),
+    pullRebase: (cwd) => ipcRenderer.invoke('git:pullRebase', cwd),
+    remoteStatus: (cwd) => ipcRenderer.invoke('git:remoteStatus', cwd)
+  },
+
+  // 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:*）
+  board: {
+    coreList: () => ipcRenderer.invoke('core:list'),
+    coreSearch: (query) => ipcRenderer.invoke('core:search', query),
+    coreInstall: (payload) => ipcRenderer.invoke('core:install', payload),
+    coreUninstall: (payload) => ipcRenderer.invoke('core:uninstall', payload),
+    coreUpdateIndex: () => ipcRenderer.invoke('core:updateIndex'),
+    libSearch: (query) => ipcRenderer.invoke('lib:search', query),
+    libList: () => ipcRenderer.invoke('lib:list'),
+    libInstall: (payload) => ipcRenderer.invoke('lib:install', payload),
+    libUninstall: (payload) => ipcRenderer.invoke('lib:uninstall', payload),
+    libUpdateIndex: () => ipcRenderer.invoke('lib:updateIndex'),
+    boardList: () => ipcRenderer.invoke('board:list'),
+    boardSearch: (query) => ipcRenderer.invoke('board:search', query),
+    boardListAll: (payload) => ipcRenderer.invoke('board:listAll', payload),
+    boardDetails: (payload) => ipcRenderer.invoke('board:details', payload),
+    onCoreInstallProgress: (cb) => { const h = (_e, d) => cb(d); ipcRenderer.on('core:installProgress', h); return () => ipcRenderer.removeListener('core:installProgress', h); },
+    onLibInstallProgress: (cb) => { const h = (_e, d) => cb(d); ipcRenderer.on('lib:onInstallProgress', h); return () => ipcRenderer.removeListener('lib:onInstallProgress', h); }
   },
 
   // Hermes: 记忆搜索 + Webhook + SSH

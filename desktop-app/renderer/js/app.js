@@ -15963,12 +15963,14 @@ function bindEvents() {
       const pend = document.getElementById('git-pending'); if (pend) pend.style.display = 'none';
       const cf = document.getElementById('git-conflicts'); if (cf) cf.style.display = 'none';
       const iss = document.getElementById('git-issues'); if (iss) iss.style.display = 'none';
+      const rs = document.getElementById('git-remote-status'); if (rs) rs.style.display = 'none';
       return;
     }
     showEmpty(false);
     renderGitPendingOp(cwd);
     renderGitConflicts(cwd);
     renderGitIssues(cwd);
+    if (typeof window.renderGitRemoteStatus === 'function') window.renderGitRemoteStatus(cwd);
     const r = await window.LabCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口

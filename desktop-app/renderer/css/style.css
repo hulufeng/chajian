@@ -1218,9 +1218,11 @@ input, textarea {
 }
 
 /* ===== 文件 tab 无项目态：1:1 对齐 ChipCode「开始你的开发」欢迎页 ===== */
-.welcome-start { width: 100%; max-width: 320px; }
-.welcome-panel-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; line-height: 1.4; }
-.welcome-panel-desc { font-size: 12.5px; color: var(--text-tertiary); line-height: 1.7; margin: 0 0 18px; }
+.welcome-start { width: 100%; max-width: 320px; margin: 0 auto; }
+.welcome-panel-icon { display: flex; justify-content: center; color: var(--accent); margin-bottom: 14px; }
+.welcome-panel-icon .icon { width: 24px; height: 24px; }
+.welcome-panel-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; line-height: 1.4; }
+.welcome-panel-desc { font-size: 12px; color: var(--text-tertiary); line-height: 1.7; margin: 0 0 18px; max-width: 220px; }
 .welcome-panel-actions { display: flex; flex-direction: column; gap: 8px; }
 .welcome-panel-actions .btn-full {
   width: 100%; height: 30px; justify-content: center;
@@ -1228,14 +1230,28 @@ input, textarea {
   border-radius: 6px; font-size: 12.5px;
 }
 .welcome-panel-actions .btn-full .icon { width: 14px; height: 14px; }
+.welcome-panel-actions-row { display: flex; gap: 8px; width: 100%; }
+.welcome-panel-actions .btn-half {
+  flex: 1; min-width: 0; overflow: hidden; height: 30px;
+  justify-content: center; display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 6px; font-size: 12.5px;
+}
+.welcome-panel-actions .btn-half .icon { width: 14px; height: 14px; }
 .welcome-panel .welcome-recent { margin: 18px 0 0; max-width: none; }
+.welcome-recent-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: .5px;
+  margin: 20px 0 4px 0;
+}
+.welcome-recent-title .icon { width: 11px; height: 11px; color: var(--text-tertiary); }
 #recent-list .recent-item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  border-radius: var(--radius-sm); cursor: pointer; font-size: 11.5px;
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
   color: var(--text-secondary); transition: all 0.15s;
 }
 #recent-list .recent-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-#recent-list .recent-item .icon { width: 14px; height: 14px; color: var(--text-tertiary); flex-shrink: 0; }
+#recent-list .recent-item .icon { width: 13px; height: 13px; color: var(--text-tertiary); flex-shrink: 0; }
 
 /* ===== 代码符号搜索浮层（1:1 仿写 ChipCode：遮罩 z90 / 卡片 z91 / 宽540 / top52 / inline 输入框） ===== */
 .symbol-search-overlay { position: fixed; inset: 0; z-index: 10001; }

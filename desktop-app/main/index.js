@@ -1328,6 +1328,475 @@ function setupIPC() {
     } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
   });
 
+  // ===== Git 审阅 AI 改动（对齐 ChipCode git:review / git:applyAndStage）=====
+  // 说明：ChipCode 把会话改动存于主进程 Sr；LabCode 的 FileChangeTracker 在渲染进程，
+  // 故由渲染层把本轮改动（path/before/after/action）经 opts.changes 传入，主进程负责
+  // hunk 拆分、按 hunk 接受/拒绝、回写磁盘并 git add 暂存。无会话时回退 git diff HEAD。
+  const _gitReviewStore = new Map(); // cwd -> 最近一次 review（含 before/hunks，供 apply 使用）
+
+  // 行级 LCS 差异，生成 ops 序列（eq/del/add），索引指向 a/b 行数组
+  function _diffLines(a, b) {
+    const n = a.length, m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const ops = [];
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { ops.push({ t: 'eq', a: i, b: j }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', a: i, b: j }); i++; }
+      else { ops.push({ t: 'add', a: i, b: j }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', a: i, b: j }); i++; }
+    while (j < m) { ops.push({ t: 'add', a: i, b: j }); j++; }
+    return ops;
+  }
+
+  // 由 before/after 文本生成带上下文的 hunk 列表（结构对齐 ChipCode review）
+  function _buildReviewHunks(beforeText, afterText) {
+    const a = (beforeText || '').split('\n');
+    const b = (afterText || '').split('\n');
+    const ops = _diffLines(a, b);
+    if (ops.length && ops.every(o => o.t === 'eq')) return [];
+    const CONTEXT = 3;
+    const hunks = [];
+    let i = 0, prevEnd = 0;
+    while (i < ops.length) {
+      if (ops[i].t === 'eq') { i++; continue; }
+      const start = i;
+      while (i < ops.length && ops[i].t !== 'eq') i++;
+      const end = i;
+      let hStart = Math.max(0, start - CONTEXT);
+      if (hStart < prevEnd) hStart = prevEnd; // 不与上一个 hunk 重叠
+      const hEnd = Math.min(ops.length, end + CONTEXT);
+      const lines = [];
+      let oldCount = 0, newCount = 0;
+      for (let k = hStart; k < hEnd; k++) {
+        const op = ops[k];
+        if (op.t === 'eq') { lines.push({ type: 'context', text: a[op.a] }); oldCount++; newCount++; }
+        else if (op.t === 'del') { lines.push({ type: 'del', text: a[op.a] }); oldCount++; }
+        else { lines.push({ type: 'add', text: b[op.b] }); newCount++; }
+      }
+      let oldNo = 1, newNo = 1;
+      for (let k = 0; k < hStart; k++) {
+        if (ops[k].t !== 'add') oldNo++;
+        if (ops[k].t !== 'del') newNo++;
+      }
+      hunks.push({
+        hunkIndex: hunks.length,
+        oldStart: oldNo, newStart: newNo, oldCount, newCount,
+        header: '@@ -' + oldNo + ',' + oldCount + ' +' + newNo + ',' + newCount + ' @@',
+        lines
+      });
+      prevEnd = hEnd;
+    }
+    return hunks;
+  }
+
+  // 接受/拒绝部分 hunk 后，基于 before 文本 + hunk 行重建最终文件内容
+  function _applyHunkDecisions(beforeText, hunks, rejected) {
+    const beforeLines = (beforeText || '').split('\n');
+    const result = [];
+    let pos = 0;
+    for (const hunk of hunks) {
+      const oldStart0 = hunk.oldStart - 1;
+      while (pos < oldStart0) result.push(beforeLines[pos++]);
+      const keep = !rejected.has(hunk.hunkIndex);
+      for (const ln of hunk.lines) {
+        if (ln.type === 'context') result.push(ln.text);
+        else if (ln.type === 'del') { if (!keep) result.push(ln.text); }
+        else if (ln.type === 'add') { if (keep) result.push(ln.text); }
+      }
+      pos = oldStart0 + hunk.oldCount;
+    }
+    while (pos < beforeLines.length) result.push(beforeLines[pos++]);
+    return result.join('\n');
+  }
+
+  ipcMain.handle('git:review', async (_, cwd, sessionId, opts) => {
+    try {
+      if (!cwd) return { ok: false, error: 'no-cwd', message: '未选择项目' };
+      const fs = require('fs');
+      const path = require('path');
+      const fileEntries = [];
+
+      // 数据源 1：渲染层经 FileChangeTracker 传入的本轮 AI 改动
+      const changes = (opts && Array.isArray(opts.changes)) ? opts.changes : null;
+      if (changes && changes.length) {
+        for (const ch of changes) {
+          const relPath = ch.path || ch.relPath || '';
+          if (!relPath) continue;
+          const action = ch.action || (ch.after === null ? 'delete' : (ch.before === null || ch.before === undefined ? 'create' : 'modify'));
+          const beforeText = (ch.before === null || ch.before === undefined) ? '' : String(ch.before);
+          const afterText = (ch.after === null || ch.after === undefined) ? '' : String(ch.after);
+          const baselineNull = (ch.before === null || ch.before === undefined);
+          const binary = (typeof ch.before !== 'string' && ch.before !== null && ch.before !== undefined)
+                      || (typeof ch.after !== 'string' && ch.after !== null && ch.after !== undefined);
+          const hunks = binary ? [] : _buildReviewHunks(beforeText, afterText);
+          fileEntries.push({
+            relPath, action, beforeText, afterText, baselineNull, binary,
+            deleted: ch.after === null,
+            hunks,
+            addLines: hunks.reduce((s, h) => s + h.lines.filter(l => l.type === 'add').length, 0),
+            delLines: hunks.reduce((s, h) => s + h.lines.filter(l => l.type === 'del').length, 0)
+          });
+        }
+      } else {
+        // 数据源 2（兜底）：git diff HEAD 的已跟踪改动
+        const nameRes = await runGit(cwd, ['diff', '--name-only', 'HEAD']);
+        if (nameRes && nameRes.ok && nameRes.stdout) {
+          const files = nameRes.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+          for (const relPath of files) {
+            let beforeText = '';
+            const showRes = await runGit(cwd, ['show', 'HEAD:' + relPath]);
+            if (showRes && showRes.ok) beforeText = showRes.stdout;
+            let afterText = '';
+            try { afterText = fs.readFileSync(path.join(cwd, relPath), 'utf8'); } catch (e) { afterText = ''; }
+            const hunks = _buildReviewHunks(beforeText, afterText);
+            fileEntries.push({
+              relPath, action: 'modify', beforeText, afterText, baselineNull: false, binary: false,
+              deleted: false, hunks,
+              addLines: hunks.reduce((s, h) => s + h.lines.filter(l => l.type === 'add').length, 0),
+              delLines: hunks.reduce((s, h) => s + h.lines.filter(l => l.type === 'del').length, 0)
+            });
+          }
+        }
+      }
+
+      _gitReviewStore.set(cwd, { repoRoot: cwd, files: fileEntries });
+      const review = {
+        repoRoot: cwd,
+        files: fileEntries.map(f => ({
+          relPath: f.relPath, action: f.action, binary: f.binary, deleted: f.deleted,
+          addLines: f.addLines, delLines: f.delLines, hunks: f.hunks
+        }))
+      };
+      return { ok: true, review };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
+
+  ipcMain.handle('git:review:apply', async (_, cwd, decisions, opts) => {
+    try {
+      if (!cwd) return { ok: false, error: 'no-cwd', message: '未选择项目' };
+      const fs = require('fs'); const path = require('path');
+      const store = (opts && opts.review) ? opts.review
+                 : (opts && opts.files) ? { repoRoot: cwd, files: opts.files }
+                 : _gitReviewStore.get(cwd);
+      if (!store || !store.files || !store.files.length) {
+        return { ok: false, error: 'no-review', message: '没有可供应用的审阅结果，请先调用 git:review' };
+      }
+      const decisionMap = new Map(); // relPath -> Set(hunkIndex rejected)
+      for (const d of (Array.isArray(decisions) ? decisions : [])) {
+        if (!decisionMap.has(d.file)) decisionMap.set(d.file, new Set());
+        if (d.action === 'reject') decisionMap.get(d.file).add(Number(d.hunkIndex));
+      }
+      const applied = []; const staged = []; const skipped = [];
+      for (const f of store.files) {
+        const rejected = decisionMap.get(f.relPath) || new Set();
+        const abs = path.join(cwd, f.relPath);
+        let current = null;
+        try { current = fs.readFileSync(abs, 'utf8'); } catch (e) { current = null; }
+        // 安全校验：modify/delete 时磁盘内容须等于 baseline（before），否则用户已改，跳过以防覆盖
+        if ((f.action === 'modify' || f.action === 'delete') && current !== f.beforeText) {
+          skipped.push({ file: f.relPath, reason: '磁盘内容已变更，跳过以防覆盖用户改动' });
+          continue;
+        }
+        if (f.action === 'create' && current !== null && current !== f.afterText) {
+          skipped.push({ file: f.relPath, reason: '文件已存在且内容不符，跳过以防覆盖' });
+          continue;
+        }
+        let finalText;
+        if (f.action === 'create') {
+          if (f.hunks && f.hunks.length) {
+            const allRejected = f.hunks.every(h => rejected.has(h.hunkIndex));
+            finalText = allRejected ? null : _applyHunkDecisions(f.beforeText, f.hunks, rejected);
+          } else {
+            finalText = rejected.size === 0 ? f.afterText : null;
+          }
+        } else if (f.action === 'delete') {
+          const allKept = f.hunks && f.hunks.length ? f.hunks.every(h => !rejected.has(h.hunkIndex)) : (rejected.size === 0);
+          finalText = allKept ? null : f.beforeText;
+        } else {
+          finalText = f.hunks && f.hunks.length ? _applyHunkDecisions(f.beforeText, f.hunks, rejected) : f.beforeText;
+        }
+        const baseline = f.baselineNull ? null : f.beforeText;
+        if (finalText === null) {
+          try { fs.unlinkSync(abs); } catch (e) { /* 可能本就不存在 */ }
+        } else {
+          try { fs.mkdirSync(path.dirname(abs), { recursive: true }); } catch (e) {}
+          fs.writeFileSync(abs, finalText);
+        }
+        if (finalText !== baseline) {
+          const addRes = await runGit(cwd, ['add', '--', f.relPath]);
+          if (addRes && addRes.ok) staged.push(f.relPath);
+          applied.push(f.relPath);
+        } else {
+          applied.push(f.relPath);
+        }
+      }
+      return { ok: true, applied, staged, skipped };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
+
+  // ===== 远程通道（对齐 ChipCode git:fetch / git:pullRebase / git:remoteStatus）=====
+  // 获取：拉取所有远程并清理已删除分支
+  ipcMain.handle('git:fetch', async (_, cwd) => {
+    if (!cwd) return { ok: false, error: '缺少 cwd' };
+    const r = await runGit(cwd, ['fetch', '--all', '--prune']);
+    return { ok: r.ok, output: (r.stdout || '') + (r.stderr || ''), error: r.ok ? null : (r.stderr || r.stdout || 'fetch 失败') };
+  });
+  // 拉取并变基：失败复用冲突检测逻辑返回冲突文件列表
+  ipcMain.handle('git:pullRebase', async (_, cwd) => {
+    if (!cwd) return { ok: false, error: '缺少 cwd' };
+    const r = await runGit(cwd, ['pull', '--rebase']);
+    if (r.ok) return { ok: true, output: r.stdout };
+    const raw = (r.stdout || '') + (r.stderr || '');
+    // 复用 git:listConflicts 的冲突判定：U?/?U/AA/DD 视为冲突
+    let conflicts = [];
+    try {
+      const st = await runGit(cwd, ['status', '--porcelain', '-b']);
+      if (st.ok) {
+        conflicts = st.stdout.split('\n').filter(Boolean).map(l => {
+          const s2 = l.slice(0, 2).trim();
+          return (s2.length === 2 && /U/.test(s2)) ? l.slice(3) : null;
+        }).filter(Boolean);
+      }
+    } catch (e) {}
+    const hasConflict = /conflict|CONFLICT|unmerged paths|still have unmerged/i.test(raw) || conflicts.length > 0;
+    return { ok: false, error: raw || 'pull --rebase 失败', conflicts, conflict: hasConflict };
+  });
+  // 远程状态：ahead/behind + upstream + 远程地址
+  ipcMain.handle('git:remoteStatus', async (_, cwd) => {
+    if (!cwd) return { ok: false, error: '缺少 cwd' };
+    try {
+      const sb = await runGit(cwd, ['status', '-sb']);
+      if (!sb.ok) return { ok: false, error: sb.stderr || sb.stdout || '读取状态失败' };
+      const head = sb.stdout.split('\n')[0] || '';
+      let branch = '', upstream = '', ahead = 0, behind = 0;
+      const m = head.match(/^##\s+(.+?)(?:\.\.\.(.+?))?\s*(?:\[(.*)\])?$/);
+      if (m) {
+        branch = m[1] || '';
+        upstream = m[2] || '';
+        const info = m[3] || '';
+        const am = info.match(/ahead (\d+)/); if (am) ahead = parseInt(am[1], 10);
+        const bm = info.match(/behind (\d+)/); if (bm) behind = parseInt(bm[1], 10);
+      }
+      // git status -sb 的 upstream 取第一个 ... 后的部分；兜底用 rev-parse
+      if (!upstream) {
+        const up = await runGit(cwd, ['rev-parse', '--abbrev-ref', '@{upstream}']);
+        if (up.ok) upstream = up.stdout.trim();
+      }
+      let remoteUrl = null;
+      if (upstream) {
+        const rm = upstream.match(/^([^/]+)\//);
+        const remoteName = rm ? rm[1] : 'origin';
+        const ru = await runGit(cwd, ['remote', 'get-url', remoteName]);
+        if (ru.ok) remoteUrl = ru.stdout.trim() || null;
+      }
+      return { ok: true, branch, upstream, ahead, behind, remoteUrl };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
+  // ===== 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:* 通道）=====
+  // 复用现有 arduino-cli 探测（resolveArduinoCli）与 ASCII 联结（asciiCwd），
+  // 沿用 ARDUINO_DIRECTORIES_DATA 环境变量隔离数据目录。
+  // 查询类走 --format json；安装/卸载类捕获 stderr 百分比进度并回推事件。
+  function runCliJson(args) {
+    return new Promise((resolve) => {
+      const cli = resolveArduinoCli();
+      if (!fs.existsSync(cli)) { resolve({ ok: false, error: 'arduino-cli 未找到，请先安装 Arduino 编译插件' }); return; }
+      const full = args.concat(['--format', 'json', '--no-color']);
+      const ac = asciiCwd(process.cwd());
+      execFile(cli, full, { cwd: ac.cwd, maxBuffer: 20 * 1024 * 1024, timeout: 90000 }, (err, stdout, stderr) => {
+        if (err && !stdout) {
+          resolve({ ok: false, error: (stderr || err.message || '').trim() || 'arduino-cli 执行失败', code: err.code || 1 });
+          return;
+        }
+        const out = (stdout || '').trim();
+        try {
+          resolve({ ok: true, data: out ? JSON.parse(out) : null });
+        } catch (e) {
+          // arduino-cli 偶发将提示与 JSON 混排或仅返回文本，回退为文本数组
+          resolve({ ok: true, data: out ? [out] : [], raw: true });
+        }
+      });
+    });
+  }
+
+  // 安装/卸载类（无 JSON 输出）：捕获进度（arduino-cli 在 stderr 打印百分比），
+  // 解析失败也兜底为成功。progress(percent, message) 用于回推 UI 进度。
+  function runCliAction(args, progress) {
+    return new Promise((resolve) => {
+      const cli = resolveArduinoCli();
+      if (!fs.existsSync(cli)) { resolve({ ok: false, error: 'arduino-cli 未找到，请先安装 Arduino 编译插件' }); return; }
+      const full = args.concat(['--no-color']);
+      const ac = asciiCwd(process.cwd());
+      let percent = 0;
+      const child = execFile(cli, full, { cwd: ac.cwd, maxBuffer: 20 * 1024 * 1024, timeout: 300000 }, (err, stdout, stderr) => {
+        const out = ((stdout || '') + (stderr || '')).trim();
+        if (err) { resolve({ ok: false, error: out || err.message || '执行失败', code: err.code || 1 }); return; }
+        resolve({ ok: true, output: out });
+      });
+      const pump = (txt) => {
+        const m = String(txt).match(/(\d+)%/);
+        if (m) { percent = Math.max(percent, parseInt(m[1], 10)); if (progress) progress(percent, String(txt).trim()); }
+        else if (progress && String(txt).trim()) progress(percent, String(txt).trim());
+      };
+      if (child.stdout) child.stdout.on('data', pump);
+      if (child.stderr) child.stderr.on('data', pump);
+    });
+  }
+
+  // ---- 核心（平台）管理：core:* ----
+  ipcMain.handle('core:list', async () => {
+    const r = await runCliJson(['core', 'list']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const arr = Array.isArray(r.data) ? r.data : [];
+    return { ok: true, platforms: arr.map(p => ({
+      id: p.id || p.ID || '',
+      name: p.name || p.Name || p.id || '',
+      installed: p.installed || '',
+      latest: p.latest || p.latest_version || '',
+      architectures: p.architectures || []
+    })) };
+  });
+
+  ipcMain.handle('core:search', async (_e, query) => {
+    const r = await runCliJson(['core', 'search', query || '']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const p = (r.data && r.data.platforms) ? r.data.platforms : (Array.isArray(r.data) ? r.data : []);
+    return { ok: true, platforms: p.map(x => ({
+      id: x.id || x.ID || '',
+      name: x.name || x.Name || '',
+      latest: x.latest || x.latest_version || '',
+      architectures: x.architectures || (x.boards ? x.boards.map(b => b.architecture) : [])
+    })) };
+  });
+
+  ipcMain.handle('core:install', async (e, payload) => {
+    const id = payload && payload.id;
+    if (!id) return { ok: false, error: '缺少平台 id' };
+    const args = ['core', 'install', id];
+    if (payload.version) args.push(payload.version);
+    const r = await runCliAction(args, (pct, msg) => {
+      try { e.sender.send('core:installProgress', { id, percent: pct, message: msg }); } catch (_) {}
+    });
+    return r.ok ? { ok: true, id } : { ok: false, error: r.error };
+  });
+
+  ipcMain.handle('core:uninstall', async (_e, payload) => {
+    const id = payload && payload.id;
+    if (!id) return { ok: false, error: '缺少平台 id' };
+    const r = await runCliAction(['core', 'uninstall', id]);
+    return r.ok ? { ok: true, id } : { ok: false, error: r.error };
+  });
+
+  ipcMain.handle('core:updateIndex', async () => {
+    const r = await runCliAction(['core', 'update-index']);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  });
+
+  // ---- 库管理：lib:* ----
+  ipcMain.handle('lib:search', async (_e, query) => {
+    const r = await runCliJson(['lib', 'search', query || '']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const libs = (r.data && r.data.libraries) ? r.data.libraries : (Array.isArray(r.data) ? r.data : []);
+    return { ok: true, libraries: libs.map(x => ({
+      name: x.name || '',
+      version: x.version || x.latest || '',
+      author: x.author || '',
+      sentence: x.sentence || '',
+      paragraph: x.paragraph || ''
+    })) };
+  });
+
+  ipcMain.handle('lib:list', async () => {
+    const r = await runCliJson(['lib', 'list']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const libs = (r.data && r.data.installed_libraries) ? r.data.installed_libraries : (Array.isArray(r.data) ? r.data : []);
+    return { ok: true, libraries: libs.map(x => ({
+      name: x.name || '',
+      version: x.version || x.installed || '',
+      author: x.author || '',
+      location: x.location || ''
+    })) };
+  });
+
+  ipcMain.handle('lib:install', async (e, payload) => {
+    const name = payload && payload.name;
+    if (!name) return { ok: false, error: '缺少库名' };
+    const args = ['lib', 'install', name];
+    if (payload.version) args.push(payload.version);
+    const r = await runCliAction(args, (pct, msg) => {
+      try { e.sender.send('lib:onInstallProgress', { name, percent: pct, message: msg, stage: 'installing' }); } catch (_) {}
+    });
+    return r.ok ? { ok: true, name } : { ok: false, error: r.error };
+  });
+
+  ipcMain.handle('lib:uninstall', async (_e, payload) => {
+    const name = payload && payload.name;
+    if (!name) return { ok: false, error: '缺少库名' };
+    const r = await runCliAction(['lib', 'uninstall', name]);
+    return r.ok ? { ok: true, name } : { ok: false, error: r.error };
+  });
+
+  ipcMain.handle('lib:updateIndex', async () => {
+    const r = await runCliAction(['lib', 'update-index']);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  });
+
+  // ---- 板卡管理：board:* ----
+  ipcMain.handle('board:list', async () => {
+    const r = await runCliJson(['board', 'list']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const arr = Array.isArray(r.data) ? r.data : [];
+    return { ok: true, boards: arr.map(b => ({
+      port: b.port || b.address || '',
+      board_name: b.board_name || b.name || '',
+      fqbn: b.fqbn || '',
+      matching_boards: b.matching_boards || []
+    })) };
+  });
+
+  ipcMain.handle('board:search', async (_e, query) => {
+    const r = await runCliJson(['board', 'search', query || '']);
+    if (!r.ok) return { ok: false, error: r.error };
+    const boards = (r.data && r.data.boards) ? r.data.boards : (Array.isArray(r.data) ? r.data : []);
+    return { ok: true, boards: boards.map(b => ({
+      name: b.name || '',
+      fqbn: b.fqbn || '',
+      platform: b.platform || b.platform_id || ''
+    })) };
+  });
+
+  ipcMain.handle('board:listAll', async (_e, payload) => {
+    const args = ['board', 'listall'];
+    if (payload && payload.search) args.push(payload.search);
+    const r = await runCliJson(args);
+    if (!r.ok) return { ok: false, error: r.error };
+    const boards = (r.data && r.data.boards) ? r.data.boards : (Array.isArray(r.data) ? r.data : []);
+    return { ok: true, boards: boards.map(b => ({
+      name: b.name || '',
+      fqbn: b.fqbn || '',
+      platform: b.platform || b.platform_id || ''
+    })) };
+  });
+
+  ipcMain.handle('board:details', async (_e, payload) => {
+    const fqbn = payload && payload.fqbn;
+    if (!fqbn) return { ok: false, error: '缺少 fqbn' };
+    const r = await runCliJson(['board', 'details', fqbn]);
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, details: r.data };
+  });
+
   // ===== Python 解释器管理（TrieCode interpreters:* 简版：detect/list/setActive/runPython）=====
   async function probeCmd(cmd, args, timeoutMs) {
     return new Promise((resolve) => {
