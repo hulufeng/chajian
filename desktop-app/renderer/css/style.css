@@ -1219,9 +1219,15 @@ input, textarea {
 
 /* ===== 文件 tab 无项目态：1:1 对齐 ChipCode「开始你的开发」欢迎页 ===== */
 .welcome-start { width: 100%; max-width: 320px; margin: 0 auto; }
-.welcome-panel-icon { display: flex; justify-content: center; color: var(--accent); margin-bottom: 14px; }
-/* BubaiCode 品牌蓝 logo：深底提亮，轻辉光呈现（对齐主流 AI IDE 亮色 logo） */
-.welcome-panel-icon .icon { width: 24px; height: 24px; filter: drop-shadow(0 0 5px rgba(45, 107, 255, .55)); }
+/* 对齐 ChipCode 文件树空态：52×52 圆形 + --accent-soft 柔和底 + 24px 亮色图标 */
+.welcome-panel-icon {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.10) */
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+}
+.welcome-panel-icon .icon { width: 24px; height: 24px; }
 .welcome-panel-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; line-height: 1.4; }
 .welcome-panel-desc { font-size: 12px; color: var(--text-tertiary); line-height: 1.7; margin: 0 0 18px; max-width: 220px; }
 .welcome-panel-actions { display: flex; flex-direction: column; gap: 8px; }
