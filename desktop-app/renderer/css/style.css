@@ -1270,6 +1270,13 @@ input, textarea {
 .symbol-search-empty { padding: 12px 16px; color: var(--text-tertiary); font-size: 12.5px; }
 .symbol-search-hint { padding: 6px 14px; border-top: 1px solid var(--border-color); font-size: 10.5px; color: var(--text-tertiary); }
 
+/* ===== Git 进行中操作横幅（仿写 ChipCode git.panel.pendingOp） ===== */
+.git-pending-label { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.git-pending-hint { font-size: 10.5px; color: var(--text-tertiary); line-height: 1.6; margin-bottom: 8px; }
+.git-pending-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.git-pending-actions .pf-btn { font-size: 11px; padding: 4px 8px; }
+.git-pending-actions .pf-btn.warn { background: transparent; border-color: var(--border-color); color: var(--text-secondary); }
+
 .welcome-title {
   font-size: 25px;
   font-weight: 700;

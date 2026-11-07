@@ -599,6 +599,12 @@
             <button class="icon-btn" id="git-refresh" title="刷新"><svg class="icon"><use href="#icon-refresh"></use></svg></button>
           </div>
         </div>
+        <!-- 进行中 git 操作横幅（1:1 仿写 ChipCode git.panel.pendingOp：继续/放弃） -->
+        <div class="git-pending" id="git-pending" style="display:none;padding:10px 12px;border-bottom:1px solid var(--border-color);background:rgba(217,119,6,0.10);">
+          <div class="git-pending-label" id="git-pending-label"></div>
+          <div class="git-pending-hint" id="git-pending-hint"></div>
+          <div class="git-pending-actions" id="git-pending-actions"></div>
+        </div>
         <!-- 无项目空态（1:1 对齐 ChipCode 源代码管理空状态：还没有打开项目 + 打开/克隆入口） -->
         <div class="scm-empty" id="git-empty" style="display:none;padding:16px 14px;">
           <h3 class="scm-empty-title">还没有打开项目</h3>

@@ -951,12 +951,57 @@ function setupIPC() {
     const bm = head.match(/behind (\d+)/); if (bm) behind = parseInt(bm[1], 10);
     const branch = head.startsWith('##') ? head.slice(3).split('...')[0] : '(unknown)';
     const files = lines.slice(1).map(l => {
-      const status = l.slice(0, 2);
+      const raw = l.slice(0, 2);
       const path = l.slice(3);
-      return { status: status.trim(), path };
+      // 保留原始 2 字符状态码：X 位是暂存区状态，Y 位是工作区状态（trim 会丢失两者区别）
+      return { status: raw.trim(), x: raw[0], y: raw[1], staged: raw[0] !== ' ' && raw[0] !== '?', path };
     });
     return { success: true, branch, ahead, behind, files };
   });
+  // ===== Git 进行中操作（1:1 仿写 ChipCode detectPendingOp/finishOp） =====
+  // 靠 .git 下的标记文件识别 rebase/merge/cherry-pick/revert/bisect/git am
+  const PENDING_OP_MARKS = [
+    { file: 'MERGE_HEAD', kind: 'merge', label: '正在合并（merge）', canContinue: true, continueLabel: '完成合并', abortLabel: '放弃合并' },
+    { file: 'rebase-merge', kind: 'rebase', label: '正在变基（rebase）', canContinue: true, continueLabel: '继续变基', abortLabel: '放弃变基（回到拉取前）' },
+    { file: 'rebase-apply', kind: 'rebase', label: '正在变基（apply 后端）', canContinue: true, continueLabel: '继续变基', abortLabel: '放弃变基', altMark: 'rebase-apply/rebasing',
+      alt: { kind: 'am', label: '正在应用补丁（git am）', canContinue: true, continueLabel: '继续应用补丁', abortLabel: '放弃应用补丁' } },
+    { file: 'CHERRY_PICK_HEAD', kind: 'cherry-pick', label: '正在拣选提交（cherry-pick）', canContinue: true, continueLabel: '继续拣选', abortLabel: '放弃拣选' },
+    { file: 'REVERT_HEAD', kind: 'revert', label: '正在还原提交（revert）', canContinue: true, continueLabel: '继续还原', abortLabel: '放弃还原' },
+    { file: 'BISECT_LOG', kind: 'bisect', label: '正在二分查找（bisect）', canContinue: false, continueLabel: '', abortLabel: '结束二分查找' }
+  ];
+  async function detectPendingOp(cwd) {
+    try {
+      const r = await runGit(cwd, ['rev-parse', '--git-dir']);
+      if (!r.ok) return null;
+      const gitDir = path.resolve(cwd, r.stdout.trim());
+      for (const mk of PENDING_OP_MARKS) {
+        if (!fs.existsSync(path.join(gitDir, mk.file))) continue;
+        // rebase-apply 缺少 rebasing 文件时是 git am 而非 rebase
+        const use = (mk.altMark && !fs.existsSync(path.join(gitDir, ...mk.altMark.split('/')))) ? mk.alt : mk;
+        return { kind: use.kind, label: use.label, canContinue: use.canContinue, continueLabel: use.continueLabel, abortLabel: use.abortLabel };
+      }
+      return null;
+    } catch (e) { return null; }
+  }
+  ipcMain.handle('git:pendingOp', async (_, cwd) => ({ success: true, op: await detectPendingOp(cwd) }));
+  ipcMain.handle('git:finishOp', async (_, cwd, action) => {
+    const op = await detectPendingOp(cwd);
+    if (!op) return { success: false, error: '当前没有进行中的 git 操作（可能已经在终端里收尾了）。刷新即可看到最新状态。' };
+    const act = (action === 'abort') ? 'abort' : 'continue';
+    if (op.kind === 'bisect' && act === 'continue') return { success: false, error: '用「结束二分查找」回到开始之前' };
+    const args = op.kind === 'bisect' ? ['bisect', 'reset'] : [op.kind, '--' + act];
+    const r = await runGit(cwd, args);
+    if (!r.ok) {
+      const raw = ((r.stdout || '').split('\n').map(x => x.trim()).find(x => x && !x.startsWith('hint:')) || (r.stderr || '').split('\n')[0] || '').trim();
+      let msg = raw;
+      if (/still have unmerged paths|must edit all merge conflicts|unmerged paths|needs merge|not possible to continue/i.test(raw)) msg = '还有没解决的冲突文件 —— 先逐个选好并标记为已解决，再点这里。';
+      else if (/no changes|nothing to commit/i.test(raw)) msg = '这一步没有产生改动，git 不肯继续 —— 可以用「放弃」回到操作前。';
+      return { success: false, error: msg || r.stderr || ('git ' + args.join(' ') + ' 失败') };
+    }
+    const after = await detectPendingOp(cwd);
+    return { success: true, summary: act === 'abort' ? '已放弃，仓库回到操作前的状态' : (after ? '这一步完成了，但' + after.label + ' —— 继续解决下一处冲突' : '已完成') };
+  });
+
   ipcMain.handle('git:add', async (_, cwd, paths) => {
     const args = (Array.isArray(paths) && paths.length) ? ['add', ...paths] : ['add', '-A'];
     const r = await runGit(cwd, args);

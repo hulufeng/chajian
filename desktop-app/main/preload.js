@@ -242,6 +242,8 @@ contextBridge.exposeInMainWorld('LabCode', {
   // Git
   git: {
     status: (cwd) => ipcRenderer.invoke('git:status', cwd),
+    pendingOp: (cwd) => ipcRenderer.invoke('git:pendingOp', cwd),
+    finishOp: (cwd, action) => ipcRenderer.invoke('git:finishOp', cwd, action),
     remoteUrl: (cwd) => ipcRenderer.invoke('git:remote-url', cwd),
     init: (cwd) => ipcRenderer.invoke('git:init', cwd),
     remoteAdd: (cwd, url) => ipcRenderer.invoke('git:remote-add', cwd, url),

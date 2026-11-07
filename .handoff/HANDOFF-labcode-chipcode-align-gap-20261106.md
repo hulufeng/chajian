@@ -393,6 +393,13 @@
 - **待续功能**（handoff 已写入 .cany）：Git 面板 29 通道（含 checkpoint/conflict AI 合并）、AI 会话 40 通道（compact/contextUsage/rewind/planArtifact）、插件市场、设备/板卡库管理、设置分组、终端/串口、agents 并行智能体、schedule 定时任务。
 - 部署：局部 asar 注入；**注意 main 文件改动也须复制到 `unpacked/main/`**（功能 3 踩过）。源码改动待提交。
 
+### 14.14 证据驱动逐功能仿写 · 续：Git 两个功能（2026-11-07）
+- **功能 4 Git 进行中操作（fnd_10/11）**：ChipCode main @2480639 用 6 个标记（MERGE_HEAD/rebase-merge/rebase-apply/CHERRY_PICK_HEAD/REVERT_HEAD/BISECT_LOG）+ `rev-parse --git-dir` 检测，`finishOp` 执行 `git <kind> --continue|--abort`（bisect 用 `bisect reset`），i18n `git.op.*` 26 条 + `git.panel.pendingOp.*`；LabCode 原先完全无此能力。→ 仿写：`main/index.js` 新增 `PENDING_OP_MARKS`/`detectPendingOp()`/`git:pendingOp`/`git:finishOp`（含未解决冲突与无改动的错误解释）；`main/preload.js` 暴露两通道；renderer 新增 `#git-pending` 横幅（label/hint/继续/放弃按钮）并在 `refreshGitStatus()` 异步检测。**实机用真实冲突仓库验证**（git init→两条分支改同一文件→merge 造出 MERGE_HEAD）：横幅显示「正在合并（merge）」+ 完成/放弃按钮，点放弃后横幅隐藏、磁盘 `MERGE_HEAD` 消失且工作区干净 —— `git merge --abort` 真实生效。横幅 hint 后续按 i18n 逐字修正为「这次操作停在半路了…」/「这个状态需要收尾才能继续做别的操作。」。
+- **功能 5 提交信息生成（fnd_12）**：ChipCode 严格要求只看已暂存改动（`git.commitMessage.nothingStaged`），按钮有「生成中…」态、空结果提示、tooltip；LabCode 原实现直接调 AI（main 会退回未暂存 diff）。→ 仿写：`main/index.js` 的 `git:status` 增加原始 2 字符状态码 `x`/`y` 与 `staged` 标志（原 `status.trim()` 会把 `M ` 与 ` M` 都变成 `M`，丢失暂存位）；renderer `git-ai-commit-msg-btn` 前置检查 `f.staged`、无暂存 toast「没有已暂存的改动」拦截、生成中禁用态、文案逐字对齐。**CDP 验证**：无暂存时拦截且不调 AI；有暂存时按钮「生成中…」→复位，提交框写入真实 AI 生成的信息，无异常。
+- **踩坑补充**：① `window.LabCode.git` 是 contextBridge 只读对象，CDP 里替换其方法做 stub 静默失败（`calls:0`），不能据此判定失败；② `git:status` 的 `status.trim()` 会抹掉 X/Y 暂存位，判断暂存必须用原始 2 字符码；③ main/preload/renderer 三处改动都要同步复制到 asar 镜像（本次 5 文件）；④ PowerShell 内联 `$变量` 会被外层包装吞掉，一律用脚本文件。
+- **剩余待续功能**（handoff 已更新）：AI 会话 40 通道（compactPreview/contextUsage/rewind/planArtifact/transcribe）、插件市场 10、board/core/lib 15、devicePanel 3、设置分组、schedule 16、agents 12、git review/conflict 逐块 AI 合并 36 条 i18n。
+- 部署：局部 asar 注入；源码改动待提交。
+
 ### 13.4 工程最终状态（全链闭环）
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
 - 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。

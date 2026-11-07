@@ -15734,6 +15734,44 @@ function bindEvents() {
     });
   }
 
+  // ===== Git 进行中操作横幅（1:1 仿写 ChipCode detectPendingOp/finishOp + git.panel.pendingOp.*） =====
+  async function renderGitPendingOp(cwd) {
+    const box = document.getElementById('git-pending');
+    if (!box) return;
+    const hide = () => { box.style.display = 'none'; };
+    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.pendingOp !== 'function') return hide();
+    let op = null;
+    try { const r = await window.LabCode.git.pendingOp(cwd); op = r && r.success ? r.op : null; } catch (e) { return hide(); }
+    if (!op) return hide();
+    box.style.display = '';
+    const label = document.getElementById('git-pending-label');
+    const hint = document.getElementById('git-pending-hint');
+    const actions = document.getElementById('git-pending-actions');
+    if (label) label.textContent = op.label || '';
+    if (hint) hint.textContent = op.canContinue
+      ? '这次操作停在半路了。按下面「冲突」区块把文件逐个解决（或直接继续），再点右边的按钮收尾。'
+      : '这个状态需要收尾才能继续做别的操作。';
+    if (!actions) return;
+    actions.innerHTML = '';
+    const mk = (text, action, cls) => {
+      const b = document.createElement('button');
+      b.className = 'pf-btn ' + (cls || 'primary');
+      b.textContent = text;
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          const res = await window.LabCode.git.finishOp(cwd, action);
+          showToast((res && res.summary) || (res && res.error) || '操作完成', res && res.success ? 'success' : 'error');
+          refreshGitStatus();
+        } catch (e) { showToast('操作失败: ' + e.message, 'error'); }
+        finally { b.disabled = false; }
+      });
+      actions.appendChild(b);
+    };
+    if (op.canContinue && op.continueLabel) mk(op.continueLabel, 'continue');
+    if (op.abortLabel) mk(op.abortLabel, 'abort', 'warn');
+  }
+
   // ===== Git 面板 =====
   async function refreshGitStatus() {
     const cwd = state.projectPath;
@@ -15752,9 +15790,11 @@ function bindEvents() {
     if (!cwd || !window.LabCode.git) {
       if (statusEl) statusEl.textContent = '未选择项目';
       showEmpty(true);
+      const pend = document.getElementById('git-pending'); if (pend) pend.style.display = 'none';
       return;
     }
     showEmpty(false);
+    renderGitPendingOp(cwd);
     const r = await window.LabCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口
@@ -16020,19 +16060,29 @@ function bindEvents() {
   if (gitAiMsgBtn) gitAiMsgBtn.addEventListener('click', async () => {
     const cwd = state.projectPath;
     if (!cwd) { showToast('请先打开项目', 'warn'); return; }
+    // 1:1 仿写 ChipCode：只根据「已暂存」改动生成，无暂存时拒绝（git.commitMessage.nothingStaged）
+    let hasStaged = false;
+    try {
+      const st = await window.LabCode.git.status(cwd);
+      hasStaged = !!(st && st.success && Array.isArray(st.files) && st.files.some(f => f.staged === true || (f.x && f.x !== ' ' && f.x !== '?')));
+    } catch (e) {}
+    if (!hasStaged) { showToast('没有已暂存的改动', 'warn'); return; }
+    const oldLabel = gitAiMsgBtn.textContent;
     gitAiMsgBtn.disabled = true;
-    showToast('AI 正在生成提交信息…', 'info');
+    gitAiMsgBtn.textContent = '生成中…';
     try {
       const r = await window.LabCode.git.aiCommitMessage(cwd);
       if (r.success && r.message) {
         const inp = document.getElementById('git-commit-msg');
         if (inp) inp.value = r.message;
-        showToast('已生成提交信息', 'success');
+        showToast('已生成提交信息，可自行修改', 'success');
+      } else if (!r.error) {
+        showToast('模型这次没给出内容，可以再点一次试试。', 'warn');
       } else {
-        showToast('生成失败: ' + (r.error || ''), 'error');
+        showToast('生成失败: ' + r.error, 'error');
       }
-    } catch (e) { showToast('生成异常: ' + e.message, 'error'); }
-    finally { gitAiMsgBtn.disabled = false; }
+    } catch (e) { showToast('生成失败: ' + e.message, 'error'); }
+    finally { gitAiMsgBtn.disabled = false; gitAiMsgBtn.textContent = oldLabel; }
   });
   const gitAiCommitBtn = document.getElementById('git-ai-commit-btn');
   if (gitAiCommitBtn) gitAiCommitBtn.addEventListener('click', async () => {
