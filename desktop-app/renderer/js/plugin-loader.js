@@ -552,6 +552,7 @@ function loadPluginManifestUnsafe(manifest) {
   PLUGIN_REGISTRY.set(id, {
     id,
     name: manifest.name || id,
+    icon: manifest.icon || '',
     version: manifest.version || '0.0.0',
     description: manifest.description || '',
     category: manifest.category || 'plugin',
@@ -710,6 +711,7 @@ async function installFromDir(srcDir) {
     const copied = await copyDir(fsApi, srcDir, dst);
     if (!copied) return { success: false, error: '没有拷贝到任何文件' };
     const r2 = loadPluginManifest(manifest);
+    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
     return { success: true, id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || '', path: dst, tools: r2.loaded.tools, skills: r2.loaded.skills, errors: r2.loaded.errors };
   } catch (e) {
     return { success: false, error: '安装失败: ' + e.message };
@@ -759,6 +761,7 @@ async function installManifest(manifest) {
     const wr = await fsApi.writeFile(joinPath(dir, 'plugin.json'), JSON.stringify(manifest, null, 2));
     if (wr && wr.success === false) return { success: false, error: '写 plugin.json 失败: ' + (wr.error || '') };
     const r2 = loadPluginManifest(manifest);
+    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
     return { success: true, id: manifest.id, name: manifest.name || manifest.id, path: dir, tools: r2.loaded.tools, skills: r2.loaded.skills };
   } catch (e) {
     return { success: false, error: '安装失败: ' + e.message };
@@ -785,6 +788,7 @@ async function uninstall(id) {
   }
   PLUGIN_DISABLED.delete(id);
   await savePluginStates();
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
   // 2) 删目录（deleteFile 对目录是递归删）
   if (fsApi) {
     try {

@@ -5671,6 +5671,8 @@ select:focus,
 .activity-btn.active { border-left: none; }
 .activity-label { display: none; }
 .activity-btn.active::before { left: 0; top: 8px; bottom: 8px; height: auto; }
+/* 插件动态图标：emoji 与其它活动栏图标同尺寸 */
+.activity-emoji { font-size: 18px; line-height: 1; flex-shrink: 0; }
 
 /* 标签页：hover 与激活态 */
 .editor-tab,

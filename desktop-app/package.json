@@ -50,7 +50,7 @@
     "productName": "LabCode",
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "dist"
+      "output": "dist168"
     },
     "publish": [
       {

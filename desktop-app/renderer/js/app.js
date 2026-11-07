@@ -10698,6 +10698,55 @@ function bindEvents() {
         sidebar.style.display = 'none';
       }
 
+  // ===== 已安装插件动态活动栏入口（对齐 VSCode：装带视图的插件→左侧出现图标，卸载即移除）=====
+  function renderPluginActivityButtons() {
+    const box = document.getElementById('plugin-activity-buttons');
+    if (!box) return;
+    box.innerHTML = '';
+    const ps = window.PluginSystem;
+    if (!ps || typeof ps.listPlugins !== 'function' || typeof ps.listViews !== 'function') return;
+    const plugins = ps.listPlugins() || [];
+    const views = ps.listViews() || [];
+    plugins.filter(p => p.active !== false).forEach(p => {
+      const pv = views.filter(v => v.pluginId === p.id);
+      if (!pv.length) return; // 只给声明了 webview 视图的插件在活动栏留入口
+      const btn = document.createElement('button');
+      btn.className = 'activity-btn plugin-activity-btn';
+      btn.dataset.pluginId = p.id;
+      btn.dataset.pluginView = p.id + ':' + pv[0].id;
+      btn.title = p.name || p.id;
+      btn.innerHTML = '<span class="activity-emoji">' + (p.icon || '🧩') + '</span><span class="activity-label">' + (p.name || p.id) + '</span>';
+      box.appendChild(btn);
+    });
+  }
+  // 点击插件活动栏图标 → 打开其 webview 视图面板（复用 open_plugin_view 逻辑）
+  function openPluginActivityView(viewKey) {
+    const ps = window.PluginSystem;
+    if (!ps || !ps.getView) return;
+    const v = ps.getView(viewKey);
+    if (!v) return;
+    const panel = document.getElementById('plugin-view-panel');
+    const title = document.getElementById('plugin-view-title');
+    const wv = document.getElementById('plugin-view-webview');
+    if (!panel || !wv) return;
+    if (title) title.textContent = v.title || viewKey;
+    wv.setAttribute('src', v.webviewUrl);
+    panel.style.display = 'flex';
+  }
+  const _pab = document.getElementById('plugin-activity-buttons');
+  if (_pab) {
+    _pab.addEventListener('click', (e) => {
+      const btn = e.target.closest('.plugin-activity-btn');
+      if (!btn) return;
+      document.querySelectorAll('.activity-btn').forEach(i => i.classList.remove('active'));
+      btn.classList.add('active');
+      const vk = btn.dataset.pluginView;
+      if (vk) openPluginActivityView(vk);
+    });
+  }
+  renderPluginActivityButtons();
+  window.addEventListener('labcode:plugins-changed', renderPluginActivityButtons);
+
   // ============ 群聊 / 多 Agent 房间（对标 Ekko「群聊」） ============
   // 内置 + 运行时预设（与 Agent 市场运行时档一致），用于房间成员配置（变量声明见活动栏前，模块级避免 TDZ）
   function gcEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -11311,9 +11360,28 @@ function bindEvents() {
       communityOnline = data.source !== 'error';
       console.log('[社区插件] 已拉取 ' + communityPlugins.length + ' 个（来源 ' + communitySource + '）');
     } catch (e) {
-      communityPlugins = [];
-      communityOnline = false;
-      marketMarkFailed(e.message);
+      // 网关社区端点不可用（404/超时）→ 直连 GitHub 搜索 labcode-plugin topic（api.github.com 支持 CORS）。
+      // 社区发现不依赖服务器，契合"插件生态全 GitHub"的分发架构。
+      try {
+        const ghRes = await fetch('https://api.github.com/search/repositories?q=topic:labcode-plugin&sort=updated&per_page=30', { cache: 'no-store' });
+        if (!ghRes.ok) throw new Error('GitHub HTTP ' + ghRes.status);
+        const gh = await ghRes.json();
+        communityPlugins = (gh.items || []).map(r => ({
+          name: r.name,
+          description: r.description || '',
+          developer: (r.owner && r.owner.login) || '',
+          githubUrl: r.html_url,
+          stars: r.stargazers_count || 0,
+          updatedAt: r.pushed_at ? String(r.pushed_at).slice(0, 10) : ''
+        }));
+        communitySource = 'github-direct';
+        communityOnline = true;
+        console.log('[社区插件] 网关不可用（' + e.message + '），已直连 GitHub 拉取 ' + communityPlugins.length + ' 个');
+      } catch (e2) {
+        communityPlugins = [];
+        communityOnline = false;
+        marketMarkFailed('网关: ' + e.message + ' / GitHub直连: ' + e2.message);
+      }
     }
   }
 
@@ -11637,7 +11705,10 @@ function bindEvents() {
     const realId = done.id || id;  // 以 manifest 真实 id 为准（卸载/启用一致）
     const realName = done.name || plugin.name;           // 用 manifest 的 name，而非仓库名
     const realVersion = done.version || plugin.version || '—';
-    if (!isPluginInstalled(realId)) installedPlugins.push({ id: realId, name: realName, version: realVersion, icon: plugin.icon, description: plugin.description, category: 'tool', source: 'community', installedAt: Date.now(), tools: done.tools || 0 });
+    // 注意：不能用 isPluginInstalled 判断是否 push——它以运行时注册表为准，而 installFromDir
+    // 已把插件注册进注册表，恒为 true 会导致社区/本地插件永远进不了「已安装」列表。
+    // 这里只看 installedPlugins 记录数组本身（清单外插件的唯一「已安装」凭据）。
+    if (!installedPlugins.some(p => p.id === realId)) installedPlugins.push({ id: realId, name: realName, version: realVersion, icon: plugin.icon, description: plugin.description, category: 'tool', source: 'community', installedAt: Date.now(), tools: done.tools || 0 });
     saveInstalledPlugins();
     hideInstallModal();
     // 装完询问是否立即启用（与官方市场一致）
@@ -12774,7 +12845,10 @@ function bindEvents() {
 
   /** 安装成功后把插件登记进「已安装」列表（市场里没有的第三方插件也要能显示） */
   function markPluginInstalled(r) {
-    if (!r || !r.id || isPluginInstalled(r.id)) return;
+    if (!r || !r.id) return;
+    // 不能用 isPluginInstalled（运行时注册表判定，本地安装到这里时必已注册，恒为 true），
+    // 否则清单外的本地安装插件永远进不了「已安装」列表
+    if (installedPlugins.some(p => p.id === r.id)) return;
     const meta = BUILTIN_PLUGIN_MANIFESTS[r.id] || { id: r.id, name: r.name || r.id, version: r.version || '—', icon: '🧩', category: 'tool', description: '本地安装', capabilities: [] };
     installedPlugins.push({ ...meta, installedAt: Date.now(), tools: r.tools || 0 });
     saveInstalledPlugins();
@@ -19193,6 +19267,7 @@ function init() {
         if (disabled && disabled.length) addOutputLog('插件系统：已禁用 ' + disabled.length + ' 个插件（' + disabled.join(', ') + '）', 'warn');
       }
       const r = await window.PluginSystem.loadPluginsFromDir(pluginsRoot);
+      try { window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
       const totalTools = window.PluginSystem.allTools().length;
       addOutputLog(`插件系统：加载 ${r.loaded.length} 个本地插件，共 ${totalTools} 个 manifest 工具`, 'success');
       if (r.errors && r.errors.length) addOutputLog('插件加载警告: ' + r.errors.join('; '), 'warn');

@@ -338,6 +338,8 @@
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
       <button class="activity-btn" data-panel="device" title="设备" style="display:none;"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
+      <!-- 已安装插件（带视图）动态入口：安装出现、卸载移除（对齐 VSCode 扩展活动栏图标） -->
+      <div id="plugin-activity-buttons" style="display:flex;flex-direction:column;"></div>
     </div>
 
     <!-- 群聊 / 多 Agent 房间（全屏覆盖视图，对标 Ekko「群聊」） -->
@@ -529,6 +531,7 @@
         </div>
         <div class="plugins-tabs" style="flex-shrink:0;">
           <button class="plugins-tab active" data-tab="market">官方市场</button>
+          <button class="plugins-tab" data-tab="community">社区</button>
           <button class="plugins-tab" data-tab="installed">已安装</button>
         </div>
         <!-- 本地安装入口（对齐 TrieCode：文件夹=次级 / ZIP=主级，各占一半） -->
