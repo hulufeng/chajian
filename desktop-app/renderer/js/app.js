@@ -13156,6 +13156,8 @@ function bindEvents() {
     showToast((MODE_DESC[state.mode] || MODE_DESC.default)[isPanel ? 'panel' : 'plain'], 'info');
     addOutputLog(`切换到 ${state.mode} 模式${isPanel ? '（AI 面板）' : ''}`, 'info');
     syncSafetyModeUI();
+    // 对齐 ChipCode ai:setAgentMode：把选择持久化到 config.agentMode（默认 'default'）。
+    if (window.__persistAgentMode) window.__persistAgentMode(state.mode);
   });
 
   // ===== 自研本体 P0-2：AI 面板顶部安全模式三按钮（⚡自动/🛡️默认/📋计划）=====
