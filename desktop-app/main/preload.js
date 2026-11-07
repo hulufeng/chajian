@@ -105,7 +105,8 @@ contextBridge.exposeInMainWorld('LabCode', {
 
   // 外部链接
   shell: {
-    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+    showItemInFolder: (p) => ipcRenderer.invoke('shell:showItemInFolder', p)
   },
 
   // 应用信息
@@ -492,9 +493,6 @@ contextBridge.exposeInMainWorld('LabCode', {
     check: () => ipcRenderer.invoke('update:check')
   },
 
-  shell: {
-    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
-  },
   // Coding-Agent CLI 安装/检测（对齐 Ekko Agent Manager）
   codingAgents: {
     list: () => ipcRenderer.invoke('codingAgents:list'),

@@ -4208,6 +4208,8 @@ function setupIPC() {
 
   // 外部链接
   ipcMain.handle('shell:openExternal', (_, url) => shell.openExternal(url));
+  // 在文件管理器中显示（对齐 ChipCode 产品包已生成时点击 pf-export 打开 hardware-package）
+  ipcMain.handle('shell:showItemInFolder', (_, p) => { try { shell.showItemInFolder(String(p || '')); return { success: true }; } catch (e) { return { success: false, error: e.message }; } });
 
   // ============ Web 搜索/抓取（真实联网，渲染端 WebTools 优先走这里）============
   // 模块：main/web-search.js（Bing HTML 端点，无 API Key；SSRF 防护 + 15min 缓存 + 会话上限）

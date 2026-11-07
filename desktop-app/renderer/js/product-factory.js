@@ -129,6 +129,15 @@
   async function exportPackage() {
     const a = api(); if (!a) return;
     if (!snapshot || !snapshot.isProduct) return toast('请先打开一个产品项目', 'warn');
+    // 1:1 仿写 ChipCode：产品包已生成时点击在文件管理器打开，未生成时才导出
+    if (snapshot.package && snapshot.package.built) {
+      try {
+        if (window.LabCode && window.LabCode.shell && window.LabCode.shell.showItemInFolder) {
+          await window.LabCode.shell.showItemInFolder(root() + '/hardware-package');
+          return;
+        }
+      } catch (e) { /* 退回重新导出 */ }
+    }
     const r = await a.package({ root: root() });
     if (!r.success) return toast('导出失败: ' + r.error, 'error');
     toast('产品包已生成（' + r.files.length + ' 个文件）', 'success');
