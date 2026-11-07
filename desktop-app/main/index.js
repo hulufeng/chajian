@@ -8,6 +8,32 @@ const os = require('os');
 const https = require('https');
 const { spawn, execFile } = require('child_process');
 
+// ============ 品牌迁移：从旧 LabCode userData 安全迁移到新 BubaiCode userData ============
+// 全量改名 name: LabCode→BubaiCode 后，Electron userData 路径随之改变，旧插件/配置留在 LabCode 目录。
+// 仅在目标子项尚不存在时复制（绝不删旧目录），迁移失败不阻塞启动。
+function copyDirSync(s, d) {
+  fs.mkdirSync(d, { recursive: true });
+  for (const e of fs.readdirSync(s, { withFileTypes: true })) {
+    const sp = path.join(s, e.name), dp = path.join(d, e.name);
+    if (e.isDirectory()) copyDirSync(sp, dp); else fs.copyFileSync(sp, dp);
+  }
+}
+function migrateLegacyUserData() {
+  try {
+    const legacy = path.join(app.getPath('appData'), 'LabCode');
+    const target = app.getPath('userData');
+    if (legacy === target || !fs.existsSync(legacy)) return;
+    const items = ['plugins', 'config.json', 'sessions'];
+    for (const rel of items) {
+      const src = path.join(legacy, rel), dst = path.join(target, rel);
+      if (fs.existsSync(src) && !fs.existsSync(dst)) {
+        if (fs.statSync(src).isDirectory()) copyDirSync(src, dst); else fs.copyFileSync(src, dst);
+      }
+    }
+  } catch (e) { /* 迁移失败不阻塞启动 */ }
+}
+migrateLegacyUserData();
+
 // 终端服务
 const { getTerminalService } = require('./terminal');
 const terminalService = getTerminalService();
