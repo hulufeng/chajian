@@ -25,6 +25,8 @@
   function init() {
     var btn = document.getElementById('voice-btn');
     if (!btn) return;
+    // 后端 STT（window.LabCode.stt）已配置时由 app.js 的 sttToggle 接管，避免双绑定冲突
+    if (window.LabCode && window.LabCode.stt) return;
     var SR = getRecognition();
 
     if (!SR) {

@@ -1797,6 +1797,60 @@ function setupIPC() {
     return { ok: true, details: r.data };
   });
 
+  // ===== Git 凭据连通性探测（git:probe：验证某 host 的 PAT 能否真正访问对应平台 API；
+  //   对齐 ChipCode git:probe 的「连接性预检」语义——在添加/选择凭据、或尝试 Issues/PR 前提前暴露
+  //   凭据无效 / 权限不足 / 网络不通；复用 parseGitRemote → gitHostToProvider → config.gitCredentials）=====
+  ipcMain.handle('git:probe', async (_, cwd, host) => {
+    try {
+      let targetHost = host ? String(host).trim().replace(/\/+$/, '') : null;
+      if (!targetHost) {
+        if (!cwd) return { ok: false, error: 'no-cwd', message: '未选择项目' };
+        const ru = await runGit(cwd, ['remote', 'get-url', 'origin']);
+        if (!ru.ok || !ru.stdout.trim()) return { ok: false, error: 'no-remote', message: '仓库没有 origin 远程，无法定位 host' };
+        const parsed = parseGitRemote(ru.stdout);
+        if (!parsed) return { ok: false, error: 'unparsable', message: '无法解析远程地址：' + ru.stdout.trim() };
+        targetHost = parsed.host;
+      }
+      const provider = gitHostToProvider(targetHost);
+      if (!provider) return { ok: false, error: 'unsupported-host', host: targetHost, message: '不支持的托管平台：' + targetHost + '（仅支持 GitHub / Gitee / GitLab）' };
+      const cred = (config.gitCredentials || []).find(c => c.host === targetHost.toLowerCase());
+      if (!cred || !cred.secret) return { ok: false, error: 'no-credential', host: targetHost, provider, message: '未连接 ' + targetHost + '，请先在「设置 → 服务商」添加 git 凭据（PAT）' };
+      const base = GIT_API_BASE[provider];
+      let url, headers = { Accept: 'application/json' };
+      if (provider === 'github') {
+        url = base + '/user';
+        headers.Authorization = 'Bearer ' + cred.secret;
+        headers.Accept = 'application/vnd.github+json';
+      } else if (provider === 'gitlab') {
+        url = base + '/user';
+        headers['PRIVATE-TOKEN'] = cred.secret;
+      } else { // gitee
+        url = base + '/user';
+        headers.Authorization = 'token ' + cred.secret;
+      }
+      let resp, text;
+      try {
+        resp = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+        text = await resp.text();
+      } catch (e) {
+        const msg = (e && e.name === 'TimeoutError') ? '连接超时（10s）' : ('网络错误：' + String((e && e.message) || e));
+        return { ok: false, error: 'network', host: targetHost, provider, connected: false, message: msg };
+      }
+      if (!resp.ok) {
+        let msg = 'HTTP ' + resp.status;
+        try { const j = JSON.parse(text); if (j && j.message) msg = j.message; } catch (e) {}
+        if (resp.status === 401) return { ok: true, connected: false, provider, host: targetHost, error: 'invalid-token', message: '凭据无效（401）：' + msg };
+        if (resp.status === 403) return { ok: true, connected: false, provider, host: targetHost, error: 'no-permission', message: '权限不足（403）：' + msg };
+        return { ok: true, connected: false, provider, host: targetHost, error: 'api-error', message: msg };
+      }
+      let data; try { data = JSON.parse(text); } catch (e) { return { ok: true, connected: false, provider, host: targetHost, error: 'bad-json', message: '返回数据解析失败' }; }
+      const login = (data && (data.login || data.username || data.name)) || '';
+      return { ok: true, connected: true, provider, host: targetHost, user: login, message: '已连接 ' + provider + '（@' + login + '）' };
+    } catch (e) {
+      return { ok: false, error: 'exception', message: String((e && e.message) || e) };
+    }
+  });
+
   // ===== Python 解释器管理（TrieCode interpreters:* 简版：detect/list/setActive/runPython）=====
   async function probeCmd(cmd, args, timeoutMs) {
     return new Promise((resolve) => {
@@ -5890,7 +5944,7 @@ function setupIPC() {
   ipcMain.handle('schedule:createTask', (_, opts) => {
     try {
       const o = opts || {};
-      const t = { id: schedNextId('task'), type: o.type === 'interval' ? 'interval' : 'cron', expr: String(o.expr || ''), prompt: String(o.prompt || ''), mode: o.mode === 'workflow' ? 'workflow' : 'chat', enabled: true, createdAt: Date.now(), lastRunAt: 0 };
+      const t = { id: schedNextId('task'), name: String(o.name || '').slice(0, 120), type: o.type === 'interval' ? 'interval' : 'cron', expr: String(o.expr || ''), prompt: String(o.prompt || ''), mode: o.mode === 'workflow' ? 'workflow' : 'chat', enabled: true, createdAt: Date.now(), lastRunAt: 0 };
       scheduleStore.tasks.push(t);
       saveSchedule();
       return { success: true, id: t.id, task: t };
@@ -5997,6 +6051,58 @@ function setupIPC() {
     r.patchAppliedAtMs = Date.now();
     saveSchedule();
     return { success: true, message: '已丢弃改动，未对工作区做任何修改' };
+  });
+  // ── 编辑 / 删除 / 启停（补齐 ChipCode schedule 域的 CRUD；复用同一 scheduleStore 持久化）──
+  ipcMain.handle('schedule:getTask', (_, opts) => {
+    try {
+      const t = scheduleStore.tasks.find(x => x.id === (opts && opts.taskId));
+      if (!t) return { success: false, error: 'task not found: ' + (opts && opts.taskId) };
+      return { success: true, task: t };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+  // 编辑任务：白名单字段（对齐 ChipCode schedule-store 的 UPDATABLE 思路，仅允许安全字段）
+  ipcMain.handle('schedule:update', (_, opts) => {
+    try {
+      const o = opts || {};
+      const t = scheduleStore.tasks.find(x => x.id === o.taskId);
+      if (!t) return { success: false, error: 'task not found: ' + o.taskId };
+      const allowed = { name: 1, type: 1, expr: 1, prompt: 1, mode: 1, enabled: 1 };
+      let changed = false;
+      for (const k of Object.keys(allowed)) {
+        if (k in o && o[k] !== undefined && o[k] !== null) {
+          if (k === 'enabled') t.enabled = !!o[k];
+          else if (k === 'type') t.type = o[k] === 'interval' ? 'interval' : 'cron';
+          else if (k === 'mode') t.mode = o[k] === 'workflow' ? 'workflow' : 'chat';
+          else t[k] = String(o[k]);
+          changed = true;
+        }
+      }
+      if (!changed) return { success: false, error: '没有可更新的字段' };
+      saveSchedule();
+      return { success: true, task: t };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+  ipcMain.handle('schedule:delete', (_, opts) => {
+    try {
+      const taskId = opts && opts.taskId;
+      const idx = scheduleStore.tasks.findIndex(x => x.id === taskId);
+      if (idx < 0) return { success: false, error: 'task not found: ' + taskId };
+      scheduleStore.tasks.splice(idx, 1);
+      // 级联清理该任务的运行记录（对齐 ChipCode deleteTask 的事务级联）
+      scheduleStore.runs = scheduleStore.runs.filter(r => r.taskId !== taskId);
+      saveSchedule();
+      return { success: true, deleted: taskId };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+  ipcMain.handle('schedule:setEnabled', (_, opts) => {
+    try {
+      const o = opts || {};
+      const t = scheduleStore.tasks.find(x => x.id === o.taskId);
+      if (!t) return { success: false, error: 'task not found: ' + o.taskId };
+      t.enabled = !!o.enabled;
+      saveSchedule();
+      return { success: true, task: t, enabled: t.enabled };
+    } catch (e) { return { success: false, error: e.message }; }
   });
 
   // ESP32 toolchain auto-install on first launch (async, non-blocking).

@@ -910,7 +910,8 @@ function ensureMonacoEditor() {
       if (window.LabCode && window.LabCode.config && window.LabCode.config.get) {
         window.LabCode.config.get().then((c) => {
           if (c && c.editor && state.editor) {
-            state.editor.updateOptions({ fontSize: c.editor.fontSize || 13, wordWrap: c.editor.wordWrap || 'off' });
+            state.editor.updateOptions({ fontSize: c.editor.fontSize || 13, wordWrap: c.editor.wordWrap || 'off', fontFamily: (c.ui && c.ui.fontFamily) ? c.ui.fontFamily : undefined });
+          if (c.ui && c.ui.fontFamily) document.body.style.fontFamily = c.ui.fontFamily;
           }
         }).catch(() => {});
       }
@@ -10659,6 +10660,10 @@ function bindEvents() {
         if (pluginsPanel) pluginsPanel.style.display = 'none';
         if (devicePanel) devicePanel.style.display = 'none';
         if (gitPanel) gitPanel.style.display = 'none';
+        if (mcpPanel) mcpPanel.style.display = 'none';
+        if (wokwiPanel) wokwiPanel.style.display = 'none';
+        var _schedP = document.getElementById('schedule-panel'); if (_schedP) _schedP.style.display = 'none';
+        var _pfP = document.getElementById('product-factory-view'); if (_pfP) _pfP.style.display = 'none';
         const ctxPanel = document.getElementById('context-panel');
         if (ctxPanel) ctxPanel.style.display = 'flex';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
@@ -13610,7 +13615,8 @@ function bindEvents() {
   }
   window.__sttTest = { sttResampleTo16k, sttEncodeWav16, sttToggle, sttStop, state: window.__sttState };
   const voiceBtn = document.getElementById('voice-btn');
-  if (voiceBtn) voiceBtn.addEventListener('click', sttToggle);
+  // 仅当后端 STT（window.LabCode.stt）就绪时绑定；否则交给 ai-voice-input.js 的 Web Speech 兜底，避免双触发
+  if (voiceBtn && window.LabCode && window.LabCode.stt) voiceBtn.addEventListener('click', sttToggle);
 
   // ===== Git 检查点弹窗（影子仓库快照：列表/预览/恢复/立即快照）=====
   function cpFmtTime(ts) { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
@@ -17321,6 +17327,8 @@ function bindEvents() {
     try {
       const appearanceTheme = document.getElementById('appearance-theme');
       if (appearanceTheme) appearanceTheme.value = (cfg.ui && cfg.ui.theme) || 'light';
+      const appearanceFontFamily = document.getElementById('appearance-font-family');
+      if (appearanceFontFamily) appearanceFontFamily.value = (cfg.ui && cfg.ui.fontFamily) || '';
       const vr = document.getElementById('voice-rate'), vrv = document.getElementById('voice-rate-val');
       const voiceRate = (cfg.voice && cfg.voice.rate) || 1.0;
       if (vr) { vr.value = voiceRate; if (vrv) vrv.textContent = Number(voiceRate).toFixed(1) + 'x'; }
@@ -17704,6 +17712,14 @@ function bindEvents() {
     if (apTheme) apTheme.addEventListener('change', async () => {
       try { await applyTheme(apTheme.value, true); showToast('主题已切换为' + (apTheme.value === 'light' ? '浅色' : '深色'), 'success'); } catch (e) {}
     });
+    const apFont = document.getElementById('appearance-font-family');
+    if (apFont) apFont.addEventListener('change', () => {
+      try {
+        const ff = apFont.value || '';
+        if (state.editor && state.editor.updateOptions) state.editor.updateOptions({ fontFamily: ff || undefined });
+        document.body.style.fontFamily = ff || '';
+      } catch (e) {}
+    });
     const voiceRate = document.getElementById('voice-rate');
     const voiceRateVal = document.getElementById('voice-rate-val');
     if (voiceRate) voiceRate.addEventListener('input', () => { if (voiceRateVal) voiceRateVal.textContent = Number(voiceRate.value).toFixed(1) + 'x'; });
@@ -17832,12 +17848,14 @@ function bindEvents() {
       } catch (err) { /* 代理应用失败不阻塞保存 */ }
       // 外观 / 语音 / 补全 / 编辑器（对齐 TrieCode 个人·AI·开发 设置）
       const aTheme = document.getElementById('appearance-theme');
+      const aFont = document.getElementById('appearance-font-family');
       const vRate = document.getElementById('voice-rate');
       const cEn = document.getElementById('completion-enabled');
       const cDel = document.getElementById('completion-delay');
       const eFs = document.getElementById('editor-font-size');
       const eWw = document.getElementById('editor-word-wrap');
       if (aTheme) await window.LabCode.config.set('ui.theme', aTheme.value || 'light');
+      if (aFont) await window.LabCode.config.set('ui.fontFamily', aFont.value || '');
       if (vRate) await window.LabCode.config.set('voice.rate', parseFloat(vRate.value) || 1.0);
       if (cEn) await window.LabCode.config.set('completion.enabled', !!cEn.checked);
       if (cDel) await window.LabCode.config.set('completion.delay', parseInt(cDel.value, 10) || 350);
@@ -17851,7 +17869,8 @@ function bindEvents() {
         window.LabCodeUI.completionDelay = cDel ? (parseInt(cDel.value, 10) || 350) : 350;
       } catch (e) {}
       try {
-        if (state.editor && state.editor.updateOptions) state.editor.updateOptions({ fontSize: parseInt(eFs.value, 10) || 13, wordWrap: eWw ? eWw.value : 'off' });
+        if (state.editor && state.editor.updateOptions) state.editor.updateOptions({ fontSize: parseInt(eFs.value, 10) || 13, wordWrap: eWw ? eWw.value : 'off', fontFamily: (aFont && aFont.value) ? aFont.value : undefined });
+        if (aFont) document.body.style.fontFamily = (aFont.value || '');
       } catch (e) {}
       // 技能 / 搜索 / 解释器 / 钩子（Step 1：占位 → 真实后端）
       const se = document.getElementById('search-enabled');

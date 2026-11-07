@@ -336,6 +336,7 @@
       <button class="activity-btn active" data-panel="explorer" title="文件"><svg class="icon"><use href="#icon-folder"></use></svg><span class="activity-label">文件</span></button>
       <button class="activity-btn" data-panel="product-factory" title="产品工厂"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">产品工厂</span></button>
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
+      <button class="activity-btn" data-panel="context" title="上下文用量 / 压缩预览"><svg class="icon"><use href="#icon-list-check"></use></svg><span class="activity-label">上下文</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
       <button class="activity-btn" data-panel="device" title="设备" style="display:none;"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
       <!-- 已安装插件（带视图）动态入口：安装出现、卸载移除（对齐 VSCode 扩展活动栏图标） -->
@@ -680,6 +681,8 @@
               <button class="btn btn-secondary btn-sm git-ai-btn" id="git-ai-pr-btn" title="根据提交历史生成 PR 标题与描述" style="font-size: 11.5px;">AI 生成 PR 描述</button>
               <button class="btn btn-secondary btn-sm" id="git-pr-toggle-btn" title="创建 Pull Request" style="font-size: 11.5px;">创建 PR</button>
               <button class="btn btn-secondary btn-sm" id="git-review-btn" title="审阅本轮 AI 改动（逐 hunk 接受/拒绝并暂存）" style="font-size: 11.5px;">审阅 AI 改动</button>
+              <button class="btn btn-secondary btn-sm" id="git-probe-btn" title="测试 Git 凭据能否连通对应平台 API（GitHub / Gitee / GitLab）" style="font-size: 11.5px;">测试连接</button>
+              <div id="git-probe-status" style="font-size:11px;min-height:14px;color:var(--text-tertiary);"></div>
               <button class="btn btn-secondary btn-sm" id="board-manager-btn" title="管理开发板核心与库" style="font-size: 11.5px;">开发板与库</button>
             </div>
           </details>
@@ -1777,6 +1780,20 @@
                     <option value="dark">深色</option>
                   </select>
                 </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;">
+                  <div style="flex:1;">
+                    <div style="font-size: 12.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">字体</div>
+                    <div style="font-size: 11.5px;color:var(--text-secondary);line-height:1.6;">编辑器与界面正文字体，立即生效。留空则使用系统默认等宽字体。</div>
+                  </div>
+                  <select id="appearance-font-family" style="width:200px;flex:none;padding:7px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-color);color:var(--text-color);font-size: 12.5px;">
+                    <option value="">系统默认（等宽）</option>
+                    <option value="'Cascadia Code','Fira Code','Consolas',monospace">Cascadia Code</option>
+                    <option value="'JetBrains Mono','Fira Code',Consolas,monospace">JetBrains Mono</option>
+                    <option value="Consolas,'Courier New',monospace">Consolas</option>
+                    <option value="'SF Mono',Menlo,Monaco,Consolas,monospace">SF Mono</option>
+                    <option value="'Microsoft YaHei',system-ui,sans-serif">微软雅黑（UI 优先）</option>
+                  </select>
+                </div>
               </div>
 
               <!-- 个人 · 语音 -->
@@ -2229,6 +2246,7 @@
   <script src="js/auto-memory.js"></script>
   <script src="js/git-remote.js"></script>
   <script src="js/git-review.js"></script>
+  <script src="js/git-probe.js"></script>
   <script src="js/board-manager.js"></script>
 
   <style id="labcode-align-extras">

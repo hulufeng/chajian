@@ -282,7 +282,8 @@ contextBridge.exposeInMainWorld('LabCode', {
     reviewApply: (cwd, decisions, opts) => ipcRenderer.invoke('git:review:apply', cwd, decisions, opts),
     fetch: (cwd) => ipcRenderer.invoke('git:fetch', cwd),
     pullRebase: (cwd) => ipcRenderer.invoke('git:pullRebase', cwd),
-    remoteStatus: (cwd) => ipcRenderer.invoke('git:remoteStatus', cwd)
+    remoteStatus: (cwd) => ipcRenderer.invoke('git:remoteStatus', cwd),
+    probe: (cwd, host) => ipcRenderer.invoke('git:probe', cwd, host)
   },
 
   // 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:*）
@@ -499,6 +500,11 @@ contextBridge.exposeInMainWorld('LabCode', {
     discardPatch: (opts) => ipcRenderer.invoke('schedule:discardPatch', opts),
     submitPatch: (opts) => ipcRenderer.invoke('schedule:patch:submit', opts),
     listNotifications: () => ipcRenderer.invoke('schedule:listNotifications'),
+    // 补齐的 CRUD（对齐 ChipCode schedule 域）：取单条 / 编辑 / 删除 / 启停
+    getTask: (opts) => ipcRenderer.invoke('schedule:getTask', opts),
+    update: (opts) => ipcRenderer.invoke('schedule:update', opts),
+    remove: (opts) => ipcRenderer.invoke('schedule:delete', opts),
+    setEnabled: (opts) => ipcRenderer.invoke('schedule:setEnabled', opts),
     // 调度触发工作流（主进程 → 渲染进程执行 → 回报）
     onExecWorkflow: (callback) => {
       const listener = (_event, data) => callback(data);

@@ -3,7 +3,7 @@
   'use strict';
   const LabCodeUI = (window.LabCodeUI = window.LabCodeUI || {});
   const ipcInvoke = LabCodeUI.ipcInvoke, escapeHtml = LabCodeUI.escapeHtml, toast = LabCodeUI.toast;
-  let panelEl = null, built = false;
+  let panelEl = null, built = false, editingId = null;
 
   function buildPanel() {
     const sidebar = document.getElementById('sidebar');
@@ -20,6 +20,8 @@
       </div>
       <div class="sched-status" id="sched-status">状态：加载中…</div>
       <div class="sched-form" id="sched-form" style="display:none;">
+        <div class="sched-field"><label>名称</label>
+          <input id="sched-name" type="text" placeholder="任务名称（可选）" /></div>
         <div class="sched-field"><label>类型</label>
           <select id="sched-type"><option value="cron">Cron</option><option value="interval">Interval</option></select></div>
         <div class="sched-field"><label>执行类型</label>
@@ -39,9 +41,9 @@
       <div class="sched-detail" id="sched-detail" style="display:none;"></div>`;
     sidebar.appendChild(panelEl);
     panelEl.querySelector('#sched-refresh').addEventListener('click', refreshSchedulePanel);
-    panelEl.querySelector('#sched-new').addEventListener('click', toggleForm);
-    panelEl.querySelector('#sched-cancel').addEventListener('click', toggleForm);
-    panelEl.querySelector('#sched-create').addEventListener('click', createTask);
+    panelEl.querySelector('#sched-new').addEventListener('click', () => openForm(null));
+    panelEl.querySelector('#sched-cancel').addEventListener('click', () => { resetForm(); const f = panelEl.querySelector('#sched-form'); if (f) f.style.display = 'none'; });
+    panelEl.querySelector('#sched-create').addEventListener('click', onSaveClick);
     panelEl.querySelector('#sched-type').addEventListener('change', function () {
       const label = panelEl.querySelector('#sched-expr-label'), expr = panelEl.querySelector('#sched-expr');
       if (this.value === 'interval') { label.textContent = '间隔（毫秒）'; expr.placeholder = '600000'; }
@@ -71,7 +73,10 @@
         <div class="sched-item-meta">${escapeHtml(type)} · ${escapeHtml(expr)}${t.mode === 'workflow' ? ' · <span class="sched-mode-tag">工作流</span>' : ''}</div>
         <div class="sched-item-actions">
           <button class="btn btn-sm btn-secondary" data-act="run" data-id="${escapeHtml(id)}">立即运行</button>
-          <button class="btn btn-sm btn-secondary" data-act="runs" data-id="${escapeHtml(id)}">产出</button></div></div>`;
+          <button class="btn btn-sm btn-secondary" data-act="runs" data-id="${escapeHtml(id)}">产出</button>
+          <button class="btn btn-sm btn-secondary" data-act="toggle" data-id="${escapeHtml(id)}" data-enabled="${enabled ? '1' : '0'}">${enabled ? '停用' : '启用'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="edit" data-id="${escapeHtml(id)}">编辑</button>
+          <button class="btn btn-sm btn-secondary" data-act="delete" data-id="${escapeHtml(id)}">删除</button></div></div>`;
     });
     if (runs.length) {
       html += '<div class="sched-group-title">最近运行</div>';
@@ -88,16 +93,73 @@
     listEl.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', function () {
       const act = this.getAttribute('data-act'), taskId = this.getAttribute('data-id') || '', runId = this.getAttribute('data-run') || '';
       if (act === 'run') runNow(taskId); else if (act === 'runs') viewRuns(taskId); else if (act === 'patch') viewPatch(runId);
+      else if (act === 'toggle') toggleEnabled(taskId, this.getAttribute('data-enabled') === '1');
+      else if (act === 'edit') editTask(taskId);
+      else if (act === 'delete') deleteTaskConfirm(taskId);
     }));
   }
   function badgeClass(s) { if (s === 'success' || s === 'done') return 'badge-success'; if (s === 'failed' || s === 'error') return 'badge-error'; if (s === 'running') return 'badge-info'; return 'badge-muted'; }
 
+  function resetForm() {
+    editingId = null;
+    const f = panelEl.querySelector('#sched-form'); if (!f) return;
+    const nameEl = f.querySelector('#sched-name'); if (nameEl) nameEl.value = '';
+    f.querySelector('#sched-type').value = 'cron';
+    f.querySelector('#sched-mode').value = 'chat';
+    f.querySelector('#sched-expr').value = '';
+    f.querySelector('#sched-prompt').value = '';
+    const btn = f.querySelector('#sched-create'); if (btn) btn.textContent = '创建';
+  }
+  function openForm(task) {
+    const f = panelEl.querySelector('#sched-form'); if (!f) return;
+    if (task) {
+      editingId = task.id;
+      const nameEl = f.querySelector('#sched-name'); if (nameEl) nameEl.value = task.name || '';
+      f.querySelector('#sched-type').value = task.type || 'cron';
+      f.querySelector('#sched-mode').value = task.mode || 'chat';
+      f.querySelector('#sched-expr').value = task.expr || '';
+      f.querySelector('#sched-prompt').value = task.prompt || '';
+      const btn = f.querySelector('#sched-create'); if (btn) btn.textContent = '保存';
+    } else { resetForm(); }
+    f.style.display = 'block';
+  }
+  function onSaveClick() { if (editingId) saveEdit(editingId); else createTask(); }
   async function createTask() {
+    const name = panelEl.querySelector('#sched-name').value.trim();
     const type = panelEl.querySelector('#sched-type').value, expr = panelEl.querySelector('#sched-expr').value.trim(), prompt = panelEl.querySelector('#sched-prompt').value.trim();
     const mode = panelEl.querySelector('#sched-mode') ? panelEl.querySelector('#sched-mode').value : 'chat';
     if (!expr || !prompt) { toast('请填写表达式与 prompt', 'warning'); return; }
-    try { const res = await ipcInvoke('schedule:createTask', { type, expr, prompt, mode }); toast('已创建任务：' + (res && res.id ? res.id : 'ok'), 'success'); toggleForm(); panelEl.querySelector('#sched-expr').value = ''; panelEl.querySelector('#sched-prompt').value = ''; refreshSchedulePanel(); }
+    try { const res = await ipcInvoke('schedule:createTask', { name, type, expr, prompt, mode }); toast('已创建任务：' + (res && res.id ? res.id : 'ok'), 'success'); resetForm(); panelEl.querySelector('#sched-form').style.display = 'none'; refreshSchedulePanel(); }
     catch (e) { toast('创建失败（依赖 main 实现 schedule:createTask）：' + e.message, 'error'); }
+  }
+  async function saveEdit(taskId) {
+    const name = panelEl.querySelector('#sched-name').value.trim();
+    const type = panelEl.querySelector('#sched-type').value, expr = panelEl.querySelector('#sched-expr').value.trim(), prompt = panelEl.querySelector('#sched-prompt').value.trim();
+    const mode = panelEl.querySelector('#sched-mode') ? panelEl.querySelector('#sched-mode').value : 'chat';
+    if (!expr || !prompt) { toast('请填写表达式与 prompt', 'warning'); return; }
+    try {
+      const res = await ipcInvoke('schedule:update', { taskId, name, type, expr, prompt, mode });
+      if (!res || !res.success) { toast('保存失败：' + (res && res.error ? res.error : '未知'), 'error'); return; }
+      toast('已保存任务：' + taskId, 'success');
+      resetForm();
+      panelEl.querySelector('#sched-form').style.display = 'none';
+      refreshSchedulePanel();
+    } catch (e) { toast('保存失败：' + e.message, 'error'); }
+  }
+  async function editTask(taskId) {
+    let task = null;
+    try { const res = await ipcInvoke('schedule:getTask', { taskId }); task = res && res.task; } catch (e) {}
+    if (!task) { try { const tasks = await ipcInvoke('schedule:listInbox'); task = (tasks || []).find(t => t.id === taskId); } catch (e) {} }
+    openForm(task);
+  }
+  async function toggleEnabled(taskId, enabled) {
+    try { const res = await ipcInvoke('schedule:setEnabled', { taskId, enabled: !enabled }); if (res && res.success) toast('已' + (res.enabled ? '启用' : '停用') + '任务', 'success'); refreshSchedulePanel(); }
+    catch (e) { toast('操作失败（依赖 main 实现 schedule:setEnabled）：' + e.message, 'error'); }
+  }
+  async function deleteTaskConfirm(taskId) {
+    if (typeof window.confirm === 'function' && !window.confirm('确定删除该定时任务？相关运行记录也会一并清除，且不可撤销。')) return;
+    try { const res = await ipcInvoke('schedule:delete', { taskId }); if (res && res.success) toast('已删除任务', 'success'); else toast('删除失败：' + (res && res.error ? res.error : ''), 'error'); refreshSchedulePanel(); }
+    catch (e) { toast('删除失败（依赖 main 实现 schedule:delete）：' + e.message, 'error'); }
   }
   async function runNow(taskId) { try { const res = await ipcInvoke('schedule:runNow', { taskId }); toast('已触发运行：' + (res && res.runId ? res.runId : taskId), 'success'); refreshSchedulePanel(); } catch (e) { toast('运行失败（依赖 main 实现 schedule:runNow）：' + e.message, 'error'); } }
   async function viewRuns(taskId) { let runs = []; try { runs = await ipcInvoke('schedule:listRuns', { taskId }); } catch (e) { runs = []; } if (!Array.isArray(runs) || !runs.length) { toast('该任务暂无运行记录', 'info'); return; } const last = runs[0], runId = last.id || last.runId; if (runId) viewPatch(runId); }
