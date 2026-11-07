@@ -400,6 +400,12 @@
 - **剩余待续功能**（handoff 已更新）：AI 会话 40 通道（compactPreview/contextUsage/rewind/planArtifact/transcribe）、插件市场 10、board/core/lib 15、devicePanel 3、设置分组、schedule 16、agents 12、git review/conflict 逐块 AI 合并 36 条 i18n。
 - 部署：局部 asar 注入；源码改动待提交。
 
+### 14.15 证据驱动逐功能仿写 · 续：Git 冲突区块（2026-11-07）
+- **更正 fnd_14（错误结论，见 fnd_15）**：LabCode **并非**完全没有冲突处理。`main/index.js` @1343 早已存在完整 `git:aiResolveConflicts` 后端：扫描 `U*` 状态文件、正则逐块解析 ours/theirs、每块调 `callAiOnce`（system 要求只输出合并后代码、去围栏、temperature 0.1、maxTokens 2048）、写回并 `git add` 暂存，含 guard<50 防死循环。真正缺口是**呈现层**：缺 `git:listConflicts` 列表 IPC、git 面板没有 ChipCode 那样的冲突区块（逐文件列出 + 逐文件「AI 合并」）。
+- **本轮回填**：① main 新增 `git:listConflicts`（扫 `U*` 状态 + 读磁盘数 `^<<<<<<< ` 块数）并给 `git:aiResolveConflicts` 加 `onlyRel` 单文件参数；② preload 暴露 `git.listConflicts`；③ renderer 新增 `#git-conflicts` 区块（标题「N 个文件存在合并冲突」+ 每行「文件·N处」+「AI 合并」按钮，点击调 `git.aiResolveConflicts(cwd,path)` 后 `refreshGitStatus()`）。
+- **CDP 实机验证全通过**：构造真实 merge 冲突仓库（`git init`→两分支改同一行→`merge` 造出 `MERGE_HEAD` + `UU a.txt`，文件含 `<<<<<<<` 标记）→ 区块显示「1 个文件存在合并冲突」+ `a.txt · 1 处` +「AI 合并」按钮 → 点击后 a.txt 由 `UU` 变已暂存 `M`、`git:listConflicts` 返回空、区块 `display:none` 隐藏，全程无 JS 异常。`callAiOnce` 走 main 进程 AI，本例真实生效。
+- 踩坑补充：① CDP 验证脚本对返回 Promise 的 `Runtime.evaluate` 必须加 `awaitPromise:true`，否则拿到 `{}`；② 渲染进程同步 `require('fs')` 偶发失败（「Check dependency list! Synchronous require cannot resolve module 'fs'」），读文件应改走 IPC；③ 早先全文件搜 `aiResolveConflicts` 漏检（被 monaco/tsWorker 噪声淹没），导致 fnd_14 误判，已据实更正。
+
 ### 13.4 工程最终状态（全链闭环）
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
 - 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。
