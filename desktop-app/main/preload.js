@@ -62,6 +62,29 @@ contextBridge.exposeInMainWorld('LabCode', {
     cliCall: (opts) => ipcRenderer.invoke('plugin:cliCall', opts),
     unzip: (opts) => ipcRenderer.invoke('plugin:unzip', opts)
   },
+  // 插件管理（对齐 ChipCode plugins:* 主进程通道；管理逻辑主进程侧，渲染层经此桥接 + 监听 changed/progress 推送）
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    getManifest: (id) => ipcRenderer.invoke('plugins:getManifest', id),
+    getSettings: (id) => ipcRenderer.invoke('plugins:getSettings', id),
+    setSettings: (id, settings) => ipcRenderer.invoke('plugins:setSettings', id, settings),
+    setActive: (id, active) => ipcRenderer.invoke('plugins:setActive', id, active),
+    uninstall: (id) => ipcRenderer.invoke('plugins:uninstall', id),
+    installFromPath: (srcDir) => ipcRenderer.invoke('plugins:installFromPath', srcDir),
+    retryDeps: (id) => ipcRenderer.invoke('plugins:retryDeps', id),
+    marketList: () => ipcRenderer.invoke('plugins:marketList'),
+    marketInstall: (id) => ipcRenderer.invoke('plugins:marketInstall', id),
+    onChanged: (cb) => {
+      const h = (_e, data) => cb(data);
+      ipcRenderer.on('plugins:changed', h);
+      return () => ipcRenderer.removeListener('plugins:changed', h);
+    },
+    onInstallProgress: (cb) => {
+      const h = (_e, data) => cb(data);
+      ipcRenderer.on('plugins:installProgress', h);
+      return () => ipcRenderer.removeListener('plugins:installProgress', h);
+    }
+  },
   // Phase C · MQTT 长连接（用户面板）
   mqtt: {
     connect: (opts) => ipcRenderer.invoke('mqtt:connect', opts),
@@ -302,6 +325,8 @@ contextBridge.exposeInMainWorld('LabCode', {
     boardSearch: (query) => ipcRenderer.invoke('board:search', query),
     boardListAll: (payload) => ipcRenderer.invoke('board:listAll', payload),
     boardDetails: (payload) => ipcRenderer.invoke('board:details', payload),
+    attach: (payload) => ipcRenderer.invoke('board:attach', payload),
+    load: (payload) => ipcRenderer.invoke('board:load', payload),
     onCoreInstallProgress: (cb) => { const h = (_e, d) => cb(d); ipcRenderer.on('core:installProgress', h); return () => ipcRenderer.removeListener('core:installProgress', h); },
     onLibInstallProgress: (cb) => { const h = (_e, d) => cb(d); ipcRenderer.on('lib:onInstallProgress', h); return () => ipcRenderer.removeListener('lib:onInstallProgress', h); }
   },

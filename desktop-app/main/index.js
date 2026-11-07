@@ -1797,6 +1797,37 @@ function setupIPC() {
     return { ok: true, details: r.data };
   });
 
+  // ---- 设备面板：board:attach / board:load（对齐 ChipCode board:attach：将选中板卡/端口持久化到项目配置）----
+  // ChipCode 在设备面板选好板卡+端口后写入 project.yaml 的 default_fqbn/default_port；
+  // LabCode 用项目级 .labcode/device.json 等价持久化，使重新打开工程时自动恢复选择。
+  ipcMain.handle('board:attach', async (_e, payload) => {
+    const projectPath = payload && payload.projectPath;
+    const fqbn = payload && payload.fqbn;
+    if (!projectPath) return { ok: false, error: '缺少 projectPath' };
+    try {
+      const dir = path.join(projectPath, '.labcode');
+      fs.mkdirSync(dir, { recursive: true });
+      const cfgPath = path.join(dir, 'device.json');
+      let cfg = {};
+      try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch (e) {}
+      if (fqbn !== undefined) cfg.fqbn = fqbn;
+      if (payload.port !== undefined) cfg.port = payload.port;
+      if (payload.baud !== undefined) cfg.baud = payload.baud;
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf-8');
+      return { ok: true, fqbn: cfg.fqbn || '', port: cfg.port || '', baud: cfg.baud || '' };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
+  ipcMain.handle('board:load', async (_e, payload) => {
+    const projectPath = payload && payload.projectPath;
+    if (!projectPath) return { ok: false, error: '缺少 projectPath', fqbn: '', port: '', baud: '' };
+    try {
+      const cfgPath = path.join(projectPath, '.labcode', 'device.json');
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      return { ok: true, fqbn: cfg.fqbn || '', port: cfg.port || '', baud: cfg.baud || '' };
+    } catch (e) { return { ok: true, fqbn: '', port: '', baud: '' }; }
+  });
+
   // ===== Git 凭据连通性探测（git:probe：验证某 host 的 PAT 能否真正访问对应平台 API；
   //   对齐 ChipCode git:probe 的「连接性预检」语义——在添加/选择凭据、或尝试 Issues/PR 前提前暴露
   //   凭据无效 / 权限不足 / 网络不通；复用 parseGitRemote → gitHostToProvider → config.gitCredentials）=====
@@ -1848,6 +1879,271 @@ function setupIPC() {
       return { ok: true, connected: true, provider, host: targetHost, user: login, message: '已连接 ' + provider + '（@' + login + '）' };
     } catch (e) {
       return { ok: false, error: 'exception', message: String((e && e.message) || e) };
+    }
+  });
+
+  // ===== 插件管理（对齐 ChipCode plugins:* 主进程通道）=====
+  // LabCode 此前插件管理逻辑主要在渲染层 PluginSystem（list/install/uninstall/setActive/settings/market），
+  // 主进程只提供 transport 桥（plugin:cliCall 等）与 deps:*。现补齐与 ChipCode 同名的 plugins:* 主进程通道，
+  // 使主进程也能直接管理插件（供 AI agent / 外部工具调用），并广播 plugins:changed 让渲染层重载注册表。
+  function pluginsRootDir() {
+    try { return path.join(app.getPath('userData'), 'plugins'); } catch (e) { return ''; }
+  }
+  function readPluginManifestSafe(id) {
+    try {
+      const p = path.join(pluginsRootDir(), String(id), 'plugin.json');
+      if (!fs.existsSync(p)) return null;
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (e) { return null; }
+  }
+  function ensurePluginStates() {
+    if (!config.pluginStates || !Array.isArray(config.pluginStates.disabled)) {
+      config.pluginStates = Object.assign({}, config.pluginStates, { disabled: [] });
+    }
+    return config.pluginStates;
+  }
+  function listInstalledPlugins() {
+    const root = pluginsRootDir();
+    const out = [];
+    if (!root || !fs.existsSync(root)) return out;
+    let dirs = [];
+    try { dirs = fs.readdirSync(root).filter(n => !n.startsWith('.')); } catch (e) { return out; }
+    const disabled = ensurePluginStates().disabled;
+    for (const d of dirs) {
+      const m = readPluginManifestSafe(d);
+      if (!m || !m.id) continue;
+      out.push({
+        id: m.id, name: m.name || m.id, version: m.version || '0.0.0',
+        description: m.description || '', icon: m.icon || '📦', category: m.category || 'plugin',
+        author: m.author || 'LabCode', channels: m.channels || [], capabilities: m.capabilities || [],
+        active: !disabled.includes(m.id), path: path.join(root, d)
+      });
+    }
+    return out;
+  }
+  function notifyPluginsChanged(payload) {
+    try {
+      const wins = (typeof BrowserWindow !== 'undefined' && BrowserWindow.getAllWindows) ? BrowserWindow.getAllWindows() : [];
+      for (const w of wins) { if (w && !w.isDestroyed()) w.webContents.send('plugins:changed', payload || {}); }
+    } catch (e) {}
+  }
+  function broadcastPluginProgress(payload) {
+    try {
+      const wins = (typeof BrowserWindow !== 'undefined' && BrowserWindow.getAllWindows) ? BrowserWindow.getAllWindows() : [];
+      for (const w of wins) { if (w && !w.isDestroyed()) w.webContents.send('plugins:installProgress', payload || {}); }
+    } catch (e) {}
+  }
+  function copyDirRecursive(src, dst) {
+    fs.mkdirSync(dst, { recursive: true });
+    let entries = [];
+    try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch (e) { return 0; }
+    let n = 0;
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      const s = path.join(src, e.name), d = path.join(dst, e.name);
+      if (e.isDirectory()) n += copyDirRecursive(s, d);
+      else { try { fs.copyFileSync(s, d); n++; } catch (_) {} }
+    }
+    return n;
+  }
+  // ZIP 常多包一层目录：递归找含 plugin.json 的目录
+  function findManifestDirRecursive(dir, maxDepth) {
+    let items = [];
+    try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return null; }
+    if (items.some(it => it.name === 'plugin.json')) return dir;
+    if ((maxDepth || 3) <= 0) return null;
+    for (const it of items) {
+      if (it.isDirectory() && !it.name.startsWith('.')) {
+        const f = findManifestDirRecursive(path.join(dir, it.name), (maxDepth || 3) - 1);
+        if (f) return f;
+      }
+    }
+    return null;
+  }
+  // 内置市场白名单（与渲染层 MARKET_CATALOG 同源；主进程无渲染层清单，这里精简一份用于 marketList/marketInstall 兜底）
+  const MAIN_MARKET_CATALOG = {
+    'plugin-dev-toolchain': { name: '插件开发工具链', version: '0.1.2', icon: '🧩', category: 'tool', description: '查询已装插件、查看 manifest 规范、校验 plugin.json（内置服务，开箱即用）' },
+    'arduino-cli-toolchain': { name: 'Arduino CLI 工具链', version: '0.3.11', icon: '♾️', category: 'tool', description: 'Arduino CLI 工具链插件：声明式工具后端（arduino-cli 编译 / 上传 / 板卡管理）' },
+    'browser-toolchain': { name: '浏览器自动化', version: '0.1.6', icon: '🌐', category: 'tool', description: '给 AI 一个可控的真实浏览器：打开网页、点击、读取页面内容、截图（自带 playwright MCP）' },
+    'espressif-idf-toolchain': { name: 'ESP-IDF 工具链', version: '0.1.11', icon: '📡', category: 'tool', description: 'ESP-IDF 嵌入式工具链：图形化 Kconfig 配置、编译、烧录与串口监控' },
+    'stm32-cube-toolchain': { name: 'STM32Cube 工具链', version: '0.1.2', icon: '🔧', category: 'tool', description: 'STM32Cube 原生工具链：编译 / 烧录 STM32 HAL 工程' },
+    'wokwi-simulator': { name: 'Wokwi 模拟器', version: '0.1.4', icon: '⚡', category: 'tool', description: 'Wokwi 嵌入式电路模拟器：用 wokwi-cli 仿真 ESP32 / Arduino 电路与固件' },
+    'easyeda-toolchain': { name: '立创EDA', version: '0.3.0', icon: '☁️', category: 'tool', description: '自带零依赖 MCP 桥：连接立创EDA 扩展后可通过 code 真实执行 EDA API' },
+    'openscad-toolchain': { name: 'OpenSCAD 工具链', version: '0.1.2', icon: '📦', category: 'tool', description: 'OpenSCAD 程序化建模：把机械外壳 / 结构件写成可参数化代码' },
+    'sdcc-51-toolchain': { name: '51 单片机工具链', version: '0.3.3', icon: '🔶', category: 'tool', description: '51 系列单片机（8051）通用开发工具链：SDCC 编译 / 烧录 / 仿真' },
+    'ai-hardware-lab': { name: 'AI 硬件拆解工坊', version: '1.0.0', icon: '🤖', category: 'tool', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案' }
+  };
+  const MAIN_MARKET_ORIGIN = 'https://bluebubai.work';
+  async function getMainMarketOrigin() {
+    try {
+      if (config && config.pluginMarketURL && !/raw\.githubusercontent\.com/.test(String(config.pluginMarketURL))) {
+        return String(config.pluginMarketURL).replace(/\/$/, '');
+      }
+    } catch (e) {}
+    return MAIN_MARKET_ORIGIN;
+  }
+
+  ipcMain.handle('plugins:list', async () => listInstalledPlugins());
+
+  ipcMain.handle('plugins:getManifest', async (_, id) => {
+    const m = readPluginManifestSafe(id);
+    return m ? { ok: true, manifest: m } : { ok: false, error: '未找到插件: ' + id };
+  });
+
+  ipcMain.handle('plugins:getSettings', async (_, id) => {
+    const s = (config.pluginSettings && config.pluginSettings[id]) || {};
+    return { ok: true, id, settings: s };
+  });
+
+  ipcMain.handle('plugins:setSettings', async (_, id, settings) => {
+    if (!id) return { ok: false, error: '缺插件 id' };
+    config.pluginSettings = config.pluginSettings || {};
+    config.pluginSettings[id] = Object.assign({}, config.pluginSettings[id], settings || {});
+    try { saveConfig(config); } catch (e) { return { ok: false, error: '保存失败: ' + e.message }; }
+    notifyPluginsChanged({ updated: [id] });
+    return { ok: true, id, settings: config.pluginSettings[id] };
+  });
+
+  ipcMain.handle('plugins:setActive', async (_, id, active) => {
+    if (!id) return { ok: false, error: '缺插件 id' };
+    const st = ensurePluginStates();
+    const i = st.disabled.indexOf(id);
+    if (active) { if (i >= 0) st.disabled.splice(i, 1); }
+    else { if (i < 0) st.disabled.push(id); }
+    try { saveConfig(config); } catch (e) { return { ok: false, error: '保存失败: ' + e.message }; }
+    notifyPluginsChanged({ updated: [id], active: !!active });
+    return { ok: true, id, active: !!active };
+  });
+
+  ipcMain.handle('plugins:uninstall', async (_, id) => {
+    if (!id) return { ok: false, error: '缺插件 id' };
+    const root = pluginsRootDir();
+    const dir = path.join(root, String(id));
+    try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    const st = ensurePluginStates();
+    const i = st.disabled.indexOf(id);
+    if (i >= 0) st.disabled.splice(i, 1);
+    try { saveConfig(config); } catch (e) {}
+    notifyPluginsChanged({ removed: [id] });
+    return { ok: true, id };
+  });
+
+  ipcMain.handle('plugins:installFromPath', async (_, srcDir) => {
+    if (!srcDir) return { ok: false, error: '缺插件目录路径' };
+    const manifestPath = path.join(srcDir, 'plugin.json');
+    if (!fs.existsSync(manifestPath)) return { ok: false, error: '目录内没有 plugin.json' };
+    let manifest;
+    try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch (e) { return { ok: false, error: 'plugin.json 解析失败: ' + e.message }; }
+    if (!manifest || !manifest.id) return { ok: false, error: 'plugin.json 缺 id' };
+    const root = pluginsRootDir();
+    const dst = path.join(root, String(manifest.id));
+    try { if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true }); } catch (e) {}
+    const n = copyDirRecursive(srcDir, dst);
+    if (!n) return { ok: false, error: '没有拷贝到任何文件' };
+    notifyPluginsChanged({ added: [manifest.id] });
+    return { ok: true, id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || '', path: dst };
+  });
+
+  // 重试某插件声明失败的外部依赖（对齐 ChipCode plugins:retryDeps）
+  ipcMain.handle('plugins:retryDeps', async (_, id) => {
+    const m = readPluginManifestSafe(id);
+    if (!m) return { ok: false, error: '未找到插件: ' + id };
+    const deps = Array.isArray(m.dependencies) ? m.dependencies : [];
+    const results = [];
+    for (const d of deps) {
+      const opts = {
+        name: String(d.name || ''),
+        url: String(d.url || ''),
+        exeRelPath: String(d.exeRelPath || (d.name + '.exe')),
+        sha256: String(d.sha256 || ''),
+        mirrors: Array.isArray(d.mirrors) ? d.mirrors : [],
+        archive: d.archive === 'tar.gz' ? 'tar.gz' : 'zip',
+        flatten: !!d.flatten,
+        minBytes: d.minBytes || 1000000,
+        destDir: String(d.destDir || '')
+      };
+      try { results.push(await installDependency(opts)); }
+      catch (e) { results.push({ ok: false, name: opts.name, error: e.message }); }
+    }
+    return { ok: true, id, results };
+  });
+
+  ipcMain.handle('plugins:marketList', async () => {
+    const origin = await getMainMarketOrigin();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      const res = await fetch(origin + '/api/plugins', { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = (data && Array.isArray(data.plugins)) ? data.plugins : [];
+      const plugins = list.map(p => ({
+        id: p.id, name: p.name, description: p.description || '', version: p.version || '1.0.0',
+        author: p.developer || p.author || 'LabCode', icon: p.icon || '📦',
+        category: p.category || 'tool', channels: p.channels || ['http'],
+        capabilities: p.capabilities || [], requires: p.requires || '',
+        downloadUrl: /^https?:/i.test(String(p.downloadUrl || '')) ? p.downloadUrl : origin + String(p.downloadUrl || ''),
+        source: 'remote'
+      }));
+      return { ok: true, online: true, plugins };
+    } catch (e) {
+      // 兜底：返回内置白名单（带官网真实 zip 地址），保证离线也能浏览/安装
+      const plugins = Object.keys(MAIN_MARKET_CATALOG).map(id => Object.assign({}, MAIN_MARKET_CATALOG[id], {
+        id, author: 'TrieCode', channels: ['http'], capabilities: [],
+        downloadUrl: origin + '/api/plugins/download/' + id + '.zip', source: 'builtin'
+      }));
+      return { ok: true, online: false, plugins, error: e.message };
+    }
+  });
+
+  ipcMain.handle('plugins:marketInstall', async (_, id) => {
+    if (!id) return { ok: false, error: '缺插件 id' };
+    const origin = await getMainMarketOrigin();
+    // 解析真实下载地址：先问市场，拿不到就用白名单拼默认地址
+    let downloadUrl = origin + '/api/plugins/download/' + id + '.zip';
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      const res = await fetch(origin + '/api/plugins', { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        const list = (data && Array.isArray(data.plugins)) ? data.plugins : [];
+        const hit = list.find(p => p.id === id);
+        if (hit && hit.downloadUrl) {
+          downloadUrl = /^https?:/i.test(String(hit.downloadUrl)) ? hit.downloadUrl : origin + String(hit.downloadUrl);
+        }
+      }
+    } catch (e) { /* 用默认地址 */ }
+    const root = pluginsRootDir();
+    const tmp = path.join(root, '_dl-' + id + '-' + Date.now() + '.zip');
+    try {
+      broadcastPluginProgress({ pluginId: id, phase: 'downloading', percent: 5, name: id });
+      await downloadFile(downloadUrl, tmp);
+      const size = fs.statSync(tmp).size;
+      if (size < 1000) throw new Error('下载内容过小，疑似错误页');
+      broadcastPluginProgress({ pluginId: id, phase: 'extracting', percent: 70, name: id });
+      const extractDir = path.join(root, '_tmp-' + id + '-' + Date.now());
+      fs.mkdirSync(extractDir, { recursive: true });
+      await extractZip(tmp, extractDir);
+      const md = findManifestDirRecursive(extractDir, 4);
+      if (!md) throw new Error('压缩包内未找到 plugin.json');
+      let manifest; try { manifest = JSON.parse(fs.readFileSync(path.join(md, 'plugin.json'), 'utf8')); } catch (e) { throw new Error('plugin.json 解析失败: ' + e.message); }
+      if (!manifest || !manifest.id) throw new Error('plugin.json 缺 id');
+      const dst = path.join(root, String(manifest.id));
+      try { if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true }); } catch (e) {}
+      copyDirRecursive(md, dst);
+      try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch (e) {}
+      broadcastPluginProgress({ pluginId: manifest.id, phase: 'done', percent: 100, name: manifest.name || manifest.id });
+      notifyPluginsChanged({ added: [manifest.id] });
+      return { ok: true, id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || '', path: dst };
+    } catch (e) {
+      broadcastPluginProgress({ pluginId: id, phase: 'error', percent: 0, name: id, error: e.message });
+      return { ok: false, error: e.message };
+    } finally {
+      try { fs.unlinkSync(tmp); } catch (_) {}
     }
   });
 

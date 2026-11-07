@@ -14700,6 +14700,22 @@ function bindEvents() {
       return;
     }
     await Promise.all([refreshBoards(), refreshPorts(), refreshCores()]);
+    // 设备面板对齐 ChipCode board:attach：重新打开工程时恢复上次选择的板卡/端口
+    try {
+      if (state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.load) {
+        const saved = await window.LabCode.board.load({ projectPath: state.projectPath });
+        if (saved && saved.ok) {
+          const bSel = document.getElementById('board-select');
+          const pSel = document.getElementById('port-select');
+          if (saved.fqbn && bSel && Array.from(bSel.options).some(o => o.value === saved.fqbn)) {
+            bSel.value = saved.fqbn; state.compileFqbn = saved.fqbn; state.arduinoFqbn = saved.fqbn;
+          }
+          if (saved.port && pSel && Array.from(pSel.options).some(o => o.value === saved.port)) {
+            pSel.value = saved.port; state.compilePort = saved.port; state.arduinoPort = saved.port;
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   function populateDefaultBoards() {
@@ -14937,11 +14953,21 @@ function bindEvents() {
   const boardSel = document.getElementById('board-select');
   if (boardSel) boardSel.addEventListener('change', () => {
     state.compileFqbn = boardSel.value || 'esp32:esp32:esp32c3';
+    state.arduinoFqbn = boardSel.value;
+    // 对齐 ChipCode board:attach：选好板卡即持久化到项目配置
+    if (boardSel.value && state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.attach) {
+      window.LabCode.board.attach({ projectPath: state.projectPath, fqbn: boardSel.value }).catch(() => {});
+    }
     showToast('开发板: ' + boardSel.options[boardSel.selectedIndex].text, 'info');
   });
   const portSel = document.getElementById('port-select');
   if (portSel) portSel.addEventListener('change', () => {
     state.compilePort = portSel.value;
+    state.arduinoPort = portSel.value;
+    // 对齐 ChipCode board:attach：选好端口即持久化到项目配置
+    if (portSel.value && state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.attach) {
+      window.LabCode.board.attach({ projectPath: state.projectPath, port: portSel.value }).catch(() => {});
+    }
     if (portSel.value) showToast('端口: ' + portSel.value, 'info');
   });
 
