@@ -142,7 +142,7 @@
       <div class="toolbar">
         <button class="toolbar-btn" id="serial-toggle-btn" title="串口监视器"><svg class="icon icon-xs"><use href="#icon-monitor"></use></svg></button>
         <button class="toolbar-btn" id="terminal-toggle-btn" title="终端"><svg class="icon icon-xs"><use href="#icon-terminal"></use></svg></button>
-        <button class="toolbar-btn" id="search-btn" title="搜索"><svg class="icon icon-xs"><use href="#icon-search"></use></svg></button>
+        <button class="toolbar-btn" id="search-btn" title="搜索代码符号（函数 / 类 / 方法 / 变量）"><svg class="icon icon-xs"><use href="#icon-search"></use></svg></button>
       </div>
       <!-- 下拉菜单 -->
       <div class="dropdown-menu" id="dropdown-file">
@@ -495,23 +495,26 @@
       <div class="sidebar-header">
         <span id="sidebar-title">文件</span>
         <div class="sidebar-actions">
-          <!-- 已移除无实现的「新建文件夹」按钮，避免点了没反应 -->
-          <button class="icon-btn" id="open-folder-btn" title="打开文件夹"><svg class="icon"><use href="#icon-folder-open"></use></svg></button>
-          <!-- 无项目态（对齐 ChipCode 源代码管理空状态）显示的刷新按钮 -->
-          <button class="icon-btn" id="scm-refresh-btn" title="刷新" style="display:none;"><svg class="icon"><use href="#icon-refresh"></use></svg></button>
+          <button class="icon-btn" id="open-folder-btn" title="打开..."><svg class="icon"><use href="#icon-folder-open"></use></svg></button>
+          <button class="icon-btn" id="welcome-new-project-2" title="新建项目"><svg class="icon"><use href="#icon-plus"></use></svg></button>
         </div>
       </div>
       <div class="file-tree" id="file-tree">
         <!-- 文件树动态生成 -->
       </div>
-      <!-- 欢迎面板（1:1 复刻 ChipCode「源代码管理」无项目空状态） -->
+      <!-- 欢迎面板（1:1 对齐 ChipCode「文件」无项目态：开始你的开发 + 3 按钮 + 最近打开） -->
       <div class="welcome-panel" id="welcome-panel">
-        <div class="scm-empty">
-          <h3 class="scm-empty-title">还没有打开项目</h3>
-          <p class="scm-empty-desc">源代码管理用于你打开的那个项目（一个项目一个仓库）。先打开一个项目，或者从远端拉一下来。</p>
-          <div class="scm-empty-actions">
-            <button class="btn btn-secondary" id="welcome-open-project"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg> 打开项目...</button>
-            <button class="btn btn-secondary" id="welcome-clone-project"><svg class="icon icon-xs"><use href="#icon-git-branch"></use></svg> 从 Git 克隆项目...</button>
+        <div class="welcome-start">
+          <h3 class="welcome-panel-title">开始你的开发</h3>
+          <p class="welcome-panel-desc">打开或创建一个项目，AI 智能体将在这里读写代码、执行命令、运行测试。</p>
+          <div class="welcome-panel-actions">
+            <button class="btn btn-primary btn-full" id="welcome-new-project"><svg class="icon icon-xs"><use href="#icon-plus"></use></svg> 新建项目</button>
+            <button class="btn btn-secondary btn-full" id="welcome-open-project"><svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg> 打开项目</button>
+            <button class="btn btn-secondary btn-full" id="welcome-clone-project"><svg class="icon icon-xs"><use href="#icon-git-branch"></use></svg> 克隆项目</button>
+          </div>
+          <div class="welcome-recent">
+            <div class="welcome-recent-title">最近打开</div>
+            <div id="recent-list"></div>
           </div>
         </div>
       </div>
@@ -1399,6 +1402,21 @@
         <input type="text" id="cmd-palette-input" placeholder="输入命令名称进行过滤…" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border-light);border-radius:var(--radius-sm);background:var(--bg-secondary);color:var(--text-primary);font-size: 12.5px;outline:none;"/>
         <div id="cmd-palette-list" style="margin-top:10px;max-height:320px;overflow-y:auto;"></div>
         <div style="margin-top:8px;font-size: 10.5px;color:var(--text-tertiary);">↑↓ 选择 · Enter 执行 · Esc 关闭</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 代码符号搜索（1:1 对齐 ChipCode 顶栏搜索；与 AI code_symbols 共用同一份索引） -->
+  <div class="symbol-search-overlay" id="symbol-search-overlay" style="display:none;">
+    <div class="symbol-search-card">
+      <div class="symbol-search-header">
+        <h3>搜索代码符号</h3>
+        <button class="symbol-search-x" id="symbol-search-close"><svg class="icon icon-xs"><use href="#icon-x"></use></svg></button>
+      </div>
+      <div class="symbol-search-body">
+        <input type="text" id="symbol-search-input" placeholder="搜索函数 / 类 / 方法 / 变量…" autocomplete="off" spellcheck="false" />
+        <div id="symbol-search-list"></div>
+        <div class="symbol-search-hint">与 AI 的 code_symbols 共用同一代码符号索引 · Esc 关闭</div>
       </div>
     </div>
   </div>

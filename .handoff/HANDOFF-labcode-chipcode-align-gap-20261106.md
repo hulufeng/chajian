@@ -339,7 +339,7 @@
 |---|---|---|---|
 | 活动栏 tabs | 文件 / 产品工厂 / 源代码管理 / 插件（4 项）+ 底栏 输出·问题·串口·绘图仪·终端·调试·MQTT | 文件 / 产品工厂 / 源代码管理 / 插件（4 项） | ✅ **已对齐**（2026-11-07：设备 tab 从活动栏移除、功能收敛至状态栏点击入口；见 14.11） |
 | 顶栏 | 文件/编辑/视图/帮助 + 串口监视器/终端/搜索 + 设置 + **Wokwi 仿真运行 / 🤖 编排** | 同左但无 Wokwi 仿真运行 / 编排 | 🔶 硬件增强项 |
-| 文件（欢迎页） | 开始你的开发 + 新建/打开/克隆 + 最近打开 | 逐字一致 | ✅ 一致 |
+| 文件（欢迎页） | 开始你的开发 + 新建/打开/克隆 + 最近打开 | 「源代码管理 / 还没有打开项目」git 式空态；最近打开 DOM 缺失 | ❌ **原判定「一致」为误判**（仅比了品牌卡，未看侧栏）；2026-11-07 已对齐，见 14.12 |
 | 产品工厂 | 空态 2 按钮(打开/新建)+无副标题；导出等移入产品视图 | 逐字一致 | ✅ 已对齐(见 14.8) |
 | **源代码管理（空态）** | 「还没有打开项目」+ 描述 + 打开项目… / 从 Git 克隆项目…（git 控件隐藏） | 逐字一致 | ✅ **已对齐**（2026-11-07：无项目时隐藏 git 操作区、显示 ChipCode 式空态；有项目/非仓库时保持原行为） |
 | 插件市场 | 官方市场/已安装 + 卡片(图标+名+版本+描述+安装) | 同结构 + 同插件集 | ✅ 一致（**修正**：ChipCode 同样内置全部硬件工具链 Arduino CLI/ESP-IDF/STM32Cube/Wokwi/立创EDA/OpenSCAD/51单片机/插件开发/浏览器自动化） |
@@ -367,6 +367,19 @@
   2. **「关闭」语义错误**：原 handler 是 `view.style.display='none'`，把整个产品工厂视图（含头部打开/新建按钮）隐藏，用户无法回空态再打开项目。改为模块内 `viewClosed` 标志：`render()` 强制空态、不隐藏 view，头部按钮保持可点；新建/打开成功后清除标志。刻意**不动全局 `projectPath`**（避免破坏文件树/git/终端）。
 - **端到端实机验证（CDP + 桌面自动化操作真实原生对话框）**：新建（输入名称→真实创建 11 个文件含 `spec.md`「# 测试产品A」）→ 五阶段渲染(创意/造型/硬件/软件/联调) → 打开已有项目 → 刷新 → **生成产品包真实落盘 5 文件**（`.manifest.json`/`bom.csv`/`evidence.md`/`README.md`/`requirements.md`）→ 关闭回空态（view 可见、4 按钮可点、文案「当前不是产品项目」）→ 再次打开恢复五阶段；状态栏点击打开设备面板（7 个板卡下拉）；活动栏 4 tab 顺序/图标、空态 SVG、头部图标按钮全部对齐截图；全过程 `Runtime.exceptionThrown` 无异常。
 - **踩坑**：① `window.LabCode.dialog` 是 contextBridge 暴露的**只读对象**，CDP 里 stub `openDirectory` 赋值静默失败，无法用假目录测原生流程——只能用 clawdcursor 操作真实「选择文件夹」对话框；② Windows 文件夹对话框输入路径后需 **两次 Return**（第一次导航进入、第二次确认选择）；③ 重复点击会堆叠多个原生对话框，需逐个 Escape 清理；④ 每次换前台窗口后 `type_text` 会因 `FOREGROUND_CHANGED` 拒绝，需先 `focus_window` 到新 pid。
+- 部署：局部 asar 注入（app_new.asar 基于 unpacked，备份 `.prev`），源码改动待提交。
+
+### 14.12 多子代理协作：搜索符号 + 文件欢迎页对齐（2026-11-07）
+- **触发**：全页面功能回归发现两处真差异：① 顶栏「搜索」是 `showToast('搜索功能')` 死入口，ChipCode 实机点开的是「搜索代码符号（函数/类/方法/变量）」浮层（含「与 AI 的 code_symbols 共用同一代码符号索引 · Esc 关闭」）；② 文件 tab 无项目态，LabCode 侧栏是「源代码管理 / 还没有打开项目」git 空态且 `#recent-list` 不存在，ChipCode 是「开始你的开发」+ 新建/打开/克隆 3 按钮 + 最近打开列表。**§14.9 原「文件欢迎页 ✅ 一致」为误判，已更正**。
+- **协作方式**：3 个只读子代理并行调研（符号索引现状 / 欢迎页 DOM 与死代码链路 / 共享文件与回归风险交叉审查），主代理统一实施避免并行写冲突；实机验证后再开 2 个子代理独立审查边界，按审查结果加固。
+- **子代理关键结论**：① 项目**无**代码符号索引（`main/search-index.js` 是会话检索；AI `code_symbols` 走 clangd LSP 且缺 `language` 参数，恒返回 `LSP not started`）；两套命令面板并存 + 两个全局 Ctrl+Shift+P，不可复用；`openFileInEditor` 从未定义，只能用 `openFile()`；`openFile` 有 10s 异步分支，定位需轮询。② 欢迎页「开始你的开发」的按钮绑定（`welcome-new-project`/`-2` → `showNewProjectModal`）与 `renderRecentProjects()` **早已写好，只是 DOM 被删**；恢复 DOM 即可零新增逻辑。③ 两改动共享 `app.js`/`index.html`/`style.css`，`app.js` 是普通脚本，重复 `const` 会整文件 SyntaxError（历史事故）；新浮层类名不能含 `modal`（`style.css:5762 [class*="modal"]` 动画规则）。
+- **实施（3 文件）**：
+  - `index.html`：`#search-btn` title 对齐 ChipCode；新增 `#symbol-search-overlay` 独立浮层（body 直属、专属类名）；侧栏头部改 2 图标按钮（打开.../新建项目）、移除 `scm-refresh-btn`；`#welcome-panel` 换为 `.welcome-start`（开始你的开发 + 描述 + 3 按钮 + `#recent-list`），**保留** `welcome-open-project`/`welcome-clone-project` id（被命令面板/git 空态/品牌卡等 6 处转发依赖）。
+  - `app.js`：新增 IIFE `window.LabCodeSymbols.build()`（基于 `state.files` 的 js/py/c 正则符号索引，含 `.ino`）+ `window.__openSymbolSearch()`；`search-btn` 绑定改真实浮层；AI `code_symbols` 工具改读同一索引（兑现「共用同一索引」）；`syncWelcomePanel()` 侧栏标题恒定「文件」+ 无项目时刷新最近列表；活动栏 explorer 判定口径与 sync 统一；`renderRecentProjects()` 挂 `window.__renderRecentProjects` 全局桥（它是 `bindEvents` 局部函数）；`loadProjectFromDisk` 写入 recent 后刷新列表。
+  - `style.css`：追加 `.welcome-start` / `#recent-list .recent-item` / `.symbol-search-*` 独立样式。
+- **2 个审查子代理发现并已加固的边界问题**（实机主流程覆盖不到）：① `mouseenter` 调 `symRender()` 重建 DOM → 移动中点击丢失 → 改为只切 `.active` 类 + `symHighlight()`；② 关闭后焦点残留隐藏 input 吞键盘 → `symClose()` 加 `blur()`；③ Esc 只绑 input → 加 document 级兜底；④ `col` 用 `m.index` 而非捕获组位置 → 改 `m[0].indexOf(m[1])`；⑤ 注释/前向声明误匹配与重复 → 去行注释 + `seen` 去重；⑥ 跳转判定 `activeTab===file` 键形态混用/3s 放弃 → basename 兼容 + 11s；⑦ 空结果 ↓ 置 -1 → 守卫；⑧ 最近列表 `name` 拼 innerHTML → `textContent`；⑨ 空态占位误显可点击 → 独立 class；⑩ 无项目态同步缺口：`persistCodeFile` 设默认项目后、AI 澄清重置后补 `syncWelcomePanel()`；⑪ **存量死功能**：菜单「打开项目」用 `result.success && result.path`，而 `dialog:openDirectory` 返回字符串 → 改兼容字符串/对象。
+- **实机验证（CDP，部署版）**：欢迎页文案/3 按钮/侧栏标题「文件」/2 图标按钮/最近打开 4 项真实历史；搜索浮层真实点击打开+聚焦、Esc 关闭+焦点清除；索引 7 符号（注释 `ghost` 已过滤、`PinMap` 前向声明未重复、`setup` 列号 6 正确）；查询 `setup` 命中 2 项、`Board` 命中 1 项；mouseenter 后点击跳转成功（`activeTab:src/main.js`）；有项目态 welcome 隐藏/fileTree 显示/标题「文件」；4 tab、git 空态、产品工厂空态、状态栏设备面板全部正常；`Runtime.exceptionThrown` 无异常。
+- **校验**：`node --check` 源与 asar 镜像双份 EXIT=0；lint 0 errors；重复 id 仅 `icon-folder-plus`/`icon-user` 两处历史 SVG symbol（与本次无关，未动）。
 - 部署：局部 asar 注入（app_new.asar 基于 unpacked，备份 `.prev`），源码改动待提交。
 
 ### 13.4 工程最终状态（全链闭环）

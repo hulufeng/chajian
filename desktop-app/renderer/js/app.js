@@ -223,15 +223,15 @@ function syncWelcomePanel() {
     const hasProject = !!(state && (state.projectPath || (state.files && Object.keys(state.files).length > 0)));
     if (welcomePanel) welcomePanel.style.display = hasProject ? 'none' : 'flex';
     if (fileTree) fileTree.style.display = hasProject ? 'block' : 'none';
-    // 侧栏头部随欢迎态切换（1:1 对齐 ChipCode：无项目显示「源代码管理」+刷新，有项目显示「文件」+打开文件夹）
+    // 侧栏头部（1:1 对齐 ChipCode：「文件」标题恒定 + 打开.../新建项目 2 个图标按钮）
     const sidebarTitle = document.getElementById('sidebar-title');
-    const scmRefresh = document.getElementById('scm-refresh-btn');
     const openFolderBtn = document.getElementById('open-folder-btn');
-    if (sidebarTitle) sidebarTitle.textContent = hasProject ? '文件' : '源代码管理';
-    if (scmRefresh) scmRefresh.style.display = hasProject ? 'none' : '';
-    if (openFolderBtn) openFolderBtn.style.display = hasProject ? '' : 'none';
-    // 欢迎态布局对齐 TrieCode：无项目时隐藏中央"开始你的开发"卡，AI 欢迎区占满中央
+    if (sidebarTitle) sidebarTitle.textContent = '文件';
+    if (openFolderBtn) openFolderBtn.style.display = '';
+    // 保留 app-welcome：css 隐藏中央品牌卡按钮、整卡点击打开项目仍依赖它
     document.body.classList.toggle('app-welcome', !hasProject);
+    // 无项目态刷新「最近打开」列表（renderRecentProjects 是 bindEvents 局部函数，经全局桥调用）
+    if (!hasProject && typeof window.__renderRecentProjects === 'function') window.__renderRecentProjects();
   } catch (e) { console.error('同步欢迎页显隐失败:', e); }
 }
 
@@ -278,6 +278,8 @@ async function loadProjectFromDisk(projectPath) {
         const filtered = list.filter(r => r.path !== projectPath);
         filtered.unshift({ name: String(projectPath).split(/[\\/]/).pop(), path: projectPath });
         await window.LabCode.config.set('recentProjects', filtered.slice(0, 8));
+        // 打开项目后同步刷新「最近打开」列表（下次回到无项目态时可见）
+        if (typeof window.__renderRecentProjects === 'function') window.__renderRecentProjects();
       }
     } catch (e) { console.warn('记录最近项目失败:', e); }
   } catch (e) {
@@ -2157,10 +2159,14 @@ const TOOL_DEFS = [
 
   // ================= 对齐 TrieCode code_symbols/lsp_*：符号/LSP 工具（复用 window.LabCode.lsp.request） =================
   {
-    name: 'code_symbols', category: 'query', description: '全局符号搜索（workspace/symbol）。参数：query(必填)',
+    name: 'code_symbols', category: 'query', description: '全局符号搜索（函数/类/方法/变量，与顶栏符号搜索共用同一索引）。参数：query(必填)',
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     execute: async (args) => {
-      try { const r = await window.LabCode.lsp.request({ method: 'workspace/symbol', params: { query: args.query } }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      // 与顶栏「搜索代码符号」共用同一份索引（原实现走 clangd LSP 且缺 language 参数，永远返回 LSP not started）
+      const idx = window.LabCodeSymbols ? window.LabCodeSymbols.build() : [];
+      const q = String((args && args.query) || '').toLowerCase();
+      const hits = (q ? idx.filter(s => s.name.toLowerCase().indexOf(q) >= 0) : idx).slice(0, 100);
+      return JSON.stringify({ success: true, total: idx.length, symbols: hits }, null, 2);
     }
   },
   {
@@ -3987,6 +3993,174 @@ function bindCommandPalette() {
     }
   });
 }
+
+// ===== 代码符号搜索（1:1 对齐 ChipCode 顶栏搜索；与 AI code_symbols 共用同一份索引） =====
+// 用 IIFE 包裹：app.js 是普通脚本，顶层 const 全局共享，避免与已有标识符冲突
+(function () {
+  const SYM_RULES = {
+    js: [
+      { re: /(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/, kind: 'function' },
+      { re: /(?:export\s+)?(?:class|interface|enum|type)\s+([A-Za-z_$][\w$]*)/, kind: 'class' },
+      { re: /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/, kind: 'variable' },
+      { re: /^\s*(?:static\s+|async\s+|get\s+|set\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/, kind: 'method' }
+    ],
+    py: [
+      { re: /^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)/, kind: 'function' },
+      { re: /^\s*class\s+([A-Za-z_]\w*)/, kind: 'class' },
+      { re: /^([A-Z][A-Z0-9_]*)\s*=/, kind: 'variable' }
+    ],
+    c: [
+      { re: /^\s*(?:class|struct|enum|union)\s+([A-Za-z_]\w*)/, kind: 'class' },
+      { re: /^\s*(?:[\w:<>*&]+\s+)+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?\{/, kind: 'function' },
+      { re: /^\s*(?:const\s+)?(?:static\s+)?[\w:<>*&]+\s+([A-Za-z_]\w*)\s*(?:=|;)/, kind: 'variable' }
+    ]
+  };
+  let _symItems = [], _symIdx = 0, _symBound = false;
+
+  function symLang(fp) {
+    const e = String(fp).split('.').pop().toLowerCase();
+    if (e === 'py') return 'py';
+    if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].indexOf(e) >= 0) return 'js';
+    if (['c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'ino'].indexOf(e) >= 0) return 'c';
+    return null;
+  }
+  function symEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // 全局唯一索引：顶栏符号搜索与 AI code_symbols 工具都读它
+  window.LabCodeSymbols = {
+    build: function () {
+      const out = [];
+      const seen = Object.create(null);
+      const files = (typeof state !== 'undefined' && state && state.files) ? state.files : {};
+      Object.keys(files).forEach(function (fp) {
+        const lang = symLang(fp);
+        const f = files[fp];
+        if (!lang || !f || f.isBinary || !f.content) return;
+        String(f.content).split('\n').forEach(function (ln, i) {
+          // 去掉行注释/Python 注释，避免把注释里的代码当符号；再用捕获组位置算列号
+          const code = ln.replace(/\/\/.*$/, '').replace(/^\s*#.*$/, '');
+          SYM_RULES[lang].forEach(function (r) {
+            const m = r.re.exec(code);
+            if (!m || !m[1]) return;
+            const key = fp + ':' + (i + 1) + ':' + m[1];
+            if (seen[key]) return;
+            seen[key] = 1;
+            const col = (m.index || 0) + m[0].indexOf(m[1]) + 1;
+            out.push({ name: m[1], kind: r.kind, file: fp, line: i + 1, col: col });
+          });
+        });
+      });
+      return out;
+    }
+  };
+
+  function symClose() {
+    const ov = document.getElementById('symbol-search-overlay');
+    const input = document.getElementById('symbol-search-input');
+    if (ov) ov.style.display = 'none';
+    // 焦点留在隐藏 input 会吞掉后续键盘输入、并让全局 Esc 失效
+    if (input && document.activeElement === input) input.blur();
+  }
+  function symOpen() {
+    const ov = document.getElementById('symbol-search-overlay');
+    const input = document.getElementById('symbol-search-input');
+    if (!ov || !input) { showToast('符号搜索不可用', 'warn'); return; }
+    symBind();
+    _symItems = window.LabCodeSymbols.build();
+    _symIdx = 0;
+    input.value = '';
+    ov.style.display = 'flex';
+    symRender();
+    setTimeout(function () { input.focus(); }, 30);
+  }
+  function symRender() {
+    const list = document.getElementById('symbol-search-list');
+    const input = document.getElementById('symbol-search-input');
+    if (!list || !input) return;
+    const q = input.value.trim().toLowerCase();
+    const hits = (q ? _symItems.filter(function (s) { return s.name.toLowerCase().indexOf(q) >= 0; }) : _symItems.slice(0, 60))
+      .sort(function (a, b) { return (a.name.toLowerCase().indexOf(q) === 0 ? 0 : 1) - (b.name.toLowerCase().indexOf(q) === 0 ? 0 : 1); })
+      .slice(0, 100);
+    if (!hits.length) {
+      const empty = (typeof state !== 'undefined' && state && state.files && Object.keys(state.files).length)
+        ? '未找到匹配符号' : '尚未打开项目，请先打开或新建项目后再搜索代码符号';
+      list.innerHTML = '<div class="symbol-search-empty">' + symEsc(empty) + '</div>';
+      return;
+    }
+    list.innerHTML = hits.map(function (s, i) {
+      return '<div class="symbol-item' + (i === _symIdx ? ' active' : '') + '" data-i="' + i + '">' +
+        '<span class="symbol-kind">' + symEsc(s.kind) + '</span>' +
+        '<span class="symbol-name">' + symEsc(s.name) + '</span>' +
+        '<span class="symbol-path">' + symEsc(s.file) + ':' + s.line + '</span></div>';
+    }).join('');
+    list.querySelectorAll('.symbol-item').forEach(function (el) {
+      el.addEventListener('click', function () { symJump(hits[Number(el.dataset.i)]); });
+      // 只切高亮类，不重建 DOM（重建会让 mousedown/mouseup 落在不同节点上导致点击丢失）
+      el.addEventListener('mouseenter', function () {
+        _symIdx = Number(el.dataset.i);
+        list.querySelectorAll('.symbol-item').forEach(function (n) { n.classList.toggle('active', n === el); });
+      });
+    });
+  }
+  function symHighlight() {
+    const list = document.getElementById('symbol-search-list');
+    if (!list) return;
+    const items = list.querySelectorAll('.symbol-item');
+    items.forEach(function (n, i) { n.classList.toggle('active', i === _symIdx); });
+    if (items[_symIdx] && items[_symIdx].scrollIntoView) items[_symIdx].scrollIntoView({ block: 'nearest' });
+  }
+  function symJump(s) {
+    if (!s) return;
+    symClose();
+    openFile(s.file);
+    // openFile 在 Monaco 未就绪时走 setInterval 异步分支（最长 10s），定位需轮询等待。
+    // openFile 可能把绝对路径键规范化成相对键，故判定「目标文件已激活」时兼容 basename。
+    const base = String(s.file).split(/[\\/]/).pop();
+    const timer = setInterval(function () {
+      const active = state.activeTab ? String(state.activeTab).split(/[\\/]/).pop() : '';
+      if (state.editor && active && (active === base || state.activeTab === s.file)) {
+        clearInterval(timer);
+        try {
+          state.editor.revealLineInCenter(s.line);
+          state.editor.setPosition({ lineNumber: s.line, column: s.col });
+          state.editor.focus();
+        } catch (e) {}
+      }
+    }, 30);
+    setTimeout(function () { clearInterval(timer); }, 11000);
+  }
+  function symBind() {
+    if (_symBound) return;
+    _symBound = true;
+    const ov = document.getElementById('symbol-search-overlay');
+    const input = document.getElementById('symbol-search-input');
+    const closeBtn = document.getElementById('symbol-search-close');
+    if (input) {
+      input.addEventListener('input', function () { _symIdx = 0; symRender(); });
+      input.addEventListener('keydown', function (e) {
+        const items = document.querySelectorAll('#symbol-search-list .symbol-item');
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { _symIdx = Math.min(_symIdx + 1, items.length - 1); symHighlight(); } }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); _symIdx = Math.max(_symIdx - 1, 0); symHighlight(); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (items[_symIdx]) items[_symIdx].click(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); symClose(); }
+      });
+    }
+    if (closeBtn) closeBtn.addEventListener('click', symClose);
+    if (ov) ov.addEventListener('click', function (e) { if (e.target === ov) symClose(); });
+    // 焦点不在输入框（点了列表空白/卡片头）时也能 Esc 关闭
+    document.addEventListener('keydown', function (e) {
+      const cur = document.getElementById('symbol-search-overlay');
+      if (e.key === 'Escape' && cur && cur.style.display !== 'none' && document.activeElement !== input) {
+        e.preventDefault(); symClose();
+      }
+    });
+  }
+  window.__openSymbolSearch = symOpen;
+})();
 
 
 // ============ 增强：LRU 缓存系统 ============
@@ -6210,6 +6384,8 @@ class AgentRunner {
                 state.projectPath = null;
                 state.projectType = null;
                 state.files = {};
+                // 回到无项目态后同步侧栏（失败路径也能自恢复，避免侧栏空白）
+                if (typeof syncWelcomePanel === 'function') syncWelcomePanel();
               }
               if (!state.projectPath) {
                 const name = genProjectName(userInput);
@@ -7879,6 +8055,8 @@ async function persistCodeFile(filePath, code) {
       state.projectPath = home.replace(/\\/g, '/') + '/LabCodeProjects/untitled';
       updateProjectStatusText(state.projectPath);
       addOutputLog(`已自动创建默认项目目录: ${state.projectPath}`, 'info');
+      // 流式代码块落盘会让无项目态产生文件，需同步隐藏「开始你的开发」并显示文件树
+      if (typeof syncWelcomePanel === 'function') syncWelcomePanel();
     }
     if (state.projectPath) {
       const fullPath = diskJoin(state.projectPath, filePath);
@@ -9300,11 +9478,11 @@ function handleMenuAction(action) {
     case 'open-project':
       showToast('打开项目', 'info');
       if (window.LabCode && window.LabCode.dialog) {
+        // dialog:openDirectory 返回字符串路径（或 null），不是 {success,path}
         window.LabCode.dialog.openDirectory().then(result => {
-          if (result && result.success && result.path) {
-            loadProjectFromDisk(result.path);
-          }
-        });
+          const dir = typeof result === 'string' ? result : (result && result.path);
+          if (dir) loadProjectFromDisk(dir);
+        }).catch(e => { showToast('打开项目失败: ' + e.message, 'error'); });
       }
       break;
     case 'open-file':
@@ -10309,7 +10487,8 @@ function bindEvents() {
       if (panel === 'explorer') {
         sidebar.style.display = 'flex';
         // 修复：有项目显示文件树、隐藏欢迎页；无项目显示欢迎页、隐藏文件树
-        const hasProject = !!(state && state.projectPath);
+        // 判定口径与 syncWelcomePanel() 保持一致（含内存文件场景，避免欢迎态错乱）
+        const hasProject = !!(state && (state.projectPath || (state.files && Object.keys(state.files).length > 0)));
         if (fileTree) fileTree.style.display = hasProject ? 'block' : 'none';
         if (welcomePanel) welcomePanel.style.display = hasProject ? 'none' : 'flex';
         if (pluginsPanel) pluginsPanel.style.display = 'none';
@@ -16697,11 +16876,12 @@ function bindEvents() {
     });
   }
 
-  // 搜索按钮
+  // 搜索按钮 → 真实代码符号搜索浮层（对齐 ChipCode；命令面板 search 项 .click() 也自动走这里）
   const searchBtn = document.getElementById('search-btn');
   if (searchBtn) {
     searchBtn.addEventListener('click', () => {
-      showToast('搜索功能', 'info');
+      if (typeof window.__openSymbolSearch === 'function') window.__openSymbolSearch();
+      else showToast('搜索功能', 'info');
     });
   }
 
@@ -18189,14 +18369,17 @@ function bindEvents() {
     } catch (e) { recents = []; }
     recentList.innerHTML = '';
     if (!recents.length) {
-      recentList.innerHTML = '<div class="recent-item" style="color:var(--text-muted);">（暂无最近打开）</div>';
+      recentList.innerHTML = '<div class="recent-item-empty" style="color:var(--text-muted);cursor:default;">（暂无最近打开）</div>';
       return;
     }
     recents.forEach(p => {
       const item = document.createElement('div');
       item.className = 'recent-item';
       const name = String(p.path || '').split(/[\\/]/).pop() || p.path || '未命名';
-      item.innerHTML = '<svg class="icon icon-xs"><use href="#icon-folder"></use></svg><span>' + name + '</span>';
+      // 名称来自本机配置，用 textContent 避免 HTML 注入
+      item.innerHTML = '<svg class="icon icon-xs"><use href="#icon-folder"></use></svg><span></span>';
+      const label = item.querySelector('span');
+      if (label) label.textContent = name;
       item.title = p.path || '';
       item.style.cursor = 'pointer';
       item.addEventListener('click', async () => {
@@ -18217,6 +18400,8 @@ function bindEvents() {
       renderRecentProjects();
     } catch (e) { console.warn('记录最近项目失败:', e); }
   }
+  // 暴露全局桥：syncWelcomePanel()/loadProjectFromDisk() 在 bindEvents 外，需经此调用
+  window.__renderRecentProjects = renderRecentProjects;
   renderRecentProjects();
 
   // ============ 菜单栏按钮 ============
