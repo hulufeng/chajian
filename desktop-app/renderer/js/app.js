@@ -15772,6 +15772,47 @@ function bindEvents() {
     if (op.abortLabel) mk(op.abortLabel, 'abort', 'warn');
   }
 
+  // ===== 合并冲突区块（1:1 仿写 ChipCode git.conflict.*：列出冲突文件 + 逐文件 AI 合并） =====
+  async function renderGitConflicts(cwd) {
+    const box = document.getElementById('git-conflicts');
+    const list = document.getElementById('git-conflicts-list');
+    const title = document.getElementById('git-conflicts-title');
+    if (!box || !list || !title) return;
+    const hide = () => { box.style.display = 'none'; };
+    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.listConflicts !== 'function') return hide();
+    let conflicts = [];
+    try { const r = await window.LabCode.git.listConflicts(cwd); conflicts = (r && r.success) ? (r.conflicts || []) : []; } catch (e) { return hide(); }
+    if (!conflicts.length) return hide();
+    box.style.display = '';
+    title.textContent = conflicts.length + ' 个文件存在合并冲突';
+    list.innerHTML = '';
+    conflicts.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'git-conflicts-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = c.path + ' · ' + c.hunks + ' 处';
+      const btn = document.createElement('button');
+      btn.className = 'pf-btn';
+      btn.textContent = 'AI 合并';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const old = btn.textContent;
+        btn.textContent = '合并中…';
+        try {
+          const res = await window.LabCode.git.aiResolveConflicts(cwd, c.path);
+          if (res && res.success) showToast('已解决: ' + c.path, 'success');
+          else showToast('合并失败: ' + ((res && res.error) || ''), 'error');
+          refreshGitStatus();
+        } catch (e) { showToast('合并异常: ' + e.message, 'error'); }
+        finally { btn.disabled = false; btn.textContent = old; }
+      });
+      row.appendChild(name);
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  }
+
   // ===== Git 面板 =====
   async function refreshGitStatus() {
     const cwd = state.projectPath;
@@ -15791,10 +15832,12 @@ function bindEvents() {
       if (statusEl) statusEl.textContent = '未选择项目';
       showEmpty(true);
       const pend = document.getElementById('git-pending'); if (pend) pend.style.display = 'none';
+      const cf = document.getElementById('git-conflicts'); if (cf) cf.style.display = 'none';
       return;
     }
     showEmpty(false);
     renderGitPendingOp(cwd);
+    renderGitConflicts(cwd);
     const r = await window.LabCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口

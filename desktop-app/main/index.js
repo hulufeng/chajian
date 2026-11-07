@@ -1340,16 +1340,38 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // 解析冲突标记，逐文件交给 AI 解决后写回并暂存
-  ipcMain.handle('git:aiResolveConflicts', async (_, cwd) => {
+  // 列出当前工作区冲突文件与冲突块数（对齐 ChipCode 在源代码管理面板渲染冲突区块）
+  ipcMain.handle('git:listConflicts', async (_, cwd) => {
     if (!cwd) return { success: false, error: '缺少 cwd' };
     try {
       const st = await runGit(cwd, ['status', '--porcelain', '-b']);
       if (!st.ok) return { success: false, error: st.stderr };
-      const conflicted = st.stdout.split('\n').filter(Boolean).map(l => {
+      const conflicts = [];
+      for (const line of st.stdout.split('\n').filter(Boolean)) {
+        const s2 = line.slice(0, 2).trim();
+        if (s2.length === 2 && /U/.test(s2)) {
+          const rel = line.slice(3);
+          const full = path.join(cwd, rel);
+          let hunks = 0;
+          try { const content = fs.readFileSync(full, 'utf8'); hunks = (content.match(/^<<<<<<< /gm) || []).length; } catch (e) {}
+          conflicts.push({ path: rel, hunks });
+        }
+      }
+      return { success: true, conflicts };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  // 解析冲突标记，逐文件交给 AI 解决后写回并暂存（onlyRel 可只解决指定文件，对齐 ChipCode 逐文件 AI 合并）
+  ipcMain.handle('git:aiResolveConflicts', async (_, cwd, onlyRel) => {
+    if (!cwd) return { success: false, error: '缺少 cwd' };
+    try {
+      const st = await runGit(cwd, ['status', '--porcelain', '-b']);
+      if (!st.ok) return { success: false, error: st.stderr };
+      let conflicted = st.stdout.split('\n').filter(Boolean).map(l => {
         const s2 = l.slice(0, 2).trim();
         return (s2.length === 2 && /U/.test(s2)) ? l.slice(3) : null;
       }).filter(Boolean);
+      if (onlyRel) conflicted = [onlyRel];
       if (!conflicted.length) return { success: true, resolved: 0, message: '没有检测到冲突文件' };
       const CONFLICT_RE = /<<<<<<< .*?\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> .*?(\r?\n|$)/;
       const report = [];

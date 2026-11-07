@@ -1277,6 +1277,12 @@ input, textarea {
 .git-pending-actions .pf-btn { font-size: 11px; padding: 4px 8px; }
 .git-pending-actions .pf-btn.warn { background: transparent; border-color: var(--border-color); color: var(--text-secondary); }
 
+/* ===== 合并冲突区块（仿写 ChipCode git.conflict.*） ===== */
+.git-conflicts-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.git-conflicts-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+.git-conflicts-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.git-conflicts-row .pf-btn { flex: 0 0 auto; font-size: 11px; padding: 3px 8px; }
+
 .welcome-title {
   font-size: 25px;
   font-weight: 700;

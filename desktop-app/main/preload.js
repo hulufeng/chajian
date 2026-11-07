@@ -243,6 +243,7 @@ contextBridge.exposeInMainWorld('LabCode', {
   // Git
   git: {
     status: (cwd) => ipcRenderer.invoke('git:status', cwd),
+    listConflicts: (cwd) => ipcRenderer.invoke('git:listConflicts', cwd),
     pendingOp: (cwd) => ipcRenderer.invoke('git:pendingOp', cwd),
     finishOp: (cwd, action) => ipcRenderer.invoke('git:finishOp', cwd, action),
     remoteUrl: (cwd) => ipcRenderer.invoke('git:remote-url', cwd),
