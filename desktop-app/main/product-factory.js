@@ -187,7 +187,7 @@ function computeStages(root) {
       spec: { body: specMd || '', criteria, confirmed: spec.confirmed === true },
       shape, bomItems: items, constraints, evidence, firmwareFiles: firmware, viewFiles: views
     },
-    package: { built: packageBuilt, stale: packageStale, inputsHash: currentHash },
+    package: { built: packageBuilt, stale: packageStale, inputsHash: currentHash, fileCount: (manifest && Array.isArray(manifest.files)) ? manifest.files.length : 0 },
     updatedAt: Date.now()
   };
 }

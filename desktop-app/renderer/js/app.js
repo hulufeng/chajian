@@ -4016,6 +4016,16 @@ function bindCommandPalette() {
     ]
   };
   let _symItems = [], _symIdx = 0, _symBound = false;
+  // 1:1 仿写 ChipCode：250ms debounce + 递增序号丢弃过期响应 + limit 30
+  const SYM_DEBOUNCE_MS = 250, SYM_LIMIT = 30;
+  let _symTimer = null, _symSeq = 0, _symHits = [];
+  const SYM_TEXT = {
+    noProject: '请先打开项目（或新建项目）再搜索代码符号',
+    failed: '查询失败',
+    searching: '搜索中…',
+    empty: '无结果',
+    hint: '与 AI 的 code_symbols 共用同一代码符号索引 · Esc 关闭'
+  };
 
   function symLang(fp) {
     const e = String(fp).split('.').pop().toLowerCase();
@@ -4062,8 +4072,20 @@ function bindCommandPalette() {
     const ov = document.getElementById('symbol-search-overlay');
     const input = document.getElementById('symbol-search-input');
     if (ov) ov.style.display = 'none';
+    // 关闭时取消在途查询（递增序号让过期响应被丢弃）
+    _symSeq++;
+    if (_symTimer) { clearTimeout(_symTimer); _symTimer = null; }
+    symStatus('');
     // 焦点留在隐藏 input 会吞掉后续键盘输入、并让全局 Esc 失效
     if (input && document.activeElement === input) input.blur();
+  }
+  function symStatus(msg, warn) {
+    const el = document.getElementById('symbol-search-status');
+    if (!el) return;
+    if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.className = 'symbol-search-status' + (warn ? ' warn' : '');
+    el.textContent = msg;
   }
   function symOpen() {
     const ov = document.getElementById('symbol-search-overlay');
@@ -4071,35 +4093,72 @@ function bindCommandPalette() {
     if (!ov || !input) { showToast('符号搜索不可用', 'warn'); return; }
     symBind();
     _symItems = window.LabCodeSymbols.build();
-    _symIdx = 0;
+    _symHits = []; _symIdx = 0;
     input.value = '';
-    ov.style.display = 'flex';
-    symRender();
+    // 1:1 仿写 ChipCode：空输入显示空列表，不预列符号
+    document.getElementById('symbol-search-list').innerHTML = '';
+    symStatus('');
+    ov.style.display = 'block';
     setTimeout(function () { input.focus(); }, 30);
+  }
+  // 1:1 仿写 ChipCode 的 useEffect：输入后 250ms debounce，序号丢弃过期响应
+  function symQuery() {
+    const input = document.getElementById('symbol-search-input');
+    if (!input) return;
+    const seq = ++_symSeq;
+    if (_symTimer) clearTimeout(_symTimer);
+    const q = input.value.trim();
+    _symIdx = 0; _symHits = [];
+    if (!q) { symRender(); symStatus(''); return; }
+    const hasProject = !!(typeof state !== 'undefined' && state && state.projectPath);
+    if (!hasProject) {
+      document.getElementById('symbol-search-list').innerHTML = '';
+      symStatus(SYM_TEXT.noProject, true);
+      return;
+    }
+    symStatus(SYM_TEXT.searching);
+    _symTimer = setTimeout(async function () {
+      try {
+        // 索引查询（LabCode 为 renderer 内存索引；ChipCode 为 tree-sitter IPC，见 unk_831150…）
+        const lower = q.toLowerCase();
+        const hits = window.LabCodeSymbols.build()
+          .filter(function (s) { return s.name.toLowerCase().indexOf(lower) >= 0; })
+          .sort(function (a, b) { return (a.name.toLowerCase().indexOf(lower) === 0 ? 0 : 1) - (b.name.toLowerCase().indexOf(lower) === 0 ? 0 : 1); })
+          .slice(0, SYM_LIMIT);
+        if (seq !== _symSeq) return;
+        _symHits = hits;
+        symStatus('');
+        symRender();
+      } catch (e) {
+        if (seq !== _symSeq) return;
+        _symHits = [];
+        symStatus(SYM_TEXT.failed, true);
+        symRender();
+      }
+    }, SYM_DEBOUNCE_MS);
   }
   function symRender() {
     const list = document.getElementById('symbol-search-list');
     const input = document.getElementById('symbol-search-input');
     if (!list || !input) return;
-    const q = input.value.trim().toLowerCase();
-    const hits = (q ? _symItems.filter(function (s) { return s.name.toLowerCase().indexOf(q) >= 0; }) : _symItems.slice(0, 60))
-      .sort(function (a, b) { return (a.name.toLowerCase().indexOf(q) === 0 ? 0 : 1) - (b.name.toLowerCase().indexOf(q) === 0 ? 0 : 1); })
-      .slice(0, 100);
+    const q = input.value.trim();
+    const hits = _symHits;
+    if (!q) { list.innerHTML = ''; return; }
     if (!hits.length) {
-      const empty = (typeof state !== 'undefined' && state && state.files && Object.keys(state.files).length)
-        ? '未找到匹配符号' : '尚未打开项目，请先打开或新建项目后再搜索代码符号';
-      list.innerHTML = '<div class="symbol-search-empty">' + symEsc(empty) + '</div>';
+      list.innerHTML = '<div class="symbol-search-empty">' + symEsc(SYM_TEXT.empty) + '</div>';
       return;
     }
+    // 1:1 仿写 ChipCode 结果项：图标 + name(粗) + kind + filePath:line
     list.innerHTML = hits.map(function (s, i) {
       return '<div class="symbol-item' + (i === _symIdx ? ' active' : '') + '" data-i="' + i + '">' +
-        '<span class="symbol-kind">' + symEsc(s.kind) + '</span>' +
+        '<svg class="icon icon-xs symbol-icon"><use href="#icon-code"></use></svg>' +
         '<span class="symbol-name">' + symEsc(s.name) + '</span>' +
+        '<span class="symbol-kind">' + symEsc(s.kind) + '</span>' +
         '<span class="symbol-path">' + symEsc(s.file) + ':' + s.line + '</span></div>';
     }).join('');
     list.querySelectorAll('.symbol-item').forEach(function (el) {
       el.addEventListener('click', function () { symJump(hits[Number(el.dataset.i)]); });
-      // 只切高亮类，不重建 DOM（重建会让 mousedown/mouseup 落在不同节点上导致点击丢失）
+      // 只切高亮类，不重建 DOM（避免 mousedown/mouseup 落在不同节点导致点击丢失）
       el.addEventListener('mouseenter', function () {
         _symIdx = Number(el.dataset.i);
         list.querySelectorAll('.symbol-item').forEach(function (n) { n.classList.toggle('active', n === el); });
@@ -4113,9 +4172,18 @@ function bindCommandPalette() {
     items.forEach(function (n, i) { n.classList.toggle('active', i === _symIdx); });
     if (items[_symIdx] && items[_symIdx].scrollIntoView) items[_symIdx].scrollIntoView({ block: 'nearest' });
   }
-  function symJump(s) {
+  async function symJump(s) {
     if (!s) return;
     symClose();
+    // 1:1 仿写 ChipCode：先 project.readFile 读内容，再 openFile(path, content)
+    try {
+      const f = state.files[s.file];
+      if (!f || !f.content) {
+        const full = state.projectPath ? String(state.projectPath).replace(/\\/g, '/') + '/' + s.file : s.file;
+        const txt = await FileSystem.readFile(full);
+        if (txt != null) state.files[s.file] = { content: String(txt), language: getLanguage(s.file), dirty: false };
+      }
+    } catch (e) {}
     openFile(s.file);
     // openFile 在 Monaco 未就绪时走 setInterval 异步分支（最长 10s），定位需轮询等待。
     // openFile 可能把绝对路径键规范化成相对键，故判定「目标文件已激活」时兼容 basename。
@@ -4140,7 +4208,7 @@ function bindCommandPalette() {
     const input = document.getElementById('symbol-search-input');
     const closeBtn = document.getElementById('symbol-search-close');
     if (input) {
-      input.addEventListener('input', function () { _symIdx = 0; symRender(); });
+      input.addEventListener('input', symQuery);
       input.addEventListener('keydown', function (e) {
         const items = document.querySelectorAll('#symbol-search-list .symbol-item');
         if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { _symIdx = Math.min(_symIdx + 1, items.length - 1); symHighlight(); } }
@@ -4150,7 +4218,8 @@ function bindCommandPalette() {
       });
     }
     if (closeBtn) closeBtn.addEventListener('click', symClose);
-    if (ov) ov.addEventListener('click', function (e) { if (e.target === ov) symClose(); });
+    const scrim = document.getElementById('symbol-search-scrim');
+    if (scrim) scrim.addEventListener('click', symClose);
     // 焦点不在输入框（点了列表空白/卡片头）时也能 Esc 关闭
     document.addEventListener('keydown', function (e) {
       const cur = document.getElementById('symbol-search-overlay');
@@ -18358,6 +18427,16 @@ function bindEvents() {
   const statusToolchain = document.getElementById('status-toolchain');
   if (statusToolchain) statusToolchain.addEventListener('click', openDevicePanel);
 
+  // 移除失效的最近项目（仿写 ChipCode 的 project.removeRecent）
+  async function removeRecentProject(projectPath) {
+    try {
+      if (!window.LabCode || !window.LabCode.config) return;
+      const cfg = await window.LabCode.config.get();
+      const list = Array.isArray(cfg.recentProjects) ? cfg.recentProjects : [];
+      await window.LabCode.config.set('recentProjects', list.filter(r => r.path !== projectPath).slice(0, 8));
+    } catch (e) { console.warn('移除最近项目失败:', e); }
+  }
+
   // 最近打开：从配置持久化读取并渲染（对齐 TrieCode 真实历史，替换原写死列表）
   async function renderRecentProjects() {
     const recentList = document.getElementById('recent-list');
@@ -18372,10 +18451,12 @@ function bindEvents() {
       recentList.innerHTML = '<div class="recent-item-empty" style="color:var(--text-muted);cursor:default;">（暂无最近打开）</div>';
       return;
     }
-    recents.forEach(p => {
+    // 1:1 仿写 ChipCode：只显示前 5 个最近项目（bundle @500186 的 i.slice(0,5)）
+    recents.slice(0, 5).forEach(p => {
       const item = document.createElement('div');
       item.className = 'recent-item';
-      const name = String(p.path || '').split(/[\\/]/).pop() || p.path || '未命名';
+      // ChipCode 用 a.name，缺失时回退到路径 basename
+      const name = p.name || String(p.path || '').split(/[\\/]/).pop() || p.path || '未命名';
       // 名称来自本机配置，用 textContent 避免 HTML 注入
       item.innerHTML = '<svg class="icon icon-xs"><use href="#icon-folder"></use></svg><span></span>';
       const label = item.querySelector('span');
@@ -18383,8 +18464,19 @@ function bindEvents() {
       item.title = p.path || '';
       item.style.cursor = 'pointer';
       item.addEventListener('click', async () => {
-        try { await loadProjectFromDisk(p.path); showToast('已打开项目: ' + name, 'success'); }
-        catch (e) { showToast('打开项目失败: ' + e.message, 'error'); }
+        // 1:1 仿写 ChipCode @505482：先检查路径是否存在，失效则提示「项目已被删除或移动」并自动移除
+        try {
+          const exists = (window.LabCode && window.LabCode.fs && window.LabCode.fs.exists)
+            ? await window.LabCode.fs.exists(p.path) : null;
+          if (exists === false) {
+            showToast('项目已被删除或移动', 'error');
+            await removeRecentProject(p.path);
+            renderRecentProjects();
+            return;
+          }
+          await loadProjectFromDisk(p.path);
+          showToast('已打开项目: ' + name, 'success');
+        } catch (e) { showToast('打开项目失败: ' + e.message, 'error'); }
       });
       recentList.appendChild(item);
     });

@@ -213,10 +213,18 @@
     }
     const m = snapshot.meter;
     const pct = Math.round((m.total ? m.hit / m.total : 0) * 100);
+    // 1:1 仿写 ChipCode pf-export：产品包已生成/过期三态 + 文件数徽标
+    const pkg = snapshot.package || {};
+    const pkgCount = pkg.fileCount || 0;
+    const exportLabel = pkgCount ? (pkg.stale ? '产品包 · 已过期' : '产品包') : '生成产品包';
+    const exportTitle = pkgCount
+      ? (pkg.stale ? '输入已变（spec / 选型 / 证据 / 结构），这个产品包已过期——建议重新生成' : '产品包已生成，点击重新生成')
+      : '把当前项目整理成产品包，写到 hardware-package/';
     body.innerHTML =
       '<div class="pf-nav__actions">' +
       '<button class="pf-btn" id="pf-refresh" style="padding:3px 10px;font-size:12px">刷新</button>' +
-      '<button class="pf-btn primary" id="pf-export" style="padding:3px 10px;font-size:12px">生成产品包</button>' +
+      '<button class="pf-btn primary' + (pkg.stale ? ' pf-export--stale' : '') + '" id="pf-export" title="' + esc(exportTitle) + '" style="padding:3px 10px;font-size:12px">' +
+      (pkgCount ? '<span class="pf-mono" style="margin-right:6px;">' + pkgCount + (pkg.stale ? '!' : '') + '</span>' : '') + esc(exportLabel) + '</button>' +
       '<button class="pf-btn" id="pf-close-view" style="padding:3px 10px;font-size:12px">关闭</button>' +
       '</div>' +
       '<div class="pf-nav">' +

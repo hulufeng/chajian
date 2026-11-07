@@ -382,6 +382,17 @@
 - **校验**：`node --check` 源与 asar 镜像双份 EXIT=0；lint 0 errors；重复 id 仅 `icon-folder-plus`/`icon-user` 两处历史 SVG symbol（与本次无关，未动）。
 - 部署：局部 asar 注入（app_new.asar 基于 unpacked，备份 `.prev`），源码改动待提交。
 
+### 14.13 Craft Anything 证据驱动：逐功能对比仿写（2026-11-07）
+- **动机**：用户要求「一个功能一个功能去对比着仿写」——不再凭 UI 截图，而是以**已发布软件 ChipCode 安装版 `app.asar` 的真实源码**为证据基准。
+- **工具链**：`craft-anything` MCP 自检超时（doctor 报 `mcp:self-test` fail），按 skill 恢复指南用 CLI 命令行回退：绝对路径 `D:\software\craft-anything\app\craft-anything-0.4.0-windows-x64-portable\craft-anything-cli.exe`，`--deep --project .craft/chipcode-align.cany`。项目内保留 brief/plan/hypotheses(1)/findings(9)/unknowns(1)/handoff。
+- **证据**：`ev_c7aed…` = asar 提取 2868 文件（92.7MB，coverage complete）到 `D:\work\tmp\craft-anything-extract-69c39c4ceaeab94b`；`ev_69edca…` = `js-app-map`：Electron 1.3.6 / Vite+esbuild+tsc / **298 IPC 通道（248 配对）** / 63 端点 / 2 路由 / `arduinoAPI` 成员。主 bundle `packages/renderer/dist/assets/index-COwJnVOF.js` 5.84MB / 5097 行，**minified 但非混淆**（2444 条中文 UI 串明文，按 10 域聚类）。
+- **重要结论（fnd_3）**：双方 IPC 仅 39 个通道名相同 → LabCode 是独立实现而非 fork，必须按**功能语义**对比。ChipCode 独有域：agents/auth/board/core/lib/devicePanel/pty/sim/skills；LabCode 独有域：serial/dap/ollama/web/webhook/region/clipboard/dashboard。
+- **功能 1 搜索代码符号（fnd_1/2/4/5）**：取证 bundle @473960 + i18n `ai.symbolSearch.*`，ChipCode 是 **tree-sitter 持久索引 worker + IPC `ai.querySymbols(projectPath,query,30)`**（main @1831741 `initCodeIndex/ensureProjectIndexed/querySymbols/hasProjectIndex`），250ms debounce + 递增序号丢弃过期响应 + 六态 + 无标题栏 inline 输入框（宽540/top52/遮罩z90）。→ LabCode 仿写：HTML/CSS 改 inline 形态；JS 改 250ms debounce、竞态序号、空输入空列表、limit 30、noProject/searching/failed/empty/hint 五态、跳转前读磁盘内容。CDP 验证全通过（debounce「搜索中…」→ 30 条上限 → 竞态 → 跳转）。**保留架构差异并记 unknown `unk_831150…`**：tree-sitter 索引短期不补，且不伪造 `indexing` 状态。
+- **功能 2 欢迎页/最近打开（fnd_6/7）**：取证 bundle @500186 `i.slice(0,5)`、@505482 `file.recentMissing` 失效检测 + `removeRecent` 自动移除、i18n `files.empty.*`。→ LabCode 仿写：只显示前 5 项、显示 `name` 字段、点击前 `fs.exists` 检查、失效时 toast「项目已被删除或移动」并 config.set 移除后刷新。CDP 验证：注入 7 项渲染 5 项，点击 GONE 后列表补齐、无异常。
+- **功能 3 产品工厂五阶段（fnd_8/9）**：取证 bundle @5675310 `pf-export` 三态（`is-ready`/`is-stale`、文件数徽标、过期 title、点击打开文件夹或让 AI 生成）+ main `product:packageDigest`。核对 LabCode `main/product-factory.js` 已有等价 `fingerprint(6 文件)` + `manifest.inputsHash` stale 判定 + `buildPackage` 5 文件 → **核心逻辑已对齐，差异只在呈现**。→ 仿写：`computeStages` 补 `package.fileCount`，renderer 导出按钮按 fileCount/stale 显示「生成产品包 / 产品包 N / 产品包 · 已过期 N!」+ `.pf-export--stale` 橙色高亮。CDP 验证：5产品包 → 改 spec.md → 5!产品包·已过期 → 点击重建 → 回 5产品包。
+- **待续功能**（handoff 已写入 .cany）：Git 面板 29 通道（含 checkpoint/conflict AI 合并）、AI 会话 40 通道（compact/contextUsage/rewind/planArtifact）、插件市场、设备/板卡库管理、设置分组、终端/串口、agents 并行智能体、schedule 定时任务。
+- 部署：局部 asar 注入；**注意 main 文件改动也须复制到 `unpacked/main/`**（功能 3 踩过）。源码改动待提交。
+
 ### 13.4 工程最终状态（全链闭环）
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
 - 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。
