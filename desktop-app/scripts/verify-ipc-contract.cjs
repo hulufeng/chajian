@@ -1,12 +1,12 @@
 /**
- * IPC contract checker for LabCode desktop-app.
+ * IPC contract checker for BubaiCode desktop-app.
  *
  * Verifies two contracts that static review cannot catch and that only blow up
  * at runtime (usually only when a specific UI action is performed):
  *
  *   1. CHANNEL contract - every channel the renderer invokes has an ipcMain
  *      handler registered in main/index.js.
- *   2. PRELOAD contract - every `window.LabCode.<ns>.<method>` used by the
+ *   2. PRELOAD contract - every `window.BubaiCode.<ns>.<method>` used by the
  *      renderer actually exists on the object exposed by preload.js.
  *
  * The preload API is obtained by really loading preload.js with a stubbed
@@ -61,7 +61,7 @@ function walk(obj, prefix, out) {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
     const full = prefix ? prefix + '.' + key : key;
-    // 对象路径也要收录：渲染层会用 `window.LabCode.git.checkpoint` 这类三段式存在性判断
+    // 对象路径也要收录：渲染层会用 `window.BubaiCode.git.checkpoint` 这类三段式存在性判断
     out.add(full);
     if (typeof val === 'function') {
       try { val('__probe__', '__probe__', '__probe__', '__probe__'); } catch (e) { /* ignore */ }
@@ -72,7 +72,7 @@ function walk(obj, prefix, out) {
   return out;
 }
 
-// 注释里提到 `window.LabCode.x.y` 不代表真的调用了它。
+// 注释里提到 `window.BubaiCode.x.y` 不代表真的调用了它。
 // 逐行判断比全局状态机更稳（1MB+ 渲染主文件里模板字符串/正则极多，状态机易误判）。
 function inLineComment(src, idx) {
   const lineStart = src.lastIndexOf('\n', idx) + 1;
@@ -106,11 +106,11 @@ const rendererFiles = fs.readdirSync(RENDERER_DIR)
 const usedChannels = new Set();
 const usedApiPaths = new Set();
 const reInvoke = /invoke\(\s*'([^']+)'/g;
-const reApi = /window\.LabCode\.(\w+)\.(\w+)/g;
+const reApi = /window\.BubaiCode\.(\w+)\.(\w+)/g;
 
-// 渲染层自己往 `window.LabCode.<ns>.<prop> = ...` 挂的运行时标记（如 ai.__usageWrapped）
+// 渲染层自己往 `window.BubaiCode.<ns>.<prop> = ...` 挂的运行时标记（如 ai.__usageWrapped）
 // 不是 preload 暴露的 API，不应计入 PRELOAD 契约。
-const reSelfAssigned = /window\.LabCode\.(\w+)\.(\w+)\s*=(?!=)/g;
+const reSelfAssigned = /window\.BubaiCode\.(\w+)\.(\w+)\s*=(?!=)/g;
 
 for (const file of rendererFiles) {
   const src = fs.readFileSync(file, 'utf-8');
@@ -142,7 +142,7 @@ const dupHandlers = Object.entries(
     .reduce((acc, c) => { acc[c] = (acc[c] || 0) + 1; return acc; }, {})
 ).filter(([, n]) => n > 1).map(([c]) => c);
 
-console.log('=== LabCode IPC contract ===');
+console.log('=== BubaiCode IPC contract ===');
 console.log('main handlers        :', mainHandlers.size);
 console.log('renderer channels    :', usedChannels.size);
 console.log('preload API paths    :', preloadPaths.size);
@@ -150,7 +150,7 @@ console.log('renderer API paths   :', usedApiPaths.size);
 console.log('\n[channels] invoked but NOT registered in main:');
 console.log(missingChannels.length ? missingChannels.map(c => '  - ' + c).join('\n') : '  NONE');
 console.log('\n[preload] used by renderer but NOT exposed:');
-console.log(missingApi.length ? missingApi.map(c => '  - window.LabCode.' + c).join('\n') : '  NONE');
+console.log(missingApi.length ? missingApi.map(c => '  - window.BubaiCode.' + c).join('\n') : '  NONE');
 console.log('\n[main] duplicate handler registration:');
 console.log(dupHandlers.length ? dupHandlers.map(c => '  - ' + c).join('\n') : '  NONE');
 

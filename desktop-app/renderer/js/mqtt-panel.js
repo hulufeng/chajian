@@ -1,7 +1,7 @@
 // Phase C · MQTT 设备面板（底栏 tab，对齐 ChipCode mqtt manager 的可观测性）
 // 复用 app.js 已泛化的 .bottom-tab[data-panel] 切换逻辑，无需改其代码。
 (function () {
-  function api() { return window.LabCode && window.LabCode.mqtt; }
+  function api() { return window.BubaiCode && window.BubaiCode.mqtt; }
   function $(id) { return document.getElementById(id); }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {

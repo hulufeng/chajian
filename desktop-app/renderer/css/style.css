@@ -1,5 +1,5 @@
 /* ============================================
-   LabCode - Design Tokens（全量对齐 TrieCode v1.3.1）
+   BubaiCode - Design Tokens（全量对齐 TrieCode v1.3.1）
    暗色：brand #3b82f6 / surface-0 #0d1117 / surface-1 #131820
    亮色：brand #2563eb / surface-0 #f5f6f8 / surface-1 #ffffff
    仅改下方两个块即可换肤，业务 CSS 不动。
@@ -2986,7 +2986,7 @@ body.no-open-file .ai-panel {
 }
 
 /* ============================================
-   LabCode 风格新增样式
+   BubaiCode 风格新增样式
    ============================================ */
 
 /* 标题栏快速操作按钮 */
@@ -5566,7 +5566,7 @@ button:disabled,
   border-right: none !important;
 }
 body.no-open-file .editor-container { flex: 1 1 auto !important; min-width: 0 !important; }
-/* 无项目态对齐 TrieCode 实测截图：主区中央显示品牌空态卡(⚡LabCode+打开或新建项目开始编程)，
+/* 无项目态对齐 TrieCode 实测截图：主区中央显示品牌空态卡(⚡BubaiCode+打开或新建项目开始编程)，
    AI 面板保持右侧固定宽——不再让 AI 欢迎区占满中央(旧设计已废弃，app-welcome 类保留仅为兼容、无 CSS 效果) */
 /* 无项目时中央卡极简化：藏按钮（操作入口在左侧欢迎面板：新建/打开/克隆项目，消除语义重复）；
    有项目无文件时左侧是文件树、中央卡按钮是唯一入口，此时显示 */

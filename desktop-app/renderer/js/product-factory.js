@@ -1,9 +1,9 @@
 // Phase D · 产品工厂（对齐 ChipCode 侧栏 LOe() / 五阶段导航 / 产品包）
 // 复用 #product-factory-view 容器与活动栏 data-panel 切换；磁盘状态由主进程 product:state 计算。
 (function () {
-  function api() { return window.LabCode && window.LabCode.product; }
+  function api() { return window.BubaiCode && window.BubaiCode.product; }
   function root() {
-    const st = window.LabCodeUI && window.LabCodeUI.state;
+    const st = window.BubaiCodeUI && window.BubaiCodeUI.state;
     return (st && st.projectPath) || null;
   }
   function esc(s) {
@@ -99,7 +99,7 @@
   async function createProject() {
     const a = api(); if (!a) return toast('仅桌面版支持', 'warn');
     let parent = null;
-    try { parent = await window.LabCode.dialog.openDirectory(); } catch (e) {}
+    try { parent = await window.BubaiCode.dialog.openDirectory(); } catch (e) {}
     if (!parent) return;
     if (typeof parent === 'object') parent = parent.path || parent.filePaths && parent.filePaths[0];
     const name = await promptProductName('我的产品');
@@ -116,7 +116,7 @@
 
   async function openProject() {
     let dir = null;
-    try { dir = await window.LabCode.dialog.openDirectory(); } catch (e) {}
+    try { dir = await window.BubaiCode.dialog.openDirectory(); } catch (e) {}
     if (!dir) return;
     if (typeof dir === 'object') dir = dir.path || dir.filePaths && dir.filePaths[0];
     if (typeof window.loadProjectFromDisk === 'function') {
@@ -132,8 +132,8 @@
     // 1:1 仿写 ChipCode：产品包已生成时点击在文件管理器打开，未生成时才导出
     if (snapshot.package && snapshot.package.built) {
       try {
-        if (window.LabCode && window.LabCode.shell && window.LabCode.shell.showItemInFolder) {
-          await window.LabCode.shell.showItemInFolder(root() + '/hardware-package');
+        if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.showItemInFolder) {
+          await window.BubaiCode.shell.showItemInFolder(root() + '/hardware-package');
           return;
         }
       } catch (e) { /* 退回重新导出 */ }
@@ -264,7 +264,7 @@
     body.querySelectorAll('.pf-view').forEach(async function (v) {
       try {
         const p = root() + (String(root()).indexOf('\\') >= 0 ? '\\' : '/') + v.dataset.file.replace(/\//g, String(root()).indexOf('\\') >= 0 ? '\\' : '/');
-        const r = await window.LabCode.fs.readImageDataUrl(p);
+        const r = await window.BubaiCode.fs.readImageDataUrl(p);
         if (r && r.dataUrl) {
           const img = document.createElement('img');
           img.src = r.dataUrl; img.className = 'pf-view-img';

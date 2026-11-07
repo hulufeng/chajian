@@ -1,5 +1,5 @@
 syntax = "proto3";
-package labcode.core;
+package bubaicode.core;
 // 占位 proto，后续按 TrieCode 的 board/compile/debug/monitor 拆分
 service CoreService {
   rpc Ping(PingRequest) returns (PingResponse);

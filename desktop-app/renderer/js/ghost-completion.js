@@ -1,8 +1,8 @@
 // ghost-completion.js — Monaco ghost 内联补全（对齐 TrieCode ai:getCompletion）
 (function () {
   'use strict';
-  const LabCodeUI = (window.LabCodeUI = window.LabCodeUI || {});
-  const ipcInvoke = LabCodeUI.ipcInvoke;
+  const BubaiCodeUI = (window.BubaiCodeUI = window.BubaiCodeUI || {});
+  const ipcInvoke = BubaiCodeUI.ipcInvoke;
   const DEBOUNCE_MS = 350, MIN_PREFIX = 3;
   let registered = false, seq = 0, lastInvokeAt = 0;
 
@@ -15,7 +15,7 @@
     m.languages.registerInlineCompletionsProvider({ pattern: '**' }, {
       provideInlineCompletions: async function (model, position, context, token) {
         // 实时读取设置（开启开关 / 触发延迟），无需重启
-        const ui = (window.LabCodeUI = window.LabCodeUI || {});
+        const ui = (window.BubaiCodeUI = window.BubaiCodeUI || {});
         const enabled = (ui.completionEnabled === undefined ? true : ui.completionEnabled);
         if (!enabled) return { items: [] };
         const DEB = (ui.completionDelay || DEBOUNCE_MS);

@@ -1,4 +1,4 @@
-// ============ LabCode Electron 主进程 ============
+// ============ BubaiCode Electron 主进程 ============
 // 基于业界 IDE 设计实践：窗口管理 / IPC / 自动更新 / 代理 / 会话存储
 
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog, net } = require('electron');
@@ -228,10 +228,10 @@ function createMenu() {
     {
       label: '帮助',
       submenu: [
-        { label: '文档', click: () => shell.openExternal('https://www.LabCode.com/docs') },
-        { label: '官网', click: () => shell.openExternal('https://www.LabCode.com') },
+        { label: '文档', click: () => shell.openExternal('https://www.BubaiCode.com/docs') },
+        { label: '官网', click: () => shell.openExternal('https://www.BubaiCode.com') },
         { type: 'separator' },
-        { label: '关于 LabCode', click: () => showAboutDialog() }
+        { label: '关于 BubaiCode', click: () => showAboutDialog() }
       ]
     }
   ];
@@ -243,9 +243,9 @@ function createMenu() {
 function showAboutDialog() {
   dialog.showMessageBox(mainWindow, {
     type: 'info',
-    title: '关于 LabCode',
-    message: 'LabCode v1.0.0',
-    detail: '通用 AI 软件开发智能体\n\n内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网检索。\n\n© 2026 LabCode Team. All rights reserved.',
+    title: '关于 BubaiCode',
+    message: 'BubaiCode v1.0.0',
+    detail: '通用 AI 软件开发智能体\n\n内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网检索。\n\n© 2026 BubaiCode Team. All rights reserved.',
     buttons: ['确定']
   });
 }
@@ -937,7 +937,7 @@ function setupIPC() {
     if (path.basename(dir) === base) {
       return { target: dir, cleanup: null, created: false };
     }
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'labcode-sketch-'));
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bubaicode-sketch-'));
     const target = path.join(tmpRoot, base);
     fs.mkdirSync(target, { recursive: true });
     let copied = 0;
@@ -1152,14 +1152,14 @@ function setupIPC() {
   });
 
   // ============ 本地大模型引擎（llama.cpp，内置，无需 Ollama）============
-  // 引擎目录：resources/llama（安装包内置）；模型目录：D:\LabCode\models（插件市场下载）
+  // 引擎目录：resources/llama（安装包内置）；模型目录：D:\BubaiCode\models（插件市场下载）
   function getEngineDir() {
-    // 开发模式：D:\LabCode\runtime\llama-cpp-*；打包后：resources/llama
+    // 开发模式：D:\BubaiCode\runtime\llama-cpp-*；打包后：resources/llama
     const candidates = [
       path.join(process.resourcesPath, 'llama'),           // 打包后内置
       path.join(__dirname, '..', 'resources', 'llama'),    // 开发目录
-      'D:\\LabCode\\runtime\\llama-cpp-vulkan',            // 本机验证目录
-      'D:\\LabCode\\runtime\\llama-cpp-cpu'
+      'D:\\BubaiCode\\runtime\\llama-cpp-vulkan',            // 本机验证目录
+      'D:\\BubaiCode\\runtime\\llama-cpp-cpu'
     ];
     for (const c of candidates) {
       try { if (fs.existsSync(path.join(c, 'llama-server.exe'))) return c; } catch (e) {}
@@ -1168,8 +1168,8 @@ function setupIPC() {
   }
 
   function getModelsDir() {
-    // 模型统一放 D:\LabCode\models（后续改为用户数据目录）
-    return 'D:\\LabCode\\models';
+    // 模型统一放 D:\BubaiCode\models（后续改为用户数据目录）
+    return 'D:\\BubaiCode\\models';
   }
 
   function scanLocalModels() {
@@ -1210,7 +1210,7 @@ function setupIPC() {
     } catch (e) { return false; }
   }
 
-  // 检测本地大模型运行时（LabCode 内置 llama 引擎）
+  // 检测本地大模型运行时（BubaiCode 内置 llama 引擎）
   let currentEngineModel = null;
   ipcMain.handle('system:checkLLMRuntime', async () => {
     const result = { engine: false, engineVersion: null, engineRunning: false, models: [], engineDir: '', runningModel: '' };
@@ -1241,7 +1241,7 @@ function setupIPC() {
       try { execSync('taskkill /IM llama-server.exe /F', { stdio: 'ignore' }); } catch (ke) {}
       await new Promise(r => setTimeout(r, 800));
       const engineDir = getEngineDir();
-      if (!engineDir) return { success: false, error: '未找到内置引擎，请重新安装 LabCode' };
+      if (!engineDir) return { success: false, error: '未找到内置引擎，请重新安装 BubaiCode' };
       const serverExe = path.join(engineDir, 'llama-server.exe');
       if (!fs.existsSync(serverExe)) return { success: false, error: '引擎文件缺失: llama-server.exe' };
 
@@ -1397,7 +1397,7 @@ function setupAutoUpdate() {
 
 // ============ 应用生命周期 ============
 app.whenReady().then(() => {
-  console.log('🚀 LabCode 启动中...');
+  console.log('🚀 BubaiCode 启动中...');
   console.log('📁 用户数据目录:', USER_DATA_PATH);
   console.log('🔧 开发模式:', isDev);
 

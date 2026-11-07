@@ -74,8 +74,8 @@ export default function App() {
 
   useEffect(() => {
     // 监听工具链进度
-    if (window.labcode?.toolchain?.onProgress) {
-      window.labcode.toolchain.onProgress((data) => {
+    if (window.bubaicode?.toolchain?.onProgress) {
+      window.bubaicode.toolchain.onProgress((data) => {
         console.log('toolchain progress:', data);
       });
     }
@@ -93,7 +93,7 @@ export default function App() {
   return (
     <div css={appStyle}>
       <div css={sidebarStyle}>
-        <h2 style={{ margin: '0 0 16px', fontSize: 16, color: '#059669' }}>LabCode</h2>
+        <h2 style={{ margin: '0 0 16px', fontSize: 16, color: '#059669' }}>BubaiCode</h2>
         <div style={{ fontSize: 12, color: '#888' }}>React + Vite + emotion</div>
       </div>
       <div css={mainStyle}>

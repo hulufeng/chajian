@@ -1,8 +1,8 @@
 /**
- * LabCode 终端安全护栏（对齐 TrieCode engine terminal-exec.js 机制，2026-09-13 移植）
+ * BubaiCode 终端安全护栏（对齐 TrieCode engine terminal-exec.js 机制，2026-09-13 移植）
  * 三层防线：
  *   1. DANGEROUS_PATTERNS 危险命令黑名单 —— 命中直接拒绝，不可绕过
- *   2. RISKY_PATTERNS 高风险命令 —— auto 模式需用户确认（LabCode 当前无模式系统，默认按 auto 语义）
+ *   2. RISKY_PATTERNS 高风险命令 —— auto 模式需用户确认（BubaiCode 当前无模式系统，默认按 auto 语义）
  *   3. isReadOnlyCommand 只读白名单 —— 免确认放行
  * 另附：敏感路径（读也不豁免）、受保护路径（写保护）、命令语义前缀（会话级允许粒度）、
  *       GBK/UTF-8 双解码（中文 Windows 乱码根治）

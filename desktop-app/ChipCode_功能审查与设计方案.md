@@ -1,6 +1,6 @@
 # ChipCode 功能审查与设计方案
 
-> 说明：ChipCode 与本项目 LabCode 是 **1:1 同源架构**（UI 与代码均标注「对齐 ChipCode/TrieCode」）。本审查基于两张产品截图（UI 层）+ 对 `desktop-app` 代码库的实现级逆向（实现层），因此既能描述「能做什么」，也能解释「如何实现」。
+> 说明：ChipCode 与本项目 BubaiCode 是 **1:1 同源架构**（UI 与代码均标注「对齐 ChipCode/TrieCode」）。本审查基于两张产品截图（UI 层）+ 对 `desktop-app` 代码库的实现级逆向（实现层），因此既能描述「能做什么」，也能解释「如何实现」。
 
 ---
 
@@ -52,12 +52,12 @@ ChipCode 是一个 **AI 原生的桌面编程 IDE**（Electron + 原生 JS），
 
 ### 2.6 调试与运行时
 - **底部面板栈**：终端（xterm）、串口监视器、绘图仪（`plotterFeed` `app.js:14637`）、调试（DAP）、输出、问题（Monaco 诊断）。
-- **调试**：`startDebug`/`stopDebug`（`app.js:18471/18515`），经 `window.LabCode.dap` 走 DAP 协议，依赖 `arm-none-eabi-gdb` + `openocd`（**未随包分发**）。
+- **调试**：`startDebug`/`stopDebug`（`app.js:18471/18515`），经 `window.BubaiCode.dap` 走 DAP 协议，依赖 `arm-none-eabi-gdb` + `openocd`（**未随包分发**）。
 
 ### 2.7 项目系统与命令面板
 - **命令面板**：`COMMAND_PALETTE_COMMANDS`（约 28 条，`app.js:3744`），`Ctrl+Shift+P`（`app.js:3861`）。
 - **项目系统**：`createProject`/`showNewProjectModal`/`loadProjectFromDisk`/`showGitCloneModal`。
-- **`.labcode.json`**：项目元数据 `{name, type, version, toolchain}`（`app.js:674`）；打开时据 `meta.type/toolchain` 决定项目类型与主动工具链；脚手架按类型生成 `.ino`/`main.c` 等。
+- **`.bubaicode.json`**：项目元数据 `{name, type, version, toolchain}`（`app.js:674`）；打开时据 `meta.type/toolchain` 决定项目类型与主动工具链；脚手架按类型生成 `.ino`/`main.c` 等。
 
 ---
 
@@ -191,14 +191,14 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 |---|---|---|
 | 1 | 新增通用 IPC `deps:install` / `deps:cancel`：多镜像回退、sha256 校验、`minBytes` 错误页哨兵、zip/tar.gz 解压、flatten、幂等（已装返回 `cached:true`）、AbortController 取消 | `main/index.js`（`toolchain:installCli` 之后） |
 | 2 | 新增独立进度通道 `deps:progress`，payload 严格 `{stage,percent,message,name}`；**旧 `toolchain:progress` 一行未动** | `main/index.js`、`main/preload.js` 新增 `deps` 命名空间 |
-| 3 | 新增 `normProgress(d)` 接收侧兼容（`percent`/`progress` 都认）；**修死订阅 bug**：`setupToolchainProgress` 原判 `window.labcode`（小写），而 preload 暴露的是 `LabCode` → 全局 modal 从不显示 | `app.js` |
+| 3 | 新增 `normProgress(d)` 接收侧兼容（`percent`/`progress` 都认）；**修死订阅 bug**：`setupToolchainProgress` 原判 `window.bubaicode`（小写），而 preload 暴露的是 `BubaiCode` → 全局 modal 从不显示 | `app.js` |
 | 4 | 新增 `appendDepInstallCard` / `appendPluginInstallCard` 两个可点引导卡（对话区，同族于 `appendByokCard`） | `app.js` |
 | 5 | cpp 调试分支：缺 gdb/openocd 从「只 toast」升级为引导卡（官方发布页 + 重新检测），不硬编造下载 URL | `app.js` `startDebug()` |
 | 6 | 本地模型降级消费分支：按文案分诊，追加 `llama-runtime` / `qwen25-coder-7b` 一键安装卡，直连现有 `__labPluginAPI.install` | `app.js` |
 
 **纠偏（交叉验收）**：`toolchain:installCli` 是 arduino-cli 专用、无入参、URL 硬编码单源、不跟随 3xx、无哈希/退出码校验，不可直接复用；`downloadFile` **本身已跟随 3xx**（旧文档归因有误）。子代理还纠正了 8 处行号偏差。
 
-**验收（运行态）**：`window.LabCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.labcode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 4 项、插件 26 工具。
+**验收（运行态）**：`window.BubaiCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.bubaicode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 4 项、插件 26 工具。
 
 **仍未做**：gdb/openocd 的真实下载源与 sha256 配置（需选定可信发行包后填入 `deps:install` opts）、`dap:toolPath` 前置 `TOOLS_DIR` 绝对路径探测、`deps:status` 聚合状态页、统一进度 schema 的主进程侧彻底收敛（当前为接收侧兼容）。方案 C 的线上部署已完成校验（见下方备注）。
 
@@ -234,7 +234,7 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 
 ## 八、关于「开子代理模仿我通过所有请求」
 
-本次我按你的要求启动了 **code-explorer 子代理**（本环境唯一可用的子代理类型，只读探索），用于深入 `desktop-app` 代码库、取证 ChipCode/LabCode 的实现细节——即上方「如何实现」部分的证据来源。
+本次我按你的要求启动了 **code-explorer 子代理**（本环境唯一可用的子代理类型，只读探索），用于深入 `desktop-app` 代码库、取证 ChipCode/BubaiCode 的实现细节——即上方「如何实现」部分的证据来源。
 
 需要说明：当前工具集内**没有**「可扮演用户、自动批准请求」的专用子代理类型（可用子代理仅 `code-explorer`，且为只读、无法操作/审批）。因此：
 - 我已将分析子代理的发现视为「已通过」，并据此完成了完整审查与方案；
@@ -357,32 +357,32 @@ node_modules\.bin\electron-builder.cmd --win --config.directories.output=release
 （需先 $env:NODE_OPTIONS=""）
 ```
 
-产物：`release-build/LabCode-Setup-1.2.29.exe`（388,957,222 B）+ `.blockmap` +
+产物：`release-build/BubaiCode-Setup-1.2.29.exe`（388,957,222 B）+ `.blockmap` +
 `latest.yml` + `builder-debug.yml` + `win-unpacked/`（含 `app.asar`）。
 
 **构建包校验 19/19**：从 `app.asar` 直接抽取 8 个关键文件，
 A/B/C/D 的全部改动标记都在，且**与源码逐字节一致**（`SOURCE_IDENTICAL 8/8`）。
 
-**真实启动验证**：停掉现有实例，用 `release-build\win-unpacked\LabCode.exe` 启动
+**真实启动验证**：停掉现有实例，用 `release-build\win-unpacked\BubaiCode.exe` 启动
 （插件齐全）再跑同一套全量验收 → **36/36 再次通过**。即正式构建产物是
 可运行的完整版本，不只是文件一致。随后恢复原实例。
 
 ### 发布状态：✅ v1.2.30 已上线（2026-11-06，按方案 A）
 
 **背景**：线上更新通道 `/updates` → `/var/www/codelab-updates/` 原本已有同名
-`LabCode-Setup-1.2.29.exe`（旧代码）+ 带 sha512 的 `latest.yml`。覆盖同名会造成
+`BubaiCode-Setup-1.2.29.exe`（旧代码）+ 带 sha512 的 `latest.yml`。覆盖同名会造成
 「版本相同收不到更新」+「sha512 失配」，故**升版本号发布，不覆盖旧包**。
 
 | 项 | 结果 |
 |---|---|
 | `package.json` | `1.2.29` → **`1.2.30`** |
-| 构建 | `release-build/LabCode-Setup-1.2.30.exe`（388,957,128 B）+ blockmap + 新 `latest.yml`（sha512 由构建产物生成） |
+| 构建 | `release-build/BubaiCode-Setup-1.2.30.exe`（388,957,128 B）+ blockmap + 新 `latest.yml`（sha512 由构建产物生成） |
 | 上传 | 新 exe / blockmap / `latest.yml` → `/var/www/codelab-updates/`；`server.mjs` / `download.html` → 官网 |
 | 远端校验 | `SHA512_MATCH true`、`SIZE_MATCH true`、`BLOCKMAP_PRESENT true`、`LATEST_VERSION 1.2.30` |
-| 下载死链修复 | `DOWNLOAD_URLS.windows` 原指向服务器上不存在的 `LabCode-Setup-0.1.9.exe` → 改 `1.2.30.exe`；`/d/windows` 现返回 `302 → .../LabCode-Setup-1.2.30.exe` |
+| 下载死链修复 | `DOWNLOAD_URLS.windows` 原指向服务器上不存在的 `BubaiCode-Setup-0.1.9.exe` → 改 `1.2.30.exe`；`/d/windows` 现返回 `302 → .../BubaiCode-Setup-1.2.30.exe` |
 | 版本数据源 | 线上 `db.json` 的 `version.latest` `0.1.9 → 1.2.30`；`/api/version` 返回 `{"latest":"1.2.30", ...}` |
 | 下载页 | 徽章 `v1.1.3→v1.2.30`、`约 129 MB→约 389 MB`、新增 1.2.30 changelog 条目；公网校验 `has1.2.30=True / has389=True` |
-| 公网 | `HEAD /updates/LabCode-Setup-1.2.30.exe` → `200`、长度 `388957128`、`application/octet-stream` |
+| 公网 | `HEAD /updates/BubaiCode-Setup-1.2.30.exe` → `200`、长度 `388957128`、`application/octet-stream` |
 | 后端 | `node --check` 通过、`pm2 restart codelab-site` 成功 |
 
 > 客户端自动更新的定时检查已停用（`main/index.js` 中两处 setTimeout/setInterval 被注释），
@@ -409,7 +409,7 @@ A/B/C/D 的全部改动标记都在，且**与源码逐字节一致**（`SOURCE_
 
 ### 验证（运行态，热修 asar 后真实启动）
 - 运行实例 asar 抽取核对 7 项全 PASS：`dap.toolPath` 扫描代码、两张一键安装卡、`gdb/ocd` 真实源 URL、`flatten` + `exeRelPath`、`onDone` 重检。
-- CDP 实测 `dap.toolPath('probe-x')`（在 `userData/tools/probe-x/bin/` 造 fake，`PATH` 无此项）→ `found:true, path=...Roaming\LabCode\tools\probe-x\bin\probe-x.exe`，**证明新增的 TOOLS_DIR 扫描分支生效**（一键安装后的工具无需手动加 PATH 即可被调试器检测）。
+- CDP 实测 `dap.toolPath('probe-x')`（在 `userData/tools/probe-x/bin/` 造 fake，`PATH` 无此项）→ `found:true, path=...Roaming\BubaiCode\tools\probe-x\bin\probe-x.exe`，**证明新增的 TOOLS_DIR 扫描分支生效**（一键安装后的工具无需手动加 PATH 即可被调试器检测）。
 - 本机 `arm-none-eabi-gdb` 与 `openocd` 均 `found:false` → 真实 C/C++ 调试场景会弹出「一键安装」卡。
 - 两文件 `node --check` 全过；asar 热修（清 `NODE_OPTIONS` 注入的 safe-delete shim 后 `createPackage` 成功）+ 重启验证通过。
 
@@ -435,7 +435,7 @@ A/B/C/D 的全部改动标记都在，且**与源码逐字节一致**（`SOURCE_
 1. 主进程新增 `ipcMain.handle('deps:status')`：聚合 `userData/tools` 下各子目录（`hasBin`/`mainExe`/`sizeBytes`）+ `resolveArduinoCli()` 路径，返回 `{toolsDir, exists, items, arduino}`。
 2. preload 的 `deps` 对象新增 `status: () => ipcRenderer.invoke('deps:status')`。
 3. 命令面板加 `deps-status`（查看依赖与工具链状态），`showDepsStatus()` 渲染卡片（工具名/就绪态/体积 + Arduino CLI 状态）。
-- 验证（运行态 CDP）：`typeof window.LabCode.deps.status === 'function'`；`await deps.status()` 真实返回 `{toolsDir, exists:true, items:[{name:'clangd',hasBin:true,mainExe:'clangd.exe',sizeBytes:96945518}], arduino:{cliExists:true, path:'…arduino-cli.exe'}}`。
+- 验证（运行态 CDP）：`typeof window.BubaiCode.deps.status === 'function'`；`await deps.status()` 真实返回 `{toolsDir, exists:true, items:[{name:'clangd',hasBin:true,mainExe:'clangd.exe',sizeBytes:96945518}], arduino:{cliExists:true, path:'…arduino-cli.exe'}}`。
 
 ### D. project-stats 正式上架（app.js + plugin-loader.js）
 `projectStats` 服务早在 18265 行注册为 `window.PluginSystem` 的 internal service（`summary()` 真扫目录，零崩溃风险），此前仅缺 UI 入口。本轮：
@@ -444,7 +444,7 @@ A/B/C/D 的全部改动标记都在，且**与源码逐字节一致**（`SOURCE_
 - 验证（运行态 CDP）：`typeof getInternalService('projectStats') === 'object'`；`summary({})` 调用成功返回 `Error: 未打开工程，且未传 path`（服务入口工作，打开工程即出真实报告）。
 
 ### 诚实留档
-- A/B/C/D 四项均为渲染层/插件加载层 + 主进程 handler 改动；已随 **v1.2.31** 提交（`b8377f0`）并推送到 `chajian.git`，构建产物 `LabCode-Setup-1.2.31.exe` 已发布到 `bluebubai.work/updates`（latest.yml 校验通过，自动更新用户将收到 1.2.31）。
+- A/B/C/D 四项均为渲染层/插件加载层 + 主进程 handler 改动；已随 **v1.2.31** 提交（`b8377f0`）并推送到 `chajian.git`，构建产物 `BubaiCode-Setup-1.2.31.exe` 已发布到 `bluebubai.work/updates`（latest.yml 校验通过，自动更新用户将收到 1.2.31）。
 - 第十三节「诚实留档」里写的 `deps:status 聚合状态页…仍未做` 已被本条补做。
 - 唯一未闭环：**easyeda 真实 EDA 客户端联调**——桥传输层已解出并验证结构化错误，但立创EDA 客户端反嵌入，需用户在装有该客户端的机器上连接本地桥端口做图形联调（非本机可自动化）。
 - 已知历史现状（非本次回归）：`serialport` 原生模块在 node_modules 与打包产物中均缺失编译产物，与 1.2.30 一致；不影响应用启动，仅串口相关 native 功能受限。

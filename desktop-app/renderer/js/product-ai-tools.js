@@ -176,8 +176,8 @@
       execute: async () => {
         const err = ensure(); if (err) return err;
         const P = pf();
-        if (!window.LabCode || !window.LabCode.product) return '仅桌面版支持导出';
-        const r = await window.LabCode.product.package({ root: P.root() });
+        if (!window.BubaiCode || !window.BubaiCode.product) return '仅桌面版支持导出';
+        const r = await window.BubaiCode.product.package({ root: P.root() });
         if (!r.success) return '导出失败: ' + r.error;
         await P.refresh(true);
         return '产品包已生成：' + r.files.join(', ') + '（指纹 ' + r.inputsHash + '）';

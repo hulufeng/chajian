@@ -1,4 +1,4 @@
-// 集成测试：抽离 app.js 中的「工作流模块」(8425-8603 行)，在真实 DOM(jsdom) + mock LabCode 下运行，
+// 集成测试：抽离 app.js 中的「工作流模块」(8425-8603 行)，在真实 DOM(jsdom) + mock BubaiCode 下运行，
 // 驱动真实的 wfRun / wfExport / wfImport，验证本次改动（工具节点接终端、条件分支、导入导出、运行态）。
 const fs = require('fs');
 const path = require('path');
@@ -15,9 +15,9 @@ const dom = new JSDOM('<!DOCTYPE html><html><body>' +
   '</body></html>');
 const document = dom.window.document;
 
-// Mock LabCode（覆盖工作流用到的所有 IPC）
+// Mock BubaiCode（覆盖工作流用到的所有 IPC）
 const store = {};
-const LabCode = {
+const BubaiCode = {
   // AI 节点：把 prompt 回声，便于条件分支断言
   ai: { chat: async (opts) => ({ success: true, content: 'AI_RESULT:' + (opts && opts.messages && opts.messages[0] && opts.messages[0].content || '') }) },
   // 工具节点：真实终端的返回结构
@@ -27,7 +27,7 @@ const LabCode = {
   fs: { writeFile: async (p, c) => { store[p] = c; }, readFile: async (p) => store[p] || '' },
   on: () => {}, removeListener: () => {}
 };
-const window = { LabCode };
+const window = { BubaiCode };
 const state = { projectPath: '/tmp/proj' };
 const toasts = [];
 const showToast = (m) => { toasts.push(m); };

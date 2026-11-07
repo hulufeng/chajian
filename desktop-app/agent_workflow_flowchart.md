@@ -1,4 +1,4 @@
-# LabCode AI Agent 工作流程图
+# BubaiCode AI Agent 工作流程图
 
 下图展示 Agent 从接收输入、分析处理、调用工具到输出结果的工作流程与决策节点。
 

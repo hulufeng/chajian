@@ -1,10 +1,10 @@
-# LabCode 软件使用流程图
+# BubaiCode 软件使用流程图
 
-下图展示用户从启动 LabCode 到完成主要任务的完整操作步骤与分支逻辑。
+下图展示用户从启动 BubaiCode 到完成主要任务的完整操作步骤与分支逻辑。
 
 ```mermaid
 flowchart TD
-    Start([启动 LabCode]) --> Load[加载用户配置、已启用插件与插件市场数据]
+    Start([启动 BubaiCode]) --> Load[加载用户配置、已启用插件与插件市场数据]
     Load --> Home{主界面：用户意图}
 
     Home -->|与 AI 对话编程| Chat[在对话框输入需求或问题]

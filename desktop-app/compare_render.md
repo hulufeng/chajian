@@ -5,7 +5,7 @@
     <!-- 标题 -->
     <div style="padding:4px 0 12px;box-sizing:border-box;">
       <div style="font-size:16px;font-weight:600;color:#1A1B1C;">同一任务 · 三种解法：用 ESP32-C3 写桌面机器人（L298N + 双 N20 电机）</div>
-      <div style="font-size:12px;color:#6B7280;margin-top:4px;">对比 LabCode（本地） / 豆包（云端对话） / Trae（云端 IDE）——解决问题方式 与 思考过程展示</div>
+      <div style="font-size:12px;color:#6B7280;margin-top:4px;">对比 BubaiCode（本地） / 豆包（云端对话） / Trae（云端 IDE）——解决问题方式 与 思考过程展示</div>
     </div>
 
     <!-- 表头 -->
@@ -15,10 +15,10 @@
       <div style="flex:1.4 1 200px;min-width:0;padding:8px 10px;background:#EFF3FB;border-radius:10px;box-sizing:border-box;font-size:12px;font-weight:600;color:#2B3A67;text-align:center;">思考过程的展示方式</div>
     </div>
 
-    <!-- 行1: LabCode -->
+    <!-- 行1: BubaiCode -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;box-sizing:border-box;margin-bottom:8px;">
       <div style="flex:1 1 150px;min-width:0;padding:10px;background:linear-gradient(135deg, rgba(163,213,232,0.25), rgba(163,213,232,0.45));border-radius:12px;box-sizing:border-box;">
-        <div style="font-size:13px;font-weight:600;color:#1A1B1C;">LabCode</div>
+        <div style="font-size:13px;font-weight:600;color:#1A1B1C;">BubaiCode</div>
         <div style="font-size:11px;color:#3D4B66;margin-top:3px;">本地 Qwen3.5-9B（llama.cpp）<br>实测：思考 38.5s → 落盘</div>
       </div>
       <div style="flex:1.4 1 200px;min-width:0;padding:10px;background:#FFFFFF;border:0.5px solid rgba(0,0,0,0.08);border-radius:12px;box-sizing:border-box;">
@@ -50,7 +50,7 @@
       <div style="flex:1.4 1 200px;min-width:0;padding:10px;background:#FFFFFF;border:0.5px solid rgba(0,0,0,0.08);border-radius:12px;box-sizing:border-box;">
         <div style="font-size:12px;color:#1A1B1C;line-height:1.6;">
           <b>深度思考块</b>：推理原文流式展开，可折叠、显示耗时；答案与代码分离排版
-          <div style="font-size:11px;color:#6B7280;margin-top:3px;">思维链透明的对话体验——LabCode 已 1:1 复刻此展示</div>
+          <div style="font-size:11px;color:#6B7280;margin-top:3px;">思维链透明的对话体验——BubaiCode 已 1:1 复刻此展示</div>
         </div>
       </div>
     </div>
@@ -80,9 +80,9 @@
     <div style="padding:10px 12px;background:#F4F3EE;border-radius:12px;box-sizing:border-box;">
       <div style="font-size:12px;font-weight:600;color:#1A1B1C;margin-bottom:4px;">核心差异（一句话）</div>
       <div style="font-size:12px;color:#1A1B1C;line-height:1.7;">
-        · <b>豆包 / LabCode</b>：透明展示<b>思维链</b>——"模型在想什么"逐字可见；<br>
+        · <b>豆包 / BubaiCode</b>：透明展示<b>思维链</b>——"模型在想什么"逐字可见；<br>
         · <b>Trae</b>：透明展示<b>执行链</b>——"模型在做什么"（计划→步骤→产物→diff），思维原文不暴露；<br>
-        · LabCode 现状 = 豆包式思维链流式（已实现）+ 写文件/编辑器联动；下一步可借鉴 Trae 的<b>计划确认、工具面板 Flow、diff 验收</b>补齐工程化闭环。
+        · BubaiCode 现状 = 豆包式思维链流式（已实现）+ 写文件/编辑器联动；下一步可借鉴 Trae 的<b>计划确认、工具面板 Flow、diff 验收</b>补齐工程化闭环。
       </div>
     </div>
   </div>

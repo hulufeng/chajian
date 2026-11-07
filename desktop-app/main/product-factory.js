@@ -9,7 +9,7 @@ const STATES = ['not_started', 'in_progress', 'blocked', 'done'];
 
 // 允许读写的相对路径白名单（防路径穿越）
 const ALLOWED_RELS = new Set([
-  '.triecode.json', '.labcode.json', 'spec.md', 'spec.json',
+  '.triecode.json', '.bubaicode.json', 'spec.md', 'spec.json',
   'design/shape.json', 'bom.json', 'constraints.json', 'evidence.jsonl',
   'hardware-package/.manifest.json', 'hardware-package/requirements.md',
   'hardware-package/bom.csv', 'hardware-package/evidence.md', 'hardware-package/README.md'
@@ -72,11 +72,11 @@ function listDir(root, rel) {
   } catch (e) { return []; }
 }
 
-/** 判定产品项目：.triecode.json 或 .labcode.json 的 projectType === 'product' */
+/** 判定产品项目：.triecode.json 或 .bubaicode.json 的 projectType === 'product' */
 function isProductProject(root) {
   if (!root || !fs.existsSync(root)) return false;
   const a = readJson(root, '.triecode.json', null);
-  const b = readJson(root, '.labcode.json', null);
+  const b = readJson(root, '.bubaicode.json', null);
   return !!((a && a.projectType === 'product') || (b && b.projectType === 'product'));
 }
 

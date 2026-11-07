@@ -6,8 +6,8 @@
 
   function getProjectPath() {
     try {
-      if (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) {
-        return window.LabCodeUI.state.projectPath;
+      if (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) {
+        return window.BubaiCodeUI.state.projectPath;
       }
     } catch (e) {}
     return '';
@@ -59,10 +59,10 @@
     let stats = { files: 0, dirs: 0, totalBytes: 0, topExts: [], recent: [], elapsedMs: 0 };
     let gitInfo = null;
     try {
-      if (window.LabCode && window.LabCode.dashboard) stats = await window.LabCode.dashboard.stats(project);
-      if (window.LabCode && window.LabCode.git) {
-        const st = await window.LabCode.git.status(project);
-        const br = st.success ? await window.LabCode.git.branches(project).catch(() => null) : null;
+      if (window.BubaiCode && window.BubaiCode.dashboard) stats = await window.BubaiCode.dashboard.stats(project);
+      if (window.BubaiCode && window.BubaiCode.git) {
+        const st = await window.BubaiCode.git.status(project);
+        const br = st.success ? await window.BubaiCode.git.branches(project).catch(() => null) : null;
         gitInfo = {
           isRepo: !!st.success,
           branch: br && br.success ? br.current : (st.success ? '?' : null),
@@ -122,7 +122,7 @@
   function init() {
     // 方案 D：活动栏已 1:1 对齐 ChipCode 精简为 4 项，没有 data-panel="dashboard" 按钮。
     // 旧实现因 !btn 直接 return，导致刷新/关闭按钮与 openDashboard 全都没绑定（死 UI）。
-    // 现在始终绑定，看板改由命令面板「打开看板」调用 window.LabCodeUI.openDashboard 打开。
+    // 现在始终绑定，看板改由命令面板「打开看板」调用 window.BubaiCodeUI.openDashboard 打开。
     const btn = document.querySelector('.activity-btn[data-panel="dashboard"]');
     document.querySelectorAll('.activity-btn').forEach(b => {
       b.addEventListener('click', () => {
@@ -140,9 +140,9 @@
       if (ex) ex.classList.add('active');
       const sb = el('sidebar'); if (sb) sb.style.display = 'flex';
     });
-    window.LabCodeUI = window.LabCodeUI || {};
-    window.LabCodeUI.openDashboard = showDashboard;
-    window.LabCodeUI.closeDashboard = hideDashboard;
+    window.BubaiCodeUI = window.BubaiCodeUI || {};
+    window.BubaiCodeUI.openDashboard = showDashboard;
+    window.BubaiCodeUI.closeDashboard = hideDashboard;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

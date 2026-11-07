@@ -1,5 +1,5 @@
 // git-review.js —— 审阅本轮 AI 改动（对齐 ChipCode git:review / git:applyAndStage）
-// 由渲染层从 window.LabCodeUI.fileTracker 取本轮 AI 文件变更，交给主进程拆 hunk，
+// 由渲染层从 window.BubaiCodeUI.fileTracker 取本轮 AI 文件变更，交给主进程拆 hunk，
 // 用户逐 hunk 接受/拒绝后，主进程回写磁盘并 git add 暂存。
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
 
   // 从 FileChangeTracker 收集本轮 AI 改动（合并 default/stream 两个会话、未回滚的变更，按路径去重）
   function collectAiChanges() {
-    const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
+    const ft = window.BubaiCodeUI && window.BubaiCodeUI.fileTracker;
     if (!ft || !ft.turns || typeof ft.turns.get !== 'function') return [];
     const out = new Map();
     for (const sid of ['default', 'stream']) {
@@ -70,7 +70,7 @@
     const changes = collectAiChanges();
     let res;
     try {
-      res = await window.LabCode.git.review(cwd, 'default', { changes });
+      res = await window.BubaiCode.git.review(cwd, 'default', { changes });
     } catch (e) {
       if (list) list.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);">审阅失败：' + escapeHtml((e && e.message) || e) + '</div>';
       return;
@@ -192,7 +192,7 @@
     const btn = document.getElementById('git-review-apply');
     if (btn) btn.disabled = true;
     try {
-      const res = await window.LabCode.git.reviewApply(cwd, decisions, {});
+      const res = await window.BubaiCode.git.reviewApply(cwd, decisions, {});
       if (res && res.ok) {
         let msg = '已应用 ' + (res.applied ? res.applied.length : 0) + ' 个文件，暂存 ' + (res.staged ? res.staged.length : 0) + ' 个。';
         if (res.skipped && res.skipped.length) msg += ' 跳过 ' + res.skipped.length + ' 个（磁盘已变更）。';

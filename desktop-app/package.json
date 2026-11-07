@@ -1,13 +1,13 @@
 {
-  "name": "LabCode",
+  "name": "BubaiCode",
   "version": "1.2.31",
-  "description": "LabCode - 通用 AI 软件开发智能体，内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网检索。",
+  "description": "BubaiCode —— 用 AI 打通「从引脚到固件」的嵌入式开发全流程。",
   "main": "main/index.js",
   "author": {
-    "name": "LabCode Team",
-    "email": "dev@labcode.local"
+    "name": "BubaiCode Team",
+    "email": "dev@bubaicode.local"
   },
-  "homepage": "https://github.com/hulufeng/LabCode",
+  "homepage": "https://github.com/hulufeng/BubaiCode",
   "license": "MIT",
   "packageManager": "pnpm@11.18.0",
   "workspaces": [
@@ -46,8 +46,8 @@
     "xterm-addon-web-links": "^0.9.0"
   },
   "build": {
-    "appId": "com.LabCode.app",
-    "productName": "LabCode",
+    "appId": "com.BubaiCode.app",
+    "productName": "BubaiCode",
     "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "dist168"
@@ -104,7 +104,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "LabCode"
+      "shortcutName": "BubaiCode"
     },
     "mac": {
       "target": [
@@ -121,6 +121,6 @@
       "icon": "resources/icon.png",
       "category": "Development"
     },
-    "artifactName": "LabCode-Setup-${version}.${ext}"
+    "artifactName": "BubaiCode-Setup-${version}.${ext}"
   }
 }

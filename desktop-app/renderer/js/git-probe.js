@@ -32,7 +32,7 @@
       btn.textContent = '测试中…';
       setStatus('正在探测凭据连通性…');
       try {
-        const r = await window.LabCode.git.probe(cwd);
+        const r = await window.BubaiCode.git.probe(cwd);
         if (r && r.connected) {
           const text = '✅ 已连接 ' + (r.provider || '') + '（@' + (r.user || '') + '）';
           if (typeof showToast === 'function') showToast(text, 'success');
@@ -69,7 +69,7 @@
   // 无需仓库 cwd（主进程会在无 cwd 时仅依赖 host 入参）。
   window.gitProbeByHost = async function (host) {
     try {
-      const r = await window.LabCode.git.probe(null, host);
+      const r = await window.BubaiCode.git.probe(null, host);
       return r || { ok: false, error: 'no-result', message: '无返回' };
     } catch (e) {
       return { ok: false, error: 'exception', message: e.message };

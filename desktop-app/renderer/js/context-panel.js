@@ -1,8 +1,8 @@
 // context-panel.js — 上下文用量 / 压缩预览面板
 (function () {
   'use strict';
-  const LabCodeUI = (window.LabCodeUI = window.LabCodeUI || {});
-  const ipcInvoke = LabCodeUI.ipcInvoke, escapeHtml = LabCodeUI.escapeHtml, toast = LabCodeUI.toast;
+  const BubaiCodeUI = (window.BubaiCodeUI = window.BubaiCodeUI || {});
+  const ipcInvoke = BubaiCodeUI.ipcInvoke, escapeHtml = BubaiCodeUI.escapeHtml, toast = BubaiCodeUI.toast;
   const CTX_SOFT_LIMIT = 128000; // 进度条满刻度（可按真实窗口调整）
   let panelEl = null, built = false;
 
@@ -71,7 +71,7 @@
     if (f) { const pct = Math.min(100, Math.round((tokens / CTX_SOFT_LIMIT) * 100)); f.style.width = pct + '%'; f.classList.toggle('warn', pct >= 70); f.classList.toggle('danger', pct >= 90); }
   }
 
-  // 压缩预览：优先 window.getCompactPreview / window.LabCode.getCompactPreview，回退 IPC context:compactPreview
+  // 压缩预览：优先 window.getCompactPreview / window.BubaiCode.getCompactPreview，回退 IPC context:compactPreview
   async function openCompactPreview() {
     const previewEl = panelEl.querySelector('#ctx-preview'), bodyEl = panelEl.querySelector('#ctx-preview-body');
     if (!previewEl || !bodyEl) return;
@@ -79,7 +79,7 @@
     try {
       let preview = null;
       if (typeof window.getCompactPreview === 'function') preview = await window.getCompactPreview();
-      else if (window.LabCode && typeof window.LabCode.getCompactPreview === 'function') preview = await window.LabCode.getCompactPreview();
+      else if (window.BubaiCode && typeof window.BubaiCode.getCompactPreview === 'function') preview = await window.BubaiCode.getCompactPreview();
       else preview = await ipcInvoke('context:compactPreview');
       renderCompactPreview(preview, bodyEl);
     } catch (e) {
@@ -100,6 +100,6 @@
   }
 
   setInterval(function () { if (panelEl && panelEl.style.display !== 'none') refreshContextPanel(); }, 2000);
-  LabCodeUI.refreshContextPanel = refreshContextPanel;
+  BubaiCodeUI.refreshContextPanel = refreshContextPanel;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildPanel); else buildPanel();
 })();

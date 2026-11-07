@@ -1,10 +1,10 @@
-// ============ LabCode AI provider 注册表（单一数据源，参考 TrieCode provider-registry）============
+// ============ BubaiCode AI provider 注册表（单一数据源，参考 TrieCode provider-registry）============
 // 合并三层：本地内置(builtin) + 用户自定义(config.ai.customProviders) + 未来云端(setCloud，云端优先覆盖同名)
 // main 用 toAiProviders() 派生旧版 AI_PROVIDERS 形状，渲染端用 getProviders() 拿完整元数据做统一注册 UI。
 // 本文件从 main/ 迁入 packages/engine，作为零 Electron 依赖的纯模块，可 headless/CLI 复用（对齐 TrieCode engine 包）。
 
 const BUILTIN = [
-  { id: 'gateway', name: 'LabCode 云端', type: 'gateway', baseURL: 'https://bluebubai.work', defaultModel: 'qwen3-8b', builtin: true, enabled: true, needsApiKey: false, description: '登录后使用的云端模型（积分扣费）' },
+  { id: 'gateway', name: 'BubaiCode 云端', type: 'gateway', baseURL: 'https://bluebubai.work', defaultModel: 'qwen3-8b', builtin: true, enabled: true, needsApiKey: false, description: '登录后使用的云端模型（积分扣费）' },
   { id: 'deepseek', name: 'DeepSeek', type: 'openai', baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat', builtin: true, enabled: true, needsApiKey: true, description: 'DeepSeek 官方 API' },
   { id: 'siliconflow', name: '硅基流动', type: 'openai', baseURL: 'https://api.siliconflow.cn/v1', defaultModel: 'Qwen/Qwen2.5-7B-Instruct', builtin: true, enabled: true, needsApiKey: true, description: '硅基流动（SiliconFlow）兼容端点' },
   { id: 'openai', name: 'OpenAI', type: 'openai', baseURL: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini', builtin: true, enabled: true, needsApiKey: true, description: 'OpenAI 官方 API' },

@@ -1,5 +1,5 @@
 /**
- * LabCode 终端服务
+ * BubaiCode 终端服务
  * 基于 node-pty 实现真实的伪终端
  * 支持 Windows PowerShell / cmd / bash
  */

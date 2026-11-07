@@ -1,4 +1,4 @@
-// ============ LabCode 上下文压缩（packages/engine，纯 CommonJS）============
+// ============ BubaiCode 上下文压缩（packages/engine，纯 CommonJS）============
 // 参考 TrieCode：当上下文超 token 阈值时，把旧轮次折叠成一条 LLM 生成的「历史背景摘要」，
 // 仅保留最近 N 个 user 轮（B1：LLM 摘要压缩，区别于 app.js 原 compressContext 的「仅删旧工具结果无摘要」）。
 

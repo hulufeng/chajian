@@ -1,7 +1,7 @@
 // 记忆库侧栏（列出 / 删除长期记忆，对齐 ChipCode memory）
 // 复用现有 state.memories + saveMemoriesToDisk（后端 remember/forget 工具已存在）。
 (function () {
-  function S() { return window.LabCodeUI && window.LabCodeUI.state; }
+  function S() { return window.BubaiCodeUI && window.BubaiCodeUI.state; }
   var panel = null, listEl = null;
 
   function escapeHtml(s) {

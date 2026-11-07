@@ -1,4 +1,4 @@
-// ============ LabCode — 完整智能体引擎 ============
+// ============ BubaiCode — 完整智能体引擎 ============
 // 基于业界 IDE 设计实践：agent-runner / loop-engine / permission-policy /
 // tool-pipeline / context-manager / plan-store / terminal-exec / ai-provider
 
@@ -10,58 +10,58 @@ function __onDCL(cb) {
 
 // ============ 记忆持久化（对齐 TrieCode memory/ 目录）============
 async function saveMemoriesToDisk(memories) {
-  if (!isElectron || !window.LabCode || !window.LabCode.fs) return;
+  if (!isElectron || !window.BubaiCode || !window.BubaiCode.fs) return;
   try {
-    const userData = await window.LabCode.app.getPath('userData');
+    const userData = await window.BubaiCode.app.getPath('userData');
     const fp = userData.replace(/[\\\/]$/, '') + '/memory/memories.json';
     // writeFile 内部会 ensureDir
-    await window.LabCode.fs.writeFile(fp, JSON.stringify(memories || [], null, 2));
+    await window.BubaiCode.fs.writeFile(fp, JSON.stringify(memories || [], null, 2));
   } catch (e) { console.warn('saveMemoriesToDisk:', e.message); }
 }
 async function loadMemoriesFromDisk() {
-  if (!isElectron || !window.LabCode || !window.LabCode.fs) return [];
+  if (!isElectron || !window.BubaiCode || !window.BubaiCode.fs) return [];
   try {
-    const userData = await window.LabCode.app.getPath('userData');
+    const userData = await window.BubaiCode.app.getPath('userData');
     const p = userData.replace(/[\\\/]$/, '') + '/memory/memories.json';
-    const exists = await window.LabCode.fs.exists(p);
+    const exists = await window.BubaiCode.fs.exists(p);
     if (!exists) return [];
-    const r = await window.LabCode.fs.readFile(p);
+    const r = await window.BubaiCode.fs.readFile(p);
     if (r && r.success) return JSON.parse(r.content);
   } catch (e) { console.warn('loadMemoriesFromDisk:', e.message); }
   return [];
 }
 
 // ============ Electron 环境适配层 ============
-const isElectron = typeof window !== 'undefined' && !!window.LabCode;
-const electronFS = isElectron ? window.LabCode.fs : null;
-const electronConfig = isElectron ? window.LabCode.config : null;
-const electronSessions = isElectron ? window.LabCode.sessions : null;
-const electronWindow = isElectron ? window.LabCode.window : null;
+const isElectron = typeof window !== 'undefined' && !!window.BubaiCode;
+const electronFS = isElectron ? window.BubaiCode.fs : null;
+const electronConfig = isElectron ? window.BubaiCode.config : null;
+const electronSessions = isElectron ? window.BubaiCode.sessions : null;
+const electronWindow = isElectron ? window.BubaiCode.window : null;
 
 if (isElectron) {
-  console.log('✅ LabCode 运行在 Electron 环境中，已启用磁盘文件系统和持久化');
+  console.log('✅ BubaiCode 运行在 Electron 环境中，已启用磁盘文件系统和持久化');
 } else {
-  console.log('💻 LabCode 运行在浏览器环境中，使用内存文件系统');
+  console.log('💻 BubaiCode 运行在浏览器环境中，使用内存文件系统');
 }
 
 // 获取默认项目目录（动态根据当前用户；常规设置「默认工作空间」优先）
 async function getDefaultProjectDir() {
-  if (isElectron && window.LabCode && window.LabCode.config) {
+  if (isElectron && window.BubaiCode && window.BubaiCode.config) {
     try {
-      const cfg = await window.LabCode.config.get();
+      const cfg = await window.BubaiCode.config.get();
       const ws = cfg && cfg.general && cfg.general.defaultWorkspace;
       if (ws && String(ws).trim()) return String(ws).trim().replace(/\\/g, '/');
     } catch (e) { /* 配置读取失败走默认 */ }
   }
-  if (isElectron && window.LabCode && window.LabCode.app) {
+  if (isElectron && window.BubaiCode && window.BubaiCode.app) {
     try {
-      const home = await window.LabCode.app.getPath('home');
-      return home.replace(/\\/g, '/') + '/LabCodeProjects';
+      const home = await window.BubaiCode.app.getPath('home');
+      return home.replace(/\\/g, '/') + '/BubaiCodeProjects';
     } catch (e) {
-      return 'C:\\Users\\Administrator\\LabCodeProjects';
+      return 'C:\\Users\\Administrator\\BubaiCodeProjects';
     }
   }
-  return 'C:\\Users\\Administrator\\LabCodeProjects';
+  return 'C:\\Users\\Administrator\\BubaiCodeProjects';
 }
 
 // 跨平台磁盘路径拼接（对齐主进程 path.join 语义）：
@@ -120,16 +120,16 @@ const state = {
 
 // Publish the live state object so other renderer modules (e.g. plugin-loader) can
 // read state.projectPath. Same object reference => always reflects the current value
-// (plugin-loader previously read window.LabCode.state, which preload never exposed).
-window.LabCodeUI = window.LabCodeUI || {};
-window.LabCodeUI.state = state;
+// (plugin-loader previously read window.BubaiCode.state, which preload never exposed).
+window.BubaiCodeUI = window.BubaiCodeUI || {};
+window.BubaiCodeUI.state = state;
 
 // ============ Auto-update UI (user-confirmed install) ============
 // Main process no longer force-restarts on download; it notifies the renderer
 // and we surface a toast. The user clicks "Restart & Install" to actually apply.
 // 2026-10-18 用户要求"不要弹窗的小球"：停用更新提示 toast（自动检查已在 main 侧停用）
 (function setupUpdateUI() {
-  if (!isElectron || !window.LabCode || !window.LabCode.on) return;
+  if (!isElectron || !window.BubaiCode || !window.BubaiCode.on) return;
   function run() {
     // 更新提示弹窗已停用（保留占位，避免误删其他依赖）
   }
@@ -139,7 +139,7 @@ window.LabCodeUI.state = state;
 
 // ============ 样本项目 ============
 const sampleFiles = {
-  'src/main.py': { content: `# LabCode Demo - Python 示例
+  'src/main.py': { content: `# BubaiCode Demo - Python 示例
 import sys
 from typing import List, Optional
 
@@ -174,8 +174,8 @@ def write_file(filepath: str, content: str) -> None:
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
 `, language: 'python' },
-  'package.json': { content: '{\n  "name": "labcode-demo",\n  "version": "1.0.0",\n  "scripts": {\n    "start": "python src/main.py",\n    "test": "python -m pytest tests/"\n  }\n}\n', language: 'json' },
-  'README.md': { content: '# LabCode Demo Project\n\nAI 编程示例项目。\n\n## 快速开始\n\n```bash\npython src/main.py\n```\n', language: 'markdown' },
+  'package.json': { content: '{\n  "name": "bubaicode-demo",\n  "version": "1.0.0",\n  "scripts": {\n    "start": "python src/main.py",\n    "test": "python -m pytest tests/"\n  }\n}\n', language: 'json' },
+  'README.md': { content: '# BubaiCode Demo Project\n\nAI 编程示例项目。\n\n## 快速开始\n\n```bash\npython src/main.py\n```\n', language: 'markdown' },
   'tests/test_main.py': { content: 'import pytest\nfrom src.main import quick_sort\n\ndef test_quick_sort():\n    assert quick_sort([3, 1, 2]) == [1, 2, 3]\n    assert quick_sort([]) == []\n', language: 'python' }
 };
 
@@ -246,15 +246,15 @@ async function loadProjectFromDisk(projectPath) {
   try {
     // 递归读取目录
     await readDirRecursive(projectPath, '');
-    // 读取 .labcode.json 获取项目类型
+    // 读取 .bubaicode.json 获取项目类型
     try {
-      const metaPath = projectPath + '\\.labcode.json';
+      const metaPath = projectPath + '\\.bubaicode.json';
       const metaContent = await FileSystem.readFile(metaPath, 'utf-8');
       if (metaContent) {
         const meta = JSON.parse(metaContent);
         if (meta.type) state.projectType = meta.type;
       }
-    } catch (e) { /* 无 .labcode.json 时忽略 */ }
+    } catch (e) { /* 无 .bubaicode.json 时忽略 */ }
     buildFileTree();
     renderFileTree();
     // 修复：项目加载后隐藏欢迎页、显示文件树、切换侧栏标题（统一走 syncWelcomePanel）
@@ -272,12 +272,12 @@ async function loadProjectFromDisk(projectPath) {
     addOutputLog(`共 ${Object.keys(state.files).length} 个文件`, 'info');
     // 记录最近项目（内联实现，避免跨作用域调用局部函数 recordRecentProject 报 ReferenceError）
     try {
-      if (window.LabCode && window.LabCode.config) {
-        const cfg = await window.LabCode.config.get();
+      if (window.BubaiCode && window.BubaiCode.config) {
+        const cfg = await window.BubaiCode.config.get();
         const list = Array.isArray(cfg.recentProjects) ? cfg.recentProjects : [];
         const filtered = list.filter(r => r.path !== projectPath);
         filtered.unshift({ name: String(projectPath).split(/[\\/]/).pop(), path: projectPath });
-        await window.LabCode.config.set('recentProjects', filtered.slice(0, 8));
+        await window.BubaiCode.config.set('recentProjects', filtered.slice(0, 8));
         // 打开项目后同步刷新「最近打开」列表（下次回到无项目态时可见）
         if (typeof window.__renderRecentProjects === 'function') window.__renderRecentProjects();
       }
@@ -327,7 +327,7 @@ void loop() {
 #include "esp_system.h"
 
 void app_main(void) {
-  printf("Hello from LabCode ESP-IDF project!\\n");
+  printf("Hello from BubaiCode ESP-IDF project!\\n");
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
 `,
@@ -346,7 +346,7 @@ project(esp32_project)
 """Project entry point."""
 
 def main():
-    print("Hello from LabCode Python project!")
+    print("Hello from BubaiCode Python project!")
 
 
 if __name__ == "__main__":
@@ -359,10 +359,10 @@ if __name__ == "__main__":
     folder: 'Node.js',
     files: {
       'index.js': `// Project entry point
-console.log('Hello from LabCode Node.js project!');
+console.log('Hello from BubaiCode Node.js project!');
 `,
       'package.json': `{
-  "name": "labcode-project",
+  "name": "bubaicode-project",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -379,12 +379,12 @@ console.log('Hello from LabCode Node.js project!');
       'main.c': `#include <stdio.h>
 
 int main(void) {
-    printf("Hello from LabCode C project!\\n");
+    printf("Hello from BubaiCode C project!\\n");
     return 0;
 }
 `,
       'CMakeLists.txt': `cmake_minimum_required(VERSION 3.10)
-project(labcode_c_project)
+project(bubaicode_c_project)
 add_executable(main main.c)
 `,
       'README.md': '# C/C++ Project\n'
@@ -394,14 +394,14 @@ add_executable(main main.c)
     folder: 'Rust',
     files: {
       'Cargo.toml': `[package]
-name = "labcode_project"
+name = "bubaicode_project"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 `,
       'src/main.rs': `fn main() {
-    println!("Hello from LabCode Rust project!");
+    println!("Hello from BubaiCode Rust project!");
 }
 `,
       'README.md': '# Rust Project\n'
@@ -411,28 +411,28 @@ edition = "2021"
     folder: 'Plugin',
     files: {
       'package.json': `{
-  "name": "labcode-plugin",
+  "name": "bubaicode-plugin",
   "version": "1.0.0",
   "main": "index.js",
-  "labcode-plugin": {
+  "bubaicode-plugin": {
     "id": "com.example.plugin",
-    "name": "LabCode 插件",
+    "name": "BubaiCode 插件",
     "version": "1.0.0",
-    "engines": { "labcode": ">0.1.0" }
+    "engines": { "bubaicode": ">0.1.0" }
   }
 }
 `,
-      'index.js': `// LabCode 插件入口
+      'index.js': `// BubaiCode 插件入口
 module.exports = {
   id: 'com.example.plugin',
   activate(ctx) {
     // ctx 提供编辑器 / 命令 / 文件等扩展点
-    console.log('LabCode 插件已加载');
+    console.log('BubaiCode 插件已加载');
   },
   deactivate() {}
 };
 `,
-      'README.md': '# LabCode 插件\n\n本目录为 LabCode 插件脚手架，放入插件目录后可在「插件市场」加载。\n'
+      'README.md': '# BubaiCode 插件\n\n本目录为 BubaiCode 插件脚手架，放入插件目录后可在「插件市场」加载。\n'
     }
   },
   stm32f103: { folder: 'STM32', files: stm32Template('STM32F103C8T6', '8000000', '72000000') },
@@ -481,7 +481,7 @@ version = 1
 // STM32Cube 工程脚手架（HAL 风格，板级参数化）
 function stm32Template(chip, hse, sysclk) {
   return {
-    'Core/Src/main.c': `/* ${chip} — LabCode STM32Cube 工程脚手架 */
+    'Core/Src/main.c': `/* ${chip} — BubaiCode STM32Cube 工程脚手架 */
 #include "main.h"
 
 void SystemClock_Config(void);
@@ -568,73 +568,73 @@ const PROJECT_PREVIEW_DATA = {
     icon: '⚙️', subtitle: 'Arduino CLI 工具链',
     title: 'Arduino 项目',
     desc: '使用 Arduino CLI 工具链，支持 ESP32、Arduino Uno、Nano 等开发板的编译与烧录。集成串口监视器和绘图仪。',
-    files: (name) => [(name || 'MySketch') + '.ino', '.labcode.json', 'README.md']
+    files: (name) => [(name || 'MySketch') + '.ino', '.bubaicode.json', 'README.md']
   },
   python: {
     icon: '🐍', subtitle: 'Python 解释器',
     title: 'Python 项目',
     desc: 'Python 脚本与应用开发，支持直接运行和调试。可用于数据分析、爬虫、自动化脚本等场景。',
-    files: () => ['main.py', 'requirements.txt', '.labcode.json']
+    files: () => ['main.py', 'requirements.txt', '.bubaicode.json']
   },
   node: {
     icon: '🟢', subtitle: 'Node.js 运行时',
     title: 'Node.js 项目',
     desc: 'JavaScript / TypeScript 服务端与前端开发，支持 npm 包管理和直接运行。',
-    files: () => ['index.js', 'package.json', '.labcode.json']
+    files: () => ['index.js', 'package.json', '.bubaicode.json']
   },
   'esp-idf': {
     icon: '🔧', subtitle: 'ESP-IDF 工具链',
     title: 'ESP-IDF 项目',
     desc: 'ESP-IDF 官方开发框架，支持 ESP32 系列芯片的原生开发，功能更强大但配置较复杂。',
-    files: () => ['main/main.c', 'CMakeLists.txt', '.labcode.json']
+    files: () => ['main/main.c', 'CMakeLists.txt', '.bubaicode.json']
   },
   c: {
     icon: '©️', subtitle: 'CMake 工具链',
     title: 'C/C++ 项目',
     desc: 'C/C++ 原生开发，使用 CMake 构建系统，支持 gcc/g++ 编译运行。',
-    files: () => ['main.c', 'CMakeLists.txt', '.labcode.json']
+    files: () => ['main.c', 'CMakeLists.txt', '.bubaicode.json']
   },
   rust: {
     icon: '🦀', subtitle: 'Cargo 工具链',
     title: 'Rust 项目',
     desc: 'Rust 语言开发，标准 Cargo 工程结构（Cargo.toml + src/main.rs），可用 cargo build / cargo run 构建运行。',
-    files: () => ['Cargo.toml', 'src/main.rs', '.labcode.json']
+    files: () => ['Cargo.toml', 'src/main.rs', '.bubaicode.json']
   },
   plugin: {
-    icon: '🧩', subtitle: 'LabCode 插件开发',
+    icon: '🧩', subtitle: 'BubaiCode 插件开发',
     title: '插件项目',
-    desc: 'LabCode 插件脚手架，包含 package.json 插件清单与 index.js 入口，放入插件目录即可在「插件市场」加载。',
-    files: () => ['package.json', 'index.js', '.labcode.json', 'README.md']
+    desc: 'BubaiCode 插件脚手架，包含 package.json 插件清单与 index.js 入口，放入插件目录即可在「插件市场」加载。',
+    files: () => ['package.json', 'index.js', '.bubaicode.json', 'README.md']
   },
   stm32f103: {
     icon: '🔩', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F103C8T6',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
-    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.labcode.json']
+    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   stm32f401: {
     icon: '🔩', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F401CC',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
-    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.labcode.json']
+    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   stm32f411: {
     icon: '🔩', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F411CE',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
-    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.labcode.json']
+    files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   wokwi: {
     icon: '🖥️', subtitle: 'Wokwi 在线模拟器',
     title: 'Wokwi 模拟项目',
     desc: '生成 diagram.json + sketch.ino，可在 Wokwi 在线模拟器中仿真 ESP32/Arduino 电路与代码，无需本地工具链。',
-    files: (name) => [(name || 'sketch') + '.ino', 'diagram.json', 'wokwi.toml', '.labcode.json']
+    files: (name) => [(name || 'sketch') + '.ino', 'diagram.json', 'wokwi.toml', '.bubaicode.json']
   },
   generic: {
     icon: '📁', subtitle: '空白工程',
     title: '通用项目',
     desc: '空白文件夹，可自由创建任意类型的文件和项目结构。',
-    files: () => ['.labcode.json']
+    files: () => ['.bubaicode.json']
   }
 };
 
@@ -672,18 +672,18 @@ async function createProject(type, name, location) {
     const base = (state.projectPath || location || defaultDir).replace(/[\\/]+$/, '');
     const root = base + '\\' + safeName;
     try {
-      // 先创建 .labcode.json 项目标记
+      // 先创建 .bubaicode.json 项目标记
       const meta = {
         name: safeName, type, version: 1,
         toolchain: type === 'arduino' ? 'arduino-cli-toolchain'
           : type === 'esp-idf' ? 'esp-idf-toolchain'
           : type === 'stm32f103' || type === 'stm32f401' || type === 'stm32f411' ? 'stm32cube-toolchain'
           : type === 'wokwi' ? 'wokwi-simulator'
-          : type === 'plugin' ? 'labcode-plugin' : null,
+          : type === 'plugin' ? 'bubaicode-plugin' : null,
         createdAt: new Date().toISOString()
       };
       const entries = [
-        [root + '\\.labcode.json', JSON.stringify(meta, null, 2)]
+        [root + '\\.bubaicode.json', JSON.stringify(meta, null, 2)]
       ];
       for (const [rel, content] of Object.entries(template.files)) {
         const fileName = rel === 'SKETCH.ino' ? safeName + '.ino' : rel;
@@ -709,7 +709,7 @@ async function createProject(type, name, location) {
     // 浏览器内存模式
     state.files = {};
     state.projectPath = projectRoot;
-    state.files[projectRoot + '/.labcode.json'] = {
+    state.files[projectRoot + '/.bubaicode.json'] = {
       content: JSON.stringify({ name: safeName, type, version: 1 }, null, 2),
       language: 'json', dirty: false
     };
@@ -907,8 +907,8 @@ function ensureMonacoEditor() {
     });
     // 应用已保存的编辑器设置（字号 / 自动换行）
     try {
-      if (window.LabCode && window.LabCode.config && window.LabCode.config.get) {
-        window.LabCode.config.get().then((c) => {
+      if (window.BubaiCode && window.BubaiCode.config && window.BubaiCode.config.get) {
+        window.BubaiCode.config.get().then((c) => {
           if (c && c.editor && state.editor) {
             state.editor.updateOptions({ fontSize: c.editor.fontSize || 13, wordWrap: c.editor.wordWrap || 'off', fontFamily: (c.ui && c.ui.fontFamily) ? c.ui.fontFamily : undefined });
           if (c.ui && c.ui.fontFamily) document.body.style.fontFamily = c.ui.fontFamily;
@@ -916,7 +916,7 @@ function ensureMonacoEditor() {
         }).catch(() => {});
       }
     } catch (e) {}
-    monaco.editor.defineTheme('labcode-dark', {
+    monaco.editor.defineTheme('bubaicode-dark', {
       base: 'vs-dark', inherit: true,
       rules: [
         { token: 'comment', foreground: '565f89', fontStyle: 'italic' },
@@ -926,8 +926,8 @@ function ensureMonacoEditor() {
       ],
       colors: { 'editor.background': '#1a1b26', 'editor.foreground': '#c0caf5', 'editorLineNumber.foreground': '#565f89', 'editor.selectionBackground': '#33467c', 'editor.lineHighlightBackground': '#1e2030', 'editorCursor.foreground': '#c0caf5' }
     });
-    // 浅色主题默认 'vs'，深色用 'labcode-dark'（1:1 对齐 TrieCode 浅色主题）
-    monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'labcode-dark');
+    // 浅色主题默认 'vs'，深色用 'bubaicode-dark'（1:1 对齐 TrieCode 浅色主题）
+    monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'bubaicode-dark');
     state.editor.onDidChangeCursorPosition((e) => { document.getElementById('cursor-position').textContent = `行 ${e.position.lineNumber}, 列 ${e.position.column}`; });
     state.editor.onDidChangeModelContent(() => {
       if (state.activeTab && state.files[state.activeTab]) {
@@ -1078,7 +1078,7 @@ function setupTerminal() {
   setTimeout(async () => {
     try {
       document.getElementById('terminal-status').textContent = '正在创建终端...';
-      const defaultCwd = (window.LabCode && window.LabCode.getCwd) ? await window.LabCode.getCwd() : '';
+      const defaultCwd = (window.BubaiCode && window.BubaiCode.getCwd) ? await window.BubaiCode.getCwd() : '';
       const result = await terminalManager.createTerminal({
         cwd: state.projectPath || defaultCwd || 'C:\\'
       });
@@ -1140,7 +1140,7 @@ function addOutputLog(message, type='info') {
 }
 
 // ================================================================
-// ============ 智能体引擎（核心，基于 LabCode 逆向）============
+// ============ 智能体引擎（核心，基于 BubaiCode 逆向）============
 // ================================================================
 
 // ---------- 1. 工具注册表（ToolRegistry）----------
@@ -1201,15 +1201,15 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { file_path: { type:'string' }, content: { type:'string' } }, required: ['file_path','content'] },
     execute: async (args) => {
       try {
-        // 2026-10-27 修复：禁止把文件写入 labcode_build* 编译暂存目录
+        // 2026-10-27 修复：禁止把文件写入 bubaicode_build* 编译暂存目录
         // （既污染工作区、又易被防覆盖逻辑 isShardCodeBlock 误拦截）。
-        // 兼容两种命名：旧的 labcode_build_<ts> 与新的单一稳定暂存目录 labcode_build；
+        // 兼容两种命名：旧的 bubaicode_build_<ts> 与新的单一稳定暂存目录 bubaicode_build；
         // 命中后把路径重定向到工作区根，并套用主文件/合理文件名。
         const _segs = String(args.file_path || '').split(/[\\/]/);
         const _base = _segs[_segs.length - 1] || '';
-        const _isStage = s => s.toLowerCase() === 'labcode_build' || /^labcode_build[_.-]/.test(s.toLowerCase());
-        if (_segs.slice(0, -1).some(_isStage) || /^labcode_build/i.test(_base)) {
-          if (/^labcode_build/i.test(_base)) {
+        const _isStage = s => s.toLowerCase() === 'bubaicode_build' || /^bubaicode_build[_.-]/.test(s.toLowerCase());
+        if (_segs.slice(0, -1).some(_isStage) || /^bubaicode_build/i.test(_base)) {
+          if (/^bubaicode_build/i.test(_base)) {
             const _ino = state.files ? Object.keys(state.files).find(f => /\.ino$/i.test(f)) : null;
             if (state.projectType === 'arduino' && _ino) args.file_path = _ino;
             else {
@@ -1233,8 +1233,8 @@ const TOOL_DEFS = [
           // 无项目时自动创建默认项目目录，保证 AI 写的文件能持久化
           if (!state.projectPath) {
             try {
-              const home = await window.LabCode.app.getPath('home');
-              state.projectPath = home.replace(/\\/g, '/') + '/LabCodeProjects/untitled';
+              const home = await window.BubaiCode.app.getPath('home');
+              state.projectPath = home.replace(/\\/g, '/') + '/BubaiCodeProjects/untitled';
               updateProjectStatusText(state.projectPath);
               addOutputLog(`已自动创建默认项目目录: ${state.projectPath}`, 'info');
             } catch (e) {
@@ -1267,8 +1267,8 @@ const TOOL_DEFS = [
       if (isElectron) {
         try {
           if (!state.projectPath) {
-            const home = await window.LabCode.app.getPath('home');
-            state.projectPath = home.replace(/\\/g, '/') + '/LabCodeProjects/untitled';
+            const home = await window.BubaiCode.app.getPath('home');
+            state.projectPath = home.replace(/\\/g, '/') + '/BubaiCodeProjects/untitled';
             updateProjectStatusText(state.projectPath);
             addOutputLog(`已自动创建默认项目目录: ${state.projectPath}`, 'info');
           }
@@ -1294,7 +1294,7 @@ const TOOL_DEFS = [
         try {
           if (state.projectPath) {
             const fullPath = diskJoin(state.projectPath, args.file_path);
-            if (await FileSystem.exists(fullPath)) await window.LabCode.fs.deleteFile(fullPath);
+            if (await FileSystem.exists(fullPath)) await window.BubaiCode.fs.deleteFile(fullPath);
           }
         } catch (e) { console.error('delete_file 删盘失败:', e); }
       }
@@ -1324,7 +1324,7 @@ const TOOL_DEFS = [
       const cmd = (args.command || '').trim();
       if (!cmd) return '错误：命令为空';
       if (state.terminal) { state.terminal.writeln('$ ' + cmd); }
-      if (!isElectron || !window.LabCode || !window.LabCode.terminal) {
+      if (!isElectron || !window.BubaiCode || !window.BubaiCode.terminal) {
         // 不再谎报"执行完成，退出码 0"——命令根本没跑
         return `Error: 当前环境无法执行命令（非 Electron 或未连接终端），命令未执行: ${cmd}`;
       }
@@ -1332,7 +1332,7 @@ const TOOL_DEFS = [
       // deny：危险命令硬拦截，不可绕过；confirm：高风险命令弹确认窗，用户同意后 force 放行
       try {
         const cwd = state.projectPath || undefined;
-        let result = await window.LabCode.terminal.execute(cmd, cwd, 30000);
+        let result = await window.BubaiCode.terminal.execute(cmd, cwd, 30000);
         if (result && result.blocked === 'deny') {
           const msg = result.error || '危险命令已被拦截';
           if (state.terminal) state.terminal.writeln(msg);
@@ -1340,14 +1340,14 @@ const TOOL_DEFS = [
         }
         if (result && result.blocked === 'confirm') {
           if (!isAgentAutoRun()) {
-            const ok = window.confirm(`LabCode 安全护栏\n\n命令将被判定为高风险：${result.guardReason || '需确认'}\n\n$ ${cmd}\n\n是否允许执行？`);
+            const ok = window.confirm(`BubaiCode 安全护栏\n\n命令将被判定为高风险：${result.guardReason || '需确认'}\n\n$ ${cmd}\n\n是否允许执行？`);
             if (!ok) {
               const msg = `已取消：${result.error || '高风险命令未执行'}`;
               if (state.terminal) state.terminal.writeln(msg);
               return `${msg}\n(退出码 1)`;
             }
           }
-          result = await window.LabCode.terminal.execute(cmd, cwd, 30000, { force: true });
+          result = await window.BubaiCode.terminal.execute(cmd, cwd, 30000, { force: true });
         }
         const stdout = result.stdout || '';
         const stderr = result.stderr || '';
@@ -1370,17 +1370,17 @@ const TOOL_DEFS = [
     execute: async (args) => {
       const cwd = state.projectPath;
       if (!cwd) return '错误：未打开项目目录，无法运行测试';
-      if (!isElectron || !window.LabCode || !window.LabCode.terminal) return '(非 Electron 环境，测试执行不可用)';
+      if (!isElectron || !window.BubaiCode || !window.BubaiCode.terminal) return '(非 Electron 环境，测试执行不可用)';
       // ===== 修复：preload 暴露的是 fs.listDir（返回 {success, files:[{name,path}]}）而非 readDir =====
       // 此前 readDir 不存在导致检测抛错回退 pytest，Arduino 项目永远跑 pytest 而从不 arduino-cli 编译。
       const safeList = async (dir) => {
         try {
-          if (window.LabCode.fs.listDir) {
-            const r = await window.LabCode.fs.listDir(dir);
+          if (window.BubaiCode.fs.listDir) {
+            const r = await window.BubaiCode.fs.listDir(dir);
             if (r && r.success && Array.isArray(r.files)) return r.files.map(f => f.name);
             return [];
           }
-          if (window.LabCode.fs.readDir) return await window.LabCode.fs.readDir(dir);
+          if (window.BubaiCode.fs.readDir) return await window.BubaiCode.fs.readDir(dir);
           return [];
         } catch (e) { return []; }
       };
@@ -1424,15 +1424,15 @@ const TOOL_DEFS = [
           // 自研本体 P0-1：优先用主进程探测到的 arduino-cli 完整路径（避免 PATH 缺失）
           let cliCmd = 'arduino-cli';
           try {
-            if (window.LabCode && window.LabCode.toolchain && window.LabCode.toolchain.getArduinoCliPath) {
-              const tc = await window.LabCode.toolchain.getArduinoCliPath();
+            if (window.BubaiCode && window.BubaiCode.toolchain && window.BubaiCode.toolchain.getArduinoCliPath) {
+              const tc = await window.BubaiCode.toolchain.getArduinoCliPath();
               if (tc && tc.path && tc.exists) cliCmd = '"' + tc.path + '"';
             }
           } catch (e) {}
           // FQBN 自动识别：默认 ESP32，项目含 esp32-c3/esp32c3 标识时用 esp32c3（对齐实际开发板）
           let fqbn = 'esp32:esp32:esp32';
           try {
-            const inoRes = inoFile ? await window.LabCode.fs.readFile(cwd + '\\' + inoFile) : null;
+            const inoRes = inoFile ? await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile) : null;
             const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
             const lowerIno = String(inoContent || '').toLowerCase();
             const lowerCwd = cwd.toLowerCase();
@@ -1446,14 +1446,14 @@ const TOOL_DEFS = [
           let compileSketchArg = cwd;
           if (inoFile) {
             try {
-              // 2026-10-27 修复：单一稳定暂存目录 labcode_build，避免每次编译生成带时间戳的污染目录
-              const tmpDirName = 'labcode_build';
+              // 2026-10-27 修复：单一稳定暂存目录 bubaicode_build，避免每次编译生成带时间戳的污染目录
+              const tmpDirName = 'bubaicode_build';
               tmpSketchDir = cwd + '\\' + tmpDirName;
               tmpInoName = tmpDirName + '.ino';
-              const _bExists = await window.LabCode.fs.exists(tmpSketchDir).catch(() => false);
-              if (!_bExists) { try { await window.LabCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
-              const copyRes = await window.LabCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
-              const existsCheck = await window.LabCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
+              const _bExists = await window.BubaiCode.fs.exists(tmpSketchDir).catch(() => false);
+              if (!_bExists) { try { await window.BubaiCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
+              const copyRes = await window.BubaiCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
+              const existsCheck = await window.BubaiCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
               if (copyRes && copyRes.success && existsCheck) {
                 compileSketchArg = tmpSketchDir;
                 addOutputLog(`[run_test] 已创建临时 sketch 目录编译: ${tmpSketchDir}\\${tmpInoName}`, 'info');
@@ -1483,15 +1483,15 @@ const TOOL_DEFS = [
       // 2026-09-13：ESP32 首次编译含平台/库编译，60s 常超时 → arduino 放宽到 300s
       const execTimeout = (framework === 'arduino') ? 300000 : 60000;
       try {
-        const result = await window.LabCode.terminal.execute(cmd, cwd, execTimeout);
+        const result = await window.BubaiCode.terminal.execute(cmd, cwd, execTimeout);
         const output = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
         // 2026-09-13：编译完成后清理临时 sketch 目录（fs API，避免 rmdir 被终端护栏 deny）
         if (tmpSketchDir) {
           try {
-            const tmpFiles = await window.LabCode.fs.listDir(tmpSketchDir);
+            const tmpFiles = await window.BubaiCode.fs.listDir(tmpSketchDir);
             if (tmpFiles && tmpFiles.success && Array.isArray(tmpFiles.files)) {
               for (const tf of tmpFiles.files) {
-                try { await window.LabCode.fs.deleteFile(tf.path); } catch (e1) {}
+                try { await window.BubaiCode.fs.deleteFile(tf.path); } catch (e1) {}
               }
             }
           } catch (e) { addOutputLog('[run_test] 临时目录清理失败: ' + e.message, 'warn'); }
@@ -1628,7 +1628,7 @@ const TOOL_DEFS = [
 
   // (arduino 工具的 execute 函数定义见下方 ARDUINO_TOOL_IMPLS)
   {
-    name: 'create_project', category: 'modify', description: '创建新项目（对齐 TrieCode：生成项目骨架 + .labcode.json 配置）',
+    name: 'create_project', category: 'modify', description: '创建新项目（对齐 TrieCode：生成项目骨架 + .bubaicode.json 配置）',
     parameters: { type: 'object', properties: { name: { type:'string', description:'项目名称' }, type: { type:'string', description:'项目类型：arduino/python/node/esp-idf/c/generic' } }, required: ['name','type'] },
     execute: async (args) => {
       const name = (args.name || '').trim();
@@ -1637,7 +1637,7 @@ const TOOL_DEFS = [
       if (!PROJECT_PREVIEW_DATA[type] && !PROJECT_TEMPLATES[type]) return 'Error: 不支持的 project type: ' + type;
       const root = await createProject(type, name, null);
       if (!root) return 'Error: 项目创建失败';
-      return '项目已创建: ' + root + '（类型 ' + type + '，已生成 .labcode.json 配置与骨架文件）';
+      return '项目已创建: ' + root + '（类型 ' + type + '，已生成 .bubaicode.json 配置与骨架文件）';
     }
   },
   {
@@ -1655,8 +1655,8 @@ const TOOL_DEFS = [
         const fullPath = diskJoin(state.projectPath, filePath);
         try {
           const parent = fullPath.split('\\').slice(0, -1).join('\\');
-          if (parent && window.LabCode && window.LabCode.fs && window.LabCode.fs.mkdir) {
-            try { await window.LabCode.fs.mkdir(parent); } catch (e1) {}
+          if (parent && window.BubaiCode && window.BubaiCode.fs && window.BubaiCode.fs.mkdir) {
+            try { await window.BubaiCode.fs.mkdir(parent); } catch (e1) {}
           }
           await FileSystem.writeFile(fullPath, content);
         } catch (e) { console.error('add_file 落盘失败:', e); }
@@ -1801,18 +1801,18 @@ const TOOL_DEFS = [
     }
   },
   {
-    name: 'list_plugins', category: 'query', description: '查看 LabCode 插件/能力清单（已安装与可安装）。当任务缺少编译工具链、AI 模型、依赖或功能插件时，先调用它确认可用能力，再决定是否请求安装',
+    name: 'list_plugins', category: 'query', description: '查看 BubaiCode 插件/能力清单（已安装与可安装）。当任务缺少编译工具链、AI 模型、依赖或功能插件时，先调用它确认可用能力，再决定是否请求安装',
     parameters: { type: 'object', properties: {} },
     execute: async () => {
       const api = window.__labPluginAPI;
       if (!api) return '插件系统未就绪（界面尚未初始化）';
       const list = api.list();
       if (!list || list.length === 0) return '（暂无可用插件）';
-      return 'LabCode 插件清单（✅=已安装 ⬜=未安装）：\n' + list.map(p => `${p.installed ? '✅' : '⬜'} ${p.id}「${p.name}」（${p.category}${p.sizeHint ? '，' + p.sizeHint : ''}）\n   ${p.description}`).join('\n');
+      return 'BubaiCode 插件清单（✅=已安装 ⬜=未安装）：\n' + list.map(p => `${p.installed ? '✅' : '⬜'} ${p.id}「${p.name}」（${p.category}${p.sizeHint ? '，' + p.sizeHint : ''}）\n   ${p.description}`).join('\n');
     }
   },
   {
-    name: 'install_plugin', category: 'execute', description: '安装 LabCode 插件/模型（AI 模型、编译工具链等）。安装前必须先调用 ask_user 询问用户是否同意（说明插件名、用途、大小）；用户同意后调用本工具执行安装。模型下载需数分钟',
+    name: 'install_plugin', category: 'execute', description: '安装 BubaiCode 插件/模型（AI 模型、编译工具链等）。安装前必须先调用 ask_user 询问用户是否同意（说明插件名、用途、大小）；用户同意后调用本工具执行安装。模型下载需数分钟',
     parameters: { type: 'object', properties: { pluginId: { type: 'string', description: '插件 id（先用 list_plugins 查看）' } }, required: ['pluginId'] },
     execute: async (args) => {
       const api = window.__labPluginAPI;
@@ -1917,7 +1917,7 @@ const TOOL_DEFS = [
   // ===== 2026-09-15 对齐 TrieCode plugin-dev-toolchain：create/validate/install =====
   {
     name: 'plugin_dev_create', category: 'create',
-    description: '创建 LabCode 插件骨架：生成 plugin.json（最小 manifest + 示例 cli 工具）+ README.md。参数 dir（工作区内目录）、id（kebab-case 唯一）、name、description、developer、icon。生成后用 write_file 完善 manifest，再调 plugin_dev_validate 校验、plugin_dev_install 安装。',
+    description: '创建 BubaiCode 插件骨架：生成 plugin.json（最小 manifest + 示例 cli 工具）+ README.md。参数 dir（工作区内目录）、id（kebab-case 唯一）、name、description、developer、icon。生成后用 write_file 完善 manifest，再调 plugin_dev_validate 校验、plugin_dev_install 安装。',
     parameters: { type: 'object', properties: {
       dir: { type: 'string', description: '插件目录（工作区内路径，建议用插件 id，如 my-toolchain）' },
       id: { type: 'string', description: '插件 id，kebab-case（如 my-toolchain）' },
@@ -1938,14 +1938,14 @@ const TOOL_DEFS = [
         tools: []
       };
       state.files[dir + '/plugin.json'] = { content: JSON.stringify(manifest, null, 2), language: 'json', dirty: true };
-      state.files[dir + '/README.md'] = { content: `# ${args.name || id}\n\nLabCode 插件。编辑 plugin.json 声明工具/命令/视图。\n`, language: 'markdown', dirty: true };
+      state.files[dir + '/README.md'] = { content: `# ${args.name || id}\n\nBubaiCode 插件。编辑 plugin.json 声明工具/命令/视图。\n`, language: 'markdown', dirty: true };
       buildFileTree(); renderFileTree();
       try {
         if (isElectron && state.projectPath) {
           const base = diskJoin(state.projectPath, dir);
-          await window.LabCode.fs.mkdir(base).catch(() => {});
+          await window.BubaiCode.fs.mkdir(base).catch(() => {});
           await FileSystem.writeFile(base + '\\plugin.json', JSON.stringify(manifest, null, 2));
-          await FileSystem.writeFile(base + '\\README.md', `# ${args.name || id}\n\nLabCode 插件。\n`);
+          await FileSystem.writeFile(base + '\\README.md', `# ${args.name || id}\n\nBubaiCode 插件。\n`);
         }
       } catch (e) { return '骨架已生成（内存），落盘失败: ' + e.message; }
       return `插件骨架已生成: ${dir}/plugin.json + README.md。用 write_file 完善 tools，然后调 plugin_dev_validate。`;
@@ -2000,12 +2000,12 @@ const TOOL_DEFS = [
     name: 'mcp_list', category: 'query', description: '列出已配置的 MCP 服务器及其工具（设置→模型供应商→MCP 服务器里可增删/测试连接）',
     execute: async () => {
       try {
-        const servers = await window.LabCode.mcp.listServers();
+        const servers = await window.BubaiCode.mcp.listServers();
         if (!Array.isArray(servers)) return 'Error: MCP 服务不可用';
         const out = [];
         for (const s of servers) {
           let tools = null;
-          try { const t = await window.LabCode.mcp.listTools(s.name); if (t && t.ok) tools = (t.tools || []).map(x => x.name); } catch (e) {}
+          try { const t = await window.BubaiCode.mcp.listTools(s.name); if (t && t.ok) tools = (t.tools || []).map(x => x.name); } catch (e) {}
           out.push({ name: s.name, type: s.type, endpoint: s.command || s.url || '', status: s.status, tools });
         }
         return JSON.stringify(out, null, 2);
@@ -2018,7 +2018,7 @@ const TOOL_DEFS = [
       try {
         const a = args || {};
         if (!a.server || !a.tool) return 'Error: 需要 server 与 tool（用 mcp_list 查询）';
-        const r = await window.LabCode.mcp.callTool(a.server, a.tool, a.arguments || {});
+        const r = await window.BubaiCode.mcp.callTool(a.server, a.tool, a.arguments || {});
         if (!r || !r.ok) return 'Error: ' + ((r && r.error) || '');
         return r.text || '(空结果)';
       } catch (e) { return 'Error: ' + e.message; }
@@ -2039,7 +2039,7 @@ const TOOL_DEFS = [
       if (memFile && memFile.content) return memFile.content;
       try {
         const fullPath = diskJoin(state.projectPath, fp);
-        const result = await window.LabCode.fs.readPdf(fullPath, args.max_pages || 20);
+        const result = await window.BubaiCode.fs.readPdf(fullPath, args.max_pages || 20);
         if (!result || result.success === false) return 'Error: 读取 PDF 失败: ' + ((result && result.error) || '文件不存在');
         const text = result.text || '';
         const truncated = result.truncated ? '\n\n... [PDF 共 ' + (result.totalPages || '?') + ' 页，已截断] ...' : '';
@@ -2061,20 +2061,20 @@ const TOOL_DEFS = [
       if (!/\.(png|jpe?g|gif|webp|bmp)$/i.test(fp)) return 'Error: 不支持的图片格式';
       try {
         const fullPath = diskJoin(state.projectPath, fp);
-        const result = await window.LabCode.fs.analyzeImage(fullPath, args.prompt || '请描述这张图片的内容');
+        const result = await window.BubaiCode.fs.analyzeImage(fullPath, args.prompt || '请描述这张图片的内容');
         if (!result || result.success === false) return 'Error: 图片分析失败: ' + ((result && result.error) || '当前模型不支持视觉或文件不存在');
         return result.description || '（模型未返回描述）';
       } catch (e) { return 'Error: 图片分析失败: ' + e.message; }
     }
   },
 
-  // ================= 对齐 TrieCode git_*：git 工具集（复用 window.LabCode.git） =================
+  // ================= 对齐 TrieCode git_*：git 工具集（复用 window.BubaiCode.git） =================
   {
     name: 'git_status', category: 'query', description: '查看仓库状态（含冲突文件 UU/AA 等未合并状态）。参数：cwd(可选，默认当前项目)',
     parameters: { type: 'object', properties: { cwd: { type: 'string', description: '仓库根目录' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.status(cwd); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.status(cwd); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2082,7 +2082,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' }, file_path: { type: 'string' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.diff(cwd, args.file_path || ''); return (typeof r === 'string') ? r : JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.diff(cwd, args.file_path || ''); return (typeof r === 'string') ? r : JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2090,7 +2090,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' }, paths: { type: 'array', items: { type: 'string' } } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.add(cwd, args.paths || []); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.add(cwd, args.paths || []); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2099,7 +2099,7 @@ const TOOL_DEFS = [
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
       if (!args.message) return 'Error: 请提供提交信息';
-      try { const r = await window.LabCode.git.commit(cwd, args.message); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.commit(cwd, args.message); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2107,7 +2107,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' }, n: { type: 'number' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.log(cwd, args.n || 20); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.log(cwd, args.n || 20); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2115,7 +2115,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.branches(cwd); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.branches(cwd); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2123,7 +2123,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' }, branch: { type: 'string' } }, required: ['branch'] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.checkout(cwd, args.branch); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.checkout(cwd, args.branch); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2131,7 +2131,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.push(cwd); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.push(cwd); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2139,7 +2139,7 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { cwd: { type: 'string' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      try { const r = await window.LabCode.git.pull(cwd); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.git.pull(cwd); return JSON.stringify(r); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
@@ -2148,7 +2148,7 @@ const TOOL_DEFS = [
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
       try {
-        const diff = await window.LabCode.terminal.execute('git diff HEAD --stat', cwd, 30000);
+        const diff = await window.BubaiCode.terminal.execute('git diff HEAD --stat', cwd, 30000);
         const client = new RealAIClient();
         const prompt = '根据以下 git 改动统计，生成一条简洁的中文 Conventional Commits 提交信息（形如 feat: / fix: / docs: + 中文简述），只输出信息本身，不要解释、不要代码块：\n' + (diff && diff.output ? diff.output : diff);
         const res = await client.chat(prompt, []);
@@ -2158,13 +2158,13 @@ const TOOL_DEFS = [
     }
   },
 
-  // ================= 对齐 TrieCode code_symbols/lsp_*：符号/LSP 工具（复用 window.LabCode.lsp.request） =================
+  // ================= 对齐 TrieCode code_symbols/lsp_*：符号/LSP 工具（复用 window.BubaiCode.lsp.request） =================
   {
     name: 'code_symbols', category: 'query', description: '全局符号搜索（函数/类/方法/变量，与顶栏符号搜索共用同一索引）。参数：query(必填)',
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     execute: async (args) => {
       // 与顶栏「搜索代码符号」共用同一份索引（原实现走 clangd LSP 且缺 language 参数，永远返回 LSP not started）
-      const idx = window.LabCodeSymbols ? window.LabCodeSymbols.build() : [];
+      const idx = window.BubaiCodeSymbols ? window.BubaiCodeSymbols.build() : [];
       const q = String((args && args.query) || '').toLowerCase();
       const hits = (q ? idx.filter(s => s.name.toLowerCase().indexOf(q) >= 0) : idx).slice(0, 100);
       return JSON.stringify({ success: true, total: idx.length, symbols: hits }, null, 2);
@@ -2174,14 +2174,14 @@ const TOOL_DEFS = [
     name: 'lsp_document_symbols', category: 'query', description: '当前文件结构（textDocument/documentSymbol）。参数：uri(必填)',
     parameters: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
     execute: async (args) => {
-      try { const r = await window.LabCode.lsp.request({ method: 'textDocument/documentSymbol', params: { textDocument: { uri: args.uri } } }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.lsp.request({ method: 'textDocument/documentSymbol', params: { textDocument: { uri: args.uri } } }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
     }
   },
   {
     name: 'lsp_definition', category: 'query', description: '跳转到定义（textDocument/definition）。参数：uri(必填)、line、character',
     parameters: { type: 'object', properties: { uri: { type: 'string' }, line: { type: 'number' }, character: { type: 'number' } }, required: ['uri'] },
     execute: async (args) => {
-      try { const r = await window.LabCode.lsp.request({ method: 'textDocument/definition', params: { textDocument: { uri: args.uri }, position: { line: args.line || 0, character: args.character || 0 } } }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
+      try { const r = await window.BubaiCode.lsp.request({ method: 'textDocument/definition', params: { textDocument: { uri: args.uri }, position: { line: args.line || 0, character: args.character || 0 } } }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; }
     }
   },
 
@@ -2189,24 +2189,24 @@ const TOOL_DEFS = [
   {
     name: 'mcp_list_servers', category: 'query', description: '列出已配置的 MCP 服务器',
     parameters: { type: 'object', properties: {}, required: [] },
-    execute: async () => { try { const r = await window.LabCode.mcp.listServers(); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async () => { try { const r = await window.BubaiCode.mcp.listServers(); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
   {
     name: 'mcp_test_server', category: 'query', description: '测试某 MCP 服务器连通性。参数：name(必填)',
     parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-    execute: async (args) => { try { const r = await window.LabCode.mcp.testConnection(args.name); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async (args) => { try { const r = await window.BubaiCode.mcp.testConnection(args.name); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
   {
     name: 'mcp_authorize', category: 'modify', description: '对 OAuth 类型的 MCP 服务器发起授权。参数：name(必填)',
     parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-    execute: async (args) => { try { const r = await window.LabCode.mcp.authorize(args.name); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async (args) => { try { const r = await window.BubaiCode.mcp.authorize(args.name); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
 
   // ================= 定时任务工具（依赖 main schedule:* ，见 main/index.js + preload） =================
   {
     name: 'schedule_create', category: 'modify', description: '创建定时任务（cron 或 interval）。参数：type、expr、prompt',
     parameters: { type: 'object', properties: { type: { type: 'string', enum: ['cron', 'interval'] }, expr: { type: 'string' }, prompt: { type: 'string' } }, required: ['type', 'expr', 'prompt'] },
-    execute: async (args) => { try { const r = await window.LabCode.schedule.createTask(args); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async (args) => { try { const r = await window.BubaiCode.schedule.createTask(args); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
   {
     name: 'schedule_list', category: 'query', description: '列出定时任务收件箱与运行记录',
@@ -2215,7 +2215,7 @@ const TOOL_DEFS = [
       try {
         const a = args || {};
         const action = String(a.action || 'list');
-        const S = window.LabCode.schedule;
+        const S = window.BubaiCode.schedule;
         if (action === 'get') { const r = await S.getPatch({ runId: a.runId }); return JSON.stringify(r, null, 2); }
         if (action === 'apply') { const r = await S.applyPatch({ runId: a.runId }); return JSON.stringify(r, null, 2); }
         if (action === 'discard') { const r = await S.discardPatch({ runId: a.runId }); return JSON.stringify(r, null, 2); }
@@ -2230,12 +2230,12 @@ const TOOL_DEFS = [
   {
     name: 'schedule_run_now', category: 'execute', description: '立即运行某个定时任务。参数：taskId(必填)',
     parameters: { type: 'object', properties: { taskId: { type: 'string' } }, required: ['taskId'] },
-    execute: async (args) => { try { const r = await window.LabCode.schedule.runNow({ taskId: args.taskId }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async (args) => { try { const r = await window.BubaiCode.schedule.runNow({ taskId: args.taskId }); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
   {
     name: 'schedule_status', category: 'query', description: '查看定时任务调度器状态',
     parameters: { type: 'object', properties: {}, required: [] },
-    execute: async () => { try { const r = await window.LabCode.schedule.status(); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
+    execute: async () => { try { const r = await window.BubaiCode.schedule.status(); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
 
   // ================= 对齐 TrieCode conflict:aiMerge：AI 自动解决合并冲突 =================
@@ -2246,7 +2246,7 @@ const TOOL_DEFS = [
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
       const CONFLICT_RE = /<<<<<<< .*?\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> .*?(\r?\n|$)/;
       try {
-        const status = await window.LabCode.git.status(cwd);
+        const status = await window.BubaiCode.git.status(cwd);
         const entries = Array.isArray(status) ? status : (status && status.files) || [];
         const conflicted = entries.filter(f => {
           const s = String(f.status || f.x || '');
@@ -2259,7 +2259,7 @@ const TOOL_DEFS = [
           const rel = f.path || f.file || f.name;
           if (!rel) { report.push('✗ 未知路径，跳过'); continue; }
           const full = cwd + '\\' + rel.replace(/\//g, '\\');
-          const rd = await window.LabCode.fs.readFile(full);
+          const rd = await window.BubaiCode.fs.readFile(full);
           if (!rd || !rd.success) { report.push('✗ ' + rel + ': 读取失败'); continue; }
           const content = rd.content || '';
           if (!CONFLICT_RE.test(content)) { report.push('- ' + rel + ': 无冲突标记，跳过'); continue; }
@@ -2268,8 +2268,8 @@ const TOOL_DEFS = [
           const resolved = (res && res.content) ? res.content : (res && res.result && res.result.content ? res.result.content : '');
           const cleaned = (resolved || '').replace(/^```[\s\S]*?```/g, '').trim();
           if (!cleaned || CONFLICT_RE.test(cleaned)) { report.push('✗ ' + rel + ': 模型未给出有效解决'); continue; }
-          await window.LabCode.fs.writeFile(full, cleaned);
-          await window.LabCode.git.add(cwd, [rel]);
+          await window.BubaiCode.fs.writeFile(full, cleaned);
+          await window.BubaiCode.git.add(cwd, [rel]);
           report.push('✓ ' + rel + ': 已解决并暂存');
         }
         return report.join('\n');
@@ -2329,10 +2329,10 @@ async function askUserConfirm(question, options, header) {
 // ===== 2026-09-14 对齐 TrieCode：arduino-cli 工具链辅助执行器 =====
 // 统一：主进程探测完整路径（避免 PATH 缺失）→ 真实 terminal 执行 → {ok, code, out}
 async function getArduinoCliCmd() {
-  if (!isElectron || !window.LabCode) return { ok: false, out: '错误：非 Electron 环境，arduino-cli 不可用' };
+  if (!isElectron || !window.BubaiCode) return { ok: false, out: '错误：非 Electron 环境，arduino-cli 不可用' };
   try {
-    if (window.LabCode.toolchain && window.LabCode.toolchain.getArduinoCliPath) {
-      const tc = await window.LabCode.toolchain.getArduinoCliPath();
+    if (window.BubaiCode.toolchain && window.BubaiCode.toolchain.getArduinoCliPath) {
+      const tc = await window.BubaiCode.toolchain.getArduinoCliPath();
       if (tc && tc.path && tc.exists) return { ok: true, cmd: '"' + tc.path + '"' };
     }
   } catch (e) {}
@@ -2354,7 +2354,7 @@ async function runArduinoCli(args, timeoutMs) {
   const cwd = state.projectPath || '';
   const cmd = cli.cmd + ' ' + args.map(a => /[\s"&|<>^]/.test(String(a)) ? '"' + String(a).replace(/"/g, '\\"') + '"' : String(a)).join(' ');
   try {
-    const result = await window.LabCode.terminal.execute(cmd, cwd, timeoutMs || 120000);
+    const result = await window.BubaiCode.terminal.execute(cmd, cwd, timeoutMs || 120000);
     const out = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
     const code = result.exitCode !== undefined ? result.exitCode : (result.success ? 0 : 1);
     if (state.terminal) out.split('\n').forEach(l => state.terminal.writeln(l));
@@ -2473,15 +2473,15 @@ const ARDUINO_TOOL_IMPLS = {
   async compile() {
     const cwd = state.projectPath;
     if (!cwd) return '错误：未打开项目目录，无法编译';
-    if (!isElectron || !window.LabCode) return '(非 Electron 环境，编译不可用)';
+    if (!isElectron || !window.BubaiCode) return '(非 Electron 环境，编译不可用)';
     const cli = await getArduinoCliCmd();
     if (!cli.ok) return cli.out;
     let inoFile = '';
     try {
       const safeList = async (dir) => {
         try {
-          if (window.LabCode.fs.listDir) {
-            const r = await window.LabCode.fs.listDir(dir);
+          if (window.BubaiCode.fs.listDir) {
+            const r = await window.BubaiCode.fs.listDir(dir);
             if (r && r.success && Array.isArray(r.files)) return r.files.map(f => f.name);
           }
           return [];
@@ -2501,7 +2501,7 @@ const ARDUINO_TOOL_IMPLS = {
     let fqbn = state.arduinoFqbn || '';
     if (!fqbn) {
       try {
-        const inoRes = await window.LabCode.fs.readFile(cwd + '\\' + inoFile);
+        const inoRes = await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile);
         const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
         const lower = (inoContent + '|' + cwd).toLowerCase();
         fqbn = /(esp32[-_]?c3|esp32c3)/.test(lower) ? 'esp32:esp32:esp32c3' : 'esp32:esp32:esp32';
@@ -2509,14 +2509,14 @@ const ARDUINO_TOOL_IMPLS = {
     }
     let tmpSketchDir = '', compileArg = cwd;
     try {
-      // 2026-10-27 修复：单一稳定暂存目录 labcode_build，避免每次编译生成带时间戳的污染目录
-      const tmpDirName = 'labcode_build';
+      // 2026-10-27 修复：单一稳定暂存目录 bubaicode_build，避免每次编译生成带时间戳的污染目录
+      const tmpDirName = 'bubaicode_build';
       tmpSketchDir = cwd + '\\' + tmpDirName;
       const tmpInoName = tmpDirName + '.ino';
-      const _b2Exists = await window.LabCode.fs.exists(tmpSketchDir).catch(() => false);
-      if (!_b2Exists) { try { await window.LabCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
-      await window.LabCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
-      const existsCheck = await window.LabCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
+      const _b2Exists = await window.BubaiCode.fs.exists(tmpSketchDir).catch(() => false);
+      if (!_b2Exists) { try { await window.BubaiCode.fs.mkdir(tmpSketchDir); } catch (e) {} }
+      await window.BubaiCode.fs.copyFile(cwd + '\\' + inoFile, tmpSketchDir + '\\' + tmpInoName);
+      const existsCheck = await window.BubaiCode.fs.exists(tmpSketchDir + '\\' + tmpInoName);
       if (existsCheck) compileArg = tmpSketchDir;
       else tmpSketchDir = '';
     } catch (e) { tmpSketchDir = ''; }
@@ -2524,16 +2524,16 @@ const ARDUINO_TOOL_IMPLS = {
     let output = '';
     let result;
     try {
-      result = await window.LabCode.terminal.execute(cmd, cwd, 300000);
+      result = await window.BubaiCode.terminal.execute(cmd, cwd, 300000);
       output = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
     } catch (e) {
       output = '编译执行异常: ' + e.message;
     }
     if (tmpSketchDir) {
       try {
-        const tmpFiles = await window.LabCode.fs.listDir(tmpSketchDir);
+        const tmpFiles = await window.BubaiCode.fs.listDir(tmpSketchDir);
         if (tmpFiles && tmpFiles.success && Array.isArray(tmpFiles.files)) {
-          for (const tf of tmpFiles.files) { try { await window.LabCode.fs.deleteFile(tf.path); } catch (e1) {} }
+          for (const tf of tmpFiles.files) { try { await window.BubaiCode.fs.deleteFile(tf.path); } catch (e1) {} }
         }
       } catch (e) {}
     }
@@ -2562,7 +2562,7 @@ function getToolDef(name) {
 // ============ MCP 工具桥接：把已连接的 MCP 服务器工具暴露给 AI Agent ============
 // MCP 服务器由主进程 mcpService 管理（stdio JSON-RPC）。这里将"运行中服务器"的
 // tools 转成与 TOOL_DEFS 同构的虚拟工具，命名 mcp_<server>_<tool>，execute 调
-// window.LabCode.mcp.callTool。Agent 的 getToolDef / _buildToolDefs / _buildSystemPrompt
+// window.BubaiCode.mcp.callTool。Agent 的 getToolDef / _buildToolDefs / _buildSystemPrompt
 // 都会纳入它们，从而 AI 可直接调用任意已配置 MCP 工具。
 let MCP_TOOL_DEFS = [];
 let _mcpRefreshing = false;
@@ -2571,8 +2571,8 @@ async function refreshMcpToolDefs() {
   _mcpRefreshing = true;
   try {
     MCP_TOOL_DEFS = [];
-    if (!window.LabCode || !window.LabCode.mcp) return;
-    const servers = await window.LabCode.mcp.listServers();
+    if (!window.BubaiCode || !window.BubaiCode.mcp) return;
+    const servers = await window.BubaiCode.mcp.listServers();
     const defs = [];
     const seenNames = {};
     for (const s of (servers || [])) {
@@ -2581,13 +2581,13 @@ async function refreshMcpToolDefs() {
       for (let w = 0; w < 16 && cur.status !== 'running'; w++) {
         await new Promise(r => setTimeout(r, 500));
         try {
-          const fresh = await window.LabCode.mcp.listServers();
+          const fresh = await window.BubaiCode.mcp.listServers();
           cur = fresh.find(x => x.name === s.name) || cur;
         } catch (e0) { break; }
       }
       if (cur.status !== 'running') continue;
       try {
-        const r = await window.LabCode.mcp.listTools(s.name);
+        const r = await window.BubaiCode.mcp.listTools(s.name);
         const tools = (r && r.tools) || [];
         for (const t of tools) {
           const schema = t.inputSchema || { type: 'object', properties: {} };
@@ -2602,7 +2602,7 @@ async function refreshMcpToolDefs() {
             _mcpTool: t.name,
             parameters: { type: 'object', properties: schema.properties || {}, required: schema.required || [] },
             execute: async (args) => {
-              const res = await window.LabCode.mcp.callTool(s.name, t.name, args || {});
+              const res = await window.BubaiCode.mcp.callTool(s.name, t.name, args || {});
               if (res && res.ok) {
                 // 对齐 TrieCode：MCP 工具返回视为不可信数据，包 <untrusted-mcp-tool-result> 标签，
                 // 防止插件 / MCP 服务器通过工具输出向 Agent 注入提示词
@@ -2641,7 +2641,7 @@ async function initMcpPanel() {
   if (!listEl) return;
   bindMcpPanelControls();
   try {
-    const servers = await window.LabCode.mcp.listServers();
+    const servers = await window.BubaiCode.mcp.listServers();
     listEl.innerHTML = '';
     if (!servers || servers.length === 0) {
       listEl.innerHTML = '<div style="color:var(--text-muted);font-size: 11.5px;line-height:1.6;">暂无 MCP 服务器。<br>在下方添加，例如：<br>名称 <code>filesystem</code> · 命令 <code>npx</code> · 参数 <code>-y @modelcontextprotocol/server-filesystem C:\\</code></div>';
@@ -2704,7 +2704,7 @@ function bindMcpPanelControls() {
     if ((type === 'http' || type === 'sse') && !url) { msg.textContent = type + ' 类型 URL 为必填'; msg.style.color = 'var(--danger)'; return; }
     const cfg = { name, type, command: command || undefined, args: argsRaw ? argsRaw.split(/\s+/) : [], url: url || undefined, cwd: cwd || '' };
     if (extraRaw) { try { Object.assign(cfg, JSON.parse(extraRaw)); } catch (e) { msg.textContent = '高级 JSON 解析失败: ' + e.message; msg.style.color = 'var(--danger)'; return; } }
-    const r = await window.LabCode.mcp.addServer(cfg);
+    const r = await window.BubaiCode.mcp.addServer(cfg);
     if (r && r.ok) { msg.textContent = '已添加并启动: ' + name + (r.tools != null ? '（工具 ' + r.tools + ' 个）' : ''); msg.style.color = 'var(--success)'; refreshMcpToolDefs(); initMcpPanel(); }
     else { msg.textContent = '失败: ' + ((r && r.error) || '未知'); msg.style.color = 'var(--danger)'; }
   });
@@ -2718,18 +2718,18 @@ function bindMcpPanelControls() {
     const name = btn.getAttribute('data-name');
     const box = listEl.querySelector('[data-mcp-tools="' + mcpCssEscape(name) + '"]');
     if (act === 'remove') {
-      await window.LabCode.mcp.removeServer(name); refreshMcpToolDefs(); initMcpPanel();
+      await window.BubaiCode.mcp.removeServer(name); refreshMcpToolDefs(); initMcpPanel();
     } else if (act === 'toggle') {
       const st = btn.getAttribute('data-status');
-      if (st === 'running') await window.LabCode.mcp.stopServer(name);
-      else await window.LabCode.mcp.startServer(name);
+      if (st === 'running') await window.BubaiCode.mcp.stopServer(name);
+      else await window.BubaiCode.mcp.startServer(name);
       refreshMcpToolDefs(); initMcpPanel();
     } else if (act === 'test') {
-      const r = await window.LabCode.mcp.testConnection(name);
+      const r = await window.BubaiCode.mcp.testConnection(name);
       if (box) box.textContent = (r && r.success) ? ('连接正常，工具数: ' + (r.tools || 0)) : ('连接失败: ' + ((r && r.error) || 'unknown'));
     } else if (act === 'tools') {
       try {
-        const r = await window.LabCode.mcp.listTools(name);
+        const r = await window.BubaiCode.mcp.listTools(name);
         const ts = (r && r.tools) || [];
         if (box) box.textContent = ts.length ? ('工具:\n' + ts.map(t => '• ' + t.name + (t.description ? ' — ' + t.description : '')).join('\n')) : '无工具';
       } catch (err) { if (box) box.textContent = '获取工具失败: ' + err.message; }
@@ -2763,9 +2763,9 @@ function isProtectedPath(path) {
 // 参考业界 computeNeedsConfirm: 判定工具是否需要用户确认
 // 用户授权（2026-11-02）：权限确认默认自动放行（运行/跳过/拒绝 弹卡不再出现）。
 // 硬拦截层（rm -rf /、mkfs、fork 炸弹等 DANGEROUS_PATTERNS）不受影响，仍由主进程护栏硬拒。
-// 逃生口：localStorage['labcode_agent_auto_run'] = '0' 恢复逐条确认。
+// 逃生口：localStorage['bubaicode_agent_auto_run'] = '0' 恢复逐条确认。
 function isAgentAutoRun() {
-  try { return localStorage.getItem('labcode_agent_auto_run') !== '0'; } catch (e) { return true; }
+  try { return localStorage.getItem('bubaicode_agent_auto_run') !== '0'; } catch (e) { return true; }
 }
 function computeNeedsConfirm(toolName, args, mode, denialHits=0) {
   if (isAgentAutoRun()) return false;
@@ -3506,9 +3506,9 @@ class WebTools {
     // ===== 真实联网优先：主进程 web-search.js（Bing HTML 端点，无 API Key）=====
     // 此前完全返回 mock（假搜索结果），AI 会当事实引用；现优先走真实通道，
     // 真实搜索失败则如实返回失败，绝不返回模拟结果（宁可让 AI 知道"搜不到"）。
-    if (isElectron && window.LabCode && window.LabCode.web) {
+    if (isElectron && window.BubaiCode && window.BubaiCode.web) {
       try {
-        const real = await window.LabCode.web.search(query, options);
+        const real = await window.BubaiCode.web.search(query, options);
         if (real && real.success && Array.isArray(real.results) && real.results.length) {
           this.setCache(cacheKey, real.results);
           return { success: true, results: real.results, fromCache: !!real.fromCache, source: 'live' };
@@ -3545,9 +3545,9 @@ class WebTools {
     // ===== 真实抓取优先：主进程 web-search.js =====
     // 此前 web_fetch 直接返回模拟内容（编造的 Markdown）；现优先走主进程真实抓取，
     // 失败则如实返回失败，绝不返回模拟内容。
-    if (isElectron && window.LabCode && window.LabCode.web) {
+    if (isElectron && window.BubaiCode && window.BubaiCode.web) {
       try {
-        const real = await window.LabCode.web.fetch(url, options);
+        const real = await window.BubaiCode.web.fetch(url, options);
         if (real && real.success && real.content) {
           this.setCache(cacheKey, real.content);
           return { success: true, content: real.content, fromCache: !!real.fromCache, url, source: 'live' };
@@ -3652,7 +3652,7 @@ class FileChangeTracker {
         delete state.files[path];
         closeTab(path);
         if (isElectron && diskPath && await FileSystem.exists(diskPath)) {
-          try { await window.LabCode.fs.deleteFile(diskPath); } catch (e) { console.error('回滚删除磁盘文件失败:', e); }
+          try { await window.BubaiCode.fs.deleteFile(diskPath); } catch (e) { console.error('回滚删除磁盘文件失败:', e); }
         }
         buildFileTree(); renderFileTree();
         return { success: true, path, action: 'deleted' };
@@ -3729,7 +3729,7 @@ class FileChangeTracker {
         closeTab(change.path);
         const diskPath = this._diskPath(change.path);
         if (isElectron && diskPath) {
-          try { if (await FileSystem.exists(diskPath)) await window.LabCode.fs.deleteFile(diskPath); } catch (e) {}
+          try { if (await FileSystem.exists(diskPath)) await window.BubaiCode.fs.deleteFile(diskPath); } catch (e) {}
         }
       }
       if (state.activeTab === change.path && state.editor) state.editor.setValue(state.files[change.path]?.content || '');
@@ -3817,8 +3817,8 @@ class FileChangeTracker {
   }
 }
 const fileChangeTracker = new FileChangeTracker();
-window.LabCodeUI = window.LabCodeUI || {};
-window.LabCodeUI.fileTracker = fileChangeTracker;
+window.BubaiCodeUI = window.BubaiCodeUI || {};
+window.BubaiCodeUI.fileTracker = fileChangeTracker;
 
 // 全局撤销/重做入口（UI 按钮 + agent 工具共用）
 // 双栈感知：'default'（工具调用轮）与 'stream'（流式写码轮）统一进撤销/重做，取最新
@@ -3891,10 +3891,10 @@ const COMMAND_PALETTE_COMMANDS = [
   { label: '打开插件市场', group: '面板', run: () => switchPanel('plugins', 'activity') },
   { label: '打开 MCP 服务', group: '面板', run: () => { try { if (window.openMcpModal) window.openMcpModal(); else showToast('MCP 模块未就绪', 'warn'); } catch (e) { showToast('MCP 模块未就绪', 'warn'); } } },
   { label: '打开设备面板', group: '面板', run: () => switchPanel('device', 'activity') },
-  { label: '打开看板 · 项目统计', group: '面板', run: () => { try { if (window.LabCodeUI && window.LabCodeUI.openDashboard) window.LabCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
-  { label: '检查更新', group: '帮助', run: () => { if (window.LabCode && window.LabCode.update) window.LabCode.update.check(); } },
-  { label: '打开文档', group: '帮助', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://www.labcode.com/docs'); } },
-  { label: '访问官网', group: '帮助', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://www.labcode.com'); } }
+  { label: '打开看板 · 项目统计', group: '面板', run: () => { try { if (window.BubaiCodeUI && window.BubaiCodeUI.openDashboard) window.BubaiCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
+  { label: '检查更新', group: '帮助', run: () => { if (window.BubaiCode && window.BubaiCode.update) window.BubaiCode.update.check(); } },
+  { label: '打开文档', group: '帮助', run: () => { if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal('https://www.bubaicode.com/docs'); } },
+  { label: '访问官网', group: '帮助', run: () => { if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal('https://www.bubaicode.com'); } }
 ];
 let _cmdPaletteIdx = 0;
 let _cmdPaletteFiltered = [];
@@ -4042,7 +4042,7 @@ function bindCommandPalette() {
   }
 
   // 全局唯一索引：顶栏符号搜索与 AI code_symbols 工具都读它
-  window.LabCodeSymbols = {
+  window.BubaiCodeSymbols = {
     build: function () {
       const out = [];
       const seen = Object.create(null);
@@ -4093,7 +4093,7 @@ function bindCommandPalette() {
     const input = document.getElementById('symbol-search-input');
     if (!ov || !input) { showToast('符号搜索不可用', 'warn'); return; }
     symBind();
-    _symItems = window.LabCodeSymbols.build();
+    _symItems = window.BubaiCodeSymbols.build();
     _symHits = []; _symIdx = 0;
     input.value = '';
     // 1:1 仿写 ChipCode：空输入显示空列表，不预列符号
@@ -4120,9 +4120,9 @@ function bindCommandPalette() {
     symStatus(SYM_TEXT.searching);
     _symTimer = setTimeout(async function () {
       try {
-        // 索引查询（LabCode 为 renderer 内存索引；ChipCode 为 tree-sitter IPC，见 unk_831150…）
+        // 索引查询（BubaiCode 为 renderer 内存索引；ChipCode 为 tree-sitter IPC，见 unk_831150…）
         const lower = q.toLowerCase();
-        const hits = window.LabCodeSymbols.build()
+        const hits = window.BubaiCodeSymbols.build()
           .filter(function (s) { return s.name.toLowerCase().indexOf(lower) >= 0; })
           .sort(function (a, b) { return (a.name.toLowerCase().indexOf(lower) === 0 ? 0 : 1) - (b.name.toLowerCase().indexOf(lower) === 0 ? 0 : 1); })
           .slice(0, SYM_LIMIT);
@@ -4422,7 +4422,7 @@ const MODEL_SPECS = {
   'MiniMax-M3': { contextWindow: 1000000, maxInput: 868928, maxOutput: 131072 },
   'MiniMax-M2.7': { contextWindow: 204800, maxInput: 139264, maxOutput: 65536 },
   'MiniMax-M2.5': { contextWindow: 204800, maxInput: 139264, maxOutput: 65536 },
-  // ── LabCode 本地/网关（保守值：本地模型窗口随运行时配置，按常见默认）──
+  // ── BubaiCode 本地/网关（保守值：本地模型窗口随运行时配置，按常见默认）──
   'qwen3-8b': { contextWindow: 131072, maxOutput: 32768 },
   'qwen2.5-coder:7b': { contextWindow: 32768, maxOutput: 8192 },
   'qwen2.5:7b': { contextWindow: 32768, maxOutput: 8192 },
@@ -4494,7 +4494,7 @@ async function resolveCurrentModelId() {
   if (direct) return direct;
   if (Date.now() - _ctxModelCache.at > 5000) {
     try {
-      const c = await window.LabCode.config.get();
+      const c = await window.BubaiCode.config.get();
       _ctxModelCache = { id: (c && c.ai && c.ai.model) || '', at: Date.now() };
     } catch (e) { /* 配置读取失败按未知模型兜底 */ }
   }
@@ -4636,7 +4636,7 @@ class SkillManager {
 
   async _loadUserSkills() {
     try {
-      const cfg = await window.LabCode?.config?.get?.() || {};
+      const cfg = await window.BubaiCode?.config?.get?.() || {};
       this.userSkills = cfg.skills?.user || [];
       this.toggled = cfg.skills?.toggled || {};
     } catch (e) {}
@@ -4644,8 +4644,8 @@ class SkillManager {
 
   async _persist() {
     try {
-      await window.LabCode?.config?.set?.('skills.user', this.userSkills);
-      await window.LabCode?.config?.set?.('skills.toggled', this.toggled);
+      await window.BubaiCode?.config?.set?.('skills.user', this.userSkills);
+      await window.BubaiCode?.config?.set?.('skills.toggled', this.toggled);
     } catch (e) {}
   }
 
@@ -4841,8 +4841,8 @@ class RealAIClient {
   async _loadConfig() {
     this.customSystemPrompt = '';
     try {
-      if (window.LabCode && window.LabCode.config) {
-        this.config = await window.LabCode.config.get();
+      if (window.BubaiCode && window.BubaiCode.config) {
+        this.config = await window.BubaiCode.config.get();
       }
       // 记录当前引擎标签，供底栏状态条显示真实模型（原来硬编码「本地模型 · 免费」，云端模式会误导）
       try { window.__labAiLabel = describeAiModel(this.config && this.config.ai); } catch (e) {}
@@ -4949,7 +4949,7 @@ class RealAIClient {
       }
     }
 
-    const identity = this.customSystemPrompt || '你是 LabCode（代码实验室）的 AI 编程助手。你可以使用工具来读写文件、执行命令、联网搜索等。';
+    const identity = this.customSystemPrompt || '你是 BubaiCode（代码实验室）的 AI 编程助手。你可以使用工具来读写文件、执行命令、联网搜索等。';
     // Phase D · PRODUCT STATE 动态块（对齐 ChipCode main:1562）：产品项目时把五阶段焦点与磁盘状态注入
     let productStageSection = '';
     try {
@@ -5042,7 +5042,7 @@ void loop() {
 - **使用方法**：接线说明（引脚对应关系）、需要修改的配置（如 WiFi 账号密码）、如何编译上传、如何使用
 - **验证结果**：编译是否成功（exit code）、依赖库、目标平台
 这是最终交付形态，让用户拿到项目即可上手。不要在收尾时继续抛出新问题或新任务分支。
-13. **自主迭代与问题自愈（像豆包一样主动解决）**：遇到编译/运行/配置错误时不要停在报错上，先自行分析根因并尝试修复（修改代码→重跑验证，可多轮迭代直到通过）。确认缺少依赖或工具链时：① 先调用 list_plugins 查看已安装/可安装的插件能力；② 如果缺的是 LabCode 插件能解决的（AI 模型、编译工具链、串口等），先用 ask_user 询问用户「是否允许安装 X（说明用途、大小、耗时）」，用户同意后调用 install_plugin 安装，装完继续执行任务；③ 如果缺的是系统级软件（python、gcc、库等）且插件市场没有，评估是否可用 terminal 安装（需先向用户说明并确认）；④ 用户拒绝时说明影响并给出替代方案。不要假装问题已解决，也不要跳过验证直接宣称完成——每轮修复后必须重新编译/运行验证，拿到真实结果再收尾。
+13. **自主迭代与问题自愈（像豆包一样主动解决）**：遇到编译/运行/配置错误时不要停在报错上，先自行分析根因并尝试修复（修改代码→重跑验证，可多轮迭代直到通过）。确认缺少依赖或工具链时：① 先调用 list_plugins 查看已安装/可安装的插件能力；② 如果缺的是 BubaiCode 插件能解决的（AI 模型、编译工具链、串口等），先用 ask_user 询问用户「是否允许安装 X（说明用途、大小、耗时）」，用户同意后调用 install_plugin 安装，装完继续执行任务；③ 如果缺的是系统级软件（python、gcc、库等）且插件市场没有，评估是否可用 terminal 安装（需先向用户说明并确认）；④ 用户拒绝时说明影响并给出替代方案。不要假装问题已解决，也不要跳过验证直接宣称完成——每轮修复后必须重新编译/运行验证，拿到真实结果再收尾。
 
 ## 回复风格（对齐 TrieCode，必须遵守）
 1. **用简体中文回复**；若用户用其他语言，则跟随用户语言。代码、标识符、专有技术名词保持原文。
@@ -5361,7 +5361,7 @@ void loop() {
       const messages = (Array.isArray(history) && history.length)
         ? history.concat([{ role: 'user', content: prompt }])
         : [{ role: 'user', content: prompt }];
-      const r = await window.LabCode.ai.chat({ messages, maxTokens: 1024, temperature: 0.3 });
+      const r = await window.BubaiCode.ai.chat({ messages, maxTokens: 1024, temperature: 0.3 });
       if (r && r.success) return { content: r.content || '', toolCalls: [], streamed: false, thinking: null };
       return this._degradedReply((r && r.error) || 'AI 调用失败');
     } catch (e) {
@@ -5373,7 +5373,7 @@ void loop() {
     // 没有 Electron 环境或 AI 通道 → 如实说明。
     // 历史行为会回退到 MockAIClient，返回编造的回复和**伪造的工具调用**（write_file/terminal/...），
     // 这些假调用会被真实执行。改为明确降级，绝不再伪造。
-    if (!window.LabCode || !window.LabCode.ai || !window.LabCode.ai.chat) {
+    if (!window.BubaiCode || !window.BubaiCode.ai || !window.BubaiCode.ai.chat) {
       return this._degradedReply('⚠️ 当前环境未连接 AI 能力（非 Electron 环境或 AI 通道未就绪），无法生成回复。');
     }
 
@@ -5382,16 +5382,16 @@ void loop() {
     const aiCfg = this.config?.ai || {};
 
     // ===== 本地引擎自动启动：provider=local 时确保 llama 引擎已运行（无需 Ollama）=====
-    if (aiCfg.provider === 'local' && window.LabCode.system) {
+    if (aiCfg.provider === 'local' && window.BubaiCode.system) {
       try {
-        const rt = await window.LabCode.system.checkLLMRuntime();
+        const rt = await window.BubaiCode.system.checkLLMRuntime();
         if (!rt.engine) {
           // 引擎都没装：新手最易踩的坑——直接告诉ta怎么走、并推荐更省事的云端
           return this._degradedReply(
             '⚠️ 本地 AI 引擎还没安装\n\n' +
             '本地 AI 引擎（内置 llama.cpp）需要单独安装，装完还要下载一个"模型文件"才能用。\n\n' +
-            '想马上用 AI，推荐先用云端：设置 → AI 模型来源 → 登录 LabCode 账号（免费，用的是硅基流动 Qwen3-8B，不用下载、不耗积分）。\n' +
-            '想用本地引擎（不联网、不花钱），去「插件市场」先装「LabCode AI 引擎」，再装一个模型（推荐 Qwen2.5-Coder 7B，写代码专用，约 4.4GB）。'
+            '想马上用 AI，推荐先用云端：设置 → AI 模型来源 → 登录 BubaiCode 账号（免费，用的是硅基流动 Qwen3-8B，不用下载、不耗积分）。\n' +
+            '想用本地引擎（不联网、不花钱），去「插件市场」先装「BubaiCode AI 引擎」，再装一个模型（推荐 Qwen2.5-Coder 7B，写代码专用，约 4.4GB）。'
           );
         }
         if (rt.engine && (!rt.models || rt.models.length === 0)) {
@@ -5407,7 +5407,7 @@ void loop() {
         }
         if (rt.engine && !rt.engineRunning) {
           if (this.onEngineStarting) this.onEngineStarting();
-          const startRes = await window.LabCode.system.startLLMEngine({ modelFile: aiCfg.model });
+          const startRes = await window.BubaiCode.system.startLLMEngine({ modelFile: aiCfg.model });
           if (!startRes || !startRes.success) {
             return this._degradedReply(
               `⚠️ 本地模型启动失败：${(startRes && startRes.error) || '未知错误'}\n\n` +
@@ -5432,7 +5432,7 @@ void loop() {
       return this._degradedReply(
         '⚠️ 尚未连接 AI 模型\n\n' +
         '请任选一种方式配置后再提问：\n' +
-        '1. 设置 → AI 模型来源 → 登录 LabCode 账号（使用内置云端模型）\n' +
+        '1. 设置 → AI 模型来源 → 登录 BubaiCode 账号（使用内置云端模型）\n' +
         '2. 填入自有 API Key（DeepSeek / 通义千问 / 智谱 / 豆包 等）\n' +
         '3. 切换到本地模型（Ollama 或内置本地引擎）'
       );
@@ -5440,7 +5440,7 @@ void loop() {
 
     try {
       // ===== 优先：SSE 流式 + 真 function calling（执行过程实时上屏）=====
-      if (window.LabCode.ai.chatStream && window.LabCode.ai.onStream) {
+      if (window.BubaiCode.ai.chatStream && window.BubaiCode.ai.onStream) {
         const nativeMessages = this._buildMessages(userInput, messages, true);
         const streamResult = await this._streamChat(nativeMessages);
         if (streamResult && streamResult.ok) {
@@ -5466,7 +5466,7 @@ void loop() {
       const chatMessages = this._buildMessages(userInput, messages, false);
       // 2026-09-14：ollama 也按本地模型，输出预算提到 16384
       const isLocalFallback = (aiCfg.provider === 'local' || aiCfg.provider === 'ollama');
-      const result = await window.LabCode.ai.chat({
+      const result = await window.BubaiCode.ai.chat({
         messages: chatMessages,
         temperature: 0.7,
         maxTokens: isLocalFallback ? 16384 : 8192
@@ -5541,7 +5541,7 @@ void loop() {
         if (Date.now() - lastEventAt > 12000) {
           if (!settled) {
             settled = true; cleanup();
-            try { window.LabCode.ai.chatCancel(runId); } catch (e) {}
+            try { window.BubaiCode.ai.chatCancel(runId); } catch (e) {}
             addOutputLog('流式响应无数据（12s 无事件），已取消旧流并回退非流式请求', 'warn');
             resolve({ ok: false, error: '流式响应无数据（12s 无事件），已取消旧流并回退非流式请求' });
           }
@@ -5652,18 +5652,18 @@ void loop() {
       const cleanup = () => {
         clearTimeout(timer);
         clearInterval(watchdog);
-        if (window.LabCode && window.LabCode.ai && window.LabCode.ai.offStream) {
-          window.LabCode.ai.offStream(listener);
+        if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.offStream) {
+          window.BubaiCode.ai.offStream(listener);
         }
       };
 
-      const listener = window.LabCode.ai.onStream(onEvent);
+      const listener = window.BubaiCode.ai.onStream(onEvent);
       // ===== 2026-09-14 修复：ollama 本地模型也按本地思考流处理 =====
       // 原逻辑只认 provider==='local'，ollama 被当云端 → maxTokens=8192，
       // qwen3.5:9b 思考占满预算后正文被截断（长代码切断）+ 修复轮空输出。
       // ollama 同样是本地模型，需要更大输出预算。
       const isLocalCfg = (this.config && this.config.ai && (this.config.ai.provider === 'local' || this.config.ai.provider === 'ollama'));
-      window.LabCode.ai.chatStream({
+      window.BubaiCode.ai.chatStream({
         runId,
         messages: chatMessages,
         temperature: 0.3,
@@ -6025,7 +6025,7 @@ ${toolListText}
       if (this.isCancelled) break;
       let result;
       try {
-        result = await window.LabCode.ai.chat({ messages, temperature: 0.3, maxTokens: 4096 });
+        result = await window.BubaiCode.ai.chat({ messages, temperature: 0.3, maxTokens: 4096 });
       } catch (e) {
         return `子智能体 LLM 调用失败: ${e.message}`;
       }
@@ -6147,9 +6147,9 @@ ${findings.filter(f => f.type === 'finding').map((f, i) => `${i + 1}. **${f.step
 // 参考业界 agent-runner.js: 统一 turn 循环
 
 // ===== 项目经验记忆（mem0 思路的轻量本地版）=====
-// 存 <项目>/.labcode/agent-memory.json：把「编译/运行错误特征 → 修复方式」沉淀下来，
+// 存 <项目>/.bubaicode/agent-memory.json：把「编译/运行错误特征 → 修复方式」沉淀下来，
 // 下次遇到相同特征错误时注入上下文，避免同一坑踩两次（治「笨」的第三招：让模型有经验）。
-const AGENT_MEMORY_FILE = '.labcode/agent-memory.json';
+const AGENT_MEMORY_FILE = '.bubaicode/agent-memory.json';
 const ERROR_SIG_RE = /(error|错误|失败|Traceback|Exception|No such file|undefined reference|fatal)/i;
 
 function errorSignature(text) {
@@ -6166,10 +6166,10 @@ async function agentMemoryLoad(projectPath) {
   try {
     if (!projectPath) return { fixes: [] };
     const p = projectPath.replace(/[\\/]+$/, '') + '/' + AGENT_MEMORY_FILE;
-    const exists = await window.LabCode.fs.exists(p);
+    const exists = await window.BubaiCode.fs.exists(p);
     if (!exists) return { fixes: [] };
     // 注意：fs:readFile 的 IPC 返回 {success, content}（不是裸字符串），两种形态都要兼容
-    const r = await window.LabCode.fs.readFile(p, 'utf8');
+    const r = await window.BubaiCode.fs.readFile(p, 'utf8');
     const raw = (r && typeof r === 'object' && typeof r.content === 'string') ? r.content
               : (typeof r === 'string' ? r : '');
     if (!raw) return { fixes: [] };
@@ -6181,15 +6181,15 @@ async function agentMemoryLoad(projectPath) {
 async function agentMemoryRecord(projectPath, entry) {
   try {
     if (!projectPath || !entry || !entry.sig) return;
-    const dir = projectPath.replace(/[\\/]+$/, '') + '/.labcode';
+    const dir = projectPath.replace(/[\\/]+$/, '') + '/.bubaicode';
     const p = dir + '/agent-memory.json';
-    if (!(await window.LabCode.fs.exists(dir))) await window.LabCode.fs.mkdir(dir);
+    if (!(await window.BubaiCode.fs.exists(dir))) await window.BubaiCode.fs.mkdir(dir);
     const data = await agentMemoryLoad(projectPath);
     // 同签名更新而非堆积
     data.fixes = data.fixes.filter(f => f.sig !== entry.sig);
     data.fixes.unshift({ sig: entry.sig, fix: entry.fix, tool: entry.tool || '', ts: Date.now() });
     data.fixes = data.fixes.slice(0, 50);
-    await window.LabCode.fs.writeFile(p, JSON.stringify(data, null, 2));
+    await window.BubaiCode.fs.writeFile(p, JSON.stringify(data, null, 2));
   } catch (e) { /* 记忆失败不影响主流程 */ }
 }
 
@@ -6329,7 +6329,7 @@ class AgentRunner {
     this._expectingCodeAfterProject = false;  // 每次 run 重置"项目创建后强制写码"状态
     // ===== 从设置面板读取护栏开关（覆盖构造函数默认值；下次任务即生效）=====
     try {
-      const _cfg = await window.LabCode.config.get();
+      const _cfg = await window.BubaiCode.config.get();
       const _g = (((_cfg || {}).ai) || {}).guardrails || {};
       applyGuardrails(_g);
       this.useSummaryCompression = GUARDRAILS.summaryCompression;
@@ -6390,7 +6390,7 @@ class AgentRunner {
     // 本地 7B 模型不输出工具调用格式，必须引导"直接输出修复后的完整代码块"，否则会在失败提示上空转。
     this._isLocalModel = false;
     try {
-      const _aiCfg = await window.LabCode.config.get();
+      const _aiCfg = await window.BubaiCode.config.get();
       const _prov = _aiCfg && _aiCfg.ai ? (_aiCfg.ai.provider || '') : '';
       const _model = _aiCfg && _aiCfg.ai ? (_aiCfg.ai.model || '') : '';
       if (_prov === 'ollama' || _prov === 'local' || /qwen|7b|9b|gguf|local/i.test(String(_model))) {
@@ -6478,7 +6478,7 @@ class AgentRunner {
     }
 
     // B4：整体超时看门狗（默认关闭；设置 this.loopTimeoutMs>0 启用）
-    // 注意：必须在主世界内联实现，不能走 window.LabCode.engine.makeTimeoutGuard —— 其返回对象经
+    // 注意：必须在主世界内联实现，不能走 window.BubaiCode.engine.makeTimeoutGuard —— 其返回对象经
     // contextBridge 代理后，隔离上下文里 setTimeout 置位的 expired 在主世界不可见（实测失效）。
     const _loopTimeoutMs = this.loopTimeoutMs || 0;
     const _timeoutGuard = {
@@ -6543,7 +6543,7 @@ class AgentRunner {
       const estTokens = this.estimateTokens();
       if (estTokens > this.contextBudget) {
         if (this.useSummaryCompression) {
-          this.messages = await window.LabCode.engine.summarizeOldTurns(
+          this.messages = await window.BubaiCode.engine.summarizeOldTurns(
             (msgs) => this.ai.generateResponse(null, msgs), this.messages,
             { keepRecent: 3, tokenBudget: this.contextBudget }
           );
@@ -6992,7 +6992,7 @@ class AgentRunner {
                 // 注入文档式总结要求（项目结构/功能特性/使用方法/验证结果），对齐 TrieCode 最终交付形态。
                 if (this._expectingCodeAfterProject) {
                   this._expectingCodeAfterProject = false;
-                  const inoK = Object.keys(state.files || {}).find(f => f.endsWith('.ino') && !f.includes('labcode_build'));
+                  const inoK = Object.keys(state.files || {}).find(f => f.endsWith('.ino') && !f.includes('bubaicode_build'));
                   this.messages.push({ role: 'user', content: `（系统：编译验证已通过。现在请输出最终交付总结，包含：\n1. **项目结构**：用代码块树形展示项目文件\n2. **功能特性**：用表格列出实现了哪些功能\n3. **使用方法**：接线说明（引脚对应）、需要修改的配置、如何编译上传\n4. **验证结果**：编译通过（exit code 0）、目标平台${inoK ? '、主文件 ' + inoK : ''}\n不要输出代码本体，只要总结文档。）` });
                   this._stream('\n[系统] 验证通过，正在生成项目交付总结...\n', false);
                 }
@@ -7099,7 +7099,7 @@ class AgentRunner {
           // asynchronously instead (the enclosing method is async).
           let aiModel = '';
           try {
-            const cfg = await window.LabCode.config.get();
+            const cfg = await window.BubaiCode.config.get();
             aiModel = (cfg && cfg.ai && cfg.ai.model) || '';
           } catch (e) { aiModel = ''; }
           const isThinkModel = /qwen3|9b|deepseek/i.test(aiModel);
@@ -7236,8 +7236,8 @@ class AgentRunner {
           if (!window.__cpLastAuto || Date.now() - window.__cpLastAuto > 120000) {
             window.__cpLastAuto = Date.now();
             const cpCwd = state.projectPath || '';
-            if (cpCwd && window.LabCode && window.LabCode.git && window.LabCode.git.checkpoint) {
-              window.LabCode.git.checkpoint.create(cpCwd, 'AI 改文件前自动快照').then(r => {
+            if (cpCwd && window.BubaiCode && window.BubaiCode.git && window.BubaiCode.git.checkpoint) {
+              window.BubaiCode.git.checkpoint.create(cpCwd, 'AI 改文件前自动快照').then(r => {
                 if (r && r.ok && !r.unchanged) addOutputLog('已创建检查点 ' + r.id + '（' + (r.fileCount || 0) + ' 文件）', 'info');
               }).catch(() => {});
             }
@@ -7326,9 +7326,9 @@ class AgentRunner {
         // 工具大输出不再硬截断丢弃，完整内容"落盘"到受管目录，返回路径给模型
         const TOOL_OUTPUT_THRESHOLD = 2000;  // 超过2000字符触发受管目录
         if (!isFailed && injected.length > TOOL_OUTPUT_THRESHOLD && ['terminal','run_test','web_search','web_fetch','read_file'].includes(tc.name)) {
-          // 生成受管输出路径（模拟 %APPDATA%/LabCode/tool-outputs/）
+          // 生成受管输出路径（模拟 %APPDATA%/BubaiCode/tool-outputs/）
           const outputId = `tool_output_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-          const managedPath = `~/.LabCode/tool-outputs/${outputId}.txt`;
+          const managedPath = `~/.BubaiCode/tool-outputs/${outputId}.txt`;
           
           // 保存完整输出到内存受管目录（实际环境中写磁盘）
           if (!state.toolOutputs) state.toolOutputs = {};
@@ -7577,7 +7577,7 @@ class AgentRunner {
         lastAsst.usage = this.usageAcc || null;
         lastAsst.thinking = this.thinkingAcc || null;
       }
-      // ===== 2026-09-14 对齐 TrieCode：会话持久化（messages+thinking+workLog 落盘 %APPDATA%/LabCode/chat-sessions/）=====
+      // ===== 2026-09-14 对齐 TrieCode：会话持久化（messages+thinking+workLog 落盘 %APPDATA%/BubaiCode/chat-sessions/）=====
       this._persistSession();
     }
   }
@@ -7585,7 +7585,7 @@ class AgentRunner {
   // ===== 2026-09-14 对齐 TrieCode 会话存储：{id,title,messages,mode,modelId,projectPath,projectType,plan,timestamp} =====
   async _persistSession() {
     try {
-      if (!isElectron || !window.LabCode || !window.LabCode.sessions || !window.LabCode.sessions.save) return;
+      if (!isElectron || !window.BubaiCode || !window.BubaiCode.sessions || !window.BubaiCode.sessions.save) return;
       const session = {
         id: this.sessionId,
         title: this.sessionTitle || '未命名对话',
@@ -7607,7 +7607,7 @@ class AgentRunner {
           projectType: session.projectType, plan: session.plan, usage: session.usage
         });
       } else {
-        await window.LabCode.sessions.save(session);
+        await window.BubaiCode.sessions.save(session);
       }
       if (typeof addOutputLog === 'function') addOutputLog('会话已持久化（' + session.messages.length + ' 条消息 / ' + session.workLog.length + ' 条工具记录）', 'debug');
     } catch (e) {
@@ -7620,20 +7620,20 @@ class AgentRunner {
   // 返回 true 表示已切到云端，主循环 continue 后按云端模型继续跑（不再重复本地尝试）。
   async _escalateToCloud() {
     try {
-      if (!window.LabCode || !window.LabCode.config) return false;
-      const cfg = await window.LabCode.config.get();
+      if (!window.BubaiCode || !window.BubaiCode.config) return false;
+      const cfg = await window.BubaiCode.config.get();
       const ai = (cfg && cfg.ai) || {};
       // 只升级本地通道（local = 自带 llama-server，ollama = 外部本地引擎）
       if (ai.provider !== 'local' && ai.provider !== 'ollama') return false;
       if (!ai.gatewayToken) {
-        this._stream('\n[系统] 本地模型连续无进展；未登录云端账号，无法自动升级。可在设置里登录 LabCode 账号后由云端接管。\n', false);
+        this._stream('\n[系统] 本地模型连续无进展；未登录云端账号，无法自动升级。可在设置里登录 BubaiCode 账号后由云端接管。\n', false);
         return false;
       }
       const prevProvider = ai.provider;
       const prevModel = ai.model || '';
       this._escalatePrev = { provider: prevProvider, model: prevModel };
-      await window.LabCode.config.set('ai.provider', 'gateway');
-      await window.LabCode.config.set('ai.model', (prevModel && !/\.gguf$/i.test(prevModel)) ? prevModel : 'deepseek-pro');
+      await window.BubaiCode.config.set('ai.provider', 'gateway');
+      await window.BubaiCode.config.set('ai.model', (prevModel && !/\.gguf$/i.test(prevModel)) ? prevModel : 'deepseek-pro');
       // 立即刷新 AI 客户端配置（本 runner 实例 + 全局实例）
       if (this.ai && typeof this.ai._loadConfig === 'function') await this.ai._loadConfig();
       if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') await state.agent.ai._loadConfig();
@@ -7651,13 +7651,13 @@ class AgentRunner {
   async _restoreLocalProvider() {
     try {
       const prev = this._escalatePrev;
-      if (!prev || !window.LabCode || !window.LabCode.config) return;
-      const cfg = await window.LabCode.config.get();
+      if (!prev || !window.BubaiCode || !window.BubaiCode.config) return;
+      const cfg = await window.BubaiCode.config.get();
       const ai = (cfg && cfg.ai) || {};
       // 只在仍是本次升级写入的 gateway 时还原，用户手动改过就不动
       if (ai.provider !== 'gateway') return;
-      await window.LabCode.config.set('ai.provider', prev.provider);
-      await window.LabCode.config.set('ai.model', prev.model || '');
+      await window.BubaiCode.config.set('ai.provider', prev.provider);
+      await window.BubaiCode.config.set('ai.model', prev.model || '');
       if (this.ai && typeof this.ai._loadConfig === 'function') await this.ai._loadConfig();
       if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') await state.agent.ai._loadConfig();
       this._escalatePrev = null;
@@ -7928,7 +7928,7 @@ let currentAIStream = '';
 let streamCodeBlocks = new Set();
 let streamLastCodeEnd = 0;
 // AI 自动诊断运行中标记（防止诊断与用户消息互相打断）
-let __labcodeAiRunning = false;
+let __bubaicodeAiRunning = false;
 
 // ============ AI 消息 Markdown 渲染（轻量安全版：先整体转义再解析，防注入）============
 function escapeChatHtml(s) {
@@ -8121,8 +8121,8 @@ async function persistCodeFile(filePath, code) {
   if (!isElectron) return;
   try {
     if (!state.projectPath) {
-      const home = await window.LabCode.app.getPath('home');
-      state.projectPath = home.replace(/\\/g, '/') + '/LabCodeProjects/untitled';
+      const home = await window.BubaiCode.app.getPath('home');
+      state.projectPath = home.replace(/\\/g, '/') + '/BubaiCodeProjects/untitled';
       updateProjectStatusText(state.projectPath);
       addOutputLog(`已自动创建默认项目目录: ${state.projectPath}`, 'info');
       // 流式代码块落盘会让无项目态产生文件，需同步隐藏「开始你的开发」并显示文件树
@@ -8717,8 +8717,8 @@ function addDiffSummaryCard({ files, totalAdd, totalDel }) {
   if (!files || !files.length) return;
   const area = document.getElementById('ai-chat-area');
   // 缓存每文件 diff 行（点击展开时渲染）
-  window.__labcodeDiffCache = window.__labcodeDiffCache || {};
-  files.forEach((f, idx) => { window.__labcodeDiffCache[idx] = f.ops || []; });
+  window.__bubaicodeDiffCache = window.__bubaicodeDiffCache || {};
+  files.forEach((f, idx) => { window.__bubaicodeDiffCache[idx] = f.ops || []; });
   const card = document.createElement('div');
   card.className = 'chat-message ai';
   const rows = files.map((f, idx) => {
@@ -8756,7 +8756,7 @@ function toggleDiffFile(rowEl, idx) {
   body.style.display = 'block';
   if (body.dataset.loaded) return;
   body.dataset.loaded = '1';
-  const rows = (window.__labcodeDiffCache || {})[idx];
+  const rows = (window.__bubaicodeDiffCache || {})[idx];
   if (!rows || !rows.length) { body.innerHTML = '<div class="diff-preview-empty">无内容差异</div>'; return; }
   body.innerHTML = `<div class="diff-preview">${rows.map(r =>
     r.type === 'add' ? `<div class="diff-line add"><span class="diff-gutter">+</span><span>${escapeHtml(r.text)}</span></div>`
@@ -9370,7 +9370,7 @@ async function handleAISend() {
   planProgressManager.reset();
 
   // ===== 2026-09-13 修复：项目类型兜底推断 =====
-  // 无 .labcode.json 或直接设置 projectPath 时 projectType 为 null，
+  // 无 .bubaicode.json 或直接设置 projectPath 时 projectType 为 null，
   // 导致 ```cpp 落盘成 src/main.cpp（而非 Arduino 主 .ino），run_test 报
   // "main file missing from sketch" 死循环。按已有文件扩展名兜底推断。
   if (!state.projectType && state.projectPath && state.files) {
@@ -9410,16 +9410,16 @@ async function handleAISend() {
 // ============ 运行/编译失败自动诊断（像豆包一样：自己发现问题、自己想办法解决）============
 async function autoDiagnoseWithAI({ phase, error, output, file }) {
   try {
-    if (!isElectron || !window.LabCode) return;
+    if (!isElectron || !window.BubaiCode) return;
     // 开关：设置中 ai.autoDiagnose=false 可关闭（默认开启）
     try {
-      if (window.LabCode && window.LabCode.config) {
-        const cfg = await window.LabCode.config.get();
+      if (window.BubaiCode && window.BubaiCode.config) {
+        const cfg = await window.BubaiCode.config.get();
         if (cfg && ((cfg.ai && cfg.ai.autoDiagnose === false) || cfg.autoDiagnose === false)) return;
       }
     } catch (e) { /* 忽略 */ }
     // AI 正在忙则不打断（例如用户正在对话）
-    if (__labcodeAiRunning) return;
+    if (__bubaicodeAiRunning) return;
 
     // 隐藏欢迎页，把输入框/项目栏移回面板底部（与发送消息时一致）
     const welcome = document.getElementById('ai-welcome');
@@ -9523,14 +9523,14 @@ ${outText || errText}
         showPermissionModal(tool, command, detail, callback);
       }
     });
-    __labcodeAiRunning = true;
+    __bubaicodeAiRunning = true;
     addOutputLog('🤖 检测到失败，AI 正在自动诊断并尝试修复...', 'info');
     showToast('检测到失败，AI 正在自动诊断', 'info');
     await diagAgent.run(diagPrompt);
   } catch (e) {
     console.error('自动诊断失败:', e);
   } finally {
-    __labcodeAiRunning = false;
+    __bubaicodeAiRunning = false;
   }
 }
 
@@ -9547,9 +9547,9 @@ function handleMenuAction(action) {
       break;
     case 'open-project':
       showToast('打开项目', 'info');
-      if (window.LabCode && window.LabCode.dialog) {
+      if (window.BubaiCode && window.BubaiCode.dialog) {
         // dialog:openDirectory 返回字符串路径（或 null），不是 {success,path}
-        window.LabCode.dialog.openDirectory().then(result => {
+        window.BubaiCode.dialog.openDirectory().then(result => {
           const dir = typeof result === 'string' ? result : (result && result.path);
           if (dir) loadProjectFromDisk(dir);
         }).catch(e => { showToast('打开项目失败: ' + e.message, 'error'); });
@@ -9557,8 +9557,8 @@ function handleMenuAction(action) {
       break;
     case 'open-file':
       showToast('打开文件', 'info');
-      if (window.LabCode && window.LabCode.dialog) {
-        window.LabCode.dialog.openFile().then(result => {
+      if (window.BubaiCode && window.BubaiCode.dialog) {
+        window.BubaiCode.dialog.openFile().then(result => {
           if (result && result.success && result.path) {
             // 打开文件
           }
@@ -9571,8 +9571,8 @@ function handleMenuAction(action) {
       break;
     case 'save-as':
       showToast('另存为', 'info');
-      if (window.LabCode && window.LabCode.dialog) {
-        window.LabCode.dialog.saveFile().then(result => {
+      if (window.BubaiCode && window.BubaiCode.dialog) {
+        window.BubaiCode.dialog.saveFile().then(result => {
           if (result && result.success) {
             showToast('文件已保存', 'success');
           }
@@ -9599,8 +9599,8 @@ function handleMenuAction(action) {
       }
       break;
     case 'quit':
-      if (window.LabCode && window.LabCode.window) {
-        window.LabCode.window.close();
+      if (window.BubaiCode && window.BubaiCode.window) {
+        window.BubaiCode.window.close();
       }
       break;
       
@@ -9676,7 +9676,7 @@ function handleMenuAction(action) {
       showToast('插件视图', 'info');
       break;
     case 'zoom-in':
-      if (window.LabCode && window.LabCode.window) {
+      if (window.BubaiCode && window.BubaiCode.window) {
         // Electron 缩放
         const webFrame = require('electron').webFrame;
         webFrame.setZoomFactor(webFrame.getZoomFactor() + 0.1);
@@ -9684,21 +9684,21 @@ function handleMenuAction(action) {
       showToast('放大', 'info');
       break;
     case 'zoom-out':
-      if (window.LabCode && window.LabCode.window) {
+      if (window.BubaiCode && window.BubaiCode.window) {
         const webFrame = require('electron').webFrame;
         webFrame.setZoomFactor(webFrame.getZoomFactor() - 0.1);
       }
       showToast('缩小', 'info');
       break;
     case 'zoom-reset':
-      if (window.LabCode && window.LabCode.window) {
+      if (window.BubaiCode && window.BubaiCode.window) {
         const webFrame = require('electron').webFrame;
         webFrame.setZoomFactor(1);
       }
       showToast('重置缩放', 'info');
       break;
     case 'toggle-fullscreen':
-      if (window.LabCode && window.LabCode.window) {
+      if (window.BubaiCode && window.BubaiCode.window) {
         // 全屏切换需要主进程处理
         showToast('全屏切换', 'info');
       }
@@ -9713,17 +9713,17 @@ function handleMenuAction(action) {
       
     // ===== 帮助菜单 =====
     case 'welcome':
-      showToast('欢迎使用 LabCode', 'info');
+      showToast('欢迎使用 BubaiCode', 'info');
       break;
     case 'documentation':
-      if (window.LabCode && window.LabCode.shell) {
-        window.LabCode.shell.openExternal('https://www.labcode.com/docs');
+      if (window.BubaiCode && window.BubaiCode.shell) {
+        window.BubaiCode.shell.openExternal('https://www.bubaicode.com/docs');
       }
       showToast('打开文档', 'info');
       break;
     case 'website':
-      if (window.LabCode && window.LabCode.shell) {
-        window.LabCode.shell.openExternal('https://www.labcode.com');
+      if (window.BubaiCode && window.BubaiCode.shell) {
+        window.BubaiCode.shell.openExternal('https://www.bubaicode.com');
       }
       showToast('打开官网', 'info');
       break;
@@ -9735,13 +9735,13 @@ function handleMenuAction(action) {
       break;
     case 'check-updates':
       showToast('检查更新', 'info');
-      if (window.LabCode && window.LabCode.update) {
-        window.LabCode.update.check();
+      if (window.BubaiCode && window.BubaiCode.update) {
+        window.BubaiCode.update.check();
       }
       break;
     case 'feedback':
-      if (window.LabCode && window.LabCode.shell) {
-        window.LabCode.shell.openExternal('https://github.com/labcode/labcode/issues');
+      if (window.BubaiCode && window.BubaiCode.shell) {
+        window.BubaiCode.shell.openExternal('https://github.com/bubaicode/bubaicode/issues');
       }
       showToast('反馈问题', 'info');
       break;
@@ -9756,17 +9756,17 @@ function handleMenuAction(action) {
 }
 
 function showAboutDialog() {
-  const version = window.LabCode && window.LabCode.app ? window.LabCode.app.getVersion() : '1.0.0';
-  showToast(`LabCode v${version}`, 'info');
-  addOutputLog(`关于 LabCode v${version}`, 'info');
+  const version = window.BubaiCode && window.BubaiCode.app ? window.BubaiCode.app.getVersion() : '1.0.0';
+  showToast(`BubaiCode v${version}`, 'info');
+  addOutputLog(`关于 BubaiCode v${version}`, 'info');
 }
 
 function saveCurrentFile() {
   // 保存当前打开的文件
   if (state.currentFile && state.monacoEditor) {
     const content = state.monacoEditor.getValue();
-    if (window.LabCode && window.LabCode.fs) {
-      window.LabCode.fs.writeFile(state.currentFile, content).then(result => {
+    if (window.BubaiCode && window.BubaiCode.fs) {
+      window.BubaiCode.fs.writeFile(state.currentFile, content).then(result => {
         if (result.success) {
           showToast('文件已保存', 'success');
           addOutputLog(`已保存: ${state.currentFile}`, 'success');
@@ -9859,7 +9859,7 @@ function bindEvents() {
   
   // ============ 群聊 / 多 Agent 房间：模块级状态（IIFE 作用域，初始化一次，避免 TDZ） ============
   const AGENT_PRESETS = {
-    'LabCode（内置）': { provider: 'gateway', model: '', apiKey: '', baseURL: '', thinking: 'standard', builtin: true },
+    'BubaiCode（内置）': { provider: 'gateway', model: '', apiKey: '', baseURL: '', thinking: 'standard', builtin: true },
     'Hermes': { provider: 'custom', model: 'nousresearch/hermes-3-llama-3.1-405b', apiKey: '', baseURL: 'https://openrouter.ai/api/v1', thinking: 'standard' },
     'Claude': { provider: 'custom', model: 'claude-sonnet-4', apiKey: '', baseURL: 'https://api.anthropic.com/v1', thinking: 'standard' },
     'Codex': { provider: 'openai', model: 'gpt-4o', apiKey: '', baseURL: '', thinking: 'standard' },
@@ -9901,7 +9901,7 @@ function bindEvents() {
   function isBuiltinAgent(name) { return BUILTIN_AGENT_NAMES.indexOf(name) >= 0; }
   async function mergeCustomAgents() {
     try {
-      const c = await window.LabCode.config.get();
+      const c = await window.BubaiCode.config.get();
       const list = (c && c.ai && Array.isArray(c.ai.customAgents)) ? c.ai.customAgents : [];
       for (const a of list) {
         if (!a || !a.name) continue;
@@ -9914,8 +9914,8 @@ function bindEvents() {
   const CLI_NAME_MAP = { 'claude-code': 'Claude Code', 'codex': 'Codex', 'pi': 'Pi', 'grok': 'Grok', 'opencode': 'OpenCode', 'dsh': 'DeepSeek Harness', 'qwen': 'Qwen Code', 'kimi': 'Kimi Code', 'codebuddy': 'CodeBuddy', 'qoder': 'Qoder', 'copilot': 'GitHub Copilot', 'cursor': 'Cursor', 'antigravity': 'Antigravity', 'zcode': 'ZCode' };
   async function mergeCliAgents() {
     try {
-      if (!window.LabCode.codingAgents) return;
-      const r = await window.LabCode.codingAgents.list();
+      if (!window.BubaiCode.codingAgents) return;
+      const r = await window.BubaiCode.codingAgents.list();
       if (!r || !r.success || !r.agents) return;
       for (const a of r.agents) {
         if (!a.installed || a.manual) continue;
@@ -9930,7 +9930,7 @@ function bindEvents() {
     const cfg = AGENT_PRESETS[name];
     if (!cfg || !cfg.cli) return { success: false, error: '非 CLI Agent' };
     try {
-      const r = await window.LabCode.codingAgents.run({ id: cfg.model || name, prompt });
+      const r = await window.BubaiCode.codingAgents.run({ id: cfg.model || name, prompt });
       return r || { success: false, error: '无返回' };
     } catch (e) { return { success: false, error: e.message }; }
   }
@@ -9940,7 +9940,7 @@ function bindEvents() {
         const a = AGENT_PRESETS[k];
         return { name: k, provider: a.provider, model: a.model, apiKey: a.apiKey || '', baseURL: a.baseURL || '', thinking: a.thinking || 'standard' };
       });
-      await window.LabCode.config.set('ai.customAgents', list);
+      await window.BubaiCode.config.set('ai.customAgents', list);
     } catch (e) { console.warn('saveCustomAgents:', e.message); }
   }
   async function installCustomAgent(cfg) {
@@ -9997,8 +9997,8 @@ function bindEvents() {
   let wfBound = false;
   let wfDrag = null;
   function wfEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-  async function wfLoad() { try { const c = await window.LabCode?.config?.get?.(); const w = c && c.ai ? c.ai.workflow : null; if (w && w.nodes) { wfNodes = w.nodes; wfEdges = w.edges || []; return; } } catch (e) {} wfNodes = []; wfEdges = []; }
-  function wfSave() { try { window.LabCode?.config?.set?.('ai.workflow', { nodes: wfNodes, edges: wfEdges }); } catch (e) {} }
+  async function wfLoad() { try { const c = await window.BubaiCode?.config?.get?.(); const w = c && c.ai ? c.ai.workflow : null; if (w && w.nodes) { wfNodes = w.nodes; wfEdges = w.edges || []; return; } } catch (e) {} wfNodes = []; wfEdges = []; }
+  function wfSave() { try { window.BubaiCode?.config?.set?.('ai.workflow', { nodes: wfNodes, edges: wfEdges }); } catch (e) {} }
   function wfPortPos(node, kind) { if (kind === 'in') return { x: node.x + 90, y: node.y }; return { x: node.x + 90, y: node.y + 70 }; }
   // 环检测：基于整张有向图（success + loop 边都算，因为 loop 边同样构成会迭代的环）。
   // 用 DFS 三色标记找回边，返回处于环中的节点集合。
@@ -10071,7 +10071,7 @@ function bindEvents() {
     });
   }
   function wfAddNode(type) {
-    const n = { id: 'n' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), type: type, x: 60 + (wfNodes.length % 6) * 30, y: 60 + (wfNodes.length % 6) * 30, data: { label: '', prompt: '', cmd: '', result: '', agent: 'LabCode（内置）', approval: false, status: 'idle' } };
+    const n = { id: 'n' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), type: type, x: 60 + (wfNodes.length % 6) * 30, y: 60 + (wfNodes.length % 6) * 30, data: { label: '', prompt: '', cmd: '', result: '', agent: 'BubaiCode（内置）', approval: false, status: 'idle' } };
     wfNodes.push(n); wfRenderNodes(); wfSave();
   }
   function wfSelect(id) { wfActiveId = id; wfRenderNodes(); wfRenderProps(id); }
@@ -10166,7 +10166,7 @@ function bindEvents() {
                 box.style.cssText = 'position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);z-index:2000;background:var(--surface-2,#1e1e2e);border:1px solid var(--border);border-radius:12px;padding:18px 22px;max-width:520px;box-shadow:0 12px 40px rgba(0,0,0,.35);';
                 box.innerHTML = '<div style="font-weight:600;margin-bottom:6px;">审批门 · ' + wfEsc(n.data.label || n.data.agent || 'AI 节点') + '</div>' +
                   '<div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:12px;max-height:120px;overflow:auto;white-space:pre-wrap;">' + wfEsc((n.data.prompt || '').slice(0, 500)) + '</div>' +
-                  '<div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:12px;">执行 Agent：' + wfEsc(n.data.agent || 'LabCode（内置）') + '</div>' +
+                  '<div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:12px;">执行 Agent：' + wfEsc(n.data.agent || 'BubaiCode（内置）') + '</div>' +
                   '<div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-sm" id="wf-ap-reject" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;">拒绝</button>' +
                   '<button class="btn btn-sm btn-primary" id="wf-ap-approve" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;">批准执行</button></div>';
                 document.body.appendChild(box);
@@ -10178,7 +10178,7 @@ function bindEvents() {
               n.data.status = 'running'; n.data.result = '（运行中…）'; wfRenderNodes();
             }
             // 按绑定 Agent 执行：CLI Agent 走真实 CLI，API Agent 切换配置调用
-            const agentCfg = (window.__AGENT_PRESETS || AGENT_PRESETS)[n.data.agent] || (window.__AGENT_PRESETS || AGENT_PRESETS)['LabCode（内置）'];
+            const agentCfg = (window.__AGENT_PRESETS || AGENT_PRESETS)[n.data.agent] || (window.__AGENT_PRESETS || AGENT_PRESETS)['BubaiCode（内置）'];
             if (agentCfg.provider === 'cli') {
               // CLI 桥接：执行已安装的 coding-agent CLI（非交互模式）
               const cliRes = await runCliAgent(n.data.agent, n.data.prompt || '你好');
@@ -10186,31 +10186,31 @@ function bindEvents() {
               n.data.status = cliRes.success ? 'completed' : 'failed';
             } else {
               const keys = ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'];
-              const curCfg = await window.LabCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg && curCfg.ai) ? curCfg.ai[k] : ''; } catch (e) { saved[k] = ''; } });
+              const curCfg = await window.BubaiCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg && curCfg.ai) ? curCfg.ai[k] : ''; } catch (e) { saved[k] = ''; } });
               try {
-                await window.LabCode.config.set('ai.provider', agentCfg.provider);
-                await window.LabCode.config.set('ai.model', agentCfg.model || '');
-                await window.LabCode.config.set('ai.apiKey', agentCfg.apiKey || '');
-                await window.LabCode.config.set('ai.baseURL', agentCfg.baseURL || '');
-                await window.LabCode.config.set('ai.thinkingLevel', agentCfg.thinking || 'standard');
-                const res = await window.LabCode.ai.chat({ messages: [{ role: 'user', content: n.data.prompt || '你好' }], temperature: 0.7, maxTokens: 8192 });
+                await window.BubaiCode.config.set('ai.provider', agentCfg.provider);
+                await window.BubaiCode.config.set('ai.model', agentCfg.model || '');
+                await window.BubaiCode.config.set('ai.apiKey', agentCfg.apiKey || '');
+                await window.BubaiCode.config.set('ai.baseURL', agentCfg.baseURL || '');
+                await window.BubaiCode.config.set('ai.thinkingLevel', agentCfg.thinking || 'standard');
+                const res = await window.BubaiCode.ai.chat({ messages: [{ role: 'user', content: n.data.prompt || '你好' }], temperature: 0.7, maxTokens: 8192 });
                 n.data.result = (res && res.success) ? (res.content || '') : '[失败：' + ((res && res.error) || '未知') + ']';
                 n.data.status = (res && res.success) ? 'completed' : 'failed';
               } finally {
-                for (const k of keys) { try { await window.LabCode.config.set('ai.' + k, saved[k]); } catch (e) {} }
+                for (const k of keys) { try { await window.BubaiCode.config.set('ai.' + k, saved[k]); } catch (e) {} }
               }
             }
           } else if (n.type === 'tool') {
             // 真实终端执行（本地 849c17e 能力并入远端多 Agent 引擎，2026-10-17 合并）
-            if (window.LabCode && window.LabCode.terminal && window.LabCode.terminal.execute) {
+            if (window.BubaiCode && window.BubaiCode.terminal && window.BubaiCode.terminal.execute) {
               const cwd = (typeof state !== 'undefined' && state.projectPath) || undefined;
-              let res = await window.LabCode.terminal.execute(n.data.cmd || '', cwd, 60000);
+              let res = await window.BubaiCode.terminal.execute(n.data.cmd || '', cwd, 60000);
               if (res && res.blocked === 'deny') {
                 n.data.result = '[已拦截] ' + (res.error || '危险命令'); n.data.status = 'failed';
               } else {
                 if (res && res.blocked === 'confirm') {
                   // 自动放行（用户已授权自动执行；硬拦截层不受影响）
-                  res = await window.LabCode.terminal.execute(n.data.cmd || '', cwd, 60000, { force: true });
+                  res = await window.BubaiCode.terminal.execute(n.data.cmd || '', cwd, 60000, { force: true });
                 }
                 const out = (res && res.stdout ? res.stdout : '') + (res && res.stderr ? '\n' + res.stderr : '');
                 const ec = res && res.exitCode !== undefined ? res.exitCode : (res && res.success ? 0 : 1);
@@ -10300,7 +10300,7 @@ function bindEvents() {
   const cliProgress = {};
 
   async function wfAgentsShowCli(p) {
-    if (!window.LabCode.codingAgents) {
+    if (!window.BubaiCode.codingAgents) {
       p.innerHTML += '<div style="font-size: 11.5px;color:var(--text-tertiary);margin-top:8px;">主进程未暴露 codingAgents API</div>';
       return;
     }
@@ -10313,7 +10313,7 @@ function bindEvents() {
     const render = async () => {
       listBox.innerHTML = '<div style="color:var(--text-tertiary);font-size: 11.5px;">检测中…</div>';
       let r;
-      try { r = await window.LabCode.codingAgents.list(); } catch (e) { listBox.innerHTML = '<div style="font-size: 11.5px;color:#ef4444;">检测失败：' + wfEsc(e.message) + '</div>'; return; }
+      try { r = await window.BubaiCode.codingAgents.list(); } catch (e) { listBox.innerHTML = '<div style="font-size: 11.5px;color:#ef4444;">检测失败：' + wfEsc(e.message) + '</div>'; return; }
       if (!r || !r.success || !r.agents) { listBox.innerHTML = '<div style="font-size: 11.5px;">无数据</div>'; return; }
       listBox.innerHTML = r.agents.map(a => {
         const st = a.installed
@@ -10341,8 +10341,8 @@ function bindEvents() {
     if (!wfAgentsCliBound) {
       wfAgentsCliBound = true;
       // 进度订阅：主进程 npm 输出 → 对应卡片进度行
-      if (window.LabCode.codingAgents.onProgress) {
-        window.LabCode.codingAgents.onProgress((data) => {
+      if (window.BubaiCode.codingAgents.onProgress) {
+        window.BubaiCode.codingAgents.onProgress((data) => {
           const el = p.querySelector('[data-cli-progress="' + (data && data.id || '') + '"]');
           if (el && data && data.message) { el.style.display = 'block'; el.textContent = (data.percent != null ? data.percent + '% ' : '') + data.message; }
         });
@@ -10355,7 +10355,7 @@ function bindEvents() {
         btn.disabled = true; btn.textContent = '处理中…';
         if (prog) { prog.style.display = 'block'; prog.textContent = '启动 npm ' + op + ' …'; }
         try {
-          const r = await window.LabCode.codingAgents[op]({ id });
+          const r = await window.BubaiCode.codingAgents[op]({ id });
           if (prog) { prog.style.display = 'block'; prog.textContent = r.success ? ('✓ ' + (op === 'install' ? '安装完成' : op === 'update' ? '更新完成' : '已卸载')) : ('失败：' + (r.error || '')); }
         } catch (err) {
           if (prog) { prog.style.display = 'block'; prog.textContent = '异常：' + err.message; }
@@ -10475,17 +10475,17 @@ function bindEvents() {
         btn.disabled = true; btn.textContent = '测试中…';
         try {
           const saved = {};
-          const curCfg2 = await window.LabCode.config.get(); ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'].forEach(k => { try { saved[k] = (curCfg2 && curCfg2.ai) ? curCfg2.ai[k] : ''; } catch (err) { saved[k] = ''; } });
-          await window.LabCode.config.set('ai.provider', cfg.provider);
-          await window.LabCode.config.set('ai.model', cfg.model || '');
-          await window.LabCode.config.set('ai.apiKey', cfg.apiKey || '');
-          await window.LabCode.config.set('ai.baseURL', cfg.baseURL || '');
-          await window.LabCode.config.set('ai.thinkingLevel', cfg.thinking || 'standard');
-          const res = await window.LabCode.ai.checkConnection({});
+          const curCfg2 = await window.BubaiCode.config.get(); ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'].forEach(k => { try { saved[k] = (curCfg2 && curCfg2.ai) ? curCfg2.ai[k] : ''; } catch (err) { saved[k] = ''; } });
+          await window.BubaiCode.config.set('ai.provider', cfg.provider);
+          await window.BubaiCode.config.set('ai.model', cfg.model || '');
+          await window.BubaiCode.config.set('ai.apiKey', cfg.apiKey || '');
+          await window.BubaiCode.config.set('ai.baseURL', cfg.baseURL || '');
+          await window.BubaiCode.config.set('ai.thinkingLevel', cfg.thinking || 'standard');
+          const res = await window.BubaiCode.ai.checkConnection({});
           const ok = !!(res && res.ok);
           agentTestResults[name] = { ok, message: (res && res.message) || (ok ? 'OK' : '连接失败'), time: new Date().toLocaleTimeString() };
           btn.textContent = ok ? '✅ 连通' : '❌ 失败';
-          for (const k of Object.keys(saved)) { try { await window.LabCode.config.set('ai.' + k, saved[k]); } catch (err) {} }
+          for (const k of Object.keys(saved)) { try { await window.BubaiCode.config.set('ai.' + k, saved[k]); } catch (err) {} }
         } catch (err) {
           agentTestResults[name] = { ok: false, message: err.message || '异常', time: new Date().toLocaleTimeString() };
           btn.textContent = '❌ 异常';
@@ -10667,7 +10667,7 @@ function bindEvents() {
         const ctxPanel = document.getElementById('context-panel');
         if (ctxPanel) ctxPanel.style.display = 'flex';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
-        if (window.LabCodeUI && window.LabCodeUI.refreshContextPanel) window.LabCodeUI.refreshContextPanel();
+        if (window.BubaiCodeUI && window.BubaiCodeUI.refreshContextPanel) window.BubaiCodeUI.refreshContextPanel();
       } else if (panel === 'schedule') {
         sidebar.style.display = 'flex';
         if (fileTree) fileTree.style.display = 'none';
@@ -10678,7 +10678,7 @@ function bindEvents() {
         const schedPanel = document.getElementById('schedule-panel');
         if (schedPanel) schedPanel.style.display = 'flex';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
-        if (window.LabCodeUI && window.LabCodeUI.refreshSchedulePanel) window.LabCodeUI.refreshSchedulePanel();
+        if (window.BubaiCodeUI && window.BubaiCodeUI.refreshSchedulePanel) window.BubaiCodeUI.refreshSchedulePanel();
       } else if (panel === 'groupchat') {
         sidebar.style.display = 'none';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
@@ -10750,13 +10750,13 @@ function bindEvents() {
     });
   }
   renderPluginActivityButtons();
-  window.addEventListener('labcode:plugins-changed', renderPluginActivityButtons);
+  window.addEventListener('bubaicode:plugins-changed', renderPluginActivityButtons);
 
   // ============ 群聊 / 多 Agent 房间（对标 Ekko「群聊」） ============
   // 内置 + 运行时预设（与 Agent 市场运行时档一致），用于房间成员配置（变量声明见活动栏前，模块级避免 TDZ）
   function gcEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-  async function gcLoad() { try { const c = await window.LabCode?.config?.get?.(); gcRooms = (c && c.ai && c.ai.groupRooms) || []; } catch (e) { gcRooms = []; } if (!Array.isArray(gcRooms)) gcRooms = []; }
-  function gcSave() { try { window.LabCode?.config?.set?.('ai.groupRooms', gcRooms); } catch (e) {} }
+  async function gcLoad() { try { const c = await window.BubaiCode?.config?.get?.(); gcRooms = (c && c.ai && c.ai.groupRooms) || []; } catch (e) { gcRooms = []; } if (!Array.isArray(gcRooms)) gcRooms = []; }
+  function gcSave() { try { window.BubaiCode?.config?.set?.('ai.groupRooms', gcRooms); } catch (e) {} }
   function gcRenderRooms() {
     const list = document.getElementById('gc-room-list'); if (!list) return;
     list.innerHTML = '';
@@ -10847,7 +10847,7 @@ function bindEvents() {
   }
   function gcCreateRoom() {
     const name = prompt('房间名称', '新房间'); if (!name) return;
-    const room = { id: 'r' + Date.now(), name: name.trim(), members: ['LabCode（内置）'], messages: [] };
+    const room = { id: 'r' + Date.now(), name: name.trim(), members: ['BubaiCode（内置）'], messages: [] };
     gcRooms.push(room); gcSave(); gcSelect(room.id);
   }
   // 公共：让单个 Agent 执行一次（CLI 自主执行 / API 调用），结果写回房间消息
@@ -10864,16 +10864,16 @@ function bindEvents() {
       } else if (cfg.provider === 'inherit') {
         // 内置 agent：复用当前 AI 配置（本地引擎/网关/API，用户无需安装任何外部 agent），带专属系统提示
         const sysMsg = m === 'ESP32 硬件编程'
-          ? '你是 LabCode 内置的「ESP32 硬件编程」专家（品牌：深蓝不白）。你精通 Arduino/ESP32 嵌入式开发：\n1) 代码：Arduino 语法、ESP32-S3 引脚映射（GPIO 0-48）、GPIO/PWM/ADC/I2C/SPI/UART、按键消抖、中断、定时器、WiFi/蓝牙（BLE）\n2) 常见外设：超声波 HC-SR04、红外避障、L298N/TB6612 电机驱动、SG90 舵机、MPU6050、OLED/LCD、DHT11、蜂鸣器、光敏/温湿度传感器\n3) 工程要点：板型选择、引脚复用冲突、供电（电机独立电源/共地）、串口波特率、编译烧录（Arduino IDE / arduino-cli / esptool）、常见编译错误与排查\n4) 风格：先给可直接编译的完整代码（含 #include 与 setup/loop），再给接线说明与注意事项；用户是 ESP32 课程开发者，术语与 LabCode 课程（40 关闯关）保持一致\n请自主拆解用户需求并给出可交付的硬件代码方案。'
+          ? '你是 BubaiCode 内置的「ESP32 硬件编程」专家（品牌：深蓝不白）。你精通 Arduino/ESP32 嵌入式开发：\n1) 代码：Arduino 语法、ESP32-S3 引脚映射（GPIO 0-48）、GPIO/PWM/ADC/I2C/SPI/UART、按键消抖、中断、定时器、WiFi/蓝牙（BLE）\n2) 常见外设：超声波 HC-SR04、红外避障、L298N/TB6612 电机驱动、SG90 舵机、MPU6050、OLED/LCD、DHT11、蜂鸣器、光敏/温湿度传感器\n3) 工程要点：板型选择、引脚复用冲突、供电（电机独立电源/共地）、串口波特率、编译烧录（Arduino IDE / arduino-cli / esptool）、常见编译错误与排查\n4) 风格：先给可直接编译的完整代码（含 #include 与 setup/loop），再给接线说明与注意事项；用户是 ESP32 课程开发者，术语与 BubaiCode 课程（40 关闯关）保持一致\n请自主拆解用户需求并给出可交付的硬件代码方案。'
           : '你是 ' + m + '，一个自主执行的 AI Agent。';
-        const res = await window.LabCode.ai.chat({ messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: prompt }], temperature: 0.5, maxTokens: 8192 });
+        const res = await window.BubaiCode.ai.chat({ messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: prompt }], temperature: 0.5, maxTokens: 8192 });
         reply = (res && res.success) ? (res.content || '') : '[调用失败：' + ((res && res.error) || '未知') + ']';
       } else {
-        await window.LabCode.config.set('ai.provider', cfg.provider);
-        await window.LabCode.config.set('ai.model', cfg.model || '');
-        await window.LabCode.config.set('ai.apiKey', cfg.apiKey || '');
-        await window.LabCode.config.set('ai.baseURL', cfg.baseURL || '');
-        await window.LabCode.config.set('ai.thinkingLevel', cfg.thinking || 'standard');
+        await window.BubaiCode.config.set('ai.provider', cfg.provider);
+        await window.BubaiCode.config.set('ai.model', cfg.model || '');
+        await window.BubaiCode.config.set('ai.apiKey', cfg.apiKey || '');
+        await window.BubaiCode.config.set('ai.baseURL', cfg.baseURL || '');
+        await window.BubaiCode.config.set('ai.thinkingLevel', cfg.thinking || 'standard');
         let msgs;
         if (useHistory) {
           const hist = room.messages.filter(x => x.content !== '（执行中…）' && x.content !== '（思考中…）').map(x => ({ role: x.role === 'user' ? 'user' : 'assistant', content: (x.name ? ('[' + x.name + '] ') : '') + x.content }));
@@ -10881,7 +10881,7 @@ function bindEvents() {
         } else {
           msgs = [{ role: 'system', content: '你是 ' + m + '，一个自主执行的 AI Agent。' }, { role: 'user', content: prompt }];
         }
-        const res = await window.LabCode.ai.chat({ messages: msgs, temperature: 0.7, maxTokens: 8192 });
+        const res = await window.BubaiCode.ai.chat({ messages: msgs, temperature: 0.7, maxTokens: 8192 });
         reply = (res && res.success) ? (res.content || '') : '[调用失败：' + ((res && res.error) || '未知') + ']';
       }
       const idx = room.messages.findIndex(x => x.role === 'agent' && x.name === m && (x.content === '（执行中…）' || x.content === '（思考中…）'));
@@ -10916,16 +10916,16 @@ function bindEvents() {
       }
     }
     const keys = ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'];
-    const curCfg3 = await window.LabCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg3 && curCfg3.ai) ? curCfg3.ai[k] : ''; } catch (e) { saved[k] = ''; } });
+    const curCfg3 = await window.BubaiCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg3 && curCfg3.ai) ? curCfg3.ai[k] : ''; } catch (e) { saved[k] = ''; } });
     for (const m of targets) {
       const cfg = AGENT_PRESETS[m]; if (!cfg) continue;
       const lastUserMsg = (room.messages.filter(x => x.role === 'user').pop() || {}).content || '你好';
       await gcExecAgent(room, m, lastUserMsg, true);
     }
     try {
-      window.LabCode.config.set('ai.provider', saved.provider); window.LabCode.config.set('ai.model', saved.model || '');
-      window.LabCode.config.set('ai.apiKey', saved.apiKey || ''); window.LabCode.config.set('ai.baseURL', saved.baseURL || '');
-      window.LabCode.config.set('ai.thinkingLevel', saved.thinkingLevel || 'standard');
+      window.BubaiCode.config.set('ai.provider', saved.provider); window.BubaiCode.config.set('ai.model', saved.model || '');
+      window.BubaiCode.config.set('ai.apiKey', saved.apiKey || ''); window.BubaiCode.config.set('ai.baseURL', saved.baseURL || '');
+      window.BubaiCode.config.set('ai.thinkingLevel', saved.thinkingLevel || 'standard');
     } catch (e) {}
     gcSave();
   }
@@ -10933,8 +10933,8 @@ function bindEvents() {
   // 编排器拆解：用当前配置的 AI 生成分工 JSON（容错解析）
   async function gcPlan(task, members) {
     try {
-      const sys = { role: 'system', content: '你是 LabCode 多智能体任务编排器。把用户任务拆解为若干子任务，分配给以下 Agent（每个 Agent 擅长不同领域、会自主规划执行）：' + members.join('、') + '。要求：1) 每个子任务边界清晰、可独立执行；2) 尽量让每个 Agent 都领到任务；3) 只返回 JSON 数组，不要任何其他文字：[{"agent":"Agent名","task":"子任务描述","rationale":"分配理由"}]' };
-      const res = await window.LabCode.ai.chat({ messages: [sys, { role: 'user', content: task }], temperature: 0.3, maxTokens: 4096 });
+      const sys = { role: 'system', content: '你是 BubaiCode 多智能体任务编排器。把用户任务拆解为若干子任务，分配给以下 Agent（每个 Agent 擅长不同领域、会自主规划执行）：' + members.join('、') + '。要求：1) 每个子任务边界清晰、可独立执行；2) 尽量让每个 Agent 都领到任务；3) 只返回 JSON 数组，不要任何其他文字：[{"agent":"Agent名","task":"子任务描述","rationale":"分配理由"}]' };
+      const res = await window.BubaiCode.ai.chat({ messages: [sys, { role: 'user', content: task }], temperature: 0.3, maxTokens: 4096 });
       if (!res || !res.success || !res.content) return [];
       const text = String(res.content);
       const m = text.match(/\[[\s\S]*\]/);
@@ -11000,7 +11000,7 @@ function bindEvents() {
     // 审批通过：移除按钮
     const m = room.messages.find(x => x.planRef === ref); if (m) { m.actions = null; gcRenderMessages(room); }
     const keys = ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'];
-    const cur = await window.LabCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (cur && cur.ai) ? cur.ai[k] : ''; } catch (e) { saved[k] = ''; } });
+    const cur = await window.BubaiCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (cur && cur.ai) ? cur.ai[k] : ''; } catch (e) { saved[k] = ''; } });
     const prompts = {};
     plan.forEach((p, i) => {
       prompts[i] = '你被编排器分配了子任务（来自总任务："' + task + '"），请【自主规划执行步骤】并完成：\n【任务】' + p.task + '\n【分配理由】' + (p.rationale || '综合协作') + '\n\n要求：自己拆分执行步骤、可自行调用工具/CLI 能力，最后给出可交付的结果。';
@@ -11019,9 +11019,9 @@ function bindEvents() {
       gcSetPlanStatus(room, i, r.startsWith('[CLI 失败') || r.startsWith('[调用失败') || r.startsWith('[异常') ? 'failed' : 'done');
     }
     try {
-      window.LabCode.config.set('ai.provider', saved.provider); window.LabCode.config.set('ai.model', saved.model || '');
-      window.LabCode.config.set('ai.apiKey', saved.apiKey || ''); window.LabCode.config.set('ai.baseURL', saved.baseURL || '');
-      window.LabCode.config.set('ai.thinkingLevel', saved.thinkingLevel || 'standard');
+      window.BubaiCode.config.set('ai.provider', saved.provider); window.BubaiCode.config.set('ai.model', saved.model || '');
+      window.BubaiCode.config.set('ai.apiKey', saved.apiKey || ''); window.BubaiCode.config.set('ai.baseURL', saved.baseURL || '');
+      window.BubaiCode.config.set('ai.thinkingLevel', saved.thinkingLevel || 'standard');
     } catch (e) {}
     const failed = plan.filter(p => p.status === 'failed').length;
     room.messages.push({ role: 'system', name: '编排器', content: failed ? '（🤖 编排完成：' + (plan.length - failed) + '/' + plan.length + ' 个子任务成功，' + failed + ' 个失败——可检查对应 Agent 配置后重试）' : '（🤖 编排完成：' + plan.length + ' 个子任务全部完成 ✅）', ts: Date.now() });
@@ -11095,29 +11095,29 @@ function bindEvents() {
 
   // ============ 插件市场 ============
   const OFFICIAL_PLUGINS = [
-    { id: 'arduino', name: 'Arduino 编译上传', description: '支持 Arduino/ESP32/STM32 等开发板的编译和烧录，内置 arduino-cli', version: '1.0.0', author: 'LabCode', icon: '🔌', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload', 'board-manager'] },
-    { id: 'esp-idf', name: 'ESP-IDF 开发工具', description: '乐鑫 ESP-IDF 框架支持，IDF 编译、菜单配置、烧录监控', version: '1.0.0', author: 'LabCode', icon: '📡', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload', 'monitor'] },
-    { id: 'stm32', name: 'STM32 开发工具', description: 'STM32CubeMX 集成，支持 HAL 库工程创建、编译、ST-Link 烧录', version: '1.0.0', author: 'LabCode', icon: '🔧', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload'] },
-    { id: 'micropython', name: 'MicroPython 支持', description: 'MicroPython 固件烧录、REPL 交互、文件传输', version: '1.0.0', author: 'LabCode', icon: '🐍', category: 'runtime', channels: ['cli'], capabilities: ['upload', 'repl'] },
-    { id: 'serial-monitor', name: '串口监视器', description: '多串口同时监控，支持波特率配置、HEX/文本模式、时间戳', version: '1.0.0', author: 'LabCode', icon: '📟', category: 'tool', channels: ['internal'], capabilities: ['serial'] },
-    { id: 'plotter', name: '串口绘图仪', description: '实时绘制串口数据波形，支持多通道、暂停、导出 CSV', version: '1.0.0', author: 'LabCode', icon: '📈', category: 'tool', channels: ['internal'], capabilities: ['plot'] },
-    { id: 'code-formatter', name: '代码格式化', description: '支持 C/C++/Python/JS 等多语言代码格式化，Clang-Format/Black', version: '1.0.0', author: 'LabCode', icon: '✨', category: 'tool', channels: ['cli'], capabilities: ['format'] },
-    { id: 'git-integration', name: 'Git 集成', description: 'Git 版本控制集成，提交、差异对比、分支管理', version: '1.0.0', author: 'LabCode', icon: '🌿', category: 'tool', channels: ['cli'], capabilities: ['git'] },
-    { id: 'themes', name: '主题扩展', description: '多款编辑器主题，浅色/深色/高对比度，一键切换', version: '1.0.0', author: 'LabCode', icon: '🎨', category: 'theme', channels: ['internal'], capabilities: ['theme'] },
-    { id: 'wokwi-simulator', name: 'Wokwi 模拟器', description: 'Wokwi 在线电路仿真：Wokwi 项目模板、diagram.json、wokwi-cli 检测与仿真运行', version: '1.0.4', author: 'LabCode', icon: '⚡', category: 'tool', channels: ['internal'], capabilities: ['simulate'] },
+    { id: 'arduino', name: 'Arduino 编译上传', description: '支持 Arduino/ESP32/STM32 等开发板的编译和烧录，内置 arduino-cli', version: '1.0.0', author: 'BubaiCode', icon: '🔌', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload', 'board-manager'] },
+    { id: 'esp-idf', name: 'ESP-IDF 开发工具', description: '乐鑫 ESP-IDF 框架支持，IDF 编译、菜单配置、烧录监控', version: '1.0.0', author: 'BubaiCode', icon: '📡', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload', 'monitor'] },
+    { id: 'stm32', name: 'STM32 开发工具', description: 'STM32CubeMX 集成，支持 HAL 库工程创建、编译、ST-Link 烧录', version: '1.0.0', author: 'BubaiCode', icon: '🔧', category: 'compiler', channels: ['cli'], capabilities: ['compile', 'upload'] },
+    { id: 'micropython', name: 'MicroPython 支持', description: 'MicroPython 固件烧录、REPL 交互、文件传输', version: '1.0.0', author: 'BubaiCode', icon: '🐍', category: 'runtime', channels: ['cli'], capabilities: ['upload', 'repl'] },
+    { id: 'serial-monitor', name: '串口监视器', description: '多串口同时监控，支持波特率配置、HEX/文本模式、时间戳', version: '1.0.0', author: 'BubaiCode', icon: '📟', category: 'tool', channels: ['internal'], capabilities: ['serial'] },
+    { id: 'plotter', name: '串口绘图仪', description: '实时绘制串口数据波形，支持多通道、暂停、导出 CSV', version: '1.0.0', author: 'BubaiCode', icon: '📈', category: 'tool', channels: ['internal'], capabilities: ['plot'] },
+    { id: 'code-formatter', name: '代码格式化', description: '支持 C/C++/Python/JS 等多语言代码格式化，Clang-Format/Black', version: '1.0.0', author: 'BubaiCode', icon: '✨', category: 'tool', channels: ['cli'], capabilities: ['format'] },
+    { id: 'git-integration', name: 'Git 集成', description: 'Git 版本控制集成，提交、差异对比、分支管理', version: '1.0.0', author: 'BubaiCode', icon: '🌿', category: 'tool', channels: ['cli'], capabilities: ['git'] },
+    { id: 'themes', name: '主题扩展', description: '多款编辑器主题，浅色/深色/高对比度，一键切换', version: '1.0.0', author: 'BubaiCode', icon: '🎨', category: 'theme', channels: ['internal'], capabilities: ['theme'] },
+    { id: 'wokwi-simulator', name: 'Wokwi 模拟器', description: 'Wokwi 在线电路仿真：Wokwi 项目模板、diagram.json、wokwi-cli 检测与仿真运行', version: '1.0.4', author: 'BubaiCode', icon: '⚡', category: 'tool', channels: ['internal'], capabilities: ['simulate'] },
     // ============ 大模型插件（本地运行，内置 llama 引擎，模型走国内直链）============
-    { id: 'llama-runtime', name: 'LabCode AI 引擎', description: '内置 llama.cpp 大模型引擎（GPU 加速），无需安装任何外部软件，安装模型后即可使用', version: '1.0.0', author: 'LabCode', icon: '🧠', category: 'ai-model', channels: ['bundled'], capabilities: ['llm-runtime', 'local-ai'], bundled: true, minRamGB: 4, minDiskGB: 0.5 },
-    { id: 'qwen25-coder-1.5b', name: 'Qwen2.5-Coder 1.5B（轻量）', description: '通义千问代码模型 1.5B 量化版，8GB 内存即可流畅运行，适合代码补全和简单问答', version: '1.0.0', author: 'LabCode', icon: '⚡', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/master/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', minRamGB: 4, minDiskGB: 2, recommendedFor: 'low' },
-    { id: 'qwen25-coder-3b', name: 'Qwen2.5-Coder 3B（平衡）', description: '通义千问代码模型 3B 量化版，约 2GB 体积，4GB 显存或 8GB 内存即可跑，代码补全和单文件修改的甜点档', version: '1.0.0', author: 'LabCode', icon: '🔧', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/master/qwen2.5-coder-3b-instruct-q4_k_m.gguf', minRamGB: 6, minDiskGB: 3, recommendedFor: 'low' },
-    { id: 'qwen25-coder-7b', name: 'Qwen2.5-Coder 7B（推荐）', description: '通义千问代码模型 7B，代码生成和调试能力强，AI 编程主力模型，6GB+ 显存或 16GB 内存', version: '1.0.0', author: 'LabCode', icon: '🌟', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/master/qwen2.5-coder-7b-instruct-q4_k_m.gguf', minRamGB: 8, minDiskGB: 5, recommendedFor: 'medium' },
-    { id: 'qwen25-coder-14b', name: 'Qwen2.5-Coder 14B（高性能）', description: '通义千问代码模型 14B，更强的代码理解和生成能力，需 12GB+ 显存或 32GB 内存', version: '1.0.0', author: 'LabCode', icon: '🚀', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/master/qwen2.5-coder-14b-instruct-q4_k_m.gguf', minRamGB: 16, minDiskGB: 9, recommendedFor: 'high' },
-    { id: 'qwen35-9b', name: 'Qwen3.5-9B（强推理）', description: '通义千问 3.5 系列 9B，代码理解与多步推理更强，支持思考模式，需 10GB+ 显存或 24GB 内存', version: '1.0.0', author: 'LabCode', icon: '🧠', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code', 'reasoning'], requires: 'llama-runtime', modelName: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', ggufFile: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', downloadUrl: 'https://modelscope.cn/models/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf', minRamGB: 10, minDiskGB: 7, recommendedFor: 'strong' },
-    { id: 'serial-monitor', name: '串口监视器', description: '列出本机串口、打开/读取/发送数据、崩溃日志分析；装好后 AI 可直接查串口日志', version: '1.0.0', author: 'LabCode', icon: '📟', category: 'tool', channels: ['internal'], capabilities: ['serial', 'debug', 'tool'] },
+    { id: 'llama-runtime', name: 'BubaiCode AI 引擎', description: '内置 llama.cpp 大模型引擎（GPU 加速），无需安装任何外部软件，安装模型后即可使用', version: '1.0.0', author: 'BubaiCode', icon: '🧠', category: 'ai-model', channels: ['bundled'], capabilities: ['llm-runtime', 'local-ai'], bundled: true, minRamGB: 4, minDiskGB: 0.5 },
+    { id: 'qwen25-coder-1.5b', name: 'Qwen2.5-Coder 1.5B（轻量）', description: '通义千问代码模型 1.5B 量化版，8GB 内存即可流畅运行，适合代码补全和简单问答', version: '1.0.0', author: 'BubaiCode', icon: '⚡', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/master/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', minRamGB: 4, minDiskGB: 2, recommendedFor: 'low' },
+    { id: 'qwen25-coder-3b', name: 'Qwen2.5-Coder 3B（平衡）', description: '通义千问代码模型 3B 量化版，约 2GB 体积，4GB 显存或 8GB 内存即可跑，代码补全和单文件修改的甜点档', version: '1.0.0', author: 'BubaiCode', icon: '🔧', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/master/qwen2.5-coder-3b-instruct-q4_k_m.gguf', minRamGB: 6, minDiskGB: 3, recommendedFor: 'low' },
+    { id: 'qwen25-coder-7b', name: 'Qwen2.5-Coder 7B（推荐）', description: '通义千问代码模型 7B，代码生成和调试能力强，AI 编程主力模型，6GB+ 显存或 16GB 内存', version: '1.0.0', author: 'BubaiCode', icon: '🌟', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/master/qwen2.5-coder-7b-instruct-q4_k_m.gguf', minRamGB: 8, minDiskGB: 5, recommendedFor: 'medium' },
+    { id: 'qwen25-coder-14b', name: 'Qwen2.5-Coder 14B（高性能）', description: '通义千问代码模型 14B，更强的代码理解和生成能力，需 12GB+ 显存或 32GB 内存', version: '1.0.0', author: 'BubaiCode', icon: '🚀', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code'], requires: 'llama-runtime', modelName: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', ggufFile: 'qwen2.5-coder-14b-instruct-q4_k_m.gguf', downloadUrl: 'https://modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/master/qwen2.5-coder-14b-instruct-q4_k_m.gguf', minRamGB: 16, minDiskGB: 9, recommendedFor: 'high' },
+    { id: 'qwen35-9b', name: 'Qwen3.5-9B（强推理）', description: '通义千问 3.5 系列 9B，代码理解与多步推理更强，支持思考模式，需 10GB+ 显存或 24GB 内存', version: '1.0.0', author: 'BubaiCode', icon: '🧠', category: 'ai-model', channels: ['http'], capabilities: ['llm-model', 'code', 'reasoning'], requires: 'llama-runtime', modelName: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', ggufFile: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf', downloadUrl: 'https://modelscope.cn/models/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf', minRamGB: 10, minDiskGB: 7, recommendedFor: 'strong' },
+    { id: 'serial-monitor', name: '串口监视器', description: '列出本机串口、打开/读取/发送数据、崩溃日志分析；装好后 AI 可直接查串口日志', version: '1.0.0', author: 'BubaiCode', icon: '📟', category: 'tool', channels: ['internal'], capabilities: ['serial', 'debug', 'tool'] },
     // 方案 D：project-stats 曾有「加载导致渲染进程崩溃」的记录，历史上曾从市场清单剔除。
     // 现统一口径：不进 own-site 市场白名单（官网无对应 zip，加进去会 404），
     // 但内置 manifest 与 projectStats 服务保留，供看板 / 本地内部调用；加载统一经沙箱隔离（见 plugin-loader.js）。
-    { id: 'demo-echo', name: '插件开发示例', description: '插件系统自带示例（回显参数），验证 manifest → 工具注册 → AI 调用整条链路', version: '1.0.0', author: 'LabCode', icon: '🧩', category: 'tool', channels: ['internal'], capabilities: ['demo', 'tool'] },
-    { id: 'ai-hardware-lab', name: 'AI 硬件拆解工坊', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览/模块选型/接线示意/示例代码/组装步骤/避坑提示；安装后活动栏出现「AI 硬件拆解工坊」入口，可随时卸载', version: '1.0.0', author: 'LabCode', icon: '🤖', category: 'tool', channels: ['internal'], capabilities: ['hwlab', 'ai'] }
+    { id: 'demo-echo', name: '插件开发示例', description: '插件系统自带示例（回显参数），验证 manifest → 工具注册 → AI 调用整条链路', version: '1.0.0', author: 'BubaiCode', icon: '🧩', category: 'tool', channels: ['internal'], capabilities: ['demo', 'tool'] },
+    { id: 'ai-hardware-lab', name: 'AI 硬件拆解工坊', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览/模块选型/接线示意/示例代码/组装步骤/避坑提示；安装后活动栏出现「AI 硬件拆解工坊」入口，可随时卸载', version: '1.0.0', author: 'BubaiCode', icon: '🤖', category: 'tool', channels: ['internal'], capabilities: ['hwlab', 'ai'] }
   ];
 
   // ===== 官方市场 = ChipCode/TrieCode 官网真实插件（https://www.chipcode.cn/api/plugins）=====
@@ -11147,7 +11147,7 @@ function bindEvents() {
   const BUILTIN_PLUGIN_MANIFESTS = {
     'git-integration': {
       id: 'git-integration', name: 'Git 集成', version: '1.0.0', icon: '🌿', category: 'tool',
-      description: '真实 Git 操作：状态/差异/日志/暂存/提交/分支（复用 LabCode 内置 git 引擎）',
+      description: '真实 Git 操作：状态/差异/日志/暂存/提交/分支（复用 BubaiCode 内置 git 引擎）',
       tools: [
         { name: 'git_status', description: '查看工作区状态（变更/暂存/未跟踪）', parameters: { type: 'object', properties: { cwd: { type: 'string', description: '仓库路径，默认当前项目' } } }, category: 'query', transport: 'internal', internal: { service: 'git', method: 'status' } },
         { name: 'git_diff', description: '查看文件差异', parameters: { type: 'object', properties: { file: { type: 'string', description: '可选，指定文件' } } }, category: 'query', transport: 'internal', internal: { service: 'git', method: 'diff' } },
@@ -11197,7 +11197,7 @@ function bindEvents() {
     },
     'serial-monitor': {
       id: 'serial-monitor', name: '串口监视器', version: '1.0.0', icon: '📟', category: 'tool',
-      description: '列出串口、打开/读取/发送数据、崩溃日志分析（走 LabCode 内置串口桥）',
+      description: '列出串口、打开/读取/发送数据、崩溃日志分析（走 BubaiCode 内置串口桥）',
       tools: [
         { name: 'list_ports', description: '列出本机可用串口（端口号、VID/PID、板卡名）', parameters: { type: 'object', properties: {} }, category: 'query', transport: 'internal', internal: { service: 'serialport', method: 'list' } },
         { name: 'open', description: '打开串口开始监听', parameters: { type: 'object', properties: { port: { type: 'string', description: '串口号，如 COM30' }, baud: { type: 'number', description: '波特率，默认 115200' } }, required: ['port'] }, category: 'execute', transport: 'internal', internal: { service: 'serialLog', method: 'open' } },
@@ -11241,7 +11241,7 @@ function bindEvents() {
   let remoteMarketURL = '';
   // 最近一次成功同步的市场清单（本地缓存）：市场不可达时用它兜底，
   // 这样服务端新增模型不必等发版，用户离线也能看到最新清单
-  const MARKET_CACHE_KEY = 'labcode_market_cache';
+  const MARKET_CACHE_KEY = 'bubaicode_market_cache';
   function loadCachedMarket() {
     try {
       const v = JSON.parse(localStorage.getItem(MARKET_CACHE_KEY) || '[]');
@@ -11257,8 +11257,8 @@ function bindEvents() {
   async function getPluginMarketURL() {
     if (remoteMarketURL) return remoteMarketURL;
     try {
-      if (window.LabCode && window.LabCode.config) {
-        const cfg = await window.LabCode.config.get();
+      if (window.BubaiCode && window.BubaiCode.config) {
+        const cfg = await window.BubaiCode.config.get();
         // 旧设计曾把 pluginMarketURL 设成 raw.githubusercontent.com（GitHub-raw index.json，已废弃）；
         // 遇到该旧值一律忽略，回退官网网关，保证市场可用
         if (cfg && cfg.pluginMarketURL && !/raw\.githubusercontent\.com/.test(String(cfg.pluginMarketURL))) {
@@ -11301,7 +11301,7 @@ function bindEvents() {
       const items = Array.isArray(data) ? data : (data.plugins || data.items || []);
       return items.filter(p => p && p.id && MARKET_IDS.has(p.id)).map(p => ({
         id: p.id, name: p.name, description: p.description || '', version: p.version || '1.0.0',
-        author: p.developer || p.author || 'LabCode', icon: p.icon || '📦',
+        author: p.developer || p.author || 'BubaiCode', icon: p.icon || '📦',
         category: p.category || 'tool', channels: ['http'], capabilities: [],
         // 官网 downloadUrl 是相对路径，拼成绝对地址供 installFromZipball 下载
         downloadUrl: /^https?:/i.test(String(p.downloadUrl || '')) ? p.downloadUrl : origin + String(p.downloadUrl || ''),
@@ -11326,7 +11326,7 @@ function bindEvents() {
       const list = (data && Array.isArray(data.plugins)) ? data.plugins : [];
       gateway = list.map(p => ({
         id: p.id, name: p.name, description: p.description || '', version: p.version || '1.0.0',
-        author: p.developer || p.author || 'LabCode', icon: p.icon || '📦',
+        author: p.developer || p.author || 'BubaiCode', icon: p.icon || '📦',
         category: p.category || 'tool', channels: p.channels || ['http'],
         capabilities: p.capabilities || [], requires: p.requires || '',
         modelName: p.modelName || '', minRamGB: p.minRamGB || 0, minDiskGB: p.minDiskGB || 0,
@@ -11345,7 +11345,7 @@ function bindEvents() {
     console.log('[插件市场] 官网 ' + chipcode.length + ' 个真实插件 + 网关 ' + gateway.length + ' 个条目');
   }
 
-  // ============ 社区插件（GitHub `labcode-plugin` topic 去中心化发现）============
+  // ============ 社区插件（GitHub `bubaicode-plugin` topic 去中心化发现）============
   let communityPlugins = [];
   let communityOnline = false;
   let communitySource = '';
@@ -11365,10 +11365,10 @@ function bindEvents() {
       communityOnline = data.source !== 'error';
       console.log('[社区插件] 已拉取 ' + communityPlugins.length + ' 个（来源 ' + communitySource + '）');
     } catch (e) {
-      // 网关社区端点不可用（404/超时）→ 直连 GitHub 搜索 labcode-plugin topic（api.github.com 支持 CORS）。
+      // 网关社区端点不可用（404/超时）→ 直连 GitHub 搜索 bubaicode-plugin topic（api.github.com 支持 CORS）。
       // 社区发现不依赖服务器，契合"插件生态全 GitHub"的分发架构。
       try {
-        const ghRes = await fetch('https://api.github.com/search/repositories?q=topic:labcode-plugin&sort=updated&per_page=30', { cache: 'no-store' });
+        const ghRes = await fetch('https://api.github.com/search/repositories?q=topic:bubaicode-plugin&sort=updated&per_page=30', { cache: 'no-store' });
         if (!ghRes.ok) throw new Error('GitHub HTTP ' + ghRes.status);
         const gh = await ghRes.json();
         communityPlugins = (gh.items || []).map(r => ({
@@ -11427,7 +11427,7 @@ function bindEvents() {
 
   let currentPluginsTab = 'market';
   let currentPluginCategory = 'all';
-  let installedPlugins = JSON.parse(localStorage.getItem('labcode_installed_plugins') || '[]');
+  let installedPlugins = JSON.parse(localStorage.getItem('bubaicode_installed_plugins') || '[]');
 
   // 首次启动自动安装核心插件（编译/串口/绘图仪），对标内置工具链开箱即用
   // 大模型运行时与模型插件仍由用户在插件市场自行安装
@@ -11437,25 +11437,25 @@ function bindEvents() {
   // ===== 内置插件 internal services（TrieCode 式宿主服务注册：manifest.tools → dispatchTool → 这里）=====
   if (window.PluginSystem && window.PluginSystem.registerInternalService) {
     window.PluginSystem.registerInternalService('git', {
-      status: async (a) => window.LabCode.git.status((a && a.cwd) || state.projectPath),
-      diff: async (a) => window.LabCode.git.diff((a && a.cwd) || state.projectPath, a && a.file),
-      log: async (a) => window.LabCode.git.log((a && a.cwd) || state.projectPath, (a && a.n) || 10),
-      add: async (a) => window.LabCode.git.add(state.projectPath, (a && a.paths) || ['.']),
-      commit: async (a) => window.LabCode.git.commit(state.projectPath, a && a.message),
-      branches: async (a) => window.LabCode.git.branches(state.projectPath)
+      status: async (a) => window.BubaiCode.git.status((a && a.cwd) || state.projectPath),
+      diff: async (a) => window.BubaiCode.git.diff((a && a.cwd) || state.projectPath, a && a.file),
+      log: async (a) => window.BubaiCode.git.log((a && a.cwd) || state.projectPath, (a && a.n) || 10),
+      add: async (a) => window.BubaiCode.git.add(state.projectPath, (a && a.paths) || ['.']),
+      commit: async (a) => window.BubaiCode.git.commit(state.projectPath, a && a.message),
+      branches: async (a) => window.BubaiCode.git.branches(state.projectPath)
     });
     window.PluginSystem.registerInternalService('theme', {
       list: async () => ({ themes: ['light', 'dark'], current: document.documentElement.getAttribute('data-theme') || 'dark' }),
       set: async (a) => { const t = (a && a.theme) === 'light' ? 'light' : 'dark'; applyTheme(t, true); return { ok: true, theme: t }; }
     });
     window.PluginSystem.registerInternalService('formatter', {
-      format: async (a) => window.LabCode.formatter.format({ code: (a && a.code) || '', lang: (a && a.lang) || 'json' })
+      format: async (a) => window.BubaiCode.formatter.format({ code: (a && a.code) || '', lang: (a && a.lang) || 'json' })
     });
     // MicroPython（mpremote 真实执行）
     window.PluginSystem.registerInternalService('mpython', {
-      run: async (a) => window.LabCode.mpython.run({ args: (a && a.args) || [] }),
-      exec: async (a) => window.LabCode.mpython.run({ args: ['exec', (a && a.code) || ''] }),
-      reset: async () => window.LabCode.mpython.run({ args: ['reset'] })
+      run: async (a) => window.BubaiCode.mpython.run({ args: (a && a.args) || [] }),
+      exec: async (a) => window.BubaiCode.mpython.run({ args: ['exec', (a && a.code) || ''] }),
+      reset: async () => window.BubaiCode.mpython.run({ args: ['reset'] })
     });
     // AI 硬件拆解工坊（真实 AI 推理：一句话 → 六段可落地方案）
     window.PluginSystem.registerInternalService('hwlab', {
@@ -11466,13 +11466,13 @@ function bindEvents() {
           { role: 'system', content: '你是嵌入式硬件拆解专家。把用户的设备想法拆解为可落地的手搓方案，严格输出以下六个小节，每节以「## 」开头：## 方案概览、## 模块选型清单（表格：模块/型号/数量/参考价）、## 接线示意（文字接线表：模块引脚→主控引脚）、## 示例代码（Arduino/ESP32 完整可编译代码，用 ```cpp 围栏）、## 组装步骤（编号列表）、## 避坑提示（3-5 条）。全部中文，务必具体到型号与引脚。' },
           { role: 'user', content: '设备想法：' + idea }
         ];
-        const r = await window.LabCode.ai.once({ messages, maxTokens: 3000 });
+        const r = await window.BubaiCode.ai.once({ messages, maxTokens: 3000 });
         if (!(r && r.success && r.content)) return { success: false, error: (r && r.error) || 'AI 调用失败' };
         return { success: true, markdown: r.content };
       }
     });
   }
-  if (!localStorage.getItem('labcode_core_plugins_initialized')) {
+  if (!localStorage.getItem('bubaicode_core_plugins_initialized')) {
     const existingIds = new Set(installedPlugins.map(p => p.id));
     for (const pid of CORE_PLUGIN_IDS) {
       if (!existingIds.has(pid)) {
@@ -11481,13 +11481,13 @@ function bindEvents() {
       }
     }
     saveInstalledPlugins();
-    localStorage.setItem('labcode_core_plugins_initialized', '1');
+    localStorage.setItem('bubaicode_core_plugins_initialized', '1');
   }
   let systemInfo = null;
   let llmRuntimeInfo = null;
 
   function saveInstalledPlugins() {
-    localStorage.setItem('labcode_installed_plugins', JSON.stringify(installedPlugins));
+    localStorage.setItem('bubaicode_installed_plugins', JSON.stringify(installedPlugins));
   }
 
   /** 插件是否真的在插件系统里注册了（有 manifest 且已加载） */
@@ -11541,9 +11541,9 @@ function bindEvents() {
   // ============ 硬件配置检测与大模型推荐 ============
   async function detectSystemInfo() {
     try {
-      if (window.LabCode && window.LabCode.system) {
-        systemInfo = await window.LabCode.system.getInfo();
-        llmRuntimeInfo = await window.LabCode.system.checkLLMRuntime();
+      if (window.BubaiCode && window.BubaiCode.system) {
+        systemInfo = await window.BubaiCode.system.getInfo();
+        llmRuntimeInfo = await window.BubaiCode.system.checkLLMRuntime();
       }
     } catch (e) { console.error('硬件检测失败:', e); }
     return systemInfo;
@@ -11598,9 +11598,9 @@ function bindEvents() {
 
   // ============ 插件分发统一走 GitHub（自有仓库） ============
   // 官方/社区插件全部从 GitHub 仓库下载安装（发布 = 推到 GitHub 仓库，下载安装 = 拉取 zipball）。
-  // 默认源 = hulufeng/labcode-plugins（LabCode 自有插件仓库）；网关仅作插件目录/元数据来源 + 兜底 zip。
+  // 默认源 = hulufeng/bubaicode-plugins（BubaiCode 自有插件仓库）；网关仅作插件目录/元数据来源 + 兜底 zip。
   // GH_PLUGIN_ID_MAP 解决「网关 id ↔ 仓库子目录名」差异；未命中的插件回退网关 zip（如 llama-runtime）。
-  const OFFICIAL_PLUGIN_REPO = 'hulufeng/labcode-plugins';
+  const OFFICIAL_PLUGIN_REPO = 'hulufeng/bubaicode-plugins';
   const GH_PLUGIN_ID_MAP = {
     'browser-toolchain': 'browser-automation',
     'plugin-dev-toolchain': 'plugin-dev',
@@ -11614,14 +11614,14 @@ function bindEvents() {
   // plugin: {id, name}（进度条文案）；label: 渠道名（日志显示）
   async function installFromZipball(zipUrl, findDirName, plugin, label) {
     const psPath = (p) => "'" + String(p).replace(/'/g, "''") + "'";
-    const tmpDir = 'D:\\LabCode\\plugin-tmp\\' + plugin.id + '_' + Date.now();
+    const tmpDir = 'D:\\BubaiCode\\plugin-tmp\\' + plugin.id + '_' + Date.now();
     const extDir = tmpDir + '\\extracted';
     const zipPath = tmpDir + '\\' + label + '-' + (findDirName || 'pkg') + '.zip';
     showPluginProgress(plugin);
     let totalBytes = 0;
     // 先校验 HTTP 200 再下载：网关 404 响应体也带 Content-Length，不校验状态码会把错误页当总体积
     try {
-      const headRes = await window.LabCode.terminal.execute(
+      const headRes = await window.BubaiCode.terminal.execute(
         'powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri ' + psPath(zipUrl) + ' -Method Head -UseBasicParsing -TimeoutSec 20; $cl = $r.Headers[\'Content-Length\']; if ($cl -is [array]) { $cl = $cl[-1] }; Write-Output ($r.StatusCode.ToString() + \'|\' + $cl) } catch { Write-Output (\'ERR|\' + $_.Exception.Message) }"',
         null, 30000, { force: true }
       );
@@ -11632,7 +11632,7 @@ function bindEvents() {
     if (pluginProgressTimer) { clearInterval(pluginProgressTimer); pluginProgressTimer = null; }
     pluginProgressTimer = setInterval(async () => {
       try {
-        const r = await window.LabCode.terminal.execute(
+        const r = await window.BubaiCode.terminal.execute(
           'powershell -NoProfile -Command "if (Test-Path ' + psPath(zipPath) + ') { Write-Output ([math]::Round((Get-Item ' + psPath(zipPath) + ').Length/1KB,1).ToString()) } else { Write-Output \'0\' }"',
           null, 15000, { force: true }
         );
@@ -11647,13 +11647,13 @@ function bindEvents() {
       } catch (e) { /* 轮询失败不影响下载 */ }
     }, 800);
     addOutputLog('正在下载插件包（' + label + '）' + plugin.id + (totalBytes > 0 ? '（' + (totalBytes / 1048576).toFixed(2) + ' MB）' : '') + '...', 'info');
-    await window.LabCode.terminal.execute(
+    await window.BubaiCode.terminal.execute(
       'powershell -NoProfile -Command "Remove-Item ' + psPath(zipPath) + ' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path ' + psPath(tmpDir) + ' | Out-Null; curl.exe -L --retry 3 -C - -o ' + psPath(zipPath) + ' ' + psPath(zipUrl) + '"',
       null, 600000, { force: true }
     );
     if (pluginProgressTimer) { clearInterval(pluginProgressTimer); pluginProgressTimer = null; }
     setPluginProgress(95, plugin, '校验压缩包');
-    const ver = await window.LabCode.terminal.execute(
+    const ver = await window.BubaiCode.terminal.execute(
       'powershell -NoProfile -Command "if (Test-Path ' + psPath(zipPath) + ') { $b=[System.IO.File]::ReadAllBytes(' + psPath(zipPath) + '); if ($b.Length -ge 4 -and $b[0] -eq 80 -and $b[1] -eq 75) { Write-Output ([math]::Round((Get-Item ' + psPath(zipPath) + ').Length/1KB,1)) } else { Write-Output BADZIP } } else { Write-Output MISSING }"',
       null, 20000, { force: true }
     );
@@ -11663,14 +11663,14 @@ function bindEvents() {
       throw new Error('下载失败或文件不是有效 zip（' + (vout || '无输出') + '）');
     }
     setPluginProgress(97, plugin, '解压注册');
-    await window.LabCode.terminal.execute(
+    await window.BubaiCode.terminal.execute(
       'powershell -NoProfile -Command "Expand-Archive -Path ' + psPath(zipPath) + ' -DestinationPath ' + psPath(extDir) + ' -Force"',
       null, 120000, { force: true }
     );
     // findDirName 为空（社区单插件仓库）→ 跳过定向匹配，全盘递归找 plugin.json，兼容「仓库根目录即插件」布局
     let mDir = null;
     if (findDirName) {
-      const findRes = await window.LabCode.terminal.execute(
+      const findRes = await window.BubaiCode.terminal.execute(
         'powershell -NoProfile -Command "$m = Get-ChildItem -Path ' + psPath(extDir) + ' -Recurse -Filter plugin.json -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq \'' + findDirName + '\' } | Select-Object -First 1; if ($m) { Write-Output $m.DirectoryName } else { Write-Output NONE }"',
         null, 30000, { force: true }
       );
@@ -11746,7 +11746,7 @@ function bindEvents() {
     if (!stateEl) return;
     let st = _gwStatusCache;
     try {
-      st = await window.LabCode.ai.gatewayStatus();
+      st = await window.BubaiCode.ai.gatewayStatus();
       _gwStatusCache = st;
     } catch (e) { /* 用缓存 */ }
     if (!st) { stateEl.innerHTML = '<span style="color:#888;">内置云端状态未知</span>'; return; }
@@ -11818,11 +11818,11 @@ function bindEvents() {
 
     // ===== AI 能力安装口（models 视图顶部）=====
     // 商业化取向：所有"接入 AI 的方式"汇聚到一处，用户不必到处找入口：
-    //   ① 云端模型（登录 LabCode 账号后使用） ② 自带 API Key  ③ 本地模型（下方列表）
+    //   ① 云端模型（登录 BubaiCode 账号后使用） ② 自带 API Key  ③ 本地模型（下方列表）
     if (currentPluginsTab === 'models') {
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
       html += '<div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border-color);border-radius:8px;">';
-      html += '<div style="font-size: 11.5px;font-weight:600;color:var(--text-primary);">☁️ LabCode 内置云端</div>';
+      html += '<div style="font-size: 11.5px;font-weight:600;color:var(--text-primary);">☁️ BubaiCode 内置云端</div>';
       html += '<div id="gw-hub-state" style="font-size: 10.5px;color:var(--text-secondary);margin-top:4px;line-height:1.6;">检测中…</div>';
       html += '<div style="display:flex;gap:6px;margin-top:8px;">';
       html += '<button id="gw-hub-login" type="button" style="font-size: 10.5px;padding:4px 10px;">登录 / 注册领额度</button>';
@@ -11955,7 +11955,7 @@ function bindEvents() {
     if (currentPluginsTab === 'models') {
       const ib = document.getElementById('model-import-btn');
       if (ib) ib.addEventListener('click', async () => {
-        const r = await window.LabCode.models.import();
+        const r = await window.BubaiCode.models.import();
         if (r && r.success) {
           showToast('模型已导入: ' + r.file, 'success');
           if (typeof refreshLocalModelsInSelector === 'function') { try { refreshLocalModelsInSelector(); } catch (e) {} }
@@ -11987,7 +11987,7 @@ function bindEvents() {
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
         const u = el.dataset.url;
-        if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal(u);
+        if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal(u);
         else window.open(u, '_blank');
       });
     });
@@ -12137,7 +12137,7 @@ function bindEvents() {
     if (depList.length) {
       const depsBtn = wrap.querySelector('#plgset-deps-install');
       const depsMsg = wrap.querySelector('#plgset-deps-msg');
-      const depsApi = window.LabCode && window.LabCode.deps;
+      const depsApi = window.BubaiCode && window.BubaiCode.deps;
       if (depsApi && typeof depsApi.onProgress === 'function') {
         depsUnsub = depsApi.onProgress((p) => {
           if (!p || !depsMsg) return;
@@ -12189,19 +12189,19 @@ function bindEvents() {
     let html = '';
     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size: 10.5px;color:var(--text-secondary);">';
     html += communityOnline
-      ? '<span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;"></span><span>已连接社区（GitHub topic: labcode-plugin，' + communityPlugins.length + ' 个仓库）</span>'
+      ? '<span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;"></span><span>已连接社区（GitHub topic: bubaicode-plugin，' + communityPlugins.length + ' 个仓库）</span>'
       : '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;"></span><span>社区服务未连接，可点击右上角刷新重试</span>';
     html += '</div>';
     html += '<div style="padding:10px 12px;margin-bottom:10px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:8px;font-size: 10.5px;color:var(--text-secondary);line-height:1.7;">';
     html += '<div style="font-size: 11.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">🌍 社区插件（去中心化生态）</div>';
-    html += '任何工具链或能力都能封装为插件。开发者将仓库打上 <b>labcode-plugin</b> 标签（GitHub topic）即可被社区发现；安装后 AI 智能体自动获得对应技能与工具。';
+    html += '任何工具链或能力都能封装为插件。开发者将仓库打上 <b>bubaicode-plugin</b> 标签（GitHub topic）即可被社区发现；安装后 AI 智能体自动获得对应技能与工具。';
     html += '</div>';
     if (communityPlugins.length === 0) {
       html += '<div style="padding:32px 16px;text-align:center;color:var(--text-secondary);font-size: 12.5px;line-height:1.8;">';
-      html += '暂无社区插件仓库<br/><span style="font-size: 10.5px;">社区机制已就绪——第一个打上 <b>labcode-plugin</b> topic 的仓库将在这里出现</span>';
+      html += '暂无社区插件仓库<br/><span style="font-size: 10.5px;">社区机制已就绪——第一个打上 <b>bubaicode-plugin</b> topic 的仓库将在这里出现</span>';
       html += '</div>';
       html += '<div style="padding:10px 12px;background:var(--card-color);border:1px solid var(--border-color);border-radius:8px;font-size: 10.5px;color:var(--text-secondary);line-height:1.8;">';
-      html += '<b>📦 安装社区插件：</b><br/>1. 开发者将仓库打上 <b>labcode-plugin</b> topic，列表即出现该插件卡片（每个卡片带「安装」一键安装）<br/>2. 或手动：打开 GitHub 仓库下载 ZIP → 点右上角「从文件夹 / ZIP 安装」加载<br/>3. 安装后输入框输入 <b>/</b> 查看新增技能';
+      html += '<b>📦 安装社区插件：</b><br/>1. 开发者将仓库打上 <b>bubaicode-plugin</b> topic，列表即出现该插件卡片（每个卡片带「安装」一键安装）<br/>2. 或手动：打开 GitHub 仓库下载 ZIP → 点右上角「从文件夹 / ZIP 安装」加载<br/>3. 安装后输入框输入 <b>/</b> 查看新增技能';
       html += '</div>';
       listEl.innerHTML = html;
       return;
@@ -12229,7 +12229,7 @@ function bindEvents() {
     listEl.innerHTML = html;
     listEl.querySelectorAll('[data-action="community-open"]').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal(btn.dataset.url);
+        if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal(btn.dataset.url);
         else window.open(btn.dataset.url, '_blank');
       });
     });
@@ -12245,7 +12245,7 @@ function bindEvents() {
   async function renderMcpPanel(listEl) {
     listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size: 11.5px;">正在加载 MCP 服务器...</div>';
     try {
-      const servers = await window.LabCode.mcp.listServers();
+      const servers = await window.BubaiCode.mcp.listServers();
       let html = '';
       html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size: 10.5px;color:var(--text-secondary);">';
       html += '<span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;"></span><span>MCP（Model Context Protocol）——连接外部工具服务器，AI 智能体自动获得其工具</span>';
@@ -12294,7 +12294,7 @@ function bindEvents() {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const name = btn.dataset.name;
-          await window.LabCode.mcp.removeServer(name);
+          await window.BubaiCode.mcp.removeServer(name);
           await loadMcpTools();
           showToast('已移除 MCP 服务器: ' + name, 'info');
           renderMcpPanel(listEl);
@@ -12307,7 +12307,7 @@ function bindEvents() {
           if (toolsEl.style.display === 'block') { toolsEl.style.display = 'none'; return; }
           toolsEl.style.display = 'block';
           try {
-            const r = await window.LabCode.mcp.listTools(name);
+            const r = await window.BubaiCode.mcp.listTools(name);
             if (!r.ok) { toolsEl.textContent = '加载失败: ' + r.error; return; }
             toolsEl.textContent = (r.tools || []).length === 0
               ? '该服务器未提供工具'
@@ -12327,13 +12327,13 @@ function bindEvents() {
             try { args = JSON.parse(argsRaw); if (!Array.isArray(args)) throw new Error('not array'); }
             catch (e2) { showToast('参数需为 JSON 数组', 'warning'); return; }
           }
-          const res = await window.LabCode.mcp.addServer({ name, command, args });
+          const res = await window.BubaiCode.mcp.addServer({ name, command, args });
           if (!res.ok) { showToast('添加失败: ' + res.error, 'error'); return; }
           showToast('已添加 MCP 服务器: ' + name, 'success');
           await loadMcpTools();
           // 等待服务器 running 后刷新面板（显示工具数）
           for (let w = 0; w < 12; w++) {
-            const list = await window.LabCode.mcp.listServers();
+            const list = await window.BubaiCode.mcp.listServers();
             const cur = list.find(x => x.name === name);
             if (cur && (cur.status === 'running' || cur.status === 'error')) break;
             await new Promise(r => setTimeout(r, 500));
@@ -12462,7 +12462,7 @@ function bindEvents() {
     // 大模型插件：检查依赖
     if (plugin.category === 'ai-model' && plugin.requires) {
       if (!isPluginInstalled(plugin.requires)) {
-        showToast('请先安装 LabCode AI 引擎插件', 'warning');
+        showToast('请先安装 BubaiCode AI 引擎插件', 'warning');
         return { success: false, error: '缺少依赖: 请先安装 ' + plugin.requires };
       }
     }
@@ -12477,12 +12477,12 @@ function bindEvents() {
     // 引擎插件：检测内置引擎（安装包已内置 llama.cpp，无需下载）
     if (plugin.id === 'llama-runtime') {
       try {
-        if (window.LabCode && window.LabCode.system) {
-          const rt = await window.LabCode.system.checkLLMRuntime();
+        if (window.BubaiCode && window.BubaiCode.system) {
+          const rt = await window.BubaiCode.system.checkLLMRuntime();
           if (rt.engine) {
             addOutputLog('✅ 已检测到内置 AI 引擎（llama.cpp）' + (rt.engineDir ? ' @ ' + rt.engineDir : ''), 'success');
           } else {
-            addOutputLog('⚠️ 未找到内置引擎文件，请重新安装 LabCode 完整版', 'warning');
+            addOutputLog('⚠️ 未找到内置引擎文件，请重新安装 BubaiCode 完整版', 'warning');
           }
         }
       } catch (e) {
@@ -12498,16 +12498,16 @@ function bindEvents() {
     if (plugin.category === 'ai-model' && plugin.downloadUrl && (plugin.ggufFile || plugin.modelName)) {
       try {
         // 模型目录跟主进程保持一致（可在设置里改到 SSD 盘 → 冷启动快 20 倍）
-        let modelsDir = 'D:\\LabCode\\models';
+        let modelsDir = 'D:\\BubaiCode\\models';
         try {
-          const rt = await window.LabCode.system.checkLLMRuntime();
+          const rt = await window.BubaiCode.system.checkLLMRuntime();
           if (rt && rt.modelsDir) modelsDir = rt.modelsDir;
         } catch (e) {}
         const targetFile = modelsDir + '\\' + (plugin.ggufFile || plugin.modelName);
         // 辅助函数：给 PowerShell 传单引号路径
         const psPath = (p) => "'" + p.replace(/'/g, "''") + "'";
         // 已存在则跳过下载（terminal.execute 返回对象 {success,stdout,...}，取 stdout 判断）
-        const fsCheck = await window.LabCode.terminal.execute(
+        const fsCheck = await window.BubaiCode.terminal.execute(
           'powershell -NoProfile -Command "if (Test-Path ' + psPath(targetFile) + ') { $s=(Get-Item ' + psPath(targetFile) + ').Length/1GB; Write-Output (\'EXISTS \' + [math]::Round($s,2).ToString()) } else { Write-Output \'MISSING\' }"',
           null, 20000, { force: true }
         );
@@ -12523,7 +12523,7 @@ function bindEvents() {
           if (installPollTimer) { clearInterval(installPollTimer); installPollTimer = null; }
           installPollTimer = setInterval(async () => {
             try {
-              const r = await window.LabCode.terminal.execute(
+              const r = await window.BubaiCode.terminal.execute(
                 'powershell -NoProfile -Command "if (Test-Path ' + psPath(targetFile) + ') { $s=(Get-Item ' + psPath(targetFile) + ').Length/1GB; Write-Output ([math]::Round($s,2).ToString()) } else { Write-Output \'0\' }"',
                 null, 15000, { force: true }
               );
@@ -12537,7 +12537,7 @@ function bindEvents() {
             } catch (e) { /* 轮询失败不影响下载 */ }
           }, 1200);
           addOutputLog('正在下载模型 ' + (plugin.ggufFile || plugin.modelName) + '（约 ' + plugin.minDiskGB + 'GB，国内直链约 15MB/s，首次需几分钟）...', 'info');
-          const dlRes = await window.LabCode.terminal.execute(
+          const dlRes = await window.BubaiCode.terminal.execute(
             'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path ' + psPath(modelsDir) + ' | Out-Null; curl.exe -L --retry 3 -C - -o ' + psPath(targetFile) + ' ' + psPath(plugin.downloadUrl) + '"',
             null, 1800000, { force: true }
           );
@@ -12546,7 +12546,7 @@ function bindEvents() {
             dlOk = false;
           }
           // 校验文件存在且大于 100MB
-          const fsVerify = await window.LabCode.terminal.execute(
+          const fsVerify = await window.BubaiCode.terminal.execute(
             'powershell -NoProfile -Command "if (Test-Path ' + psPath(targetFile) + ') { $s=(Get-Item ' + psPath(targetFile) + ').Length/1MB; Write-Output ([math]::Round($s,1).ToString()) } else { Write-Output \'0\' }"',
             null, 20000, { force: true }
           );
@@ -12580,7 +12580,7 @@ function bindEvents() {
     if (plugin.source === 'own-site' && plugin.downloadUrl && plugin.category !== 'ai-model') {
       try {
         // label 会拼进临时 zip 文件名，必须用 ASCII（中文路径在终端编码下会下载失败）
-        const cc = await installFromZipball(plugin.downloadUrl, null, plugin, 'LabCodeSite');
+        const cc = await installFromZipball(plugin.downloadUrl, null, plugin, 'BubaiCodeSite');
         remoteInstall = cc.result;
         addOutputLog('✅ 已从官网安装「' + plugin.name + ' v' + plugin.version + '」（' + cc.sizeKB + ' KB，注册 ' + (cc.result.tools || 0) + ' 个工具、' + (cc.result.skills || 0) + ' 条技能）', 'success');
       } catch (ce) {
@@ -12590,7 +12590,7 @@ function bindEvents() {
         return { success: false, error: '官网安装失败: ' + ce.message };
       }
     } else if (plugin.source === 'remote' && plugin.downloadUrl && !BUILTIN_PLUGIN_MANIFESTS[plugin.id] && plugin.category !== 'ai-model') {
-      // 官方插件 GitHub 源：默认 hulufeng/labcode-plugins（LabCode 自有仓库）；
+      // 官方插件 GitHub 源：默认 hulufeng/bubaicode-plugins（BubaiCode 自有仓库）；
       // 若网关插件数据里标注了 githubRepo 字段，则以标注值为准
       const ghRepo = plugin.githubRepo || OFFICIAL_PLUGIN_REPO;
       const ghId = (GH_PLUGIN_ID_MAP[plugin.id] || plugin.id);
@@ -12603,7 +12603,7 @@ function bindEvents() {
         remoteInstall = gh.result;
         addOutputLog('✅ 已从 GitHub 安装（' + ghRepo + ' / ' + ghId + '，' + gh.sizeKB + ' KB，注册 ' + (gh.result.tools || 0) + ' 个工具、' + (gh.result.skills || 0) + ' 条技能）', 'success');
       } catch (ghErr) {
-        // GitHub 源缺失（如 LabCode 自有的 hello-market / llama-runtime）→ 回退网关 zip
+        // GitHub 源缺失（如 BubaiCode 自有的 hello-market / llama-runtime）→ 回退网关 zip
         addOutputLog('GitHub 源不可用（' + ghErr.message + '），回退官方市场 zip...', 'warning');
         try {
           const gw = await installFromZipball(plugin.downloadUrl, plugin.id, plugin, '官方市场');
@@ -12735,7 +12735,7 @@ function bindEvents() {
       if (!plugin) return { success: false, error: '插件不存在: ' + id };
       if (isPluginInstalled(id)) return { success: false, error: '插件已安装: ' + id };
       if (plugin.category === 'ai-model' && plugin.requires && !isPluginInstalled(plugin.requires)) {
-        return { success: false, error: '缺少依赖: 请先安装 ' + plugin.requires + '（LabCode AI 引擎）' };
+        return { success: false, error: '缺少依赖: 请先安装 ' + plugin.requires + '（BubaiCode AI 引擎）' };
       }
       try {
         // 用 installPlugin 的真实返回值，不再用 isPluginInstalled 兜底（那会掩盖失败、骗过 AI）
@@ -12788,7 +12788,7 @@ function bindEvents() {
   if (installDirBtn) {
     installDirBtn.addEventListener('click', async () => {
       try {
-        const dir = await window.LabCode.dialog.openDirectory();
+        const dir = await window.BubaiCode.dialog.openDirectory();
         if (!dir) return;
         const r = await window.PluginSystem.installFromDir(dir);
         if (r && r.success) {
@@ -12812,7 +12812,7 @@ function bindEvents() {
     installZipBtn.addEventListener('click', async () => {
       let tmpDir = '';
       try {
-        const zip = await window.LabCode.dialog.openFile();
+        const zip = await window.BubaiCode.dialog.openFile();
         if (!zip) return;
         if (!/\.zip$/i.test(zip)) { showToast('请选择 .zip 插件包', 'warning'); return; }
         const root = await window.PluginSystem.getPluginsRoot();
@@ -12820,7 +12820,7 @@ function bindEvents() {
         const sep = String(root).includes('/') ? '/' : '\\';
         tmpDir = root.replace(/[\\\/]+$/, '') + sep + '.tmp-zip-' + Date.now();
         showToast('正在解压 ' + zip.split(/[\\\/]/).pop() + ' ...', 'info');
-        const uz = await window.LabCode.plugin.unzip({ zipPath: zip, destDir: tmpDir });
+        const uz = await window.BubaiCode.plugin.unzip({ zipPath: zip, destDir: tmpDir });
         if (!uz || !uz.success) {
           showToast('解压失败：' + ((uz && uz.error) || '未知原因'), 'error');
           return;
@@ -12843,7 +12843,7 @@ function bindEvents() {
       } catch (e) {
         showToast('安装失败：' + e.message, 'error');
       } finally {
-        if (tmpDir) { try { await window.LabCode.fs.deleteFile(tmpDir); } catch (e) { /* 清理失败无所谓 */ } }
+        if (tmpDir) { try { await window.BubaiCode.fs.deleteFile(tmpDir); } catch (e) { /* 清理失败无所谓 */ } }
       }
     });
   }
@@ -12937,7 +12937,7 @@ function bindEvents() {
             '<ol style="margin:0;padding-left:18px;font-size: 12px;color:var(--text-secondary);line-height:1.8;">' +
               '<li>在浏览器中登录立创EDA，完成电路设计与原理图</li>' +
               '<li>导出 Gerber / BOM / 坐标文件，或导出工程包</li>' +
-              '<li>回到 LabCode，在「设备」面板选择对应板卡与端口，编译烧录你的固件</li>' +
+              '<li>回到 BubaiCode，在「设备」面板选择对应板卡与端口，编译烧录你的固件</li>' +
             '</ol>' +
           '</div>' +
         '</div>' +
@@ -12948,7 +12948,7 @@ function bindEvents() {
             '<ol style="margin:0;padding-left:18px;font-size: 12px;color:var(--text-secondary);line-height:1.8;">' +
               '<li>在立创EDA 中导出扩展文件（.json 工程包 / 器件库）</li>' +
               '<li>点击下方「打开立创EDA 扩展市场」获取可导入的扩展</li>' +
-              '<li>导入后在 LabCode 文件树中可见，可直接参与编译</li>' +
+              '<li>导入后在 BubaiCode 文件树中可见，可直接参与编译</li>' +
             '</ol>' +
             '<button id="lceda-market" class="btn btn-secondary btn-sm" style="margin-top:10px;">打开立创EDA 扩展市场</button>' +
           '</div>' +
@@ -12958,9 +12958,9 @@ function bindEvents() {
     const close = () => wrap.remove();
     wrap.querySelector('#lceda-close').addEventListener('click', close);
     const openBtn = wrap.querySelector('#lceda-open');
-    if (openBtn) openBtn.addEventListener('click', () => { try { window.LabCode.shell.openExternal('https://lceda.cn/editor'); } catch (e) {} });
+    if (openBtn) openBtn.addEventListener('click', () => { try { window.BubaiCode.shell.openExternal('https://lceda.cn/editor'); } catch (e) {} });
     const marketBtn = wrap.querySelector('#lceda-market');
-    if (marketBtn) marketBtn.addEventListener('click', () => { try { window.LabCode.shell.openExternal('https://lceda.cn/products'); } catch (e) {} });
+    if (marketBtn) marketBtn.addEventListener('click', () => { try { window.BubaiCode.shell.openExternal('https://lceda.cn/products'); } catch (e) {} });
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     wrap.querySelectorAll('.lceda-tab').forEach(t => {
       t.addEventListener('click', () => {
@@ -12997,7 +12997,7 @@ function bindEvents() {
     wrap.querySelector('#plugin-view-close').addEventListener('click', close);
     const extBtn = wrap.querySelector('#plugin-view-openext');
     if (extBtn) extBtn.addEventListener('click', () => {
-      try { window.LabCode.shell.openExternal(url); } catch (e) { window.open(url, '_blank'); }
+      try { window.BubaiCode.shell.openExternal(url); } catch (e) { window.open(url, '_blank'); }
     });
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     // 空白检测：load 后导航仍未提交（contentDocument 仍是 about:blank 同源可读）→ 反内嵌拦截，亮出引导条
@@ -13212,7 +13212,7 @@ function bindEvents() {
         // Phase B+：turn 批次快照 + todo 清单随会话保存
         turns: (function () {
           try {
-            const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
+            const ft = window.BubaiCodeUI && window.BubaiCodeUI.fileTracker;
             return ft && typeof ft.snapshotTurns === 'function' ? ft.snapshotTurns() : null;
           } catch (e) { return null; }
         })(),
@@ -13256,7 +13256,7 @@ function bindEvents() {
         if (Array.isArray(s.workLog)) state.agent.workLog = s.workLog.slice();
       }
       // Phase B+：恢复该会话自己的 turn 批次（此前是清空，导致跨会话串味且撤销历史丢失）
-      const ft = window.LabCodeUI && window.LabCodeUI.fileTracker;
+      const ft = window.BubaiCodeUI && window.BubaiCodeUI.fileTracker;
       if (ft && typeof ft.restoreTurns === 'function') ft.restoreTurns(s.turns || null);
       else if (ft && typeof ft.clear === 'function') { ft.clear('default'); ft.clear('stream'); }
       state.todoList = Array.isArray(s.todoList) ? s.todoList.slice() : [];
@@ -13375,7 +13375,7 @@ function bindEvents() {
     if (toolFlowPanel) toolFlowPanel.style.display = 'none';
     const toolFlowCollapse = document.getElementById('ai-tool-flow-collapse');
     if (toolFlowCollapse) toolFlowCollapse.textContent = '—';
-    window.__labcodeDiffCache = {};
+    window.__bubaicodeDiffCache = {};
     const welcome = document.getElementById('ai-welcome');
     if (welcome) {
       welcome.style.display = 'flex';
@@ -13398,7 +13398,7 @@ function bindEvents() {
     window._currentSessionId = null; // 新对话 = 新会话身份
     if (window.SessionStore) window.SessionStore.newSession();
     // Phase B+：新会话不继承上一会话的 turn 批次与 todo
-    const ft0 = window.LabCodeUI && window.LabCodeUI.fileTracker;
+    const ft0 = window.BubaiCodeUI && window.BubaiCodeUI.fileTracker;
     if (ft0 && typeof ft0.clearAll === 'function') ft0.clearAll();
     state.todoList = [];
     if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
@@ -13449,7 +13449,7 @@ function bindEvents() {
   const aiHistoryBtn = document.getElementById('ai-history-btn');
   if (aiHistoryBtn) aiHistoryBtn.addEventListener('click', openHistoryPanel);
 
-  // ===== 对齐 ChipCode：欢迎页顶部常驻历史搜索 + 最近会话（复用同一存储 labcode.chatSessions）=====
+  // ===== 对齐 ChipCode：欢迎页顶部常驻历史搜索 + 最近会话（复用同一存储 bubaicode.chatSessions）=====
   function renderWelcomeHistory(q) {
     try {
       const listEl = document.getElementById('welcome-history-list');
@@ -13562,7 +13562,7 @@ function bindEvents() {
   async function sttToggle() {
     const S = window.__sttState;
     if (S.recording) { sttStop(); return; }
-    if (!(isElectron && window.LabCode && window.LabCode.stt)) { showToast('语音输入仅桌面版支持', 'warn'); return; }
+    if (!(isElectron && window.BubaiCode && window.BubaiCode.stt)) { showToast('语音输入仅桌面版支持', 'warn'); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -13597,7 +13597,7 @@ function bindEvents() {
     for (const c of chunks) { merged.set(c, off); off += c.length; }
     const wav = sttEncodeWav16(sttResampleTo16k(merged, rate), 16000);
     showToast('转写中…', 'info');
-    window.LabCode.stt.transcribe(wav).then(r => {
+    window.BubaiCode.stt.transcribe(wav).then(r => {
       if (r && r.ok && r.text) {
         const inp = document.getElementById('ai-input');
         if (inp) {
@@ -13615,13 +13615,13 @@ function bindEvents() {
   }
   window.__sttTest = { sttResampleTo16k, sttEncodeWav16, sttToggle, sttStop, state: window.__sttState };
   const voiceBtn = document.getElementById('voice-btn');
-  // 仅当后端 STT（window.LabCode.stt）就绪时绑定；否则交给 ai-voice-input.js 的 Web Speech 兜底，避免双触发
-  if (voiceBtn && window.LabCode && window.LabCode.stt) voiceBtn.addEventListener('click', sttToggle);
+  // 仅当后端 STT（window.BubaiCode.stt）就绪时绑定；否则交给 ai-voice-input.js 的 Web Speech 兜底，避免双触发
+  if (voiceBtn && window.BubaiCode && window.BubaiCode.stt) voiceBtn.addEventListener('click', sttToggle);
 
   // ===== Git 检查点弹窗（影子仓库快照：列表/预览/恢复/立即快照）=====
   function cpFmtTime(ts) { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   async function openCheckpointModal() {
-    if (!(isElectron && window.LabCode && window.LabCode.git && window.LabCode.git.checkpoint)) { showToast('仅桌面版支持检查点', 'warn'); return; }
+    if (!(isElectron && window.BubaiCode && window.BubaiCode.git && window.BubaiCode.git.checkpoint)) { showToast('仅桌面版支持检查点', 'warn'); return; }
     const cwd = state.projectPath || '';
     if (!cwd) { showToast('请先打开项目', 'warn'); return; }
     const overlay = document.createElement('div');
@@ -13637,7 +13637,7 @@ function bindEvents() {
     overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.hasAttribute('data-cp-close')) overlay.remove(); });
     const listEl = box.querySelector('#cp-list');
     async function renderCpList() {
-      const r = await window.LabCode.git.checkpoint.list(cwd);
+      const r = await window.BubaiCode.git.checkpoint.list(cwd);
       if (!r || !r.ok) { listEl.innerHTML = '<div style="opacity:.6;font-size:12px;">加载失败：' + escapeHtml((r && r.error) || '') + '</div>'; return; }
       if (!r.records.length) { listEl.innerHTML = '<div style="opacity:.6;font-size:12px;">暂无检查点。pull / checkout / AI 改文件前会自动创建，或点下方「立即快照」。</div>'; return; }
       listEl.innerHTML = r.records.map(rec =>
@@ -13652,7 +13652,7 @@ function bindEvents() {
       listEl.querySelectorAll('[data-cp-prev]').forEach(b => b.addEventListener('click', async () => {
         const id = b.getAttribute('data-cp-prev');
         const det = listEl.querySelector('[data-cp-detail="' + id + '"]');
-        const p = await window.LabCode.git.checkpoint.preview(cwd, id);
+        const p = await window.BubaiCode.git.checkpoint.preview(cwd, id);
         if (!p || !p.ok) { det.textContent = '预览失败：' + ((p && p.error) || ''); det.style.display = 'block'; return; }
         det.innerHTML = '<b>恢复将变更 ' + p.total + ' 个文件：</b><br>' + (p.files.length ? p.files.map(escapeHtml).join('<br>') : '（无差异）') + (p.total > p.files.length ? '<br>… 还有 ' + (p.total - p.files.length) + ' 个' : '');
         det.style.display = 'block';
@@ -13660,13 +13660,13 @@ function bindEvents() {
       listEl.querySelectorAll('[data-cp-restore]').forEach(b => b.addEventListener('click', async () => {
         const id = b.getAttribute('data-cp-restore');
         if (!confirm('恢复该检查点将覆盖/删除当前工作区对应文件（恢复前会自动拍当前态）。继续？')) return;
-        const r = await window.LabCode.git.checkpoint.restore(cwd, id);
+        const r = await window.BubaiCode.git.checkpoint.restore(cwd, id);
         if (r && r.ok) { showToast('已恢复 ' + id + (r.removed ? '，清理新增 ' + r.removed + ' 个文件' : ''), 'success'); if (typeof refreshGitStatus === 'function') refreshGitStatus(); }
         else showToast('恢复失败：' + ((r && r.error) || ''), 'error');
       }));
     }
     box.querySelector('#cp-create-btn').addEventListener('click', async () => {
-      const r = await window.LabCode.git.checkpoint.create(cwd, '手动快照');
+      const r = await window.BubaiCode.git.checkpoint.create(cwd, '手动快照');
       if (r && r.ok) { showToast(r.unchanged ? '与上一快照相同（自动去重）' : '已创建快照 ' + r.id, 'success'); renderCpList(); }
       else showToast('快照失败：' + ((r && r.error) || ''), 'error');
     });
@@ -13685,8 +13685,8 @@ function bindEvents() {
       .map(ch => ({ path: ch.path, kind: ch.action || 'modify', before: ch.before == null ? null : String(ch.before), after: ch.after == null ? null : String(ch.after) }));
     return { workspace: state.projectPath || '', changes };
   }
-  if (window.LabCode && window.LabCode.scheduleBridge && window.LabCode.scheduleBridge.onExec) {
-    window.LabCode.scheduleBridge.onExec(async (d) => {
+  if (window.BubaiCode && window.BubaiCode.scheduleBridge && window.BubaiCode.scheduleBridge.onExec) {
+    window.BubaiCode.scheduleBridge.onExec(async (d) => {
       const token = (d && d.token) || '';
       try {
         ensureAgent();
@@ -13704,11 +13704,11 @@ function bindEvents() {
         let patchStr = '';
         if (patch.changes.length && patch.workspace) {
           patchStr = JSON.stringify(patch);
-          window.LabCode.scheduleBridge.submitPatch({ runId: d.runId, token, patch: patchStr }).catch(() => {});
+          window.BubaiCode.scheduleBridge.submitPatch({ runId: d.runId, token, patch: patchStr }).catch(() => {});
         }
-        window.LabCode.scheduleBridge.sendResult({ token, ok: true, summary: String(summary).slice(0, 2000), patch: patchStr });
+        window.BubaiCode.scheduleBridge.sendResult({ token, ok: true, summary: String(summary).slice(0, 2000), patch: patchStr });
       } catch (e) {
-        window.LabCode.scheduleBridge.sendResult({ token, ok: false, summary: '', error: e.message, patch: '' });
+        window.BubaiCode.scheduleBridge.sendResult({ token, ok: false, summary: '', error: e.message, patch: '' });
       }
     });
   }
@@ -13741,9 +13741,9 @@ function bindEvents() {
   const welcomeOpenProject = document.getElementById('welcome-open-project');
   if (welcomeOpenProject) {
     welcomeOpenProject.addEventListener('click', async () => {
-      if (isElectron && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode.dialog) {
         try {
-          const dirPath = await window.LabCode.dialog.openDirectory();
+          const dirPath = await window.BubaiCode.dialog.openDirectory();
           if (dirPath) {
             await loadProjectFromDisk(dirPath);
             // 关闭欢迎页面，显示编辑器
@@ -13785,9 +13785,9 @@ function bindEvents() {
   const newProjectBrowse = document.getElementById('new-project-browse');
   if (newProjectBrowse) {
     newProjectBrowse.addEventListener('click', async () => {
-      if (isElectron && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode.dialog) {
         try {
-          const dirPath = await window.LabCode.dialog.openDirectory();
+          const dirPath = await window.BubaiCode.dialog.openDirectory();
           if (dirPath) document.getElementById('new-project-location').value = dirPath;
         } catch (e) { console.error(e); }
       }
@@ -13871,8 +13871,8 @@ function bindEvents() {
   
   // 模型选择器（修复：写入真实配置 ai.provider/ai.model，初始化从配置回显）
   const MODEL_MAP = {
-    // 内置云端：走 LabCode 网关（登录即用免费额度），模型列表由网关 /api/models 下发
-    'gateway':        { provider: 'gateway',  model: 'qwen3-8b',           label: 'LabCode 云端' },
+    // 内置云端：走 BubaiCode 网关（登录即用免费额度），模型列表由网关 /api/models 下发
+    'gateway':        { provider: 'gateway',  model: 'qwen3-8b',           label: 'BubaiCode 云端' },
     // 自带 Key 直连服务商（不消耗云端额度）：填自己的 API Key 即可
     'siliconflow':    { provider: 'custom',   model: 'Qwen/Qwen3-8B',       baseURL: 'https://api.siliconflow.cn/v1', label: '硅基流动 Qwen3-8B（自带 Key 直连）', byok: true },
     'ollama':         { provider: 'ollama',   model: 'qwen2.5-coder:7b',   label: 'Ollama 本地模型' }
@@ -13885,8 +13885,8 @@ function bindEvents() {
   // 拉取网关真实模型池（服务器下发 → 网关侧配了新模型，App 下拉里自动出现）
   async function fetchGatewayModels() {
     try {
-      if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayModels) {
-        const r = await window.LabCode.ai.gatewayModels();
+      if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayModels) {
+        const r = await window.BubaiCode.ai.gatewayModels();
         if (r && r.success && Array.isArray(r.models)) { gwModelList = r.models; return gwModelList; }
       }
     } catch (e) { /* 离线：回退默认项 */ }
@@ -13900,12 +13900,12 @@ function bindEvents() {
     const all = await fetchGatewayModels();
     let avail = all.filter(m => m.available);
     if (!avail.length) {
-      avail = [{ id: GW_DEFAULT_MODEL, name: 'LabCode 云端（默认模型）', desc: '', available: true, costPerCall: 0 }];
+      avail = [{ id: GW_DEFAULT_MODEL, name: 'BubaiCode 云端（默认模型）', desc: '', available: true, costPerCall: 0 }];
     }
     let gwStatus = null;
-    try { gwStatus = await window.LabCode.ai.gatewayStatus(); } catch (e) {}
+    try { gwStatus = await window.BubaiCode.ai.gatewayStatus(); } catch (e) {}
     let cur = '';
-    try { const c = await window.LabCode.config.get(); cur = (c && c.ai && c.ai.model) || ''; } catch (e) {}
+    try { const c = await window.BubaiCode.config.get(); cur = (c && c.ai && c.ai.model) || ''; } catch (e) {}
     box.innerHTML = '';
     avail.forEach(m => {
       const row = document.createElement('div');
@@ -13936,8 +13936,8 @@ function bindEvents() {
     // 初始化：从配置读取当前模型并回显
     (async () => {
       try {
-        if (window.LabCode && window.LabCode.config) {
-          const cfg = await window.LabCode.config.get();
+        if (window.BubaiCode && window.BubaiCode.config) {
+          const cfg = await window.BubaiCode.config.get();
           const ai = cfg?.ai || {};
           // 网关已登录（云端通道）：按网关下发的真实模型池显示
           if (ai.gatewayToken && (ai.provider === 'gateway' || !ai.provider)) {
@@ -13947,12 +13947,12 @@ function bindEvents() {
               ? ai.model
               : (avail.length ? avail[0].id : GW_DEFAULT_MODEL);
             const hit = avail.find(m => m.id === mdl);
-            const gwLabel = hit ? hit.name : 'LabCode 云端';
+            const gwLabel = hit ? hit.name : 'BubaiCode 云端';
             document.getElementById('current-model-name').textContent = gwLabel + '（云端）';
             document.querySelectorAll('.model-option').forEach(o =>
               o.classList.toggle('active', o.dataset.gwModel === mdl));
             if (ai.model !== mdl) {
-              try { window.LabCode.config.set('ai.model', mdl); } catch (e) {}
+              try { window.BubaiCode.config.set('ai.model', mdl); } catch (e) {}
             }
             const wsGw = document.querySelector('.model-status-text');
             if (wsGw) wsGw.textContent = `当前模型：${gwLabel}（云端）`;
@@ -13961,7 +13961,7 @@ function bindEvents() {
             if (ai.provider === 'local') {
               // 用扫描到的可读名（Qwen2.5-Coder 3B），而不是难读的 .gguf 文件名
               try {
-                const rt = await window.LabCode.system.checkLLMRuntime();
+                const rt = await window.BubaiCode.system.checkLLMRuntime();
                 const hit = (rt && rt.models || []).find(m => m.file === ai.model);
                 if (hit && hit.name) friendly = hit.name;
               } catch (e) {}
@@ -14016,7 +14016,7 @@ function bindEvents() {
     };
     const getOllamaBaseURL = async () => {
       try {
-        const c = await window.LabCode.config.get();
+        const c = await window.BubaiCode.config.get();
         const a = c?.ai || {};
         return a.baseURL || a.baseUrl || 'http://127.0.0.1:8080/v1';
       } catch (e) { return 'http://127.0.0.1:8080/v1'; }
@@ -14026,7 +14026,7 @@ function bindEvents() {
       // ① Ollama（外部服务）：GET /models，不发起推理
       try {
         const base = await getOllamaBaseURL();
-        const st = await window.LabCode.ai.localStatus({ baseURL: base });
+        const st = await window.BubaiCode.ai.localStatus({ baseURL: base });
         if (st && st.running) {
           const models = st.models || [];
           res.ollama = models.length
@@ -14040,7 +14040,7 @@ function bindEvents() {
       }
       // ② 内置本地引擎（provider=local）
       try {
-        const rt = await window.LabCode.system.checkLLMRuntime();
+        const rt = await window.BubaiCode.system.checkLLMRuntime();
         if (!rt || !rt.engine) res.local = { ok: false, text: '未装引擎' };
         else if (!rt.models || !rt.models.length) res.local = { ok: false, text: '未下载模型' };
         else if (!rt.engineRunning) res.local = { ok: true, text: '已装 ' + rt.models.length + ' 个' };
@@ -14068,7 +14068,7 @@ function bindEvents() {
       setLocalTag('local', st.local.text, !st.local.ok);
       // 网关状态签（下拉第一项）：已登录/额度 / 需登录
       try {
-        const gw = await window.LabCode.ai.gatewayStatus();
+        const gw = await window.BubaiCode.ai.gatewayStatus();
         const tagEl = document.querySelector('[data-gw-tag="gateway"]');
         if (tagEl) {
           if (gw.loggedIn && gw.valid) {
@@ -14087,7 +14087,7 @@ function bindEvents() {
       // 探测期间用户可能已切换模型 → 代次不一致就放弃回写，避免覆盖新选择
       if (gen !== modelSelGen) return st;
       try {
-        const c = await window.LabCode.config.get();
+        const c = await window.BubaiCode.config.get();
         const a = c?.ai || {};
         const nameEl = document.getElementById('current-model-name');
         if (!nameEl) return st;
@@ -14125,8 +14125,8 @@ function bindEvents() {
         nameEl.textContent = base;
       }
     };
-    if (window.LabCode && window.LabCode.system && window.LabCode.system.onEngineProgress) {
-      window.LabCode.system.onEngineProgress((p) => {
+    if (window.BubaiCode && window.BubaiCode.system && window.BubaiCode.system.onEngineProgress) {
+      window.BubaiCode.system.onEngineProgress((p) => {
         if (!p) return;
         setEnginePhase(p.phase);
         if (p.phase === 'loading' || p.phase === 'gpu' || p.phase === 'ctx') {
@@ -14149,7 +14149,7 @@ function bindEvents() {
         // 云端选项标注：未登录账号且未配 Key → 「未配置 Key」红签，避免选了发不出去
         let gw = false, key = '';
         try {
-          const c = await window.LabCode.config.get();
+          const c = await window.BubaiCode.config.get();
           gw = !!(c?.ai?.gatewayToken);
           key = (c?.ai?.apiKey || '').trim();
         } catch (err) {}
@@ -14192,12 +14192,12 @@ function bindEvents() {
       const wsGw = document.querySelector('.model-status-text');
       if (wsGw) wsGw.textContent = '当前模型：' + modelName;
       try {
-        const cfg = await window.LabCode.config.get();
+        const cfg = await window.BubaiCode.config.get();
         const hasTok = !!(cfg && cfg.ai && cfg.ai.gatewayToken);
         let gwStatus = null, gwValid = false;
-        try { gwStatus = await window.LabCode.ai.gatewayStatus(); gwValid = !!(gwStatus && gwStatus.valid); } catch (err) {}
-        await window.LabCode.config.set('ai.provider', 'gateway');
-        await window.LabCode.config.set('ai.model', gwId);
+        try { gwStatus = await window.BubaiCode.ai.gatewayStatus(); gwValid = !!(gwStatus && gwStatus.valid); } catch (err) {}
+        await window.BubaiCode.config.set('ai.provider', 'gateway');
+        await window.BubaiCode.config.set('ai.model', gwId);
         if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
           await state.agent.ai._loadConfig();
         }
@@ -14235,9 +14235,9 @@ function bindEvents() {
         modelDropdown.style.display = 'none';
         // 写入真实配置
         try {
-          if (window.LabCode && window.LabCode.config) {
-            // ===== 网关云端通道：登录 LabCode 账号后，云端模型自动走内置模型池 =====
-            const curCfg = await window.LabCode.config.get();
+          if (window.BubaiCode && window.BubaiCode.config) {
+            // ===== 网关云端通道：登录 BubaiCode 账号后，云端模型自动走内置模型池 =====
+            const curCfg = await window.BubaiCode.config.get();
             const hasGw = !!(curCfg?.ai?.gatewayToken);
             const isCloudMapping = (mapping.provider === 'deepseek' || mapping.provider === 'custom');
             // 云端模型 → 网关模型 id 映射（对齐网关 models.json；只保留真实可用的）
@@ -14245,18 +14245,18 @@ function bindEvents() {
               'siliconflow': 'qwen3-8b'
             };
             if (mapping.provider === 'gateway') {
-              // 云端模型：登录 LabCode 账号后使用，不内置任何兜底凭据
-              await window.LabCode.config.set('ai.provider', 'gateway');
-              await window.LabCode.config.set('ai.model', mapping.model || 'qwen3-8b');
+              // 云端模型：登录 BubaiCode 账号后使用，不内置任何兜底凭据
+              await window.BubaiCode.config.set('ai.provider', 'gateway');
+              await window.BubaiCode.config.set('ai.model', mapping.model || 'qwen3-8b');
             } else if (hasGw && isCloudMapping && !mapping.byok) {
-              await window.LabCode.config.set('ai.provider', 'gateway');
-              await window.LabCode.config.set('ai.model', GATEWAY_MODEL_MAP[modelKey] || 'qwen3-8b');
+              await window.BubaiCode.config.set('ai.provider', 'gateway');
+              await window.BubaiCode.config.set('ai.model', GATEWAY_MODEL_MAP[modelKey] || 'qwen3-8b');
             } else {
-              await window.LabCode.config.set('ai.provider', mapping.provider);
-              await window.LabCode.config.set('ai.model', mapping.model);
+              await window.BubaiCode.config.set('ai.provider', mapping.provider);
+              await window.BubaiCode.config.set('ai.model', mapping.model);
               // custom 提供商：仅当未配置 baseURL 时写入默认值
               if (mapping.provider === 'custom' && mapping.baseURL) {
-                if (!curCfg?.ai?.baseURL) await window.LabCode.config.set('ai.baseURL', mapping.baseURL);
+                if (!curCfg?.ai?.baseURL) await window.BubaiCode.config.set('ai.baseURL', mapping.baseURL);
               }
             }
             // 刷新 RealAIClient 配置
@@ -14264,7 +14264,7 @@ function bindEvents() {
               await state.agent.ai._loadConfig();
             }
             // 检查是否真的可用（本地模型要实际探测，别再无脑报"已切换到"）
-            const cfg = await window.LabCode.config.get();
+            const cfg = await window.BubaiCode.config.get();
             const gwSuffix = (hasGw && isCloudMapping) ? '（云端）' : '';
             if (mapping.provider === 'ollama' || mapping.provider === 'local') {
               // 本地模型：探测真实可用性，未就绪就明确告诉用户还差什么
@@ -14314,8 +14314,8 @@ function bindEvents() {
       document.querySelectorAll('.model-option').forEach(o => o.classList.remove('active'));
       opt.classList.add('active');
       try {
-        await window.LabCode.config.set('ai.provider', 'local');
-        await window.LabCode.config.set('ai.model', file);
+        await window.BubaiCode.config.set('ai.provider', 'local');
+        await window.BubaiCode.config.set('ai.model', file);
         // 先更新标题栏：后面的 _loadConfig / 引擎启动是慢操作，不能让它把标题栏压住
         document.getElementById('current-model-name').textContent = modelName + ' (本地)';
         if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
@@ -14323,15 +14323,15 @@ function bindEvents() {
         }
         // 慢操作结束后校验：期间用户若已切到别的模型，就不要再回写标题栏
         try {
-          const now = await window.LabCode.config.get();
+          const now = await window.BubaiCode.config.get();
           if (now?.ai?.provider === 'local' && now?.ai?.model === file) {
             document.getElementById('current-model-name').textContent = modelName + ' (本地)';
           }
         } catch (e) {}
         showToast('已切换到本地模型 ' + modelName + '，正在加载（首次加载需十几秒）', 'success');
         // 引擎若正在跑别的模型，主进程会 kill 旧进程并用新模型重启
-        if (window.LabCode.system && window.LabCode.system.startLLMEngine) {
-          try { await window.LabCode.system.startLLMEngine({ modelFile: file }); } catch (e) {}
+        if (window.BubaiCode.system && window.BubaiCode.system.startLLMEngine) {
+          try { await window.BubaiCode.system.startLLMEngine({ modelFile: file }); } catch (e) {}
         }
       } catch (err) {
         console.warn('[本地模型] 切换失败:', err);
@@ -14384,13 +14384,13 @@ function bindEvents() {
   async function refreshLocalModelsInSelector() {
     const gen = modelSelGen;
     try {
-      if (!window.LabCode || !window.LabCode.system) return;
-      const runtime = await window.LabCode.system.checkLLMRuntime();
+      if (!window.BubaiCode || !window.BubaiCode.system) return;
+      const runtime = await window.BubaiCode.system.checkLLMRuntime();
       const modelList = (runtime && runtime.models) || [];
       // 当前正在用的本机模型（重建分组后要恢复高亮，否则选中项看不出是哪个）
       let curLocalFile = null;
       try {
-        const curCfg = await window.LabCode.config.get();
+        const curCfg = await window.BubaiCode.config.get();
         if (curCfg?.ai?.provider === 'local') curLocalFile = curCfg.ai.model || null;
       } catch (e) {}
 
@@ -14483,8 +14483,8 @@ function bindEvents() {
       // 同样要防「探测期间用户已切换模型」的旧值覆盖
       if (gen !== modelSelGen) return;
       try {
-        if (window.LabCode && window.LabCode.config) {
-          const cfg = await window.LabCode.config.get();
+        if (window.BubaiCode && window.BubaiCode.config) {
+          const cfg = await window.BubaiCode.config.get();
           const ai = cfg?.ai || {};
           if (ai.provider === 'local' && ai.model) {
             const hit = modelList.find(m => m.file === ai.model);
@@ -14539,7 +14539,7 @@ function bindEvents() {
     const simBtn = document.getElementById('wokwi-sim-btn');
     const releasesBtn = document.getElementById('wokwi-open-releases');
     if (detectBtn) detectBtn.addEventListener('click', detectWokwiCli);
-    if (releasesBtn) releasesBtn.addEventListener('click', () => { try { window.LabCode.shell.openExternal('https://github.com/wokwi/wokwi-cli/releases'); } catch (e) {} });
+    if (releasesBtn) releasesBtn.addEventListener('click', () => { try { window.BubaiCode.shell.openExternal('https://github.com/wokwi/wokwi-cli/releases'); } catch (e) {} });
     if (simBtn) simBtn.addEventListener('click', () => { try { if (typeof runWokwiSim === 'function') runWokwiSim(); } catch (e) {} });
     detectWokwiCli();
   }
@@ -14557,8 +14557,8 @@ function bindEvents() {
       else { st.textContent = '⚠️ 未检测到 wokwi-cli'; st.style.color = 'var(--warning, #e0a000)'; if (guide) guide.style.display = ''; }
     };
     try {
-      if (window.LabCode && window.LabCode.terminal && window.LabCode.terminal.execute) {
-        window.LabCode.terminal.execute('wokwi-cli --version', undefined, 6000).then(r => {
+      if (window.BubaiCode && window.BubaiCode.terminal && window.BubaiCode.terminal.execute) {
+        window.BubaiCode.terminal.execute('wokwi-cli --version', undefined, 6000).then(r => {
           if (r && r.blocked) { finish(false); return; }
           const ok = r && r.exitCode === 0 && !(r.stderr && /not recognized|not found|command not found|不是内部|找不到|no such file/i.test(r.stderr || ''));
           finish(ok, (r && (r.stdout || '').trim().slice(0, 40)) || 'ok');
@@ -14585,7 +14585,7 @@ function bindEvents() {
   window.selectDeviceToolchain = function (tc) {
     if (tc !== 'esp-idf-toolchain' && tc !== 'arduino-cli-toolchain') return;
     state.deviceToolchain = tc;
-    try { localStorage.setItem('labcode_device_toolchain', tc); } catch (e) {}
+    try { localStorage.setItem('bubaicode_device_toolchain', tc); } catch (e) {}
     applyToolchainView(tc);
   };
   function detectEspIdf() {
@@ -14602,8 +14602,8 @@ function bindEvents() {
       else { st.textContent = '⚠️ 未检测到 ESP-IDF（idf.py 不在 PATH）'; st.style.color = 'var(--warning, #e0a000)'; if (guide) guide.style.display = ''; }
     };
     try {
-      if (window.LabCode && window.LabCode.terminal && window.LabCode.terminal.execute) {
-        window.LabCode.terminal.execute('idf.py --version', undefined, 8000).then(r => {
+      if (window.BubaiCode && window.BubaiCode.terminal && window.BubaiCode.terminal.execute) {
+        window.BubaiCode.terminal.execute('idf.py --version', undefined, 8000).then(r => {
           if (r && r.blocked) { finish(false); return; }
           const ok = r && r.exitCode === 0 && !(r.stderr && /not recognized|not found|command not found|不是内部|找不到|no such file/i.test(r.stderr || ''));
           finish(ok, (r && (r.stdout || '').trim().slice(0, 60)) || 'ok');
@@ -14622,17 +14622,17 @@ function bindEvents() {
     const reBtn = document.getElementById('espidf-redetect');
     // 恢复持久化配置
     try {
-      const t = localStorage.getItem('labcode_esp_target'); if (t && tSel) tSel.value = t;
-      const f = localStorage.getItem('labcode_esp_flash_method'); if (f && fSel) fSel.value = f;
-      const b = localStorage.getItem('labcode_esp_flash_baud'); if (b && bSel) bSel.value = b;
+      const t = localStorage.getItem('bubaicode_esp_target'); if (t && tSel) tSel.value = t;
+      const f = localStorage.getItem('bubaicode_esp_flash_method'); if (f && fSel) fSel.value = f;
+      const b = localStorage.getItem('bubaicode_esp_flash_baud'); if (b && bSel) bSel.value = b;
     } catch (e) {}
     if (tSel) tSel.addEventListener('change', () => {
-      try { localStorage.setItem('labcode_esp_target', tSel.value); } catch (e) {}
+      try { localStorage.setItem('bubaicode_esp_target', tSel.value); } catch (e) {}
       showToast('目标芯片已设为 ' + tSel.value + '（idf.py set-target）', 'success');
     });
-    if (fSel) fSel.addEventListener('change', () => { try { localStorage.setItem('labcode_esp_flash_method', fSel.value); } catch (e) {} });
-    if (bSel) bSel.addEventListener('change', () => { try { localStorage.setItem('labcode_esp_flash_baud', bSel.value); } catch (e) {} });
-    if (docsBtn) docsBtn.addEventListener('click', () => { try { window.LabCode.shell.openExternal('https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32/get-started/windows-setup.html'); } catch (e) {} });
+    if (fSel) fSel.addEventListener('change', () => { try { localStorage.setItem('bubaicode_esp_flash_method', fSel.value); } catch (e) {} });
+    if (bSel) bSel.addEventListener('change', () => { try { localStorage.setItem('bubaicode_esp_flash_baud', bSel.value); } catch (e) {} });
+    if (docsBtn) docsBtn.addEventListener('click', () => { try { window.BubaiCode.shell.openExternal('https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32/get-started/windows-setup.html'); } catch (e) {} });
     if (reBtn) reBtn.addEventListener('click', detectEspIdf);
   }
 
@@ -14650,16 +14650,16 @@ function bindEvents() {
     // ESP-IDF / Arduino 工具链视图初始化（早于 compile 依赖的早退分支，保证视图总能就位）
     bindEspIdfControls();
     if (!state.deviceToolchain) {
-      try { const savedTc = localStorage.getItem('labcode_device_toolchain'); if (savedTc) state.deviceToolchain = savedTc; } catch (e) {}
+      try { const savedTc = localStorage.getItem('bubaicode_device_toolchain'); if (savedTc) state.deviceToolchain = savedTc; } catch (e) {}
     }
     if (!state.deviceToolchain) state.deviceToolchain = (state.projectType === 'esp-idf') ? 'esp-idf-toolchain' : 'arduino-cli-toolchain';
     applyToolchainView(state.deviceToolchain);
-    if (!window.LabCode?.compile) {
+    if (!window.BubaiCode?.compile) {
       populateDefaultBoards();
       populateSystemPorts();
       return;
     }
-    const cliInfo = await window.LabCode.compile.cliExists();
+    const cliInfo = await window.BubaiCode.compile.cliExists();
     if (!cliInfo.exists) {
       populateDefaultBoards();
       populateSystemPorts();
@@ -14674,13 +14674,13 @@ function bindEvents() {
           instBtn.disabled = true; instBtn.textContent = '安装中…';
           if (prog) { prog.style.display = 'block'; prog.textContent = '正在下载 arduino-cli…'; }
           try {
-            if (window.LabCode.toolchain && window.LabCode.toolchain.onProgress) {
-              window.LabCode.toolchain.onProgress((d) => {
+            if (window.BubaiCode.toolchain && window.BubaiCode.toolchain.onProgress) {
+              window.BubaiCode.toolchain.onProgress((d) => {
                 const p = normProgress(d);
                 if (prog && p.message) prog.textContent = p.message + (p.percent != null ? ' (' + p.percent + '%)' : '');
               });
             }
-            const r = await window.LabCode.toolchain.installCli();
+            const r = await window.BubaiCode.toolchain.installCli();
             if (prog) prog.textContent = (r && r.message) ? r.message : '安装结果未知';
             if (r && r.ok) {
               instBtn.textContent = '已安装';
@@ -14702,8 +14702,8 @@ function bindEvents() {
     await Promise.all([refreshBoards(), refreshPorts(), refreshCores()]);
     // 设备面板对齐 ChipCode board:attach：重新打开工程时恢复上次选择的板卡/端口
     try {
-      if (state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.load) {
-        const saved = await window.LabCode.board.load({ projectPath: state.projectPath });
+      if (state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.load) {
+        const saved = await window.BubaiCode.board.load({ projectPath: state.projectPath });
         if (saved && saved.ok) {
           const bSel = document.getElementById('board-select');
           const pSel = document.getElementById('port-select');
@@ -14737,7 +14737,7 @@ function bindEvents() {
     const prev = sel.value; // 保留用户已选开发板，避免刷新冲掉选择
     const restore = () => { if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev; };
     try {
-      const result = await window.LabCode.compile.listBoards();
+      const result = await window.BubaiCode.compile.listBoards();
       if (result.success && result.output) {
         const boards = [];
         const lines = result.output.split('\n').slice(1);
@@ -14770,8 +14770,8 @@ function bindEvents() {
     const prev = sel.value; // 保留用户已选端口，避免自动刷新冲掉选择
     const ports = [];
     try {
-      if (window.LabCode?.compile) {
-        const result = await window.LabCode.compile.listPorts();
+      if (window.BubaiCode?.compile) {
+        const result = await window.BubaiCode.compile.listPorts();
         if (result.success && result.output) {
           const lines = result.output.split('\n').slice(1);
           for (const line of lines) {
@@ -14804,7 +14804,7 @@ function bindEvents() {
     const el = document.getElementById('installed-platforms');
     if (!el) return;
     try {
-      const result = await window.LabCode.compile.listCores();
+      const result = await window.BubaiCode.compile.listCores();
       const cores = [];
       if (result.success && result.output) {
         const lines = result.output.split('\n').slice(1);
@@ -14955,8 +14955,8 @@ function bindEvents() {
     state.compileFqbn = boardSel.value || 'esp32:esp32:esp32c3';
     state.arduinoFqbn = boardSel.value;
     // 对齐 ChipCode board:attach：选好板卡即持久化到项目配置
-    if (boardSel.value && state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.attach) {
-      window.LabCode.board.attach({ projectPath: state.projectPath, fqbn: boardSel.value }).catch(() => {});
+    if (boardSel.value && state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.attach) {
+      window.BubaiCode.board.attach({ projectPath: state.projectPath, fqbn: boardSel.value }).catch(() => {});
     }
     showToast('开发板: ' + boardSel.options[boardSel.selectedIndex].text, 'info');
   });
@@ -14965,8 +14965,8 @@ function bindEvents() {
     state.compilePort = portSel.value;
     state.arduinoPort = portSel.value;
     // 对齐 ChipCode board:attach：选好端口即持久化到项目配置
-    if (portSel.value && state.projectPath && window.LabCode && window.LabCode.board && window.LabCode.board.attach) {
-      window.LabCode.board.attach({ projectPath: state.projectPath, port: portSel.value }).catch(() => {});
+    if (portSel.value && state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.attach) {
+      window.BubaiCode.board.attach({ projectPath: state.projectPath, port: portSel.value }).catch(() => {});
     }
     if (portSel.value) showToast('端口: ' + portSel.value, 'info');
   });
@@ -14983,7 +14983,7 @@ function bindEvents() {
   if (compileBtn) {
     compileBtn.addEventListener('click', async () => {
       if (!state.activeTab) { showToast('请先打开一个文件', 'error'); return; }
-      if (!window.LabCode || !window.LabCode.compile) {
+      if (!window.BubaiCode || !window.BubaiCode.compile) {
         showToast('非 Electron 环境，无法编译', 'error'); return;
       }
       // 检查 Arduino 插件是否安装
@@ -14992,7 +14992,7 @@ function bindEvents() {
         showToast('请先在插件市场安装 Arduino 编译插件', 'warning'); return;
       }
       // 检查 arduino-cli 是否存在
-      const cliInfo = await window.LabCode.compile.cliExists();
+      const cliInfo = await window.BubaiCode.compile.cliExists();
       if (!cliInfo.exists) {
         showToast('arduino-cli 未安装，请先安装工具链', 'error'); return;
       }
@@ -15019,7 +15019,7 @@ function bindEvents() {
         // 默认 fqbn（后续可从设置/插件配置读取）
         const fqbn = state.compileFqbn || 'esp32:esp32:esp32c3';
         const outputDir = state.projectPath ? state.projectPath + '/build' : undefined;
-        const result = await window.LabCode.compile.arduino({ sketchPath, fqbn, outputDir });
+        const result = await window.BubaiCode.compile.arduino({ sketchPath, fqbn, outputDir });
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (state.terminal) {
           if (result.output) {
@@ -15031,7 +15031,7 @@ function bindEvents() {
           } else {
             state.terminal.writeln('✗ 编译失败: ' + (result.error || '未知错误'));
           }
-          state.terminal.write('user@labcode:~/project$ ');
+          state.terminal.write('user@bubaicode:~/project$ ');
         }
         if (result.success) {
           addOutputLog('编译成功，耗时 ' + duration + ' 秒', 'success');
@@ -15049,7 +15049,7 @@ function bindEvents() {
       } catch (e) {
         if (state.terminal) {
           state.terminal.writeln('✗ 编译异常: ' + e.message);
-          state.terminal.write('user@labcode:~/project$ ');
+          state.terminal.write('user@bubaicode:~/project$ ');
         }
         addOutputLog('编译异常: ' + e.message, 'error');
         showToast('编译异常', 'error');
@@ -15064,7 +15064,7 @@ function bindEvents() {
   if (uploadBtn) {
     uploadBtn.addEventListener('click', async () => {
       if (!state.activeTab) { showToast('请先打开一个文件', 'error'); return; }
-      if (!window.LabCode || !window.LabCode.compile) {
+      if (!window.BubaiCode || !window.BubaiCode.compile) {
         showToast('非 Electron 环境，无法烧录', 'error'); return;
       }
       const hasCompiler = installedPlugins.some(p => (p.capabilities||[]).includes('compile'));
@@ -15075,7 +15075,7 @@ function bindEvents() {
       let port = state.compilePort;
       if (!port) {
         try {
-          const portsResult = await window.LabCode.compile.listPorts();
+          const portsResult = await window.BubaiCode.compile.listPorts();
           if (portsResult.output) {
             // 解析 arduino-cli board list 输出，提取 COM 端口
             const portMatch = portsResult.output.match(/(COM\d+)/);
@@ -15118,7 +15118,7 @@ function bindEvents() {
           verify: !!(document.getElementById('verify-upload') || {}).checked,
           resetBefore: !!(document.getElementById('auto-reset') || {}).checked
         };
-        const result = await window.LabCode.compile.upload(uploadOpts);
+        const result = await window.BubaiCode.compile.upload(uploadOpts);
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (state.terminal) {
           if (result.output) {
@@ -15130,7 +15130,7 @@ function bindEvents() {
           } else {
             state.terminal.writeln('✗ 烧录失败: ' + (result.error || '未知错误'));
           }
-          state.terminal.write('user@labcode:~/project$ ');
+          state.terminal.write('user@bubaicode:~/project$ ');
         }
         if (result.success) {
           addOutputLog('烧录成功，耗时 ' + duration + ' 秒', 'success');
@@ -15142,7 +15142,7 @@ function bindEvents() {
       } catch (e) {
         if (state.terminal) {
           state.terminal.writeln('✗ 烧录异常: ' + e.message);
-          state.terminal.write('user@labcode:~/project$ ');
+          state.terminal.write('user@bubaicode:~/project$ ');
         }
         addOutputLog('烧录异常: ' + e.message, 'error');
         showToast('烧录异常', 'error');
@@ -15165,9 +15165,9 @@ function bindEvents() {
   let serialClosedUnsubscribe = null;
 
   async function refreshSerialPorts() {
-    if (!window.LabCode || !window.LabCode.serial) return;
+    if (!window.BubaiCode || !window.BubaiCode.serial) return;
     try {
-      const result = await window.LabCode.serial.list();
+      const result = await window.BubaiCode.serial.list();
       if (result && result.ports && result.ports.length > 0) {
         serialPortSelect.innerHTML = result.ports.map(p =>
           '<option value="' + p.port + '">' + p.port + ' - ' + p.board + '</option>'
@@ -15208,14 +15208,14 @@ function bindEvents() {
   }
 
   async function toggleSerial() {
-    if (!window.LabCode || !window.LabCode.serial) {
+    if (!window.BubaiCode || !window.BubaiCode.serial) {
       showToast('非 Electron 环境', 'error'); return;
     }
     if (!serialOpened) {
       const port = serialPortSelect.value;
       if (!port) { showToast('请先选择串口', 'warning'); return; }
       const baud = parseInt(serialBaudSelect.value, 10) || 115200;
-      const result = await window.LabCode.serial.open({ port, baud });
+      const result = await window.BubaiCode.serial.open({ port, baud });
       if (result.success) {
         serialOpened = true;
         serialOpenBtn.textContent = '关闭串口';
@@ -15224,8 +15224,8 @@ function bindEvents() {
         serialPortSelect.disabled = true;
         serialBaudSelect.disabled = true;
         // 订阅数据
-        serialUnsubscribe = window.LabCode.serial.onData(serialDataListener);
-        serialClosedUnsubscribe = window.LabCode.serial.onClosed((info) => {
+        serialUnsubscribe = window.BubaiCode.serial.onData(serialDataListener);
+        serialClosedUnsubscribe = window.BubaiCode.serial.onClosed((info) => {
           serialOpened = false;
           serialOpenBtn.textContent = '打开串口';
           serialOpenBtn.classList.add('btn-primary');
@@ -15241,7 +15241,7 @@ function bindEvents() {
         appendSerialData('\n[打开失败: ' + (result.error || '未知错误') + ']');
       }
     } else {
-      await window.LabCode.serial.close();
+      await window.BubaiCode.serial.close();
       if (serialUnsubscribe) { serialUnsubscribe(); serialUnsubscribe = null; }
       if (serialClosedUnsubscribe) { serialClosedUnsubscribe(); serialClosedUnsubscribe = null; }
       serialOpened = false;
@@ -15267,7 +15267,7 @@ function bindEvents() {
     const sendSerial = async () => {
       const data = serialSendInput.value;
       if (!data || !serialOpened) return;
-      await window.LabCode.serial.write(data);
+      await window.BubaiCode.serial.write(data);
       appendSerialData('→ ' + data);
       serialSendInput.value = '';
     };
@@ -15276,9 +15276,9 @@ function bindEvents() {
   }
 
   // 热插拔：设备插拔时刷新串口下拉（仅未打开时，避免打断会话）
-  if (window.LabCode && window.LabCode.serial && window.LabCode.serial.onPlug) {
-    window.LabCode.serial.onPlug(() => { if (!serialOpened) refreshSerialPorts(); });
-    window.LabCode.serial.onUnplug(() => { if (!serialOpened) refreshSerialPorts(); });
+  if (window.BubaiCode && window.BubaiCode.serial && window.BubaiCode.serial.onPlug) {
+    window.BubaiCode.serial.onPlug(() => { if (!serialOpened) refreshSerialPorts(); });
+    window.BubaiCode.serial.onUnplug(() => { if (!serialOpened) refreshSerialPorts(); });
   }
 
   // ============ 串口绘图仪 ============
@@ -15481,7 +15481,7 @@ function bindEvents() {
           state.terminal.writeln('✓ 固件一致');
           state.terminal.writeln('');
           state.terminal.writeln('✓ 验证通过');
-          state.terminal.write('user@labcode:~/project$ ');
+          state.terminal.write('user@bubaicode:~/project$ ');
         }
         addOutputLog('验证通过', 'success');
         showToast('验证通过', 'success');
@@ -15493,7 +15493,7 @@ function bindEvents() {
   if (runBtn) runBtn.addEventListener('click', async () => {
     if (!state.activeTab) { showToast('请先打开一个文件','error'); return; }
     const fileName = state.activeTab;
-    const projectPath = state.projectPath || 'C:/Users/Administrator/LabCodeProjects/untitled';
+    const projectPath = state.projectPath || 'C:/Users/Administrator/BubaiCodeProjects/untitled';
     const fullPath = diskJoin(projectPath, fileName);
     
     addOutputLog(`运行文件: ${fileName}`, 'info');
@@ -15531,14 +15531,14 @@ function bindEvents() {
               cmd = `npx ts-node "${fullPath}"`;
             } else if (fileName.endsWith('.ino')) {
               // Arduino: 通过主进程 arduino-cli 编译（完整路径），显示编译过程
-              const cliInfo = (window.LabCode && window.LabCode.compile) ? await window.LabCode.compile.cliExists() : null;
+              const cliInfo = (window.BubaiCode && window.BubaiCode.compile) ? await window.BubaiCode.compile.cliExists() : null;
               if (cliInfo && cliInfo.exists) {
                 const startT = Date.now();
                 state.terminal.writeln('正在编译 Arduino 项目...');
                 state.terminal.writeln('工具链: ' + cliInfo.path);
                 state.terminal.writeln('');
                 const fqbn = state.compileFqbn || 'esp32:esp32:esp32c3';
-                const result = await window.LabCode.compile.arduino({
+                const result = await window.BubaiCode.compile.arduino({
                   sketchPath: fullPath,
                   fqbn: fqbn,
                   outputDir: projectPath + '/build'
@@ -15555,13 +15555,13 @@ function bindEvents() {
                   state.terminal.writeln('✗ 编译失败: ' + (result.error || '未知错误'));
                   addOutputLog('编译失败: ' + (result.error || '未知错误'), 'error');
                 }
-                state.terminal.write('user@labcode:~/project$ ');
+                state.terminal.write('user@bubaicode:~/project$ ');
                 return;
               } else {
                 state.terminal.writeln('⚠ 未检测到 arduino-cli，无法编译 .ino 文件');
                 state.terminal.writeln('  安装命令: winget install ArduinoSA.ARDUINO_CLI');
                 state.terminal.writeln('  或下载: https://arduino.github.io/arduino-cli/');
-                state.terminal.write('user@labcode:~/project$ ');
+                state.terminal.write('user@bubaicode:~/project$ ');
                 addOutputLog('运行完成（缺少 arduino-cli）', 'warn');
                 return;
               }
@@ -15573,13 +15573,13 @@ function bindEvents() {
               state.terminal.writeln(`正在编译运行 ${ext.toUpperCase()} 程序...`);
             } else {
               state.terminal.writeln(`(不支持直接运行此文件类型: ${fileName})`);
-              state.terminal.write('user@labcode:~/project$ ');
+              state.terminal.write('user@bubaicode:~/project$ ');
               addOutputLog('运行完成', 'info');
               return;
             }
             
-            if (cmd && isElectron && window.LabCode && window.LabCode.terminal) {
-              const result = await window.LabCode.terminal.execute(cmd, cwd, 30000);
+            if (cmd && isElectron && window.BubaiCode && window.BubaiCode.terminal) {
+              const result = await window.BubaiCode.terminal.execute(cmd, cwd, 30000);
               const stdout = result.stdout || '';
               const stderr = result.stderr || '';
               const output = stdout + (stderr ? '\n' + stderr : '');
@@ -15593,7 +15593,7 @@ function bindEvents() {
               if (exitCode === 0) {
                 state.terminal.writeln('✓ 程序运行成功，退出码 0');
                 addOutputLog('运行成功，退出码 0', 'success');
-                state.terminal.write('user@labcode:~/project$ ');
+                state.terminal.write('user@bubaicode:~/project$ ');
               } else {
                 state.terminal.writeln(`✗ 程序运行失败，退出码 ${exitCode}`);
                 addOutputLog(`运行失败，退出码 ${exitCode}`, 'error');
@@ -15613,7 +15613,7 @@ function bindEvents() {
                       state.terminal.writeln(`📦 正在安装 ${missingModule}...`);
                       addOutputLog(`正在安装依赖: ${missingModule}`, 'info');
                       
-                      const installResult = await window.LabCode.terminal.execute(
+                      const installResult = await window.BubaiCode.terminal.execute(
                         `python -m pip install ${missingModule}`,
                         cwd,
                         120000
@@ -15646,18 +15646,18 @@ function bindEvents() {
                 // 像豆包一样：其余运行失败自动唤起 AI 诊断根因并尝试修复
                 autoDiagnoseWithAI({ phase: '运行', error: '退出码 ' + exitCode, output, file: state.activeTab });
                 
-                state.terminal.write('user@labcode:~/project$ ');
+                state.terminal.write('user@bubaicode:~/project$ ');
               }
             } else if (cmd) {
               // 不再假装运行成功：环境不支持时如实报错
               state.terminal.writeln('✗ 无法运行：当前环境不支持执行命令（非 Electron 或未连接终端）');
               addOutputLog('运行失败：当前环境不支持执行命令', 'error');
-              state.terminal.write('user@labcode:~/project$ ');
+              state.terminal.write('user@bubaicode:~/project$ ');
             }
           } catch (e) {
             state.terminal.writeln(`✗ 运行异常: ${e.message}`);
             addOutputLog(`运行异常: ${e.message}`, 'error');
-            state.terminal.write('user@labcode:~/project$ ');
+            state.terminal.write('user@bubaicode:~/project$ ');
           }
         }
         
@@ -15712,7 +15712,7 @@ function bindEvents() {
     const el = document.getElementById('mcp-modal-server-list');
     if (!el) return;
     try {
-      const servers = await window.LabCode.mcp.listServers();
+      const servers = await window.BubaiCode.mcp.listServers();
       if (!servers || !servers.length) { el.innerHTML = '<p style="color:#888;font-size: 11.5px;">暂无 MCP 服务器</p>'; return; }
       el.innerHTML = servers.map(s => `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #3c3c3c;border-radius:4px;margin-bottom:6px;">
@@ -15727,7 +15727,7 @@ function bindEvents() {
     } catch (e) { el.innerHTML = '<p style="color:#f44;font-size: 11.5px;">错误: ' + e.message + '</p>'; }
   }
   window.removeMcpServer = async (name) => {
-    await window.LabCode.mcp.removeServer(name);
+    await window.BubaiCode.mcp.removeServer(name);
     refreshMcpList();
   };
   document.getElementById('mcp-close-btn').addEventListener('click', () => {
@@ -15752,7 +15752,7 @@ function bindEvents() {
     if ((type === 'http' || type === 'sse') && !url) { showToast(type + ' 类型 URL 必填', 'warn'); return; }
     const cfg = { name, type, command: command || undefined, args: argsStr ? argsStr.split(/\s+/) : [], url: url || undefined };
     if (extraRaw) { try { Object.assign(cfg, JSON.parse(extraRaw)); } catch (e) { showToast('高级 JSON 解析失败: ' + e.message, 'warn'); return; } }
-    await window.LabCode.mcp.addServer(cfg);
+    await window.BubaiCode.mcp.addServer(cfg);
     document.getElementById('mcp-name').value = '';
     document.getElementById('mcp-command').value = '';
     document.getElementById('mcp-args').value = '';
@@ -15789,7 +15789,7 @@ function bindEvents() {
     if (v) u.voice = v;
     u.lang = v ? v.lang : 'zh-CN';
     let rate = 1.0;
-    try { const c = await window.LabCode.config.get(); rate = (c.voice && c.voice.rate) || 1.0; } catch (e) {}
+    try { const c = await window.BubaiCode.config.get(); rate = (c.voice && c.voice.rate) || 1.0; } catch (e) {}
     u.rate = rate;
     u.onend = () => { ttsSpeaking = false; };
     u.onerror = () => { ttsSpeaking = false; showToast('朗读中断', 'warn'); };
@@ -15805,7 +15805,7 @@ function bindEvents() {
         let text = '';
         const sel = window.getSelection && window.getSelection().toString();
         if (sel && sel.trim()) text = sel.trim();
-        if (!text && window.LabCode.clipboard) text = (await window.LabCode.clipboard.readText() || '').trim();
+        if (!text && window.BubaiCode.clipboard) text = (await window.BubaiCode.clipboard.readText() || '').trim();
         if (!text) { showToast('没有可朗读的内容（请先复制文本）', 'warn'); return; }
         await speakText(text.slice(0, 2000));
         showToast('正在朗读…（再次点击停止）', 'info');
@@ -15824,15 +15824,15 @@ function bindEvents() {
   const regionShotBtn = document.getElementById('region-shot-btn');
   if (regionShotBtn) {
     regionShotBtn.addEventListener('click', async () => {
-      if (!window.LabCode.regionShot) { showToast('区域截图不可用', 'warn'); return; }
+      if (!window.BubaiCode.regionShot) { showToast('区域截图不可用', 'warn'); return; }
       showToast('请拖拽框选截图区域（Esc 取消）', 'info');
       try {
-        const r = await window.LabCode.regionShot.start();
+        const r = await window.BubaiCode.regionShot.start();
         if (!r || !r.success) { showToast('已取消或失败', 'info'); return; }
         let path = null;
-        try { path = await window.LabCode.dialog.saveFile('region_' + Date.now() + '.png'); } catch (e) {}
+        try { path = await window.BubaiCode.dialog.saveFile('region_' + Date.now() + '.png'); } catch (e) {}
         if (!path) { showToast('已取消保存', 'info'); return; }
-        const ok = await window.LabCode.fs.writeFile(path, r.png);
+        const ok = await window.BubaiCode.fs.writeFile(path, r.png);
         showToast(ok ? '区域截图已保存：' + path : '保存失败', ok ? 'success' : 'error');
       } catch (e) {
         showToast('区域截图：' + (e && e.message || '已取消'), 'info');
@@ -15845,9 +15845,9 @@ function bindEvents() {
     const box = document.getElementById('git-pending');
     if (!box) return;
     const hide = () => { box.style.display = 'none'; };
-    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.pendingOp !== 'function') return hide();
+    if (!cwd || !window.BubaiCode.git || typeof window.BubaiCode.git.pendingOp !== 'function') return hide();
     let op = null;
-    try { const r = await window.LabCode.git.pendingOp(cwd); op = r && r.success ? r.op : null; } catch (e) { return hide(); }
+    try { const r = await window.BubaiCode.git.pendingOp(cwd); op = r && r.success ? r.op : null; } catch (e) { return hide(); }
     if (!op) return hide();
     box.style.display = '';
     const label = document.getElementById('git-pending-label');
@@ -15866,7 +15866,7 @@ function bindEvents() {
       b.addEventListener('click', async () => {
         b.disabled = true;
         try {
-          const res = await window.LabCode.git.finishOp(cwd, action);
+          const res = await window.BubaiCode.git.finishOp(cwd, action);
           showToast((res && res.summary) || (res && res.error) || '操作完成', res && res.success ? 'success' : 'error');
           refreshGitStatus();
         } catch (e) { showToast('操作失败: ' + e.message, 'error'); }
@@ -15885,9 +15885,9 @@ function bindEvents() {
     const title = document.getElementById('git-conflicts-title');
     if (!box || !list || !title) return;
     const hide = () => { box.style.display = 'none'; };
-    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.listConflicts !== 'function') return hide();
+    if (!cwd || !window.BubaiCode.git || typeof window.BubaiCode.git.listConflicts !== 'function') return hide();
     let conflicts = [];
-    try { const r = await window.LabCode.git.listConflicts(cwd); conflicts = (r && r.success) ? (r.conflicts || []) : []; } catch (e) { return hide(); }
+    try { const r = await window.BubaiCode.git.listConflicts(cwd); conflicts = (r && r.success) ? (r.conflicts || []) : []; } catch (e) { return hide(); }
     if (!conflicts.length) return hide();
     box.style.display = '';
     title.textContent = conflicts.length + ' 个文件存在合并冲突';
@@ -15906,7 +15906,7 @@ function bindEvents() {
         const old = btn.textContent;
         btn.textContent = '合并中…';
         try {
-          const res = await window.LabCode.git.aiResolveConflicts(cwd, c.path);
+          const res = await window.BubaiCode.git.aiResolveConflicts(cwd, c.path);
           if (res && res.success) showToast('已解决: ' + c.path, 'success');
           else showToast('合并失败: ' + ((res && res.error) || ''), 'error');
           refreshGitStatus();
@@ -15927,11 +15927,11 @@ function bindEvents() {
     const count = document.getElementById('git-issues-count');
     if (!box || !list || !hint || !count) return;
     const hide = () => { box.style.display = 'none'; };
-    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.issuesList !== 'function') return hide();
+    if (!cwd || !window.BubaiCode.git || typeof window.BubaiCode.git.issuesList !== 'function') return hide();
     // 先看本机是否已有该托管平台的 git 凭据（无则引导去「设置 → 服务商」添加 PAT）
     let connectedHost = null;
     try {
-      const cr = await window.LabCode.git.credentials.list();
+      const cr = await window.BubaiCode.git.credentials.list();
       if (cr && cr.success) {
         const g = (cr.credentials || []).find(c => /github|gitee|gitlab/.test(String(c.host || '').toLowerCase()));
         if (g) connectedHost = g.host;
@@ -15948,7 +15948,7 @@ function bindEvents() {
     hint.textContent = '';
     box.style.display = '';
     let r;
-    try { r = await window.LabCode.git.issuesList(cwd, 20); } catch (e) { hide(); return; }
+    try { r = await window.BubaiCode.git.issuesList(cwd, 20); } catch (e) { hide(); return; }
     if (!r || !r.ok) {
       count.textContent = 'Issues';
       list.innerHTML = '';
@@ -15989,7 +15989,7 @@ function bindEvents() {
       if (actionsEl) actionsEl.style.display = show ? 'none' : '';
       if (checkpointBtn) checkpointBtn.style.display = show ? 'none' : '';
     };
-    if (!cwd || !window.LabCode.git) {
+    if (!cwd || !window.BubaiCode.git) {
       if (statusEl) statusEl.textContent = '未选择项目';
       showEmpty(true);
       const pend = document.getElementById('git-pending'); if (pend) pend.style.display = 'none';
@@ -16003,7 +16003,7 @@ function bindEvents() {
     renderGitConflicts(cwd);
     renderGitIssues(cwd);
     if (typeof window.renderGitRemoteStatus === 'function') window.renderGitRemoteStatus(cwd);
-    const r = await window.LabCode.git.status(cwd);
+    const r = await window.BubaiCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口
       if (statusEl) statusEl.textContent = '不是 git 仓库';
@@ -16012,7 +16012,7 @@ function bindEvents() {
         setTimeout(() => {
           const ib = document.getElementById('git-init-btn');
           if (ib) ib.onclick = async () => {
-            const ir = await window.LabCode.git.init(cwd);
+            const ir = await window.BubaiCode.git.init(cwd);
             if (ir && ir.success) { showToast('已初始化 git 仓库', 'success'); refreshGitStatus(); }
             else showToast('初始化失败: ' + ((ir && ir.error) || ''), 'error');
           };
@@ -16023,12 +16023,12 @@ function bindEvents() {
 
     // 远程关联状态（对齐 TrieCode：无 origin 时面板内显示关联引导区）
     let remoteUrl = null;
-    try { const rr = await window.LabCode.git.remoteUrl(cwd); if (rr && rr.success) remoteUrl = rr.url; } catch (e) {}
+    try { const rr = await window.BubaiCode.git.remoteUrl(cwd); if (rr && rr.success) remoteUrl = rr.url; } catch (e) {}
 
     // 分支选择器（分支数≤1 时隐藏——对齐 TrieCode：单分支不显示切换器）
     let branchHtml = '';
     try {
-      const br = await window.LabCode.git.branches(cwd);
+      const br = await window.BubaiCode.git.branches(cwd);
       if (br.success && br.branches && br.branches.length > 1) {
         branchHtml = '<div style="padding:4px 8px;margin:4px 0;background:var(--surface-2);border-radius:6px;">' +
           '<select id="git-branch-select" style="width:100%;background:var(--surface-1);border:1px solid var(--border-color);color:var(--text);padding:4px;border-radius:4px;font-size: 11.5px;">' +
@@ -16089,7 +16089,7 @@ function bindEvents() {
     setTimeout(() => {
       const sel = document.getElementById('git-branch-select');
       if (sel) sel.onchange = async () => {
-        const r2 = await window.LabCode.git.checkout(cwd, sel.value);
+        const r2 = await window.BubaiCode.git.checkout(cwd, sel.value);
         if (r2.success) { showToast('切换到 ' + sel.value, 'success'); refreshGitStatus(); }
         else showToast('切换失败: ' + (r2.error || ''), 'error');
       };
@@ -16099,7 +16099,7 @@ function bindEvents() {
         const inp = document.getElementById('git-remote-url-input');
         const u = inp ? inp.value.trim() : '';
         if (!u) { showToast('请输入远程仓库地址', 'warn'); return; }
-        const r3 = await window.LabCode.git.remoteAdd(cwd, u);
+        const r3 = await window.BubaiCode.git.remoteAdd(cwd, u);
         if (r3 && r3.success) { showToast('已关联 origin → ' + u, 'success'); refreshGitStatus(); }
         else showToast('关联失败: ' + ((r3 && r3.error) || ''), 'error');
       };
@@ -16109,7 +16109,7 @@ function bindEvents() {
     }, 50);
   }
   window.gitStageFile = async (path) => {
-    await window.LabCode.git.add(state.projectPath, [path]);
+    await window.BubaiCode.git.add(state.projectPath, [path]);
     refreshGitStatus();
   };
   // 未跟踪组头「全部暂存」行内入口（复用主按钮逻辑，TrieCode 式）
@@ -16118,16 +16118,16 @@ function bindEvents() {
     if (b) b.click();
   };
   window.gitUnstageFile = async (path) => {
-    await window.LabCode.git.unstage(state.projectPath, [path]);
+    await window.BubaiCode.git.unstage(state.projectPath, [path]);
     refreshGitStatus();
   };
   window.gitDiscardFile = async (path) => {
-    const r = await window.LabCode.git.discard(state.projectPath, [path]);
+    const r = await window.BubaiCode.git.discard(state.projectPath, [path]);
     if (r.success) { showToast('已丢弃 ' + path, 'success'); refreshGitStatus(); }
     else showToast('丢弃失败: ' + (r.error || ''), 'error');
   };
   window.gitShowDiff = async (path) => {
-    const r = await window.LabCode.git.diff(state.projectPath, path);
+    const r = await window.BubaiCode.git.diff(state.projectPath, path);
     if (!r.success) { showToast('diff 获取失败', 'error'); return; }
     const out = document.getElementById('output-content') || document.querySelector('.bottom-panel-content.active');
     if (out) {
@@ -16151,25 +16151,25 @@ function bindEvents() {
   if (gitCommitBtn) gitCommitBtn.addEventListener('click', async () => {
     const msg = document.getElementById('git-commit-msg').value.trim();
     if (!msg) { showToast('提交信息必填', 'warn'); return; }
-    const r = await window.LabCode.git.commit(state.projectPath, msg);
+    const r = await window.BubaiCode.git.commit(state.projectPath, msg);
     if (r.success) { showToast('已提交', 'success'); document.getElementById('git-commit-msg').value = ''; refreshGitStatus(); }
     else showToast('提交失败: ' + (r.error || ''), 'error');
   });
   const gitPushBtn = document.getElementById('git-push-btn');
   if (gitPushBtn) gitPushBtn.addEventListener('click', async () => {
-    const r = await window.LabCode.git.push(state.projectPath);
+    const r = await window.BubaiCode.git.push(state.projectPath);
     showToast(r.success ? (r.setUpstream ? '已推送并设置 upstream' : '已推送') : '推送失败: ' + (r.error || ''), r.success ? 'success' : 'error');
     if (r.success) refreshGitStatus();
   });
   const gitPullBtn = document.getElementById('git-pull-btn');
   if (gitPullBtn) gitPullBtn.addEventListener('click', async () => {
-    const r = await window.LabCode.git.pull(state.projectPath);
+    const r = await window.BubaiCode.git.pull(state.projectPath);
     showToast(r.success ? '已拉取' : '拉取失败: ' + (r.error || ''), r.success ? 'success' : 'error');
     if (r.success) refreshGitStatus();
   });
   const gitStageAllBtn = document.getElementById('git-stage-all-btn');
   if (gitStageAllBtn) gitStageAllBtn.addEventListener('click', async () => {
-    const r = await window.LabCode.git.add(state.projectPath, []);
+    const r = await window.BubaiCode.git.add(state.projectPath, []);
     if (r.success) { showToast('已暂存全部', 'success'); refreshGitStatus(); }
     else showToast('暂存失败: ' + (r.error || ''), 'error');
   });
@@ -16203,8 +16203,8 @@ function bindEvents() {
     wrap.querySelector('#git-clone-cancel').addEventListener('click', () => wrap.remove());
     wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
     wrap.querySelector('#git-clone-pick').addEventListener('click', async () => {
-      if (!(isElectron && window.LabCode && window.LabCode.dialog)) { showToast('当前环境不支持选择目录', 'error'); return; }
-      const d = await window.LabCode.dialog.openDirectory('选择克隆位置（父目录）');
+      if (!(isElectron && window.BubaiCode && window.BubaiCode.dialog)) { showToast('当前环境不支持选择目录', 'error'); return; }
+      const d = await window.BubaiCode.dialog.openDirectory('选择克隆位置（父目录）');
       let picked = null;
       if (typeof d === 'string') picked = d;
       else if (d && d.filePaths && d.filePaths[0]) picked = d.filePaths[0];
@@ -16230,7 +16230,7 @@ function bindEvents() {
       goBtn.disabled = true; goBtn.textContent = '克隆中…';
       hint.textContent = '正在克隆到 ' + dest + ' …（大仓库可能需要几分钟）';
       try {
-        const r = await window.LabCode.terminal.execute('git clone "' + url + '" "' + dest + '"', undefined, 600000);
+        const r = await window.BubaiCode.terminal.execute('git clone "' + url + '" "' + dest + '"', undefined, 600000);
         if (r && r.exitCode === 0) {
           wrap.remove();
           showToast('克隆完成: ' + dest, 'success');
@@ -16260,7 +16260,7 @@ function bindEvents() {
     const inp = document.getElementById('git-newbranch-name');
     const name = (inp && inp.value || '').trim();
     if (!name) { showToast('分支名必填', 'warn'); return; }
-    const r = await window.LabCode.git.createBranch(state.projectPath, name);
+    const r = await window.BubaiCode.git.createBranch(state.projectPath, name);
     if (r.success) { showToast('已创建并切换到 ' + name, 'success'); if (inp) inp.value = ''; refreshGitStatus(); }
     else showToast('创建失败: ' + (r.error || ''), 'error');
   });
@@ -16273,7 +16273,7 @@ function bindEvents() {
     // 1:1 仿写 ChipCode：只根据「已暂存」改动生成，无暂存时拒绝（git.commitMessage.nothingStaged）
     let hasStaged = false;
     try {
-      const st = await window.LabCode.git.status(cwd);
+      const st = await window.BubaiCode.git.status(cwd);
       hasStaged = !!(st && st.success && Array.isArray(st.files) && st.files.some(f => f.staged === true || (f.x && f.x !== ' ' && f.x !== '?')));
     } catch (e) {}
     if (!hasStaged) { showToast('没有已暂存的改动', 'warn'); return; }
@@ -16281,7 +16281,7 @@ function bindEvents() {
     gitAiMsgBtn.disabled = true;
     gitAiMsgBtn.textContent = '生成中…';
     try {
-      const r = await window.LabCode.git.aiCommitMessage(cwd);
+      const r = await window.BubaiCode.git.aiCommitMessage(cwd);
       if (r.success && r.message) {
         const inp = document.getElementById('git-commit-msg');
         if (inp) inp.value = r.message;
@@ -16301,7 +16301,7 @@ function bindEvents() {
     gitAiCommitBtn.disabled = true;
     showToast('AI 正在生成并提交…', 'info');
     try {
-      const r = await window.LabCode.git.aiCommit(cwd);
+      const r = await window.BubaiCode.git.aiCommit(cwd);
       if (r.success) {
         showToast('AI 提交成功: ' + (r.message || ''), 'success');
         const inp = document.getElementById('git-commit-msg');
@@ -16320,7 +16320,7 @@ function bindEvents() {
     gitAiResolveBtn.disabled = true;
     showToast('AI 正在解决冲突…', 'info');
     try {
-      const r = await window.LabCode.git.aiResolveConflicts(cwd);
+      const r = await window.BubaiCode.git.aiResolveConflicts(cwd);
       if (r.success) {
         showToast(r.resolved ? ('已解决 ' + r.resolved + ' 个冲突文件') : (r.message || '无冲突'), r.resolved ? 'success' : 'info');
         if (r.report) addOutputLog('AI 冲突解决:\n' + r.report, 'success');
@@ -16338,7 +16338,7 @@ function bindEvents() {
     gitAiPrBtn.disabled = true;
     showToast('AI 正在生成 PR 描述…', 'info');
     try {
-      const r = await window.LabCode.git.aiPrDescription(cwd);
+      const r = await window.BubaiCode.git.aiPrDescription(cwd);
       if (r.success) {
         const ta = document.getElementById('git-pr-desc');
         if (ta) { ta.value = (r.title ? '# ' + r.title + '\n\n' : '') + (r.body || ''); ta.style.display = 'block'; }
@@ -16363,7 +16363,7 @@ function bindEvents() {
     const baseSel = document.getElementById('git-pr-base');
     if (cwd && headSel && baseSel && headSel.options.length <= 1) {
       try {
-        const br = await window.LabCode.git.branches(cwd);
+        const br = await window.BubaiCode.git.branches(cwd);
         if (br && br.success && Array.isArray(br.branches)) {
           [headSel, baseSel].forEach(sel => { sel.innerHTML = ''; br.branches.forEach(b => { const o = document.createElement('option'); o.value = b; o.textContent = b; sel.appendChild(o); }); if (b === br.current) headSel.value = b; });
           if (!baseSel.value) baseSel.value = (br.branches.includes('main') ? 'main' : (br.branches.includes('master') ? 'master' : (br.branches[0] || '')));
@@ -16387,10 +16387,10 @@ function bindEvents() {
     if (statusEl) statusEl.textContent = '创建中…';
     gitPrSubmitBtn.disabled = true;
     try {
-      const r = await window.LabCode.git.prCreate(cwd, opts);
+      const r = await window.BubaiCode.git.prCreate(cwd, opts);
       if (r && r.ok) {
         if (statusEl) { statusEl.innerHTML = '✅ 已创建 PR' + (r.number ? (' #' + r.number) : '') + '：<a href="' + r.url + '" target="_blank" rel="noopener" style="color:var(--text-link);">在浏览器打开</a>'; }
-        if (r.url && window.LabCode.shell && window.LabCode.shell.openExternal) window.LabCode.shell.openExternal(r.url);
+        if (r.url && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) window.BubaiCode.shell.openExternal(r.url);
         else if (r.url && window.open) window.open(r.url, '_blank');
         showToast('PR 创建成功', 'success');
       } else {
@@ -16468,7 +16468,7 @@ function bindEvents() {
     btns.forEach(b => { b.disabled = true; b.classList.add('aifix-loading'); });
     showToast('AI 正在分析编译错误并修复…', 'info');
     try {
-      const result = await window.LabCode.compile.aiFix({ sketchPath, fqbn, outputDir });
+      const result = await window.BubaiCode.compile.aiFix({ sketchPath, fqbn, outputDir });
       if (state.terminal) {
         state.terminal.writeln('');
         state.terminal.writeln('AI 修复完成');
@@ -16510,13 +16510,13 @@ function bindEvents() {
     const fname = segs[segs.length - 1] || 'firmware';
     const base = fname.replace(/\.[^.]+$/, '');
     let exportPath = null;
-    try { exportPath = await window.LabCode.dialog.saveFile(base + '.bin'); } catch (e) {}
+    try { exportPath = await window.BubaiCode.dialog.saveFile(base + '.bin'); } catch (e) {}
     if (!exportPath) { showToast('已取消导出', 'info'); return; }
     const btns = [document.getElementById('dev-export-btn'), document.getElementById('editor-export-btn')].filter(Boolean);
     btns.forEach(b => { b.disabled = true; b.classList.add('aifix-loading'); });
     showToast('正在编译并导出固件…', 'info');
     try {
-      const result = await window.LabCode.compile.exportBinary({ sketchPath, fqbn, outputDir, exportPath });
+      const result = await window.BubaiCode.compile.exportBinary({ sketchPath, fqbn, outputDir, exportPath });
       if (result.success) {
         showToast('固件已导出: ' + result.exportedTo + ' (' + (result.size || 0) + ' 字节)', 'success');
         if (state.terminal) { state.terminal.writeln(''); state.terminal.writeln('固件导出: ' + result.exportedTo + '  (' + (result.size || 0) + ' 字节)'); }
@@ -16542,7 +16542,7 @@ function bindEvents() {
     if (!projectPath) { showToast('请先打开 Wokwi 项目（含 diagram.json）', 'warn'); return; }
     showToast('正在启动 Wokwi 仿真…', 'info');
     try {
-      const r = await window.LabCode.wokwi.run({ projectPath });
+      const r = await window.BubaiCode.wokwi.run({ projectPath });
       if (state.terminal) {
         state.terminal.writeln('');
         state.terminal.writeln('Wokwi 仿真: ' + (r.stage || 'run') + (r.timedOut ? '（超时截断）' : ''));
@@ -16574,11 +16574,11 @@ function bindEvents() {
     { id: 'export-bin', title: '导出固件', group: '开发', keywords: 'export binary 导出 固件', run: () => runExportBinary() },
     { id: 'wokwi-sim', title: 'Wokwi 仿真运行', group: '开发', keywords: 'wokwi simulate 仿真 模拟 运行', run: () => runWokwiSim() },
     { id: 'hw-lab', title: 'AI 硬件拆解工坊', group: 'AI', keywords: '硬件 拆解 选型 接线 手搓 hwlab 工坊', run: () => openHwLab() },
-    { id: 'panel-dashboard', title: '打开看板 · 项目统计', group: '视图', keywords: 'dashboard 看板 统计 工程统计', run: () => { try { if (window.LabCodeUI && window.LabCodeUI.openDashboard) window.LabCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
+    { id: 'panel-dashboard', title: '打开看板 · 项目统计', group: '视图', keywords: 'dashboard 看板 统计 工程统计', run: () => { try { if (window.BubaiCodeUI && window.BubaiCodeUI.openDashboard) window.BubaiCodeUI.openDashboard(); else showToast('看板未就绪', 'warn'); } catch (e) { showToast('看板未就绪', 'warn'); } } },
     { id: 'focus-ai-input', title: '聚焦 AI 输入框', group: '导航', keywords: 'ai input 聚焦 输入框', run: () => { const el = document.getElementById('ai-input'); if (el) el.focus(); } },
-    { id: 'about-labcode', title: '关于 LabCode', group: '帮助', keywords: 'about 关于 版本', run: () => { alert('LabCode'); } },
-    { id: 'check-update', title: '检查更新', group: '帮助', keywords: 'update 更新', run: async () => { try { const r = await window.LabCode.updater.check(); showToast((r && r.version) ? ('最新版本 ' + r.version) : ('检查完成：' + (r && r.error || '当前已是最新')), 'info'); } catch (e) { showToast('检查失败: ' + e.message, 'error'); } } },
-    { id: 'open-website', title: '打开官网', group: '帮助', keywords: 'website 官网 主页', run: () => { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal('https://chipcode.cn'); } },
+    { id: 'about-bubaicode', title: '关于 BubaiCode', group: '帮助', keywords: 'about 关于 版本', run: () => { alert('BubaiCode'); } },
+    { id: 'check-update', title: '检查更新', group: '帮助', keywords: 'update 更新', run: async () => { try { const r = await window.BubaiCode.updater.check(); showToast((r && r.version) ? ('最新版本 ' + r.version) : ('检查完成：' + (r && r.error || '当前已是最新')), 'info'); } catch (e) { showToast('检查失败: ' + e.message, 'error'); } } },
+    { id: 'open-website', title: '打开官网', group: '帮助', keywords: 'website 官网 主页', run: () => { if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal('https://chipcode.cn'); } },
     { id: 'deps-status', title: '查看依赖与工具链状态', group: '开发', keywords: 'deps status 依赖 工具链 状态 安装', run: () => showDepsStatus() },
     { id: 'project-stats', title: '生成工程统计报告', group: '开发', keywords: 'project stats 工程 统计 报告 行数', run: () => showProjectStats() },
   ];
@@ -16588,7 +16588,7 @@ function bindEvents() {
     const area = document.getElementById('ai-chat-area');
     if (!area) return;
     let data;
-    try { data = await window.LabCode.deps.status(); }
+    try { data = await window.BubaiCode.deps.status(); }
     catch (e) { showToast('获取依赖状态失败: ' + e.message, 'warn'); return; }
     const fmt = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB');
     let rows;
@@ -16707,7 +16707,7 @@ function bindEvents() {
     { id: 'search', title: '搜索', group: '视图', keywords: 'search 搜索', run: () => { const b = document.getElementById('search-btn'); if (b) b.click(); } },
     // 对齐 TrieCode 命令面板默认项（顶部常显导航快捷）：显示所有命令 / 转到文件 / 切换终端 / 打开设置 / 开始调试
     { id: 'show-all-commands', title: '显示所有命令', group: '命令', keywords: 'command 命令 显示所有 all', run: () => {} },
-    { id: 'goto-file', title: '转到文件…', group: '导航', keywords: 'go to file 转到文件 打开文件 Ctrl+P', run: async () => { try { if (window.LabCode && window.LabCode.dialog) { const p = await window.LabCode.dialog.openFile(); if (p) openFile(p); } } catch (e) {} } },
+    { id: 'goto-file', title: '转到文件…', group: '导航', keywords: 'go to file 转到文件 打开文件 Ctrl+P', run: async () => { try { if (window.BubaiCode && window.BubaiCode.dialog) { const p = await window.BubaiCode.dialog.openFile(); if (p) openFile(p); } } catch (e) {} } },
     { id: 'toggle-terminal', title: '切换终端', group: '导航', keywords: 'terminal 终端 切换 Ctrl+`', run: () => switchPanel('terminal', 'bottom') },
     { id: 'start-debug', title: '开始调试', group: '运行', keywords: 'debug 调试 F5 start 开始', run: () => { try { startDebug(); } catch (e) { showToast('调试启动失败: ' + e.message, 'error'); } } }
   );
@@ -16880,12 +16880,12 @@ function bindEvents() {
   const sidebarOpenFolder = document.getElementById('open-folder-btn');
   if (sidebarOpenFolder) {
     sidebarOpenFolder.addEventListener('click', async () => {
-      if (!(isElectron && window.LabCode && window.LabCode.dialog)) {
+      if (!(isElectron && window.BubaiCode && window.BubaiCode.dialog)) {
         showToast('当前环境不支持打开文件夹', 'error');
         return;
       }
       try {
-        const dirPath = await window.LabCode.dialog.openDirectory();
+        const dirPath = await window.BubaiCode.dialog.openDirectory();
         if (dirPath) {
           await loadProjectFromDisk(dirPath);
           showToast('已打开文件夹: ' + dirPath, 'success');
@@ -16906,9 +16906,9 @@ function bindEvents() {
   const quickOpenFolder = document.getElementById('quick-open-folder');
   if (quickOpenFolder) {
     quickOpenFolder.addEventListener('click', async () => {
-      if (isElectron && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode.dialog) {
         try {
-          const dirPath = await window.LabCode.dialog.openDirectory();
+          const dirPath = await window.BubaiCode.dialog.openDirectory();
           if (dirPath) {
             await loadProjectFromDisk(dirPath);
             // 关闭欢迎页面，显示编辑器
@@ -16925,7 +16925,7 @@ function bindEvents() {
     });
   }
 
-  // 通知下拉面板（参考 TrieCode 通知中心：点击铃铛弹出面板；LabCode 暂无真实通知，展示空态）
+  // 通知下拉面板（参考 TrieCode 通知中心：点击铃铛弹出面板；BubaiCode 暂无真实通知，展示空态）
   if (!document.getElementById('notification-panel-style')) {
     const st = document.createElement('style');
     st.id = 'notification-panel-style';
@@ -17021,7 +17021,7 @@ function bindEvents() {
     e.stopPropagation();
     let loggedIn = false;
     try {
-      const cfg = await window.LabCode.config.get();
+      const cfg = await window.BubaiCode.config.get();
       loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
     } catch (err) { /* 读不到配置按未登录处理 */ }
     if (!loggedIn) {
@@ -17085,7 +17085,7 @@ function bindEvents() {
       document.getElementById('acct-logout').addEventListener('click', async () => {
         closeAccountPopover();
         try {
-          const r = await window.LabCode.ai.gatewayAuth({ action: 'logout' });
+          const r = await window.BubaiCode.ai.gatewayAuth({ action: 'logout' });
           if (r && r.success) {
             try { await refreshGatewayUI(); } catch (err) {}
             try { await refreshCreditsBadge(); } catch (err) {}
@@ -17108,9 +17108,9 @@ function bindEvents() {
     acctPopoverOpen = true;
     // 数据：邮箱先用本地缓存回显，积分/用量异步刷新
     (async () => {
-      try { const cfg = await window.LabCode.config.get(); const em = (cfg.ai && cfg.ai.gatewayEmail) || ''; const el0 = document.getElementById('acct-email'); if (el0 && em) el0.textContent = em; } catch (err) {}
+      try { const cfg = await window.BubaiCode.config.get(); const em = (cfg.ai && cfg.ai.gatewayEmail) || ''; const el0 = document.getElementById('acct-email'); if (el0 && em) el0.textContent = em; } catch (err) {}
       try {
-        const r = await window.LabCode.ai.gatewayAuth({ action: 'me' });
+        const r = await window.BubaiCode.ai.gatewayAuth({ action: 'me' });
         const emailEl = document.getElementById('acct-email');
         const subEl = document.getElementById('acct-sub');
         if (r && r.success && r.user) {
@@ -17288,8 +17288,8 @@ function bindEvents() {
     if (!el) return;
     el.textContent = '检测中…';
     try {
-      if (window.LabCode.proxy && window.LabCode.proxy.detect) {
-        const r = await window.LabCode.proxy.detect();
+      if (window.BubaiCode.proxy && window.BubaiCode.proxy.detect) {
+        const r = await window.BubaiCode.proxy.detect();
         el.textContent = r || 'DIRECT';
       } else { el.textContent = '—'; }
     } catch (err) { el.textContent = '—'; }
@@ -17300,8 +17300,8 @@ function bindEvents() {
     if (!modal) return;
     // 加载当前配置
     let cfg = {};
-    if (window.LabCode && window.LabCode.config) {
-      try { cfg = await window.LabCode.config.get(); } catch (e) {}
+    if (window.BubaiCode && window.BubaiCode.config) {
+      try { cfg = await window.BubaiCode.config.get(); } catch (e) {}
     }
     const ai = cfg.ai || {};
     aiSettingsGwLoggedIn = !!(ai.gatewayToken);
@@ -17409,12 +17409,12 @@ function bindEvents() {
       if (email) {
         badge.style.display = 'inline-flex';
         badge.textContent = email;
-        badge.title = 'LabCode 账号（点击打开设置，管理账号）';
+        badge.title = 'BubaiCode 账号（点击打开设置，管理账号）';
       } else {
         // 未登录：显示"登录"入口徽章（对齐 DeepSeek 可选登录——不强制首屏遮罩，入口常驻 AI 面板顶部）
         badge.style.display = 'inline-flex';
         badge.textContent = '🔑 登录';
-        badge.title = '登录 LabCode 账号（云端模型需登录；本地模型无需登录）';
+        badge.title = '登录 BubaiCode 账号（云端模型需登录；本地模型无需登录）';
       }
       // 状态栏账号：同步真实登录态（此前 HTML 里写死了一个号码，且无人更新）
       const acct = document.getElementById('user-account-status');
@@ -17425,8 +17425,8 @@ function bindEvents() {
   async function refreshCreditsBadge() {
     try {
       let cfg = {};
-      if (window.LabCode && window.LabCode.config) {
-        try { cfg = await window.LabCode.config.get(); } catch (e) {}
+      if (window.BubaiCode && window.BubaiCode.config) {
+        try { cfg = await window.BubaiCode.config.get(); } catch (e) {}
       }
       const ai = cfg.ai || {};
       const pill = document.getElementById('credits-pill');
@@ -17434,8 +17434,8 @@ function bindEvents() {
       if (!ai.gatewayToken) { updateCreditsBadge(null); updateDailyCredits(null); setPill(null); return; }
       // 先用本地缓存邮箱回显，再校验登录态
       if (ai.gatewayEmail) { updateCreditsBadge(ai.gatewayEmail); }
-      if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth) {
-        const r = await window.LabCode.ai.gatewayAuth({ action: 'me' });
+      if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth) {
+        const r = await window.BubaiCode.ai.gatewayAuth({ action: 'me' });
         if (r && r.success && r.user && r.user.email) {
           updateCreditsBadge(r.user.email);
           // 上限 = 剩余 + 已用（服务端额度可调，不写死）
@@ -17460,7 +17460,7 @@ function bindEvents() {
     if (badge && e.target === badge) {
       (async () => {
         try {
-          const cfg = await window.LabCode.config.get();
+          const cfg = await window.BubaiCode.config.get();
           const loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
           if (!loggedIn && window.__showGwLoginOverlay) {
             window.__showGwLoginOverlay();
@@ -17500,13 +17500,13 @@ function bindEvents() {
 
   // 升级套餐 / 账户中心（对齐 TrieCode 账户页按钮组）
   (function bindGwAccountActions() {
-    const open = (u) => { try { if (window.LabCode && window.LabCode.shell) window.LabCode.shell.openExternal(u); } catch (e) {} };
+    const open = (u) => { try { if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal(u); } catch (e) {} };
     const ub = document.getElementById('gw-upgrade-btn');
     if (ub) ub.addEventListener('click', async () => {
       // Phase C：优先走 payment:openPortal（统一网关地址 + plan 白名单），不可用时降级外链
       try {
-        if (window.LabCode && window.LabCode.payment && window.LabCode.payment.openPortal) {
-          const r = await window.LabCode.payment.openPortal({});
+        if (window.BubaiCode && window.BubaiCode.payment && window.BubaiCode.payment.openPortal) {
+          const r = await window.BubaiCode.payment.openPortal({});
           if (r && r.success) return;
         }
       } catch (e) {}
@@ -17522,8 +17522,8 @@ function bindEvents() {
       const gwUserInfo = document.getElementById('gw-user-info');
       if (!gwLoginForm || !gwUserInfo) return;
       let cfg = {};
-      if (window.LabCode && window.LabCode.config) {
-        try { cfg = await window.LabCode.config.get(); } catch (e) {}
+      if (window.BubaiCode && window.BubaiCode.config) {
+        try { cfg = await window.BubaiCode.config.get(); } catch (e) {}
       }
       const ai = cfg.ai || {};
       // 同步网关登录态到「未配置 Key」横幅（登录/登出后即时刷新）
@@ -17534,8 +17534,8 @@ function bindEvents() {
         gwUserInfo.style.display = 'block';
         document.getElementById('gw-email-show').textContent = ai.gatewayEmail;
         // 校验登录态：失效则回退到未登录；有效则填充账户权益
-        if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth) {
-          const r = await window.LabCode.ai.gatewayAuth({ action: 'me' });
+        if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth) {
+          const r = await window.BubaiCode.ai.gatewayAuth({ action: 'me' });
           if (!(r && r.success && r.user)) {
             gwLoginForm.style.display = 'flex';
             gwUserInfo.style.display = 'none';
@@ -17575,8 +17575,8 @@ function bindEvents() {
     if (action === 'register' && !code) { msg.textContent = '请输入邮箱验证码'; msg.style.color = '#EA6668'; return; }
     msg.textContent = action === 'login' ? '登录中...' : '注册中...';
     msg.style.color = 'var(--text-secondary)';
-    if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth) {
-      const r = await window.LabCode.ai.gatewayAuth({ action, email, password, inviteCode, code });
+    if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth) {
+      const r = await window.BubaiCode.ai.gatewayAuth({ action, email, password, inviteCode, code });
       if (r && r.success) {
         msg.textContent = action === 'login' ? '✓ 登录成功' : '✓ 注册成功（已自动登录）';
         msg.style.color = '#52C41A';
@@ -17586,7 +17586,7 @@ function bindEvents() {
         await refreshCreditsBadge();
         // 登录成功：云端模型将走账号通道
         let cfg = {};
-        try { cfg = await window.LabCode.config.get(); } catch (e) {}
+        try { cfg = await window.BubaiCode.config.get(); } catch (e) {}
         const ai = cfg.ai || {};
         if (ai.provider && ai.provider !== 'local' && ai.provider !== 'ollama') {
           showToast('已登录账号，云端模型已就绪', 'success');
@@ -17616,8 +17616,8 @@ function bindEvents() {
     if (btn) { btn.disabled = true; btn.textContent = '发送中...'; }
     setMsg('验证码发送中...', 'var(--text-secondary)');
     try {
-      const r = window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth
-        ? await window.LabCode.ai.gatewayAuth({ action: 'send-code', email })
+      const r = window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth
+        ? await window.BubaiCode.ai.gatewayAuth({ action: 'send-code', email })
         : null;
       if (r && r.success) {
         setMsg('✓ 验证码已发送，请查收邮箱', '#52C41A', 'ok');
@@ -17666,8 +17666,8 @@ function bindEvents() {
 
   // 忘记密码（网关暂未提供找回接口，引导至官网）
   async function gwForgot() {
-    if (window.LabCode && window.LabCode.shell && window.LabCode.shell.openExternal) {
-      await window.LabCode.shell.openExternal('https://bluebubai.work/forgot-password');
+    if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) {
+      await window.BubaiCode.shell.openExternal('https://bluebubai.work/forgot-password');
     } else {
       showToast('请前往 bluebubai.work 找回密码', 'info');
     }
@@ -17720,7 +17720,7 @@ function bindEvents() {
     const gpBrowse = document.getElementById('general-workspace-browse');
     if (gpBrowse) gpBrowse.addEventListener('click', async () => {
       try {
-        const d = await window.LabCode.dialog.openDirectory('选择默认工作空间');
+        const d = await window.BubaiCode.dialog.openDirectory('选择默认工作空间');
         let picked = null;
         if (typeof d === 'string') picked = d;
         else if (d && d.filePaths && d.filePaths[0]) picked = d.filePaths[0];
@@ -17757,9 +17757,9 @@ function bindEvents() {
     const compDel = document.getElementById('completion-delay');
     const syncCompletionLive = () => {
       try {
-        window.LabCodeUI = window.LabCodeUI || {};
-        window.LabCodeUI.completionEnabled = compEn ? !!compEn.checked : true;
-        window.LabCodeUI.completionDelay = compDel ? (parseInt(compDel.value, 10) || 350) : 350;
+        window.BubaiCodeUI = window.BubaiCodeUI || {};
+        window.BubaiCodeUI.completionEnabled = compEn ? !!compEn.checked : true;
+        window.BubaiCodeUI.completionDelay = compDel ? (parseInt(compDel.value, 10) || 350) : 350;
       } catch (e) {}
     };
     if (compEn) compEn.addEventListener('change', syncCompletionLive);
@@ -17806,7 +17806,7 @@ function bindEvents() {
         t.textContent = (s.name || ('技能' + i)) + (s.prompt ? '：' + s.prompt.slice(0, 40) : '');
         const x = document.createElement('button'); x.className = 'btn btn-secondary'; x.style.cssText = 'flex:none;padding:2px 8px;font-size: 10.5px;';
         x.textContent = '删除';
-        x.addEventListener('click', () => { skillsData.splice(i, 1); window.LabCode.config.set('skills.list', skillsData); renderSkills(); });
+        x.addEventListener('click', () => { skillsData.splice(i, 1); window.BubaiCode.config.set('skills.list', skillsData); renderSkills(); });
         d.appendChild(t); d.appendChild(x); skList.appendChild(d);
       });
     }
@@ -17815,7 +17815,7 @@ function bindEvents() {
       const n = document.getElementById('skill-name'); const p = document.getElementById('skill-prompt');
       if (!n || !n.value.trim()) { showToast('请填写技能名称', 'warn'); return; }
       skillsData.push({ name: n.value.trim(), prompt: p ? p.value.trim() : '' });
-      window.LabCode.config.set('skills.list', skillsData);
+      window.BubaiCode.config.set('skills.list', skillsData);
       if (n) n.value = ''; if (p) p.value = ''; renderSkills();
       showToast('已添加技能', 'success');
     });
@@ -17823,18 +17823,18 @@ function bindEvents() {
     if (searchTest) searchTest.addEventListener('click', async () => {
       const res = document.getElementById('search-result'); const st = document.getElementById('search-stats');
       try {
-        const r = await window.LabCode.web.search('LabCode 嵌入式开发', { max: 3 });
+        const r = await window.BubaiCode.web.search('BubaiCode 嵌入式开发', { max: 3 });
         if (r && r.success) { res.textContent = '✓ 搜索成功，返回 ' + (r.results ? r.results.length : 0) + ' 条结果'; res.style.color = '#52C41A'; }
         else { res.textContent = '✗ 搜索失败：' + ((r && r.error) || '未知'); res.style.color = '#EA6668'; }
-        if (window.LabCode.web.stats) { const s = await window.LabCode.web.stats(); if (st) st.textContent = '本会话搜索 ' + (s.count || 0) + ' 次'; }
+        if (window.BubaiCode.web.stats) { const s = await window.BubaiCode.web.stats(); if (st) st.textContent = '本会话搜索 ' + (s.count || 0) + ' 次'; }
       } catch (e) { res.textContent = '✗ 异常：' + e.message; res.style.color = '#EA6668'; }
     });
     const searchClear = document.getElementById('search-clear');
     if (searchClear) searchClear.addEventListener('click', async () => {
-      try { if (window.LabCode.web.clearCache) await window.LabCode.web.clearCache(); const st = document.getElementById('search-stats'); if (st) st.textContent = '缓存已清空'; showToast('搜索缓存已清空', 'success'); } catch (e) {}
+      try { if (window.BubaiCode.web.clearCache) await window.BubaiCode.web.clearCache(); const st = document.getElementById('search-stats'); if (st) st.textContent = '缓存已清空'; showToast('搜索缓存已清空', 'success'); } catch (e) {}
     });
     const browsePath = async (inputId) => {
-      try { const d = await window.LabCode.dialog.openFile('选择解释器 / 脚本'); let p = null; if (typeof d === 'string') p = d; else if (d && d.filePaths && d.filePaths[0]) p = d.filePaths[0]; const el = document.getElementById(inputId); if (p && el) el.value = p; } catch (e) {}
+      try { const d = await window.BubaiCode.dialog.openFile('选择解释器 / 脚本'); let p = null; if (typeof d === 'string') p = d; else if (d && d.filePaths && d.filePaths[0]) p = d.filePaths[0]; const el = document.getElementById(inputId); if (p && el) el.value = p; } catch (e) {}
     };
     ['interp-python', 'interp-node', 'hook-pre', 'hook-post'].forEach((id) => { const b = document.getElementById(id + '-browse'); if (b) b.addEventListener('click', () => browsePath(id)); });
 
@@ -17846,30 +17846,30 @@ function bindEvents() {
       const apiKey = document.getElementById('ai-apikey').value.trim();
       const baseURL = document.getElementById('ai-baseurl').value.trim();
       const model = document.getElementById('ai-model').value.trim();
-      if (window.LabCode && window.LabCode.config) {
-        await window.LabCode.config.set('ai.provider', provider);
-        if (provider !== 'ollama' && provider !== 'local') await window.LabCode.config.set('ai.apiKey', apiKey);
-        if (provider === 'custom') await window.LabCode.config.set('ai.baseURL', baseURL);
-        if (model) await window.LabCode.config.set('ai.model', model);
-      await window.LabCode.config.set('ai.thinkingLevel', document.getElementById('ai-thinking').value || 'standard');
-      await window.LabCode.config.set('ai.localToolGrammar', document.getElementById('ai-local-tool-grammar').value || 'auto');
+      if (window.BubaiCode && window.BubaiCode.config) {
+        await window.BubaiCode.config.set('ai.provider', provider);
+        if (provider !== 'ollama' && provider !== 'local') await window.BubaiCode.config.set('ai.apiKey', apiKey);
+        if (provider === 'custom') await window.BubaiCode.config.set('ai.baseURL', baseURL);
+        if (model) await window.BubaiCode.config.set('ai.model', model);
+      await window.BubaiCode.config.set('ai.thinkingLevel', document.getElementById('ai-thinking').value || 'standard');
+      await window.BubaiCode.config.set('ai.localToolGrammar', document.getElementById('ai-local-tool-grammar').value || 'auto');
       const loraEl = document.getElementById('ai-local-lora');
-      if (loraEl) await window.LabCode.config.set('ai.localLora', loraEl.value || 'auto');
+      if (loraEl) await window.BubaiCode.config.set('ai.localLora', loraEl.value || 'auto');
       // 常规 + 代理（对齐 TrieCode 常规页）
       const gca = document.getElementById('general-close-action');
       const gws = document.getElementById('general-workspace');
       const gpm = document.getElementById('general-proxy-mode');
       const gph = document.getElementById('general-proxy-host');
       const gpp = document.getElementById('general-proxy-port');
-      if (gca) await window.LabCode.config.set('general.closeAction', gca.value || 'tray');
-      if (gws) await window.LabCode.config.set('general.defaultWorkspace', (gws.value || '').trim());
-      if (gpm) await window.LabCode.config.set('proxy.mode', gpm.value || 'system');
-      if (gph) await window.LabCode.config.set('proxy.host', (gph.value || '').trim());
-      if (gpp) await window.LabCode.config.set('proxy.port', (gpp.value || '').trim());
+      if (gca) await window.BubaiCode.config.set('general.closeAction', gca.value || 'tray');
+      if (gws) await window.BubaiCode.config.set('general.defaultWorkspace', (gws.value || '').trim());
+      if (gpm) await window.BubaiCode.config.set('proxy.mode', gpm.value || 'system');
+      if (gph) await window.BubaiCode.config.set('proxy.host', (gph.value || '').trim());
+      if (gpp) await window.BubaiCode.config.set('proxy.port', (gpp.value || '').trim());
       // 立即应用代理（无需重启）
       try {
-        if (window.LabCode.proxy && window.LabCode.proxy.set) {
-          await window.LabCode.proxy.set({ mode: gpm ? gpm.value : 'system', host: gph ? gph.value.trim() : '', port: gpp ? gpp.value.trim() : '' });
+        if (window.BubaiCode.proxy && window.BubaiCode.proxy.set) {
+          await window.BubaiCode.proxy.set({ mode: gpm ? gpm.value : 'system', host: gph ? gph.value.trim() : '', port: gpp ? gpp.value.trim() : '' });
         }
       } catch (err) { /* 代理应用失败不阻塞保存 */ }
       // 外观 / 语音 / 补全 / 编辑器（对齐 TrieCode 个人·AI·开发 设置）
@@ -17880,19 +17880,19 @@ function bindEvents() {
       const cDel = document.getElementById('completion-delay');
       const eFs = document.getElementById('editor-font-size');
       const eWw = document.getElementById('editor-word-wrap');
-      if (aTheme) await window.LabCode.config.set('ui.theme', aTheme.value || 'light');
-      if (aFont) await window.LabCode.config.set('ui.fontFamily', aFont.value || '');
-      if (vRate) await window.LabCode.config.set('voice.rate', parseFloat(vRate.value) || 1.0);
-      if (cEn) await window.LabCode.config.set('completion.enabled', !!cEn.checked);
-      if (cDel) await window.LabCode.config.set('completion.delay', parseInt(cDel.value, 10) || 350);
-      if (eFs) await window.LabCode.config.set('editor.fontSize', parseInt(eFs.value, 10) || 13);
-      if (eWw) await window.LabCode.config.set('editor.wordWrap', eWw.value || 'off');
+      if (aTheme) await window.BubaiCode.config.set('ui.theme', aTheme.value || 'light');
+      if (aFont) await window.BubaiCode.config.set('ui.fontFamily', aFont.value || '');
+      if (vRate) await window.BubaiCode.config.set('voice.rate', parseFloat(vRate.value) || 1.0);
+      if (cEn) await window.BubaiCode.config.set('completion.enabled', !!cEn.checked);
+      if (cDel) await window.BubaiCode.config.set('completion.delay', parseInt(cDel.value, 10) || 350);
+      if (eFs) await window.BubaiCode.config.set('editor.fontSize', parseInt(eFs.value, 10) || 13);
+      if (eWw) await window.BubaiCode.config.set('editor.wordWrap', eWw.value || 'off');
       // 立即应用：主题 / 补全开关 / 编辑器字号换行
       try { if (aTheme) await applyTheme(aTheme.value, false); } catch (e) {}
       try {
-        window.LabCodeUI = window.LabCodeUI || {};
-        window.LabCodeUI.completionEnabled = cEn ? !!cEn.checked : true;
-        window.LabCodeUI.completionDelay = cDel ? (parseInt(cDel.value, 10) || 350) : 350;
+        window.BubaiCodeUI = window.BubaiCodeUI || {};
+        window.BubaiCodeUI.completionEnabled = cEn ? !!cEn.checked : true;
+        window.BubaiCodeUI.completionDelay = cDel ? (parseInt(cDel.value, 10) || 350) : 350;
       } catch (e) {}
       try {
         if (state.editor && state.editor.updateOptions) state.editor.updateOptions({ fontSize: parseInt(eFs.value, 10) || 13, wordWrap: eWw ? eWw.value : 'off', fontFamily: (aFont && aFont.value) ? aFont.value : undefined });
@@ -17900,13 +17900,13 @@ function bindEvents() {
       } catch (e) {}
       // 技能 / 搜索 / 解释器 / 钩子（Step 1：占位 → 真实后端）
       const se = document.getElementById('search-enabled');
-      if (se) await window.LabCode.config.set('search.enabled', !!se.checked);
+      if (se) await window.BubaiCode.config.set('search.enabled', !!se.checked);
       const ipy = document.getElementById('interp-python');
       const ino = document.getElementById('interp-node');
-      if (ipy || ino) await window.LabCode.config.set('interpreters', { python: ipy ? ipy.value.trim() : '', node: ino ? ino.value.trim() : '' });
+      if (ipy || ino) await window.BubaiCode.config.set('interpreters', { python: ipy ? ipy.value.trim() : '', node: ino ? ino.value.trim() : '' });
       const hp = document.getElementById('hook-pre');
       const hpo = document.getElementById('hook-post');
-      if (hp || hpo) await window.LabCode.config.set('hooks', { preToolUse: hp ? hp.value.trim() : '', postToolUse: hpo ? hpo.value.trim() : '' });
+      if (hp || hpo) await window.BubaiCode.config.set('hooks', { preToolUse: hp ? hp.value.trim() : '', postToolUse: hpo ? hpo.value.trim() : '' });
         // 刷新 RealAIClient 配置，使新设置立即生效
         if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
           await state.agent.ai._loadConfig();
@@ -17930,8 +17930,8 @@ function bindEvents() {
         const url = document.getElementById('backend-gateway-url-input').value.trim();
         const hint = document.getElementById('backend-api-key-hint');
         try {
-          await window.LabCode.config.set('ai.backendApiKey', key);
-          await window.LabCode.config.set('ai.backendGatewayUrl', url);
+          await window.BubaiCode.config.set('ai.backendApiKey', key);
+          await window.BubaiCode.config.set('ai.backendGatewayUrl', url);
           if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 已保存</span><span style="color:#888;">（云端请求将用此 Key；无需重新打包）</span>';
           showToast('云端后端 Key 已保存', 'success');
           if (typeof refreshGatewayUI === 'function') refreshGatewayUI();
@@ -17947,7 +17947,7 @@ function bindEvents() {
         const hint = document.getElementById('backend-api-key-hint');
         if (hint) hint.innerHTML = '<span style="color:#888;">正在测试连接…</span>';
         try {
-          const st = await window.LabCode.ai.gatewayStatus();
+          const st = await window.BubaiCode.ai.gatewayStatus();
           if (st && st.valid) {
             if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 连接成功</span>'
               + (st.dailyRemaining != null ? ' <span style="color:#888;">（今日剩余 ' + st.dailyRemaining + ' 次）</span>' : '');
@@ -17989,7 +17989,7 @@ function bindEvents() {
         config: { provider: 'deepseek', model: 'deepseek-chat', apiKey: '', baseURL: '', thinking: 'standard' }, selectable: true },
       { tier: 'model', name: 'DeepSeek Reasoner', typeLabel: '云端 API', desc: 'DeepSeek-R1 推理模型，复杂多步任务 / 数学 / 调试更稳', link: 'https://platform.deepseek.com/',
         config: { provider: 'deepseek', model: 'deepseek-reasoner', apiKey: '', baseURL: '', thinking: 'deep' }, selectable: true },
-      { tier: 'model', name: 'LabCode 本地 AI 引擎', typeLabel: '内置引擎', desc: '内置 llama.cpp，安装模型即离线可用，无需 API Key', link: '',
+      { tier: 'model', name: 'BubaiCode 本地 AI 引擎', typeLabel: '内置引擎', desc: '内置 llama.cpp，安装模型即离线可用，无需 API Key', link: '',
         config: { provider: 'local', model: '', apiKey: '', baseURL: '', thinking: 'standard' }, selectable: true },
       { tier: 'model', name: 'Ollama 本地模型', typeLabel: '本地运行', desc: '连接本机 Ollama，运行 Qwen / Codellama / DeepHermes 等 GGUF', link: 'https://ollama.com/',
         config: { provider: 'ollama', model: '', apiKey: '', baseURL: '', thinking: 'standard' }, selectable: true },
@@ -18046,29 +18046,29 @@ function bindEvents() {
         config: { provider: 'cli', cli: true, model: 'windsurf', apiKey: '', baseURL: '', thinking: 'standard' }, selectable: true, mcpPreset: ['filesystem', 'github'] },
       { tier: 'runtime', name: 'Mistral', typeLabel: '编码运行时', runtime: 'Mistral', desc: 'Mistral AI 编码 agent（法语团队，代码模型欧洲领先）', link: 'https://mistral.ai/',
         config: { provider: 'custom', model: 'mistral-large-latest', apiKey: '', baseURL: 'https://api.mistral.ai/v1', thinking: 'standard' }, selectable: true, mcpPreset: ['filesystem'] },
-      // ===== 内置 Agent（对齐 Ekko 的「Ekko（内置）」：LabCode 原生 agent）=====
-      { tier: 'agent', name: 'LabCode（内置）', typeLabel: '内置 Agent', desc: 'LabCode 原生 AI 编程助手，开箱即用，无需安装任何运行时', link: '',
+      // ===== 内置 Agent（对齐 Ekko 的「Ekko（内置）」：BubaiCode 原生 agent）=====
+      { tier: 'agent', name: 'BubaiCode（内置）', typeLabel: '内置 Agent', desc: 'BubaiCode 原生 AI 编程助手，开箱即用，无需安装任何运行时', link: '',
         agent: { builtin: true }, selectable: true },
-      { tier: 'agent', name: 'ESP32 硬件编程', typeLabel: '内置 Agent', desc: 'LabCode 内置硬件编程专家（Arduino/ESP32）：写代码 / 接线 / 排查，复用当前 AI 配置，无需安装外部 agent', link: '',
+      { tier: 'agent', name: 'ESP32 硬件编程', typeLabel: '内置 Agent', desc: 'BubaiCode 内置硬件编程专家（Arduino/ESP32）：写代码 / 接线 / 排查，复用当前 AI 配置，无需安装外部 agent', link: '',
         agent: { builtin: true }, selectable: true }
     ];
 
     function applyMarketAgent(a) {
       if (a.agent && a.agent.builtin) {
-        // 内置 Agent：LabCode（内置）还原为原生；ESP32 硬件编程选中对应内置 agent（复用当前 AI 配置）
+        // 内置 Agent：BubaiCode（内置）还原为原生；ESP32 硬件编程选中对应内置 agent（复用当前 AI 配置）
         try {
           if (a.name === 'ESP32 硬件编程') {
-            window.LabCode?.config?.set?.('ai.codingAgent', 'ESP32 硬件编程');
-            window.LabCode?.config?.set?.('ai.activeAgent', 'esp32-hardware');
+            window.BubaiCode?.config?.set?.('ai.codingAgent', 'ESP32 硬件编程');
+            window.BubaiCode?.config?.set?.('ai.activeAgent', 'esp32-hardware');
             showToast('已切换内置 Agent：ESP32 硬件编程（写代码/接线/排查，复用当前 AI 配置）', 'info');
             return;
           }
           if (state.agent && state.agent.ai) state.agent.ai.customSystemPrompt = '';
-          window.LabCode?.config?.set?.('ai.codingAgent', '');
-          window.LabCode?.config?.set?.('ai.activeAgent', 'labcode');
-          window.LabCode?.config?.set?.('ai.activeAgentPrompt', '');
+          window.BubaiCode?.config?.set?.('ai.codingAgent', '');
+          window.BubaiCode?.config?.set?.('ai.activeAgent', 'bubaicode');
+          window.BubaiCode?.config?.set?.('ai.activeAgentPrompt', '');
         } catch (e) {}
-        showToast('已切换为 LabCode 内置 Agent（原生）', 'info');
+        showToast('已切换为 BubaiCode 内置 Agent（原生）', 'info');
         return;
       }
       const c = a.config;
@@ -18078,7 +18078,7 @@ function bindEvents() {
       document.getElementById('ai-model').value = c.model || '';
       document.getElementById('ai-thinking').value = c.thinking || 'standard';
       updateAiSettingsVisibility();
-      if (a.runtime) { try { window.LabCode?.config?.set?.('ai.codingAgent', a.runtime); } catch (e) {} }
+      if (a.runtime) { try { window.BubaiCode?.config?.set?.('ai.codingAgent', a.runtime); } catch (e) {} }
       // 复用既有保存管线：写配置 + 刷新 RealAIClient + 提示 + 关闭弹窗
       document.getElementById('settings-save').click();
       if (a.runtime) {
@@ -18091,7 +18091,7 @@ function bindEvents() {
       const list = document.getElementById('agent-market-list');
       if (!list) return;
       list.innerHTML = '';
-      const tierTitle = { model: 'AI 模型', runtime: '编码 Agent 运行时（对齐 Ekko「Agent 管理」完整清单：Ekko 内置 + 15 个运行时）', agent: '内置 Agent（LabCode 原生，对标 Ekko 的「Ekko（内置）」）' };
+      const tierTitle = { model: 'AI 模型', runtime: '编码 Agent 运行时（对齐 Ekko「Agent 管理」完整清单：Ekko 内置 + 15 个运行时）', agent: '内置 Agent（BubaiCode 原生，对标 Ekko 的「Ekko（内置）」）' };
       let lastTier = null;
       MARKET_AGENTS.forEach((a) => {
         if (a.tier !== lastTier) {
@@ -18152,7 +18152,7 @@ function bindEvents() {
           actions.appendChild(ib);
           (async () => {
             try {
-              const r = await window.LabCode.codingAgents.list();
+              const r = await window.BubaiCode.codingAgents.list();
               const found = r && r.success && r.agents ? r.agents.find(x => x.id === cliMeta[0]) : null;
               if (found && found.installed) {
                 st.textContent = '✅ 已装 v' + (found.version || '?');
@@ -18173,7 +18173,7 @@ function bindEvents() {
               ib.addEventListener('click', async () => {
                 ib.disabled = true; ib.textContent = '安装中…';
                 try {
-                  const rr = await window.LabCode.codingAgents.install({ id: cliMeta[0] });
+                  const rr = await window.BubaiCode.codingAgents.install({ id: cliMeta[0] });
                   if (rr && rr.success) {
                     st.textContent = '✅ 已装 v' + ((rr.version) || (rr.agent && rr.agent.version) || '?');
                     st.style.color = '#22c55e'; ib.textContent = '更新';
@@ -18200,7 +18200,7 @@ function bindEvents() {
       const resultEl = document.getElementById('ai-test-result');
       resultEl.textContent = '测试中...';
       resultEl.style.color = 'var(--text-secondary)';
-      if (window.LabCode && window.LabCode.ai && window.LabCode.ai.checkConnection) {
+      if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.checkConnection) {
         const testCfg = {
           provider: document.getElementById('ai-provider').value,
           apiKey: document.getElementById('ai-apikey').value.trim(),
@@ -18208,7 +18208,7 @@ function bindEvents() {
           model: document.getElementById('ai-model').value.trim()
         };
         try {
-          const r = await window.LabCode.ai.checkConnection(testCfg);
+          const r = await window.BubaiCode.ai.checkConnection(testCfg);
           if (r.success) {
             resultEl.textContent = `✓ 连接成功 (${r.status})`;
             resultEl.style.color = '#52C41A';
@@ -18260,8 +18260,8 @@ function bindEvents() {
     if (gwRefreshBtn) gwRefreshBtn.addEventListener('click', () => { refreshGatewayUI(); });
     const gwLogoutBtn = document.getElementById('gw-logout-btn');
     if (gwLogoutBtn) gwLogoutBtn.addEventListener('click', async () => {
-      if (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth) {
-        const r = await window.LabCode.ai.gatewayAuth({ action: 'logout' });
+      if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth) {
+        const r = await window.BubaiCode.ai.gatewayAuth({ action: 'logout' });
         if (r && r.success) {
           showToast('已登出网关账号', 'info');
           refreshGatewayUI();
@@ -18315,8 +18315,8 @@ function bindEvents() {
       setMsg(action === 'login' ? '登录中...' : '注册中...');
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '请稍候...'; }
       try {
-        const r = (window.LabCode && window.LabCode.ai && window.LabCode.ai.gatewayAuth)
-          ? await window.LabCode.ai.gatewayAuth({ action, email, password, inviteCode, code, username })
+        const r = (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth)
+          ? await window.BubaiCode.ai.gatewayAuth({ action, email, password, inviteCode, code, username })
           : null;
         if (r && r.success) {
           setMsg(action === 'login' ? '✓ 登录成功' : '✓ 注册成功（已自动登录）', 'ok');
@@ -18335,8 +18335,8 @@ function bindEvents() {
       }
     };
     const gwForgotOverlay = async () => {
-      if (window.LabCode && window.LabCode.shell && window.LabCode.shell.openExternal) {
-        await window.LabCode.shell.openExternal('https://bluebubai.work/forgot-password');
+      if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) {
+        await window.BubaiCode.shell.openExternal('https://bluebubai.work/forgot-password');
       } else {
         showToast('请前往 bluebubai.work 找回密码', 'info');
       }
@@ -18354,7 +18354,7 @@ function bindEvents() {
     // 只对云端通道强制登录；本地模型 / Ollama / 自带 Key 不拦。
     (async () => {
       try {
-        const cfg = await window.LabCode.config.get();
+        const cfg = await window.BubaiCode.config.get();
         const provider = (cfg.ai && cfg.ai.provider) || 'gateway';
         const needsLogin = provider === 'gateway' || (provider === 'custom' && !cfg.ai.apiKey);
         const loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
@@ -18370,8 +18370,8 @@ function bindEvents() {
   const minimizeBtn = document.getElementById('minimize-btn');
   if (minimizeBtn) {
     minimizeBtn.addEventListener('click', () => {
-      if (window.LabCode && window.LabCode.window && window.LabCode.window.minimize) {
-        window.LabCode.window.minimize();
+      if (window.BubaiCode && window.BubaiCode.window && window.BubaiCode.window.minimize) {
+        window.BubaiCode.window.minimize();
       } else {
         showToast('最小化窗口', 'info');
       }
@@ -18381,8 +18381,8 @@ function bindEvents() {
   const maximizeBtn = document.getElementById('maximize-btn');
   if (maximizeBtn) {
     maximizeBtn.addEventListener('click', () => {
-      if (window.LabCode && window.LabCode.window && window.LabCode.window.maximize) {
-        window.LabCode.window.maximize();
+      if (window.BubaiCode && window.BubaiCode.window && window.BubaiCode.window.maximize) {
+        window.BubaiCode.window.maximize();
       } else {
         showToast('最大化/还原窗口', 'info');
       }
@@ -18392,8 +18392,8 @@ function bindEvents() {
   const closeBtn = document.getElementById('close-btn');
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
-      if (window.LabCode && window.LabCode.window && window.LabCode.window.close) {
-        window.LabCode.window.close();
+      if (window.BubaiCode && window.BubaiCode.window && window.BubaiCode.window.close) {
+        window.BubaiCode.window.close();
       } else {
         showToast('关闭窗口', 'info');
       }
@@ -18432,9 +18432,9 @@ function bindEvents() {
   const attachBtn = document.getElementById('attach-btn');
   if (attachBtn) {
     attachBtn.addEventListener('click', async () => {
-      if (isElectron && window.LabCode && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode && window.BubaiCode.dialog) {
         try {
-          const result = await window.LabCode.dialog.openFile({
+          const result = await window.BubaiCode.dialog.openFile({
             filters: [
               { name: '所有文件', extensions: ['*'] },
               { name: '代码文件', extensions: ['py', 'js', 'ts', 'html', 'css', 'json', 'cpp', 'c', 'ino', 'java', 'go', 'rs'] },
@@ -18443,14 +18443,14 @@ function bindEvents() {
             properties: ['openFile', 'multiSelections']
           });
           if (!result.canceled && result.filePaths.length > 0) {
-            const projectPath = state.projectPath || 'C:/Users/Administrator/LabCodeProjects/untitled';
+            const projectPath = state.projectPath || 'C:/Users/Administrator/BubaiCodeProjects/untitled';
             let addedCount = 0;
             for (const filePath of result.filePaths) {
               const fileName = filePath.split('\\').pop();
               const destPath = diskJoin(projectPath, fileName);
               try {
                 // 使用 preload 暴露的 fs.copyFile API
-                const copyResult = await window.LabCode.fs.copyFile(filePath, destPath);
+                const copyResult = await window.BubaiCode.fs.copyFile(filePath, destPath);
                 if (copyResult.success) {
                   addedCount++;
                   addOutputLog('已添加文件: ' + fileName, 'success');
@@ -18503,11 +18503,11 @@ function bindEvents() {
   const imageBtn = document.getElementById('image-btn');
   if (imageBtn) {
     imageBtn.addEventListener('click', async () => {
-      if (!(isElectron && window.LabCode && window.LabCode.dialog && window.LabCode.fs)) { showToast('仅桌面版支持添加图片', 'warn'); return; }
+      if (!(isElectron && window.BubaiCode && window.BubaiCode.dialog && window.BubaiCode.fs)) { showToast('仅桌面版支持添加图片', 'warn'); return; }
       try {
-        const p = await window.LabCode.dialog.openFile();
+        const p = await window.BubaiCode.dialog.openFile();
         if (!p) return;
-        const r = await window.LabCode.fs.readImageDataUrl(p);
+        const r = await window.BubaiCode.fs.readImageDataUrl(p);
         if (r && r.success) { window.agentAddImage(r.dataUrl, r.name); addOutputLog('添加图片: ' + (r.name || p), 'info'); }
         else showToast((r && r.error) || '读取图片失败', 'error');
       } catch (e) { showToast('选择图片失败: ' + e.message, 'error'); }
@@ -18537,9 +18537,9 @@ function bindEvents() {
   if (projectStatus) {
     projectStatus.style.cursor = 'pointer';
     projectStatus.addEventListener('click', async () => {
-      if (isElectron && window.LabCode && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode && window.BubaiCode.dialog) {
         try {
-          const result = await window.LabCode.dialog.openDirectory();
+          const result = await window.BubaiCode.dialog.openDirectory();
           if (result) {
             await loadProjectFromDisk(result);
             showToast('已打开项目: ' + result, 'success');
@@ -18639,9 +18639,9 @@ function bindEvents() {
   const selectWorkspaceBtn = document.getElementById('ai-select-workspace-btn');
   if (selectWorkspaceBtn) {
     selectWorkspaceBtn.addEventListener('click', async () => {
-      if (isElectron && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode.dialog) {
         try {
-          const dirPath = await window.LabCode.dialog.openDirectory();
+          const dirPath = await window.BubaiCode.dialog.openDirectory();
           if (dirPath) {
             await loadProjectFromDisk(dirPath);
             showToast('已打开工作空间: ' + dirPath, 'success');
@@ -18668,9 +18668,9 @@ function bindEvents() {
   const welcomeOpenFolder = document.getElementById('welcome-open-folder');
   if (welcomeOpenFolder) {
     welcomeOpenFolder.addEventListener('click', async () => {
-      if (isElectron && window.LabCode && window.LabCode.dialog) {
+      if (isElectron && window.BubaiCode && window.BubaiCode.dialog) {
         try {
-          const dirPath = await window.LabCode.dialog.openDirectory();
+          const dirPath = await window.BubaiCode.dialog.openDirectory();
           if (dirPath) {
             await loadProjectFromDisk(dirPath);
             showToast('已打开文件夹: ' + dirPath, 'success');
@@ -18753,10 +18753,10 @@ function bindEvents() {
   // 移除失效的最近项目（仿写 ChipCode 的 project.removeRecent）
   async function removeRecentProject(projectPath) {
     try {
-      if (!window.LabCode || !window.LabCode.config) return;
-      const cfg = await window.LabCode.config.get();
+      if (!window.BubaiCode || !window.BubaiCode.config) return;
+      const cfg = await window.BubaiCode.config.get();
       const list = Array.isArray(cfg.recentProjects) ? cfg.recentProjects : [];
-      await window.LabCode.config.set('recentProjects', list.filter(r => r.path !== projectPath).slice(0, 8));
+      await window.BubaiCode.config.set('recentProjects', list.filter(r => r.path !== projectPath).slice(0, 8));
     } catch (e) { console.warn('移除最近项目失败:', e); }
   }
 
@@ -18766,7 +18766,7 @@ function bindEvents() {
     if (!recentList) return;
     let recents = [];
     try {
-      const cfg = (window.LabCode && window.LabCode.config) ? await window.LabCode.config.get() : null;
+      const cfg = (window.BubaiCode && window.BubaiCode.config) ? await window.BubaiCode.config.get() : null;
       recents = (cfg && Array.isArray(cfg.recentProjects)) ? cfg.recentProjects : [];
     } catch (e) { recents = []; }
     recentList.innerHTML = '';
@@ -18789,8 +18789,8 @@ function bindEvents() {
       item.addEventListener('click', async () => {
         // 1:1 仿写 ChipCode @505482：先检查路径是否存在，失效则提示「项目已被删除或移动」并自动移除
         try {
-          const exists = (window.LabCode && window.LabCode.fs && window.LabCode.fs.exists)
-            ? await window.LabCode.fs.exists(p.path) : null;
+          const exists = (window.BubaiCode && window.BubaiCode.fs && window.BubaiCode.fs.exists)
+            ? await window.BubaiCode.fs.exists(p.path) : null;
           if (exists === false) {
             showToast('项目已被删除或移动', 'error');
             await removeRecentProject(p.path);
@@ -18806,12 +18806,12 @@ function bindEvents() {
   }
   async function recordRecentProject(projectPath) {
     try {
-      if (!window.LabCode || !window.LabCode.config) return;
-      const cfg = await window.LabCode.config.get();
+      if (!window.BubaiCode || !window.BubaiCode.config) return;
+      const cfg = await window.BubaiCode.config.get();
       const list = Array.isArray(cfg.recentProjects) ? cfg.recentProjects : [];
       const filtered = list.filter(r => r.path !== projectPath);
       filtered.unshift({ name: String(projectPath).split(/[\\/]/).pop(), path: projectPath });
-      await window.LabCode.config.set('recentProjects', filtered.slice(0, 8));
+      await window.BubaiCode.config.set('recentProjects', filtered.slice(0, 8));
       renderRecentProjects();
     } catch (e) { console.warn('记录最近项目失败:', e); }
   }
@@ -18857,23 +18857,23 @@ async function applyTheme(theme, save) {
   document.documentElement.setAttribute('data-theme', t);
   try {
     if (window.monaco && window.monaco.editor) {
-      window.monaco.editor.setTheme(t === 'light' ? 'vs' : 'labcode-dark');
+      window.monaco.editor.setTheme(t === 'light' ? 'vs' : 'bubaicode-dark');
       if (window.monaco.editor.getEditors) {
-        window.monaco.editor.getEditors().forEach(ed => ed.updateOptions({ theme: t === 'light' ? 'vs' : 'labcode-dark' }));
+        window.monaco.editor.getEditors().forEach(ed => ed.updateOptions({ theme: t === 'light' ? 'vs' : 'bubaicode-dark' }));
       }
     }
   } catch (e) { /* monaco 未就绪时忽略 */ }
   const sel = document.getElementById('ui-theme-select');
   if (sel) sel.value = t;
   if (save !== false) {
-    try { await window.LabCode.config.set('ui.theme', t); } catch (e) {}
+    try { await window.BubaiCode.config.set('ui.theme', t); } catch (e) {}
   }
 }
 
 async function initTheme() {
   let t = 'light';
   try {
-    const c = await window.LabCode.config.get();
+    const c = await window.BubaiCode.config.get();
     t = (c && c.ui && c.ui.theme) || 'light';
   } catch (e) {}
   try { await applyTheme(t, false); } catch (e) {}
@@ -18924,7 +18924,7 @@ async function wfRunScheduled(nodes, edges, taskPrompt) {
       if (n.type === 'ai') {
         // 审批门节点：调度场景自动通过（任务已由用户预授权）
         if (n.data.approval) { n.data.status = 'pending_approval'; await new Promise(r => setTimeout(r, 300)); }
-        const agentCfg = (window.__AGENT_PRESETS || AGENT_PRESETS)[n.data.agent] || (window.__AGENT_PRESETS || AGENT_PRESETS)['LabCode（内置）'];
+        const agentCfg = (window.__AGENT_PRESETS || AGENT_PRESETS)[n.data.agent] || (window.__AGENT_PRESETS || AGENT_PRESETS)['BubaiCode（内置）'];
         if (agentCfg.provider === 'cli') {
           // CLI 桥接：调度触发执行已安装 CLI（非交互模式）
           const cliRes = await runCliAgent(n.data.agent, n.data.prompt || '你好');
@@ -18932,19 +18932,19 @@ async function wfRunScheduled(nodes, edges, taskPrompt) {
           n.data.result = cliRes.success ? (cliRes.output || '') : ('[CLI 失败：' + (cliRes.error || '未知') + ']');
         } else {
           const keys = ['provider', 'model', 'apiKey', 'baseURL', 'thinkingLevel'];
-          const curCfg = await window.LabCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg && curCfg.ai) ? curCfg.ai[k] : ''; } catch (e) { saved[k] = ''; } });
+          const curCfg = await window.BubaiCode.config.get(); const saved = {}; keys.forEach(k => { try { saved[k] = (curCfg && curCfg.ai) ? curCfg.ai[k] : ''; } catch (e) { saved[k] = ''; } });
           try {
-            await window.LabCode.config.set('ai.provider', agentCfg.provider);
-            await window.LabCode.config.set('ai.model', agentCfg.model || '');
-            await window.LabCode.config.set('ai.apiKey', agentCfg.apiKey || '');
-            await window.LabCode.config.set('ai.baseURL', agentCfg.baseURL || '');
-            await window.LabCode.config.set('ai.thinkingLevel', agentCfg.thinking || 'standard');
+            await window.BubaiCode.config.set('ai.provider', agentCfg.provider);
+            await window.BubaiCode.config.set('ai.model', agentCfg.model || '');
+            await window.BubaiCode.config.set('ai.apiKey', agentCfg.apiKey || '');
+            await window.BubaiCode.config.set('ai.baseURL', agentCfg.baseURL || '');
+            await window.BubaiCode.config.set('ai.thinkingLevel', agentCfg.thinking || 'standard');
             const prompt = [n.data.prompt || '', taskPrompt ? '（定时任务附加指令：' + taskPrompt + '）' : ''].filter(Boolean).join('\n');
-            const res = await window.LabCode.ai.chat({ messages: [{ role: 'user', content: prompt || '你好' }], temperature: 0.7, maxTokens: 8192 });
+            const res = await window.BubaiCode.ai.chat({ messages: [{ role: 'user', content: prompt || '你好' }], temperature: 0.7, maxTokens: 8192 });
             n.data.status = (res && res.success) ? 'completed' : 'failed';
             n.data.result = (res && res.success) ? (res.content || '') : ('[失败：' + ((res && res.error) || '未知') + ']');
           } finally {
-            for (const k of keys) { try { await window.LabCode.config.set('ai.' + k, saved[k]); } catch (e) {} }
+            for (const k of keys) { try { await window.BubaiCode.config.set('ai.' + k, saved[k]); } catch (e) {} }
           }
         }
       } else if (n.type === 'tool') {
@@ -18970,13 +18970,13 @@ async function wfRunScheduled(nodes, edges, taskPrompt) {
 // 注册调度工作流监听（主进程 cron 到点 → 执行 → 回报）
 function initScheduledWorkflow() {
   try {
-    if (!window.LabCode || !window.LabCode.schedule || !window.LabCode.schedule.onExecWorkflow) return;
-    window.LabCode.schedule.onExecWorkflow(async (data) => {
+    if (!window.BubaiCode || !window.BubaiCode.schedule || !window.BubaiCode.schedule.onExecWorkflow) return;
+    window.BubaiCode.schedule.onExecWorkflow(async (data) => {
       try {
-        const cfg = await window.LabCode.config.get();
+        const cfg = await window.BubaiCode.config.get();
         const wf = cfg && cfg.ai && cfg.ai.workflow;
         if (!wf || !wf.nodes || !wf.nodes.length) {
-          window.LabCode.schedule.sendWorkflowResult({ token: data.token, ok: false, error: '没有可执行的工作流（请先在工作流面板配置）' });
+          window.BubaiCode.schedule.sendWorkflowResult({ token: data.token, ok: false, error: '没有可执行的工作流（请先在工作流面板配置）' });
           return;
         }
         // 深拷贝执行，避免污染面板当前状态
@@ -18985,9 +18985,9 @@ function initScheduledWorkflow() {
         const res = await wfRunScheduled(nodes, edges, data.prompt || '');
         // 用量统计：调度触发的执行补记
         try { usageRecord('调度工作流', res.ok, 0); } catch (e) {}
-        window.LabCode.schedule.sendWorkflowResult({ token: data.token, ok: res.ok, summary: res.summary, error: res.error || '' });
+        window.BubaiCode.schedule.sendWorkflowResult({ token: data.token, ok: res.ok, summary: res.summary, error: res.error || '' });
       } catch (e) {
-        window.LabCode.schedule.sendWorkflowResult({ token: data.token, ok: false, error: e.message });
+        window.BubaiCode.schedule.sendWorkflowResult({ token: data.token, ok: false, error: e.message });
       }
     });
   } catch (e) { /* 忽略 */ }
@@ -18999,14 +18999,14 @@ let usageData = { calls: 0, tokens: 0, success: 0, fail: 0, byModel: {}, history
 
 async function usageLoad() {
   try {
-    const c = await window.LabCode.config.get();
+    const c = await window.BubaiCode.config.get();
     usageData = (c && c.ai && c.ai.usage) || usageData;
     if (!usageData.byModel) usageData.byModel = {};
     if (!usageData.history) usageData.history = [];
   } catch (e) {}
 }
 function usageSave() {
-  try { window.LabCode.config.set(USAGE_KEY, usageData); } catch (e) {}
+  try { window.BubaiCode.config.set(USAGE_KEY, usageData); } catch (e) {}
 }
 function usageRecord(model, ok, tokenEstimate) {
   usageData.calls++;
@@ -19069,14 +19069,14 @@ function initUsagePanel() {
     if (window.showToast) showToast('用量统计已重置', 'success');
   });
 }
-// 拦截 window.LabCode.ai.chat 统一计数（所有调用点自动纳入统计）
+// 拦截 window.BubaiCode.ai.chat 统一计数（所有调用点自动纳入统计）
 function initUsageInterceptor() {
   try {
-    if (!window.LabCode || !window.LabCode.ai || window.LabCode.ai.__usageWrapped) return;
-    const origChat = window.LabCode.ai.chat;
+    if (!window.BubaiCode || !window.BubaiCode.ai || window.BubaiCode.ai.__usageWrapped) return;
+    const origChat = window.BubaiCode.ai.chat;
     if (typeof origChat !== 'function') return;
-    window.LabCode.ai.__usageWrapped = true;
-    window.LabCode.ai.chat = async (opts) => {
+    window.BubaiCode.ai.__usageWrapped = true;
+    window.BubaiCode.ai.chat = async (opts) => {
       const est = usageTokenEstimate(opts && opts.messages);
       try {
         const res = await origChat(opts);
@@ -19136,40 +19136,40 @@ function init() {
       // 串口日志服务（对齐 TrieCode serialLog）
       window.PluginSystem.registerInternalService('serialLog', {
         open: async (a) => {
-          if (!window.LabCode.serial) return '串口桥不可用';
-          const r = await window.LabCode.serial.open({ port: a.port, baud: a.baud || 115200 });
+          if (!window.BubaiCode.serial) return '串口桥不可用';
+          const r = await window.BubaiCode.serial.open({ port: a.port, baud: a.baud || 115200 });
           return r.success ? '串口已打开 ' + a.port : '失败: ' + (r.error || '');
         },
         tail: async (a) => {
-          const r = await window.LabCode.serialLog.tail({ line: a.line || 50 });
+          const r = await window.BubaiCode.serialLog.tail({ line: a.line || 50 });
           return r.lines.join('\n');
         },
         grep: async (a) => {
-          const r = await window.LabCode.serialLog.grep({ pattern: a.pattern, max: a.max || 30 });
+          const r = await window.BubaiCode.serialLog.grep({ pattern: a.pattern, max: a.max || 30 });
           return r.lines.join('\n') || '无匹配';
         },
         send: async (a) => {
-          const r = await window.LabCode.serial.write(a.data);
+          const r = await window.BubaiCode.serial.write(a.data);
           return r.success ? '已发送' : '失败: ' + (r.error || '');
         },
         close: async () => {
-          await window.LabCode.serial.close();
+          await window.BubaiCode.serial.close();
           return '串口已关闭';
         },
         analyzeCrash: async () => {
-          const r = await window.LabCode.serialLog.analyzeCrash();
+          const r = await window.BubaiCode.serialLog.analyzeCrash();
           return r.diagnosis + (r.lines ? '\n' + r.lines.join('\n') : '');
         }
       });
       // 串口列表服务
       window.PluginSystem.registerInternalService('serialport', {
         list: async () => {
-          const r = await window.LabCode.serial.list();
+          const r = await window.BubaiCode.serial.list();
           return r.ports ? JSON.stringify(r.ports) : '无串口';
         },
         select: async (a) => {
           // 简化：返回匹配的端口
-          const r = await window.LabCode.serial.list();
+          const r = await window.BubaiCode.serial.list();
           if (!r.ports || !r.ports.length) return '无可用串口';
           const found = r.ports.find(p => p.port.toLowerCase().includes((a.query || '').toLowerCase()));
           return found ? '已选择 ' + found.port : '未找到匹配端口';
@@ -19181,12 +19181,12 @@ function init() {
           try {
             const root = (a && a.path)
               ? (a.path.replace(/[\\\/]+$/, '') )
-              : (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) || (state && state.projectPath);
+              : (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) || (state && state.projectPath);
             if (!root) return 'Error: 未打开工程，且未传 path';
-            const fsApi = window.LabCode && window.LabCode.fs;
+            const fsApi = window.BubaiCode && window.BubaiCode.fs;
             if (!fsApi) return 'Error: fs 不可用';
             const maxFiles = (a && a.maxFiles) || 800;
-            const skipDirs = new Set(['node_modules', '.git', 'build', 'dist', '.pio', '.vscode', '__pycache__', '.labcode']);
+            const skipDirs = new Set(['node_modules', '.git', 'build', 'dist', '.pio', '.vscode', '__pycache__', '.bubaicode']);
             const byExt = Object.create(null);
             let files = 0, dirs = 0, bytes = 0, lines = 0, truncated = false;
             const stack = [root];
@@ -19242,15 +19242,15 @@ function init() {
       // clangd LSP 客户端（真接 LSP over stdio）
       const clangdSvc = {
         async _ensureStarted() {
-          if (!window.LabCode.lsp) return { ok: false, error: 'LSP 桥不可用' };
-          // 首次用时自动下载 clangd 到 %APPDATA%/LabCode/tools/
+          if (!window.BubaiCode.lsp) return { ok: false, error: 'LSP 桥不可用' };
+          // 首次用时自动下载 clangd 到 %APPDATA%/BubaiCode/tools/
           let clangdPath = 'clangd';
           try {
-            const r = await window.LabCode.tools.ensureClangd();
+            const r = await window.BubaiCode.tools.ensureClangd();
             if (r && r.success) clangdPath = r.path;
             else if (r && r.error) console.warn('[clangd] auto-download failed:', r.error);
           } catch (e) { console.warn('[clangd] ensureClangd error:', e.message); }
-          const r = await window.LabCode.lsp.start({
+          const r = await window.BubaiCode.lsp.start({
             language: 'cpp',
             cmd: clangdPath,
             args: ['--background-index', '--clang-tidy'],
@@ -19267,9 +19267,9 @@ function init() {
           const abs = (state.projectPath || '') + '\\' + filePath.replace(/\//g, '\\');
           const uri = 'file:///' + abs.replace(/\\/g, '/');
           try {
-            const r = await window.LabCode.fs.readFile(abs);
+            const r = await window.BubaiCode.fs.readFile(abs);
             const content = (r && r.content) ? r.content : '';
-            await window.LabCode.lsp.notify({
+            await window.BubaiCode.lsp.notify({
               language: 'cpp',
               method: 'textDocument/didOpen',
               params: { textDocument: { uri, languageId: 'cpp', version: 1, text: content } }
@@ -19281,7 +19281,7 @@ function init() {
           await this._ensureStarted();
           const uri = await this._openDoc(args.file_path);
           if (!uri) return '无法打开文件';
-          const r = await window.LabCode.lsp.request({
+          const r = await window.BubaiCode.lsp.request({
             language: 'cpp',
             method: 'textDocument/definition',
             params: { textDocument: { uri }, position: { line: args.line - 1, character: args.col - 1 } }
@@ -19294,7 +19294,7 @@ function init() {
           await this._ensureStarted();
           const uri = await this._openDoc(args.file_path);
           if (!uri) return '无法打开文件';
-          const r = await window.LabCode.lsp.request({
+          const r = await window.BubaiCode.lsp.request({
             language: 'cpp',
             method: 'textDocument/references',
             params: { textDocument: { uri }, position: { line: args.line - 1, character: args.col - 1 }, context: { includeDeclaration: true } }
@@ -19306,7 +19306,7 @@ function init() {
           await this._ensureStarted();
           const uri = await this._openDoc(args.file_path);
           if (!uri) return '无法打开文件';
-          const r = await window.LabCode.lsp.request({
+          const r = await window.BubaiCode.lsp.request({
             language: 'cpp',
             method: 'textDocument/documentSymbol',
             params: { textDocument: { uri } }
@@ -19318,7 +19318,7 @@ function init() {
           await this._ensureStarted();
           const uri = await this._openDoc(args.file_path);
           if (!uri) return '无法打开文件';
-          const r = await window.LabCode.lsp.request({
+          const r = await window.BubaiCode.lsp.request({
             language: 'cpp',
             method: 'textDocument/hover',
             params: { textDocument: { uri }, position: { line: args.line - 1, character: args.col - 1 } }
@@ -19334,8 +19334,8 @@ function init() {
       function makeLspService(language, cmd, args) {
         return {
           async _ensureStarted() {
-            if (!window.LabCode.lsp) return { ok: false, error: 'LSP 桥不可用' };
-            return await window.LabCode.lsp.start({
+            if (!window.BubaiCode.lsp) return { ok: false, error: 'LSP 桥不可用' };
+            return await window.BubaiCode.lsp.start({
               language, cmd, args: args || [], rootPath: state.projectPath || ''
             });
           },
@@ -19347,18 +19347,18 @@ function init() {
             const abs = (state.projectPath || '') + '\\' + filePath.replace(/\//g, '\\');
             const uri = 'file:///' + abs.replace(/\\/g, '/');
             try {
-              const r = await window.LabCode.fs.readFile(abs);
-              await window.LabCode.lsp.notify({
+              const r = await window.BubaiCode.fs.readFile(abs);
+              await window.BubaiCode.lsp.notify({
                 language, method: 'textDocument/didOpen',
                 params: { textDocument: { uri, languageId: language === 'python' ? 'python' : 'cpp', version: 1, text: (r && r.content) || '' } }
               });
               return uri;
             } catch (e) { return null; }
           },
-          async goToDefinition(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.LabCode.lsp.request({ language, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 } } })); },
-          async references(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.LabCode.lsp.request({ language, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 }, context: { includeDeclaration: true } } })); },
-          async documentSymbols(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.LabCode.lsp.request({ language, method: 'textDocument/documentSymbol', params: { textDocument: { uri } } })); },
-          async hover(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.LabCode.lsp.request({ language, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 } } })); }
+          async goToDefinition(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.BubaiCode.lsp.request({ language, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 } } })); },
+          async references(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.BubaiCode.lsp.request({ language, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 }, context: { includeDeclaration: true } } })); },
+          async documentSymbols(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.BubaiCode.lsp.request({ language, method: 'textDocument/documentSymbol', params: { textDocument: { uri } } })); },
+          async hover(a) { const uri = await this._openDoc(a.file_path); if (!uri) return '无法打开'; return JSON.stringify(await window.BubaiCode.lsp.request({ language, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: a.line - 1, character: a.col - 1 } } })); }
         };
       }
       window.PluginSystem.registerInternalService('pythonLsp', makeLspService('python', 'pylsp', []));
@@ -19413,8 +19413,8 @@ function init() {
           return errs.length ? '校验失败:\n- ' + errs.join('\n- ') : '校验通过 ✓';
         }
       });
-      // 用户插件目录：%APPDATA%/LabCode/plugins（本地兜底）
-      const userData = await window.LabCode.app.getPath('userData');
+      // 用户插件目录：%APPDATA%/BubaiCode/plugins（本地兜底）
+      const userData = await window.BubaiCode.app.getPath('userData');
       if (!userData) { addOutputLog('插件系统：拿不到 userData 路径，跳过', 'warn'); return; }
       const pluginsRoot = userData.replace(/[\\\/]$/, '') + '/plugins';
       // 先读启用/禁用状态，再加载插件（禁用插件的工具不会被注入给 AI）
@@ -19423,7 +19423,7 @@ function init() {
         if (disabled && disabled.length) addOutputLog('插件系统：已禁用 ' + disabled.length + ' 个插件（' + disabled.join(', ') + '）', 'warn');
       }
       const r = await window.PluginSystem.loadPluginsFromDir(pluginsRoot);
-      try { window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
+      try { window.dispatchEvent(new CustomEvent('bubaicode:plugins-changed')); } catch (e) {}
       const totalTools = window.PluginSystem.allTools().length;
       addOutputLog(`插件系统：加载 ${r.loaded.length} 个本地插件，共 ${totalTools} 个 manifest 工具`, 'success');
       if (r.errors && r.errors.length) addOutputLog('插件加载警告: ' + r.errors.join('; '), 'warn');
@@ -19437,7 +19437,7 @@ function init() {
   // 硬件配置检测 + 本地模型刷新（大模型插件化）
   // 硬件检测已移至 bindEvents 内部调用（detectSystemInfo 定义在该作用域）
   try {
-    addOutputLog('LabCode 已启动 — 完整智能体引擎', 'success');
+    addOutputLog('BubaiCode 已启动 — 完整智能体引擎', 'success');
     addOutputLog('引擎模块: ToolRegistry(10工具) / PermissionPolicy(三级) / BudgetTracker / PlanStore / MockAI', 'info');
   } catch(e) { console.error('Log error:', e); }
 
@@ -19514,9 +19514,9 @@ function normProgress(d) {
   function show() { if (modal) modal.style.display = 'flex'; }
   function hide() { if (modal) modal.style.display = 'none'; }
   if (closeBtn) closeBtn.addEventListener('click', hide);
-  // 修复：preload 暴露的是 window.LabCode（大写），此处原写 window.labcode 导致订阅从未注册
-  if (window.LabCode && window.LabCode.toolchain && window.LabCode.toolchain.onProgress) {
-    window.LabCode.toolchain.onProgress((data) => {
+  // 修复：preload 暴露的是 window.BubaiCode（大写），此处原写 window.bubaicode 导致订阅从未注册
+  if (window.BubaiCode && window.BubaiCode.toolchain && window.BubaiCode.toolchain.onProgress) {
+    window.BubaiCode.toolchain.onProgress((data) => {
       const p = normProgress(data);
       show();
       if (p.percent != null && bar && pct) { bar.style.width = p.percent + '%'; pct.textContent = p.percent + '%'; }
@@ -19549,7 +19549,7 @@ function normProgress(d) {
     if (!dbgState.sessionId) return;
     const lines = dbgState.breakpoints.get(filePath) || new Set();
     const path = (state.projectPath || '') + '\\' + filePath.replace(/\//g, '\\');
-    await window.LabCode.dap.request({
+    await window.BubaiCode.dap.request({
       sessionId: dbgState.sessionId,
       command: 'setBreakpoints',
       args: {
@@ -19568,31 +19568,31 @@ function normProgress(d) {
     log('启动调试: ' + type);
     try {
       if (type === 'python') {
-        const r = await window.LabCode.dap.ensureDebugpy();
+        const r = await window.BubaiCode.dap.ensureDebugpy();
         if (!r.success) { log('debugpy 安装失败: ' + r.error); return; }
         const sessionId = 'dbg_' + Date.now();
         dbgState.sessionId = sessionId;
         const fullPath = (state.projectPath || '') + '\\' + currentFile.replace(/\//g, '\\');
-        const startR = await window.LabCode.dap.start({
+        const startR = await window.BubaiCode.dap.start({
           sessionId, dapPath: r.path, args: ['-m', 'debugpy.adapter'], cwd: state.projectPath
         });
         if (!startR.success) { log('DAP 启动失败: ' + startR.error); return; }
         log('DAP adapter 已连接');
-        window.LabCode.dap.onEvent(handleDapEvent);
-        await window.LabCode.dap.request({
+        window.BubaiCode.dap.onEvent(handleDapEvent);
+        await window.BubaiCode.dap.request({
           sessionId, command: 'launch',
-          args: { name: 'LabCode Debug', type: 'python', request: 'launch', program: fullPath, cwd: state.projectPath, console: 'integratedTerminal', justMyCode: false }
+          args: { name: 'BubaiCode Debug', type: 'python', request: 'launch', program: fullPath, cwd: state.projectPath, console: 'integratedTerminal', justMyCode: false }
         });
-        await window.LabCode.dap.request({ sessionId, command: 'setExceptionBreakpoints', args: { filters: ['raised'] } });
+        await window.BubaiCode.dap.request({ sessionId, command: 'setExceptionBreakpoints', args: { filters: ['raised'] } });
         for (const [fp] of dbgState.breakpoints) await sendBreakpoints(fp);
-        await window.LabCode.dap.request({ sessionId, command: 'configurationDone', args: {} });
+        await window.BubaiCode.dap.request({ sessionId, command: 'configurationDone', args: {} });
         log('调试已启动: ' + currentFile);
         const tab = document.querySelector('.bottom-tab[data-panel="debug"]');
         if (tab) tab.click();
       } else if (type === 'cpp') {
         log('C/C++ 嵌入式调试：检测工具链...');
-        const gdb = await window.LabCode.dap.toolPath('arm-none-eabi-gdb');
-        const ocd = await window.LabCode.dap.toolPath('openocd');
+        const gdb = await window.BubaiCode.dap.toolPath('arm-none-eabi-gdb');
+        const ocd = await window.BubaiCode.dap.toolPath('openocd');
         if (!gdb.found || !ocd.found) {
           // 方案 C：从「只 toast」升级为可点引导卡。不编造下载包 URL / sha256，
           // 只给官方发布页入口 + 重新检测（都可真实执行）。
@@ -19615,7 +19615,7 @@ function normProgress(d) {
                 '<button data-dbg-retry style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:11.5px;cursor:pointer;">重新检测</button>' +
               '</div>';
             area.appendChild(card); area.scrollTop = area.scrollHeight;
-            const open = (u) => { try { if (window.LabCode.shell && window.LabCode.shell.openExternal) window.LabCode.shell.openExternal(u); else showToast('请手动打开: ' + u, 'info'); } catch (e) {} };
+            const open = (u) => { try { if (window.BubaiCode.shell && window.BubaiCode.shell.openExternal) window.BubaiCode.shell.openExternal(u); else showToast('请手动打开: ' + u, 'info'); } catch (e) {} };
             const gb = card.querySelector('[data-dbg-gdb]'); if (gb) gb.addEventListener('click', () => open('https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases'));
             const ob = card.querySelector('[data-dbg-ocd]'); if (ob) ob.addEventListener('click', () => open('https://github.com/xpack-dev-tools/openocd-xpack/releases'));
             const rb = card.querySelector('[data-dbg-retry]'); if (rb) rb.addEventListener('click', async () => { log('重新检测调试工具链…'); await startDebug(); });
@@ -19675,7 +19675,7 @@ function normProgress(d) {
   async function stopDebug() {
     if (!dbgState.sessionId) return;
     log('停止调试...');
-    await window.LabCode.dap.stop(dbgState.sessionId);
+    await window.BubaiCode.dap.stop(dbgState.sessionId);
     dbgState.sessionId = null;
     dbgState.stoppedThreadId = null;
     const v = document.getElementById('dbg-vars-list'); if (v) v.innerHTML = '';
@@ -19684,7 +19684,7 @@ function normProgress(d) {
 
   async function dapCommand(command) {
     if (!dbgState.sessionId) return;
-    await window.LabCode.dap.request({
+    await window.BubaiCode.dap.request({
       sessionId: dbgState.sessionId, command,
       args: { threadId: dbgState.stoppedThreadId || 1 }
     });
@@ -19695,7 +19695,7 @@ function normProgress(d) {
     if (event === 'stopped') {
       dbgState.stoppedThreadId = body.threadId;
       log('已暂停 (原因: ' + (body.reason || '') + ')');
-      const stk = await window.LabCode.dap.request({ sessionId, command: 'stackTrace', args: { threadId: body.threadId } });
+      const stk = await window.BubaiCode.dap.request({ sessionId, command: 'stackTrace', args: { threadId: body.threadId } });
       if (stk.success && stk.body && stk.body.body) {
         const frames = stk.body.body.stackFrames || [];
         dbgState.currentFrameId = frames[0] ? frames[0].id : null;
@@ -19720,12 +19720,12 @@ function normProgress(d) {
 
   async function loadVariables(frameId) {
     if (!dbgState.sessionId || !frameId) return;
-    const scopes = await window.LabCode.dap.request({ sessionId: dbgState.sessionId, command: 'scopes', args: { frameId } });
+    const scopes = await window.BubaiCode.dap.request({ sessionId: dbgState.sessionId, command: 'scopes', args: { frameId } });
     if (!scopes.success) return;
     let html = '';
     for (const scope of (scopes.body.body.scopes || [])) {
       html += '<div style="color:#888;margin-top:4px;">' + scope.name + '</div>';
-      const vars = await window.LabCode.dap.request({ sessionId: dbgState.sessionId, command: 'variables', args: { variablesReference: scope.variablesReference } });
+      const vars = await window.BubaiCode.dap.request({ sessionId: dbgState.sessionId, command: 'variables', args: { variablesReference: scope.variablesReference } });
       if (vars.success) {
         for (const v of (vars.body.body.variables || [])) {
           html += '<div style="padding-left:8px;">' + v.name + ' = <span style="color:#4caf50;">' + (v.value || '') + '</span></div>';
@@ -19763,7 +19763,7 @@ function normProgress(d) {
     if (!ed || !m) return;
     const fp = state.activeTab;
     const lines = (fp && dbgState.breakpoints.get(fp)) ? Array.from(dbgState.breakpoints.get(fp)) : [];
-    const decos = lines.map(l => ({ range: new m.Range(l, 1, l, 1), options: { glyphMarginClassName: 'labcode-bp', glyphMarginHoverMessage: { value: '断点 (点击删除)' } } }));
+    const decos = lines.map(l => ({ range: new m.Range(l, 1, l, 1), options: { glyphMarginClassName: 'bubaicode-bp', glyphMarginHoverMessage: { value: '断点 (点击删除)' } } }));
     _bpDecos = ed.deltaDecorations(_bpDecos, decos);
   }
   function renderBreakpointList() {
@@ -19798,7 +19798,7 @@ function normProgress(d) {
 // ============ provider 注册表统一管理 UI（参考 TrieCode settings-providers）============
 function pmEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 async function refreshProviders() {
-  try { const r = await window.LabCode.ai.providers(); window.__providerList = (r && r.providers) || []; }
+  try { const r = await window.BubaiCode.ai.providers(); window.__providerList = (r && r.providers) || []; }
   catch (e) { window.__providerList = []; }
   return window.__providerList;
 }
@@ -19807,7 +19807,7 @@ async function renderProviderManager() {
   if (!el) return;
   const list = window.__providerList || [];
   let ai = {};
-  try { ai = (await window.LabCode.config.get()).ai || {}; } catch (e) {}
+  try { ai = (await window.BubaiCode.config.get()).ai || {}; } catch (e) {}
   const keys = ai.providerKeys || {}, enabled = ai.providerEnabled || {}, baseUrls = ai.providerBaseUrls || {};
   let html = '<div class="device-section-title" style="margin-top:0;">模型供应商（统一管理）</div>';
   html += '<div style="font-size: 10.5px;color:#888;margin-bottom:8px;">启用/停用、设置各家 API Key 与地址；新增自定义 OpenAI 兼容端点会出现在顶栏模型选择里。</div>';
@@ -19841,7 +19841,7 @@ async function renderProviderManager() {
   html += '</div>';
   // Git 凭据卡（insteadOf 注入；明文存储——与 TrieCode 同策略+同警告）
   let creds = [];
-  try { const cr = await window.LabCode.git.credentials.list(); if (cr && cr.success) creds = cr.credentials || []; } catch (e) {}
+  try { const cr = await window.BubaiCode.git.credentials.list(); if (cr && cr.success) creds = cr.credentials || []; } catch (e) {}
   html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
   html += '<div style="font-size: 11.5px;color:#e0e0e0;margin-bottom:6px;">Git 凭据（push/pull 免密；⚠ 明文存于本机配置，仅写入当前项目仓库）</div>';
   html += '<div id="cred-list">' + (creds.length ? creds.map(c => '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;color:#ccc;"><span>' + pmEsc(c.host) + ' · ' + pmEsc(c.username) + ' · ***' + pmEsc(c.secretTail) + '</span><button data-cred-del="' + pmEsc(c.host) + '" style="background:#3a3a3a;color:#ef4444;border:1px solid #555;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;">删除</button></div>').join('') : '<div style="font-size:10.5px;color:#888;">暂无凭据</div>') + '</div>';
@@ -19853,7 +19853,7 @@ async function renderProviderManager() {
   html += '</div></div>';
   // Python 解释器卡
   let interp = { active: '', list: [] };
-  try { const ir = await window.LabCode.interpreters.list(); if (ir && ir.success) interp = ir; } catch (e) {}
+  try { const ir = await window.BubaiCode.interpreters.list(); if (ir && ir.success) interp = ir; } catch (e) {}
   html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
   html += '<div style="font-size: 11.5px;color:#e0e0e0;margin-bottom:6px;">Python 解释器（当前：' + pmEsc(interp.active || '系统默认 python') + '）</div>';
   html += '<div id="interp-list" style="font-size:11px;color:#ccc;margin-bottom:6px;">未检测——点击「检测本机解释器」</div>';
@@ -19865,7 +19865,7 @@ async function renderProviderManager() {
   html += '</div></div>';
   // MCP 服务器卡（复用既有 mcpService：stdio/http/sse，配置存 config.extra.mcpServers）
   let mcpServers = [];
-  try { const ms = await window.LabCode.mcp.listServers(); if (Array.isArray(ms)) mcpServers = ms; } catch (e) {}
+  try { const ms = await window.BubaiCode.mcp.listServers(); if (Array.isArray(ms)) mcpServers = ms; } catch (e) {}
   html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
   html += '<div style="font-size: 11.5px;color:#e0e0e0;margin-bottom:6px;">MCP 服务器（stdio/http/sse · agent 工具 mcp_list/mcp_call 调用）</div>';
   html += '<div id="mcp-list">' + (mcpServers.length ? mcpServers.map(s => '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;color:#ccc;"><span>' + pmEsc(s.name) + ' [' + pmEsc(s.type || 'stdio') + '] ' + pmEsc(s.command || s.url || '') + ' <span style="color:#888;">' + pmEsc(s.status || '') + ' · ' + (s.tools || 0) + ' 工具</span></span><span><button data-mcp-test="' + pmEsc(s.name) + '" style="background:#2d5a27;color:#fff;border:1px solid #3f7a36;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;">测试连接</button> <button data-mcp-del="' + pmEsc(s.name) + '" style="background:#3a3a3a;color:#ef4444;border:1px solid #555;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;">删除</button></span></div>').join('') : '<div style="font-size:10.5px;color:#888;">暂无服务器</div>') + '</div>';
@@ -19898,10 +19898,10 @@ async function renderProviderManager() {
     if (sttCfg.baseURL && !sttCfg.apiKey) { showToast('STT 需要填写 API Key', 'warn'); return; }
     if (sttCfg.apiKey && (!sttCfg.baseURL || !sttCfg.model)) { showToast('STT 需要同时填写 Base URL 与模型', 'warn'); return; }
     try {
-      const cur = await window.LabCode.config.get();
+      const cur = await window.BubaiCode.config.get();
       const next = Object.assign({}, cur || {});
       next.ai = Object.assign({}, (cur && cur.ai) || {}, { stt: sttCfg });
-      await window.LabCode.config.set(next);
+      await window.BubaiCode.config.set(next);
       showToast(sttCfg.apiKey ? '语音识别配置已保存' : '语音识别已清空（未填 Key）', 'success');
     } catch (e) { showToast('保存失败: ' + e.message, 'error'); }
   });
@@ -19913,12 +19913,12 @@ async function renderProviderManager() {
     const host = document.getElementById('cred-host').value.trim();
     const username = document.getElementById('cred-user').value.trim();
     const secret = document.getElementById('cred-secret').value;
-    const r = await window.LabCode.git.credentials.set({ host, username, secret, cwd });
+    const r = await window.BubaiCode.git.credentials.set({ host, username, secret, cwd });
     if (r && r.success) { showToast('凭据已保存并注入 ' + host, 'success'); renderProviderManager(); }
     else showToast('保存失败: ' + ((r && r.error) || ''), 'error');
   });
   el.querySelectorAll('[data-cred-del]').forEach(b => b.addEventListener('click', async () => {
-    const r = await window.LabCode.git.credentials.clear({ host: b.getAttribute('data-cred-del'), cwd: state.projectPath || '' });
+    const r = await window.BubaiCode.git.credentials.clear({ host: b.getAttribute('data-cred-del'), cwd: state.projectPath || '' });
     if (r && r.success) { showToast('已删除凭据', 'success'); renderProviderManager(); }
   }));
   // Python 解释器绑定
@@ -19926,7 +19926,7 @@ async function renderProviderManager() {
   if (interpDetectBtn) interpDetectBtn.addEventListener('click', async () => {
     const listEl = document.getElementById('interp-list');
     listEl.textContent = '检测中…';
-    const r = await window.LabCode.interpreters.detect();
+    const r = await window.BubaiCode.interpreters.detect();
     if (r && r.success) {
       const arr = r.interpreters || [];
       listEl.innerHTML = arr.length ? arr.map(it => '<label style="display:block;padding:2px 0;cursor:pointer;"><input type="radio" name="interp-pick" value="' + pmEsc(it.path) + '"> ' + pmEsc(it.path) + ' <span style="color:#888;">' + pmEsc(it.version || '') + '</span></label>').join('') : '未检测到 Python';
@@ -19938,7 +19938,7 @@ async function renderProviderManager() {
     const picked = document.querySelector('input[name="interp-pick"]:checked');
     const p = custom || (picked ? picked.value : '');
     if (!p) { showToast('请先检测并选择，或填自定义路径', 'warn'); return; }
-    const r = await window.LabCode.interpreters.setActive({ path: p });
+    const r = await window.BubaiCode.interpreters.setActive({ path: p });
     if (r && r.success) { showToast('默认解释器: ' + p, 'success'); renderProviderManager(); }
     else showToast('设置失败: ' + ((r && r.error) || ''), 'error');
   });
@@ -19946,7 +19946,7 @@ async function renderProviderManager() {
   if (interpTestBtn) interpTestBtn.addEventListener('click', async () => {
     const custom = document.getElementById('interp-custom').value.trim();
     const picked = document.querySelector('input[name="interp-pick"]:checked');
-    const r = await window.LabCode.interpreters.runPython({ python: custom || (picked ? picked.value : undefined), args: ['-c', 'import sys;print(sys.executable, sys.version.split()[0])'] });
+    const r = await window.BubaiCode.interpreters.runPython({ python: custom || (picked ? picked.value : undefined), args: ['-c', 'import sys;print(sys.executable, sys.version.split()[0])'] });
     if (r && r.success) showToast('Python 运行正常: ' + (r.output || '').trim().slice(0, 90), 'success');
     else showToast('运行失败: ' + ((r && r.error) || ''), 'error');
   });
@@ -19957,7 +19957,7 @@ async function renderProviderManager() {
     const command = document.getElementById('mcp-cmd').value.trim();
     const args = document.getElementById('mcp-args').value.trim();
     if (!name || !command) { showToast('name 与 command 必填', 'warn'); return; }
-    const r = await window.LabCode.mcp.addServer({ name, type: 'stdio', command, args });
+    const r = await window.BubaiCode.mcp.addServer({ name, type: 'stdio', command, args });
     if (r && r.ok) { showToast('MCP 服务器已保存: ' + name, 'success'); renderProviderManager(); }
     else showToast('保存失败: ' + ((r && r.error) || ''), 'error');
   });
@@ -19965,15 +19965,15 @@ async function renderProviderManager() {
     const name = b.getAttribute('data-mcp-test');
     b.textContent = '测试中…';
     try {
-      await window.LabCode.mcp.startServer(name);
-      const t = await window.LabCode.mcp.testConnection(name);
+      await window.BubaiCode.mcp.startServer(name);
+      const t = await window.BubaiCode.mcp.testConnection(name);
       if (t && t.success) showToast('连接成功：' + (t.message || t.tools + ' 个工具'), 'success');
       else showToast('连接失败: ' + ((t && t.error) || ''), 'error');
     } catch (e) { showToast('连接失败: ' + e.message, 'error'); }
     b.textContent = '测试连接';
   }));
   el.querySelectorAll('[data-mcp-del]').forEach(b => b.addEventListener('click', async () => {
-    await window.LabCode.mcp.removeServer(b.getAttribute('data-mcp-del'));
+    await window.BubaiCode.mcp.removeServer(b.getAttribute('data-mcp-del'));
     showToast('已删除', 'success');
     renderProviderManager();
   }));
@@ -19982,13 +19982,13 @@ async function renderProviderManager() {
   if (updCheckBtn) updCheckBtn.addEventListener('click', async () => {
     const resEl = document.getElementById('upd-result');
     resEl.textContent = '检查中…';
-    const r = await window.LabCode.updater.check();
+    const r = await window.BubaiCode.updater.check();
     if (r && r.disabled) { resEl.textContent = '本构建已停用自动更新'; return; }
     if (r && r.version) {
       const dl = r.files && r.files[0] && r.files[0].url;
       resEl.innerHTML = '更新源版本：<b>' + pmEsc(r.version) + '</b>' + (r.releaseDate ? ' · ' + pmEsc(r.releaseDate) : '') + (dl ? ' <a href="#" id="upd-open" style="color:#7ab8ff;">打开下载</a>' : '');
       const open = document.getElementById('upd-open');
-      if (open) open.addEventListener('click', (e) => { e.preventDefault(); window.LabCode.shell.openExternal(dl); });
+      if (open) open.addEventListener('click', (e) => { e.preventDefault(); window.BubaiCode.shell.openExternal(dl); });
     } else {
       resEl.textContent = '检查失败: ' + ((r && r.error) || '未知');
     }
@@ -20006,7 +20006,7 @@ async function renderProviderManager() {
     if (type === 'openai' && !url) { showToast('openai 类型需填写 Base URL', 'warn'); return; }
     const custom = (window.__providerList || []).filter(p => p.custom).map(p => ({ id: p.id, name: p.name, type: p.type, baseURL: p.baseURL || '', defaultModel: p.defaultModel || '' }));
     custom.push({ id, name, type, baseURL: url, defaultModel: model });
-    window.LabCode.ai.providerSave({ customProviders: custom }).then(r => {
+    window.BubaiCode.ai.providerSave({ customProviders: custom }).then(r => {
       if (r && r.ok) { showToast('已添加 ' + name, 'success'); refreshProviders().then(renderProviderManager); }
       else showToast('添加失败: ' + ((r && r.error) || '未知'), 'warn');
     });
@@ -20014,7 +20014,7 @@ async function renderProviderManager() {
   el.querySelectorAll('.pm-remove').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.pid;
     const custom = (window.__providerList || []).filter(p => p.custom && p.id !== id).map(p => ({ id: p.id, name: p.name, type: p.type, baseURL: p.baseURL || '', defaultModel: p.defaultModel || '' }));
-    window.LabCode.ai.providerSave({ customProviders: custom }).then(r => {
+    window.BubaiCode.ai.providerSave({ customProviders: custom }).then(r => {
       if (r && r.ok) { showToast('已删除 ' + id, 'success'); refreshProviders().then(renderProviderManager); }
     });
   }));
@@ -20032,7 +20032,7 @@ async function saveProviderManager() {
     const m = document.querySelector('.pm-model[data-pid="' + pmEsc(p.id) + '"]');
     return { id: p.id, name: p.name, type: p.type, baseURL: (baseUrls[p.id] || p.baseURL || ''), defaultModel: (m ? m.value.trim() : (p.defaultModel || '')) };
   });
-  const r = await window.LabCode.ai.providerSave({ apiKeys, enabledOverrides, baseUrls, customProviders: custom });
+  const r = await window.BubaiCode.ai.providerSave({ apiKeys, enabledOverrides, baseUrls, customProviders: custom });
   const hint = document.getElementById('pm-save-hint');
   if (r && r.ok) { if (hint) { hint.textContent = '已保存'; hint.style.color = '#4caf50'; } showToast('供应商配置已保存', 'success'); refreshProviders().then(renderProviderManager); }
   else { if (hint) { hint.textContent = '失败: ' + ((r && r.error) || '未知'); hint.style.color = '#ef4444'; } }
@@ -20053,7 +20053,7 @@ async function renderGuardrailSettings() {
   const el = document.getElementById('ai-guardrails');
   if (!el) return;
   let g = {};
-  try { const cfg = await window.LabCode.config.get(); g = ((cfg && cfg.ai) || {}).guardrails || {}; } catch (e) {}
+  try { const cfg = await window.BubaiCode.config.get(); g = ((cfg && cfg.ai) || {}).guardrails || {}; } catch (e) {}
   const summaryCompression = !!g.summaryCompression;
   const alwaysVerify = !!g.alwaysVerify;
   const loopTimeoutMin = Number(g.loopTimeoutMsMin) || 0;
@@ -20087,7 +20087,7 @@ async function renderGuardrailSettings() {
       strictPlanGate: document.getElementById('gr-b2').checked
     };
     try {
-      await window.LabCode.config.set('ai.guardrails', payload);
+      await window.BubaiCode.config.set('ai.guardrails', payload);
       applyGuardrails(payload); // 立即同步到模块级状态（全局 pre-hook 下次工具即生效）
       const hint = document.getElementById('gr-save-hint');
       if (hint) { hint.textContent = '已保存（下次任务生效）'; hint.style.color = '#4caf50'; }
@@ -20102,8 +20102,8 @@ async function renderGuardrailSettings() {
 // ============ AI 引擎设置（简化用户配置）============
 (function() {
   function loadAIConfig() {
-    if (!window.LabCode || !window.LabCode.config) return;
-    window.LabCode.config.get().then(cfg => {
+    if (!window.BubaiCode || !window.BubaiCode.config) return;
+    window.BubaiCode.config.get().then(cfg => {
       const ai = (cfg && cfg.ai) || {};
       const prov = ai.provider || 'gateway';
       const radio = document.getElementById('ai-prov-' + prov);
@@ -20141,10 +20141,10 @@ async function renderGuardrailSettings() {
     const el = document.getElementById('local-engine-status');
     if (!el) return;
     try {
-      const rt = await window.LabCode.system.checkLLMRuntime();
+      const rt = await window.BubaiCode.system.checkLLMRuntime();
       const models = (rt && rt.models) || [];
       if (!rt || !rt.engine) {
-        el.innerHTML = '<span style="color:#ef4444;">● 未安装引擎</span>（重装 LabCode 可恢复）';
+        el.innerHTML = '<span style="color:#ef4444;">● 未安装引擎</span>（重装 BubaiCode 可恢复）';
       } else if (!models.length) {
         el.innerHTML = '<span style="color:#ff9800;">● 引擎已就绪，还没下载模型</span>（去「插件市场」下载，约 2~6GB）';
       } else {
@@ -20173,7 +20173,7 @@ async function renderGuardrailSettings() {
     const actions = document.getElementById('local-models-dir-actions');
     if (!info || !actions) return;
     let d = null;
-    try { d = await window.LabCode.system.probeModelDirs(); } catch (e) {}
+    try { d = await window.BubaiCode.system.probeModelDirs(); } catch (e) {}
     if (!d) { info.innerHTML = '<span style="color:#888;">目录：' + (rt.modelsDir || '') + '</span>'; return; }
     const current = d.current || rt.modelsDir || '';
     const rec = d.recommended || '';
@@ -20209,7 +20209,7 @@ async function renderGuardrailSettings() {
         mkBtn('一键迁移到推荐位置', '#2d5a27', () => migrateModelsTo(rec));
       } else {
         mkBtn('使用推荐位置', '#2d5a27', async () => {
-          await window.LabCode.config.set('ai.modelsDir', rec);
+          await window.BubaiCode.config.set('ai.modelsDir', rec);
           showToast('模型将下载到 ' + rec, 'success');
           refreshLocalEngineStatus();
         });
@@ -20231,8 +20231,8 @@ async function renderGuardrailSettings() {
     show('<span style="color:#888;">正在迁移模型…</span>');
     let unsub = null;
     try {
-      if (window.LabCode.system.onMigrateProgress) {
-        unsub = window.LabCode.system.onMigrateProgress((p) => {
+      if (window.BubaiCode.system.onMigrateProgress) {
+        unsub = window.BubaiCode.system.onMigrateProgress((p) => {
           if (!p) return;
           if (p.phase === 'copying') {
             show('<span style="color:#888;">正在复制 ' + (p.file || '') + '（' + ((p.index || 0) + 1) + '/' + (p.total || '?') + '） '
@@ -20242,7 +20242,7 @@ async function renderGuardrailSettings() {
           }
         });
       }
-      const r = await window.LabCode.system.migrateModels({ target });
+      const r = await window.BubaiCode.system.migrateModels({ target });
       if (r && r.success) {
         show('<span style="color:#4caf50;">✓ 已迁移到 ' + (r.target || target) + '（' + (r.copied || 0) + ' 个模型）</span>');
         showToast('模型已迁移到 ' + (r.target || target), 'success');
@@ -20273,7 +20273,7 @@ async function renderGuardrailSettings() {
       return;
     }
     try {
-      const rt = await window.LabCode.system.checkLLMRuntime();
+      const rt = await window.BubaiCode.system.checkLLMRuntime();
       const hasModels = !!(rt && rt.models && rt.models.length);
       if (hasModels) {
         // 有模型 → 走迁移（复制 + 校验 + 切换配置），不丢模型
@@ -20282,7 +20282,7 @@ async function renderGuardrailSettings() {
         return;
       }
       // 没模型 → 只是改下载位置
-      await window.LabCode.config.set('ai.modelsDir', dir);
+      await window.BubaiCode.config.set('ai.modelsDir', dir);
       if (hint) hint.innerHTML = '<span style="color:#4caf50;">✓ 已保存：' + dir + '</span>'
         + '<span style="color:#888;">（之后下载的模型会存到这里）</span>';
       showToast('模型目录已保存：' + dir, 'success');
@@ -20317,7 +20317,7 @@ async function renderGuardrailSettings() {
       update.ai.apiKey = document.getElementById('custom-apikey').value;
       update.ai.defaultModel = document.getElementById('custom-model').value;
     }
-    window.LabCode.config.set(update).then(() => {
+    window.BubaiCode.config.set(update).then(() => {
       showToast('AI 设置已保存，重启后生效', 'success');
       setTimeout(() => location.reload(), 1000);
     });
@@ -20370,7 +20370,7 @@ async function renderGuardrailSettings() {
     }
     home.innerHTML = '去 <a href="#" class="byok-home" data-url="' + p.home + '" style="color:#059669;text-decoration:none;">' + p.label + ' 官网</a> 申请 Key';
     const a = home.querySelector('.byok-home');
-    if (a) a.addEventListener('click', (e) => { e.preventDefault(); try { window.LabCode.shell.openExternal(a.dataset.url); } catch (_) {} });
+    if (a) a.addEventListener('click', (e) => { e.preventDefault(); try { window.BubaiCode.shell.openExternal(a.dataset.url); } catch (_) {} });
   }
 
   function openByokModal() {
@@ -20379,7 +20379,7 @@ async function renderGuardrailSettings() {
     renderByokChips(); // 默认选中第 0 个（智谱 GLM 免费）
     // 若已配置过自定义 Key，预填服务商与 Key，方便修改
     try {
-      const cfg = window.LabCode && window.LabCode.config ? (window.LabCode.config.get() || {}) : {};
+      const cfg = window.BubaiCode && window.BubaiCode.config ? (window.BubaiCode.config.get() || {}) : {};
       const ai = cfg.ai || {};
       const keyEl = document.getElementById('byok-key');
       if (keyEl && ai.apiKey) keyEl.value = ai.apiKey;
@@ -20439,10 +20439,10 @@ async function renderGuardrailSettings() {
     // 自定义通道确保 ai.model 被正确写入（AI 客户端按 ai.model 选模型，否则填了也不生效）
     if (isCustom) {
       try {
-        await window.LabCode.config.set('ai.provider', 'custom');
-        await window.LabCode.config.set('ai.baseURL', base);
-        await window.LabCode.config.set('ai.apiKey', key);
-        await window.LabCode.config.set('ai.model', model);
+        await window.BubaiCode.config.set('ai.provider', 'custom');
+        await window.BubaiCode.config.set('ai.baseURL', base);
+        await window.BubaiCode.config.set('ai.apiKey', key);
+        await window.BubaiCode.config.set('ai.model', model);
       } catch (e) {}
     }
     try { saveAIConfig(); } catch (e) {}
@@ -20512,7 +20512,7 @@ async function renderGuardrailSettings() {
           const a = hint.querySelector('.byok-home');
           if (a) a.addEventListener('click', (ev) => {
             ev.preventDefault();
-            try { window.LabCode.shell.openExternal(a.dataset.url); } catch (e) {}
+            try { window.BubaiCode.shell.openExternal(a.dataset.url); } catch (e) {}
           });
         }
         const keyInput = document.getElementById('custom-apikey');
@@ -20523,7 +20523,7 @@ async function renderGuardrailSettings() {
     const pl = document.getElementById('privacy-link');
     if (pl) pl.addEventListener('click', (ev) => {
       ev.preventDefault();
-      try { window.LabCode.shell.openExternal('https://bluebubai.work/privacy.html'); } catch (e) {}
+      try { window.BubaiCode.shell.openExternal('https://bluebubai.work/privacy.html'); } catch (e) {}
     });
   });
 
@@ -20661,7 +20661,7 @@ function appendByokCard(title) {
     '<div class="chat-bubble" style="max-width:420px;">' +
       '<div style="font-size: 12.5px;font-weight:600;margin-bottom:6px;">' + (title || '用自己的 API Key 继续') + '</div>' +
       '<div style="font-size: 11.5px;opacity:.85;line-height:1.7;margin-bottom:10px;">' +
-        '填一个你自己的模型 API Key 就能直接用，密钥只存本机，不经过 LabCode 服务器。' +
+        '填一个你自己的模型 API Key 就能直接用，密钥只存本机，不经过 BubaiCode 服务器。' +
         '智谱 GLM、硅基流动都有免费模型。' +
       '</div>' +
       '<button id="byok-cta-btn" style="padding:7px 14px;background:#059669;color:#fff;border:none;border-radius:6px;font-size: 11.5px;font-weight:600;cursor:pointer;">填写我的 API Key</button>' +
@@ -20678,7 +20678,7 @@ function appendByokCard(title) {
 // plugin 卡：直接连现有 __labPluginAPI.install(id)（用户点卡即授权，跳过二次确认）。
 function appendDepInstallCard({ title, desc, opts, onDone }) {
   const area = document.getElementById('ai-chat-area');
-  if (!area || !window.LabCode || !window.LabCode.deps) return;
+  if (!area || !window.BubaiCode || !window.BubaiCode.deps) return;
   const card = document.createElement('div');
   card.className = 'chat-message ai';
   card.innerHTML =
@@ -20700,15 +20700,15 @@ function appendDepInstallCard({ title, desc, opts, onDone }) {
     btn.disabled = true; btn.textContent = '安装中…';
     if (prog) { prog.style.display = 'block'; prog.textContent = '准备中…'; }
     let off = null;
-    if (window.LabCode.deps.onProgress) {
-      off = window.LabCode.deps.onProgress((d) => {
+    if (window.BubaiCode.deps.onProgress) {
+      off = window.BubaiCode.deps.onProgress((d) => {
         const p = normProgress(d);
         if (p.name && p.name !== opts.name) return;
         if (prog) prog.textContent = p.message + (p.percent != null ? ' (' + p.percent + '%)' : '');
       });
     }
     try {
-      const r = await window.LabCode.deps.install(opts);
+      const r = await window.BubaiCode.deps.install(opts);
       if (prog) prog.textContent = r && r.ok ? ('安装完成：' + (r.path || '')) : ('安装失败：' + ((r && r.error) || '未知错误'));
       btn.textContent = r && r.ok ? '已安装' : '重试';
       btn.disabled = !!(r && r.ok);
@@ -20764,19 +20764,19 @@ function appendPluginInstallCard(pluginId, title, desc) {
     const actions = document.getElementById('ollama-actions');
     if (!el) return;
     try {
-      const s = await window.LabCode.ollama.status();
+      const s = await window.BubaiCode.ollama.status();
       if (!s.installed) {
         el.innerHTML = '<span style="color:#ef4444;">● 未安装</span> <button id="ollama-install-btn" style="font-size: 10.5px;padding:2px 8px;background:#4caf50;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">一键下载 Ollama</button>';
         if (actions) actions.style.display = 'none';
         document.getElementById('ollama-install-btn').addEventListener('click', () => {
-          window.LabCode.ollama.openDownload();
+          window.BubaiCode.ollama.openDownload();
           el.innerHTML = '<span style="color:#ff9800;">○ 请在浏览器下载安装后，重新打开本页面</span>';
         });
       } else if (!s.running) {
         el.innerHTML = '<span style="color:#ff9800;">○ 已安装但未运行</span> <button id="ollama-start-btn" style="font-size: 10.5px;padding:2px 8px;background:#4caf50;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">启动 Ollama</button>';
         if (actions) actions.style.display = 'none';
         document.getElementById('ollama-start-btn').addEventListener('click', async () => {
-          await window.LabCode.ollama.startServer();
+          await window.BubaiCode.ollama.startServer();
           setTimeout(refreshOllamaStatus, 2000);
         });
       } else {
@@ -20795,7 +20795,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
     prog.textContent = '正在下载 ' + model + ' ...';
     prog.style.color = '#ff9800';
     try {
-      const r = await window.LabCode.ollama.pull(model);
+      const r = await window.BubaiCode.ollama.pull(model);
       if (r.success) {
         prog.textContent = '✓ ' + model + ' 下载完成！';
         prog.style.color = '#4caf50';
@@ -20824,7 +20824,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
 (function() {
   // ---- /rollback 命令 ----
   async function handleRollback() {
-    const list = await window.LabCode.checkpoint.list();
+    const list = await window.BubaiCode.checkpoint.list();
     if (!list.length) { showToast('没有可用的检查点', 'warn'); return; }
     // 显示最近 10 个
     const msg = list.slice(0, 10).map((cp, i) =>
@@ -20834,7 +20834,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
     if (!choice) return;
     const idx = parseInt(choice) - 1;
     if (idx < 0 || idx >= list.length) { showToast('无效选择', 'error'); return; }
-    const r = await window.LabCode.checkpoint.rollback(list[idx].file);
+    const r = await window.BubaiCode.checkpoint.rollback(list[idx].file);
     if (r.success) showToast('已回滚: ' + r.filePath, 'success');
     else showToast('回滚失败: ' + r.error, 'error');
   }
@@ -20852,7 +20852,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
     const desc = prompt('技能描述：') || userMessage.slice(0, 100);
     // 保存到本地 skills 目录
     try {
-      await window.LabCode.config.set({
+      await window.BubaiCode.config.set({
         customSkills: {
           [name]: { name, description: desc, prompt: userMessage, tools: toolCalls.map(t => t.name), createdAt: Date.now() }
         }
@@ -20890,7 +20890,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
     description: '搜索长期记忆（跨会话的用户偏好和项目信息）',
     parameters: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词' } }, required: ['query'] },
     execute: async (args) => {
-      const r = await window.LabCode.memory.search(args.query);
+      const r = await window.BubaiCode.memory.search(args.query);
       if (!r.results || !r.results.length) return '(无匹配记忆)';
       return r.results.map(m => '- ' + m.name + ': ' + m.content).join('\n');
     }
@@ -20905,7 +20905,7 @@ function appendPluginInstallCard(pluginId, title, desc) {
       command: { type: 'string', description: '要执行的命令' }
     }, required: ['host', 'command'] },
     execute: async (args) => {
-      const r = await window.LabCode.ssh.exec({
+      const r = await window.BubaiCode.ssh.exec({
         host: args.host, port: 22, username: 'root',
         password: '', command: args.command
       });

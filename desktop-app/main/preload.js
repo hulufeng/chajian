@@ -1,9 +1,9 @@
-﻿// ============ LabCode Preload 预加载脚本 ============
+// ============ BubaiCode Preload 预加载脚本 ============
 // 暴露安全的 IPC 接口给渲染进程
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('LabCode', {
+contextBridge.exposeInMainWorld('BubaiCode', {
   // 系统
   getCwd: () => ipcRenderer.invoke('app:getCwd'),
 
@@ -506,7 +506,7 @@ contextBridge.exposeInMainWorld('LabCode', {
 
   // 事件监听
   // Generic IPC invoke used by renderer panels (schedule / context / ghost completion).
-  // Without it, LabCodeUI.ipcInvoke falls back to require('electron'), which is NOT
+  // Without it, BubaiCodeUI.ipcInvoke falls back to require('electron'), which is NOT
   // available under contextIsolation -> every panel IPC call would reject.
   ipc: {
     invoke: (channel, payload) => ipcRenderer.invoke(channel, payload)
@@ -584,4 +584,4 @@ contextBridge.exposeInMainWorld('LabCode', {
   }
 });
 
-console.log('✅ LabCode preload 加载完成');
+console.log('✅ BubaiCode preload 加载完成');

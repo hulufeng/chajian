@@ -1,4 +1,4 @@
-// ============ LabCode MCP 客户端管理器（参考 TrieCode mcp-manager）============
+// ============ BubaiCode MCP 客户端管理器（参考 TrieCode mcp-manager）============
 // 支持三种 transport：stdio / http(StreamableHTTP) / sse(SSE)
 // 能力：配置归一化(normalizeMCPServerConfig)、SSRF 校验、并行连接(connectAll)、
 //       失败冷却(15s)、配置变更重连、toolRules(allow/ask/deny)、OAuth(PKCE) 脚手架
@@ -171,7 +171,7 @@ class StdioTransport {
       this.pending.clear();
     });
     await this.request('initialize', {
-      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'LabCode', version: '1.0.0' }
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'BubaiCode', version: '1.0.0' }
     }, 30000);
     this.notify('notifications/initialized', {});
     const res = await this.request('tools/list', {}, 30000);
@@ -242,7 +242,7 @@ class HttpTransport {
   }
   async connect() {
     const initRes = await this.request('initialize', {
-      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'LabCode', version: '1.0.0' }
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'BubaiCode', version: '1.0.0' }
     }, 15000);
     if (this.sessionId) this.headers['Mcp-Session-Id'] = this.sessionId;
     this.notify('notifications/initialized', {});
@@ -346,7 +346,7 @@ class SseTransport {
   async connect() {
     await this._openGetStream();
     await this._post('initialize', {
-      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'LabCode', version: '1.0.0' }
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'BubaiCode', version: '1.0.0' }
     }, 15000);
     this._post('notifications/initialized', {});
     const res = await this._post('tools/list', {}, 15000);
@@ -590,7 +590,7 @@ class McpService {
         if (req.url && req.url.startsWith('/callback')) {
           const q = new URL(req.url, 'http://127.0.0.1').searchParams;
           const code = q.get('code');
-          res.end('<html><body style="font-family:sans-serif;padding:24px;">授权已完成，可关闭此页面并返回 LabCode。</body></html>');
+          res.end('<html><body style="font-family:sans-serif;padding:24px;">授权已完成，可关闭此页面并返回 BubaiCode。</body></html>');
           server.close();
           resolve(code);
         } else { res.statusCode = 404; res.end(); }
@@ -600,7 +600,7 @@ class McpService {
         const port = server.address().port;
         const redirectUri = 'http://127.0.0.1:' + port + '/callback';
         const authUrl = (auth.authorizeUrl || '') + (auth.authorizeUrl && auth.authorizeUrl.includes('?') ? '&' : '?') +
-          'response_type=code&client_id=' + encodeURIComponent(auth.clientId || 'labcode') +
+          'response_type=code&client_id=' + encodeURIComponent(auth.clientId || 'bubaicode') +
           '&redirect_uri=' + encodeURIComponent(redirectUri) +
           '&code_challenge=' + encodeURIComponent(challenge) +
           '&code_challenge_method=S256' +
@@ -616,7 +616,7 @@ class McpService {
       if (auth.tokenUrl) {
         const body = new URLSearchParams({
           grant_type: 'authorization_code', code,
-          client_id: auth.clientId || 'labcode',
+          client_id: auth.clientId || 'bubaicode',
           redirect_uri: 'http://127.0.0.1:' + (server.address() ? server.address().port : '0') + '/callback',
           code_verifier: verifier
         });

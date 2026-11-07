@@ -4,7 +4,7 @@
   var bar = null;
 
   function tracker() {
-    var ui = window.LabCodeUI || {};
+    var ui = window.BubaiCodeUI || {};
     if (!ui.fileTracker && typeof fileChangeTracker !== 'undefined') ui.fileTracker = fileChangeTracker;
     return ui.fileTracker;
   }
@@ -106,9 +106,9 @@
     build();
   }
 
-  window.LabCodeUI = window.LabCodeUI || {};
-  window.LabCodeUI.toggleRewindBar = toggle;
-  window.LabCodeUI.renderRewindBar = render;
+  window.BubaiCodeUI = window.BubaiCodeUI || {};
+  window.BubaiCodeUI.toggleRewindBar = toggle;
+  window.BubaiCodeUI.renderRewindBar = render;
   if (document.readyState !== 'loading') init();
   else document.addEventListener('DOMContentLoaded', init);
 })();

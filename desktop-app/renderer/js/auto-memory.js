@@ -8,7 +8,7 @@
   var running = false;
 
   function messages() {
-    var st = window.LabCodeUI && window.LabCodeUI.state;
+    var st = window.BubaiCodeUI && window.BubaiCodeUI.state;
     var log = window._chatLog || (st && st.agent && st.agent.messages) || [];
     return (Array.isArray(log) ? log : []).map(function (m) {
       return { role: m.role === 'assistant' ? 'assistant' : 'user', content: String((m && m.content) || '').slice(0, 2000) };
@@ -55,7 +55,7 @@
   }
 
   async function extract(list) {
-    if (!window.LabCode || !window.LabCode.ai || !window.LabCode.ai.once) return 0;
+    if (!window.BubaiCode || !window.BubaiCode.ai || !window.BubaiCode.ai.once) return 0;
     var prompt = [
       { role: 'system', content: '你是长期记忆提炼器。只输出 JSON 数组，不要解释、不要代码围栏。' +
         '每条格式 {"name":"简短标识","content":"可复用的事实或偏好","type":"user|feedback|project|reference"}。' +
@@ -64,7 +64,7 @@
       { role: 'user', content: '对话内容：\n' + list.slice(-12).map(function (m) { return m.role + ': ' + m.content.slice(0, 800); }).join('\n') }
     ];
     var r;
-    try { r = await withTimeout(window.LabCode.ai.once({ messages: prompt, maxTokens: 800 }), 20000); }
+    try { r = await withTimeout(window.BubaiCode.ai.once({ messages: prompt, maxTokens: 800 }), 20000); }
     catch (e) { return 0; }
     if (!r || !r.success || !r.content) return 0; // 失败不写记忆
     var entries = parseReply(r.content);

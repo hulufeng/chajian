@@ -1,4 +1,4 @@
-// LabCode JS 应用主题探针
+// BubaiCode JS 应用主题探针
 // 解析 desktop-app/renderer/css/style.css 的 :root(暗) 与 [data-theme="light"](亮)，
 // 解析 var() 链，核对是否全量对齐 TrieCode v1.3.1 的目标数值。
 import { readFileSync } from 'node:fs';

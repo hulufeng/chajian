@@ -1,5 +1,5 @@
-﻿# ============================================================
-# LabCode Toolchain Check / Install Script (ASCII only for PS 5.1 compatibility)
+# ============================================================
+# BubaiCode Toolchain Check / Install Script (ASCII only for PS 5.1 compatibility)
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File check-toolchains.ps1           # check only
 #   powershell -ExecutionPolicy Bypass -File check-toolchains.ps1 install   # check + auto-install pip items, prompt for winget items
@@ -58,7 +58,7 @@ Add-Result 'clangd(C/C++)'   (Test-Cmd 'clangd')       'winget install LLVM.LLVM
 Add-Result 'STM32CubeMX'     ((Test-Cmd 'STM32CubeMX') -or (Test-Cmd 'stm32cubemx'))  'ST account required: https://www.st.com/en/development-tools/stm32cubemx.html' 'skip'
 
 Write-Host ''
-Write-Host '===== LabCode Toolchain Status =====' -ForegroundColor Cyan
+Write-Host '===== BubaiCode Toolchain Status =====' -ForegroundColor Cyan
 foreach ($r in $results) {
   $tag = '[MISS]'
   if ($r.Ready) { $tag = '[OK]  ' }

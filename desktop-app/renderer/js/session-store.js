@@ -1,14 +1,14 @@
 // Phase B：完整会话 store（对齐 ChipCode session-store.js）
 // 设计要点：
-//  1) 单一数据源：把此前互不相通的两套持久化（localStorage['labcode.chatSessions'] UI 列表
+//  1) 单一数据源：把此前互不相通的两套持久化（localStorage['bubaicode.chatSessions'] UI 列表
 //     与 main/userData/sessions/<id>.json 富会话）合并为一份内存镜像，磁盘为权威。
 //  2) 同步内存镜像 + 异步防抖落盘：现有 6 处同步 UI 代码无需改成 async。
 //  3) 单一写者：AgentRunner._persistSession 与 UI 保存都经本模块，消除双写 id/字段分裂。
 //  4) 消息带稳定 id/ts，display 展示字段原样保留（对齐 ChipCode session_message.display）。
 //  5) load / save / revise / search 四级能力，revise 的 ops 语义与 main/index.js 完全一致。
 (function () {
-  var LEGACY_KEY = 'labcode.chatSessions';
-  var api = (window.LabCode && window.LabCode.sessions) || null;
+  var LEGACY_KEY = 'bubaicode.chatSessions';
+  var api = (window.BubaiCode && window.BubaiCode.sessions) || null;
   var cache = [];
   var currentId = null;
   var listeners = [];
@@ -264,7 +264,7 @@
       Store.revise(s.id, [{ type: 'delete_range', fromSeq: from, toSeq: s.messages.length - 1 }]);
       var kept = s.messages.slice(0, from).map(function (m) { return { role: m.role, content: m.content }; });
       window._chatLog = kept;
-      var st = window.LabCodeUI && window.LabCodeUI.state;
+      var st = window.BubaiCodeUI && window.BubaiCodeUI.state;
       if (st && st.agent) st.agent.messages = kept.slice();
       var nodes = document.querySelectorAll('#ai-chat-area .chat-message');
       for (var i = 0; i < nodes.length; i++) if (i >= from) nodes[i].remove();

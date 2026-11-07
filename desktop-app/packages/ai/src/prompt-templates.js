@@ -2,7 +2,7 @@
  * 提示词模板
  */
 const PromptTemplates = {
-  system: `你是 LabCode AI 编程助手。你可以：
+  system: `你是 BubaiCode AI 编程助手。你可以：
 - 读写和编辑项目文件
 - 执行终端命令
 - 编译和烧录 Arduino/ESP32 项目

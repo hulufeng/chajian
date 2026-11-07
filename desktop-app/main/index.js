@@ -1,4 +1,4 @@
-﻿// ============ LabCode Electron 主进程============
+// ============ BubaiCode Electron 主进程============
 // 基于业界 IDE 设计实践：窗口管理/ IPC / 自动更新 / 代理 / 会话存储
 
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog, net, webContents, desktopCapturer, clipboard, screen, Tray, nativeImage } = require('electron');
@@ -16,7 +16,7 @@ const terminalService = getTerminalService();
 let mainWindow = null;
 let isDev = process.argv.includes('--dev');
 
-// 模块化：开发板管理（@labcode/core 的 Board 模块，compile/upload 兜底 FQBN 推断）
+// 模块化：开发板管理（@bubaicode/core 的 Board 模块，compile/upload 兜底 FQBN 推断）
 // 2026-10-17：接入 packages/core/src/board.js（真实模块），fqbn 缺失时用 guessFQBN 推断
 const Board = require('../packages/core/src/board.js');
 
@@ -32,7 +32,7 @@ function ensureDir(dir) {
 ensureDir(SESSIONS_PATH);
 
 // ============ Arduino 数据目录隔离 ============
-// 商业化：LabCode 用自己的 arduino15 数据目录，不污染系统 Arduino15
+// 商业化：BubaiCode 用自己的 arduino15 数据目录，不污染系统 Arduino15
 // 迁移逻辑：如果系统 Arduino15 已有 esp32 平台，复用它（开发机/老用户）；否则用隔离目录
 const ARDUINO_ISOLATED_DIR = path.join(USER_DATA_PATH, 'arduino15');
 const ARDUINO_SYSTEM_DIR = path.join(process.env.LOCALAPPDATA || '', 'Arduino15');
@@ -249,11 +249,11 @@ function ensureTray() {
   try {
     const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'resources', 'icon.png'));
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 16, height: 16 }));
-    tray.setToolTip('LabCode');
+    tray.setToolTip('BubaiCode');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: '显示 LabCode', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      { label: '显示 BubaiCode', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
       { type: 'separator' },
-      { label: '退出 LabCode', click: () => { isQuitting = true; try { tray.destroy(); } catch (e) {} tray = null; app.quit(); } }
+      { label: '退出 BubaiCode', click: () => { isQuitting = true; try { tray.destroy(); } catch (e) {} tray = null; app.quit(); } }
     ]));
     tray.on('click', () => {
       if (!mainWindow) return;
@@ -411,10 +411,10 @@ function createMenu() {
     {
       label: '帮助',
       submenu: [
-        { label: '文档', click: () => shell.openExternal('https://www.LabCode.com/docs') },
-        { label: '官网', click: () => shell.openExternal('https://www.LabCode.com') },
+        { label: '文档', click: () => shell.openExternal('https://www.BubaiCode.com/docs') },
+        { label: '官网', click: () => shell.openExternal('https://www.BubaiCode.com') },
         { type: 'separator' },
-        { label: '关于 LabCode', click: () => showAboutDialog() }
+        { label: '关于 BubaiCode', click: () => showAboutDialog() }
       ]
     }
   ];
@@ -426,9 +426,9 @@ function createMenu() {
 function showAboutDialog() {
   dialog.showMessageBox(mainWindow, {
     type: 'info',
-    title: '关于 LabCode',
-    message: 'LabCode v1.0.0',
-    detail: '通用 AI 软件开发智能体\n\n内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网查资料。\n\n© 2026 LabCode Team. All rights reserved.',
+    title: '关于 BubaiCode',
+    message: 'BubaiCode v1.0.0',
+    detail: '通用 AI 软件开发智能体\n\n内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网查资料。\n\n© 2026 BubaiCode Team. All rights reserved.',
     buttons: ['确定']
   });
 }
@@ -532,7 +532,7 @@ function setupIPC() {
         text = typeof content === 'string' ? content : '';
       } else {
         // OpenAI 兼容：手工拼 multipart（TrieCode 教训：undici FormData 喂 electron net.fetch 会序列化成 "[object FormData]" 且不报错）
-        const boundary = '----LabCodeSTT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const boundary = '----BubaiCodeSTT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
         const CRLF = '\r\n';
         const headParts = [
           '--' + boundary + CRLF + 'Content-Disposition: form-data; name="model"' + CRLF + CRLF + stt.model + CRLF,
@@ -827,7 +827,7 @@ function setupIPC() {
       dapClients.set(sessionId, cli);
       // DAP initialize
       const initResp = await dapSend(sessionId, { type: 'request', command: 'initialize', arguments: {
-        adapterID: 'labcode', clientID: 'labcode', clientName: 'LabCode',
+        adapterID: 'bubaicode', clientID: 'bubaicode', clientName: 'BubaiCode',
         linesStartAt1: true, columnsStartAt1: true, pathFormat: 'path',
         supportsRunInTerminalRequest: false, supportsVariableType: true,
         supportsVariablePaging: false, supportsRunInTerminalRequest: false
@@ -1043,7 +1043,7 @@ function setupIPC() {
   ipcMain.handle('git:clone', async (_, url, destDir) => {
     if (!url) return { success: false, error: '缺少仓库地址' };
     const repoName = (String(url).split('/').pop() || 'repo').replace(/\.git$/i, '').replace(/[^\w.-]/g, '_');
-    const dest = destDir || path.join(os.homedir(), 'LabCodeProjects', repoName);
+    const dest = destDir || path.join(os.homedir(), 'BubaiCodeProjects', repoName);
     const r = await runGit('', ['clone', '--depth', '1', url, dest]);
     if (!r.ok) return { success: false, error: r.stderr || r.stdout || 'clone 失败' };
     return { success: true, path: dest };
@@ -1329,7 +1329,7 @@ function setupIPC() {
   });
 
   // ===== Git 审阅 AI 改动（对齐 ChipCode git:review / git:applyAndStage）=====
-  // 说明：ChipCode 把会话改动存于主进程 Sr；LabCode 的 FileChangeTracker 在渲染进程，
+  // 说明：ChipCode 把会话改动存于主进程 Sr；BubaiCode 的 FileChangeTracker 在渲染进程，
   // 故由渲染层把本轮改动（path/before/after/action）经 opts.changes 传入，主进程负责
   // hunk 拆分、按 hunk 接受/拒绝、回写磁盘并 git add 暂存。无会话时回退 git diff HEAD。
   const _gitReviewStore = new Map(); // cwd -> 最近一次 review（含 before/hunks，供 apply 使用）
@@ -1799,13 +1799,13 @@ function setupIPC() {
 
   // ---- 设备面板：board:attach / board:load（对齐 ChipCode board:attach：将选中板卡/端口持久化到项目配置）----
   // ChipCode 在设备面板选好板卡+端口后写入 project.yaml 的 default_fqbn/default_port；
-  // LabCode 用项目级 .labcode/device.json 等价持久化，使重新打开工程时自动恢复选择。
+  // BubaiCode 用项目级 .bubaicode/device.json 等价持久化，使重新打开工程时自动恢复选择。
   ipcMain.handle('board:attach', async (_e, payload) => {
     const projectPath = payload && payload.projectPath;
     const fqbn = payload && payload.fqbn;
     if (!projectPath) return { ok: false, error: '缺少 projectPath' };
     try {
-      const dir = path.join(projectPath, '.labcode');
+      const dir = path.join(projectPath, '.bubaicode');
       fs.mkdirSync(dir, { recursive: true });
       const cfgPath = path.join(dir, 'device.json');
       let cfg = {};
@@ -1822,7 +1822,7 @@ function setupIPC() {
     const projectPath = payload && payload.projectPath;
     if (!projectPath) return { ok: false, error: '缺少 projectPath', fqbn: '', port: '', baud: '' };
     try {
-      const cfgPath = path.join(projectPath, '.labcode', 'device.json');
+      const cfgPath = path.join(projectPath, '.bubaicode', 'device.json');
       const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
       return { ok: true, fqbn: cfg.fqbn || '', port: cfg.port || '', baud: cfg.baud || '' };
     } catch (e) { return { ok: true, fqbn: '', port: '', baud: '' }; }
@@ -1883,7 +1883,7 @@ function setupIPC() {
   });
 
   // ===== 插件管理（对齐 ChipCode plugins:* 主进程通道）=====
-  // LabCode 此前插件管理逻辑主要在渲染层 PluginSystem（list/install/uninstall/setActive/settings/market），
+  // BubaiCode 此前插件管理逻辑主要在渲染层 PluginSystem（list/install/uninstall/setActive/settings/market），
   // 主进程只提供 transport 桥（plugin:cliCall 等）与 deps:*。现补齐与 ChipCode 同名的 plugins:* 主进程通道，
   // 使主进程也能直接管理插件（供 AI agent / 外部工具调用），并广播 plugins:changed 让渲染层重载注册表。
   function pluginsRootDir() {
@@ -1915,7 +1915,7 @@ function setupIPC() {
       out.push({
         id: m.id, name: m.name || m.id, version: m.version || '0.0.0',
         description: m.description || '', icon: m.icon || '📦', category: m.category || 'plugin',
-        author: m.author || 'LabCode', channels: m.channels || [], capabilities: m.capabilities || [],
+        author: m.author || 'BubaiCode', channels: m.channels || [], capabilities: m.capabilities || [],
         active: !disabled.includes(m.id), path: path.join(root, d)
       });
     }
@@ -2081,7 +2081,7 @@ function setupIPC() {
       const list = (data && Array.isArray(data.plugins)) ? data.plugins : [];
       const plugins = list.map(p => ({
         id: p.id, name: p.name, description: p.description || '', version: p.version || '1.0.0',
-        author: p.developer || p.author || 'LabCode', icon: p.icon || '📦',
+        author: p.developer || p.author || 'BubaiCode', icon: p.icon || '📦',
         category: p.category || 'tool', channels: p.channels || ['http'],
         capabilities: p.capabilities || [], requires: p.requires || '',
         downloadUrl: /^https?:/i.test(String(p.downloadUrl || '')) ? p.downloadUrl : origin + String(p.downloadUrl || ''),
@@ -2392,7 +2392,7 @@ function setupIPC() {
   function downloadFile(url, dest, redirects = 5) {
     return new Promise((resolve, reject) => {
       const follow = (u) => {
-        https.get(u, { headers: { 'User-Agent': 'LabCode' } }, (res) => {
+        https.get(u, { headers: { 'User-Agent': 'BubaiCode' } }, (res) => {
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             if (redirects <= 0) return reject(new Error('too many redirects'));
             return follow(res.headers.location);
@@ -3025,7 +3025,7 @@ function setupIPC() {
       if (isFixTurn) _log('检测到编译修复轮，强制 think=false');
       let result = await doStreamOnce(thinkForTurn);
       // 自动续写循环（仅 ollama/local，代码块未闭合时——不依赖 finish_reason，llama 流式可能不传）
-      const _fs = require('fs'); const _log = (s) => { try { _fs.appendFileSync(require('path').join(require('os').tmpdir(), 'labcode_stream.log'), new Date().toISOString() + ' ' + s + '\n'); } catch(e){} };
+      const _fs = require('fs'); const _log = (s) => { try { _fs.appendFileSync(require('path').join(require('os').tmpdir(), 'bubaicode_stream.log'), new Date().toISOString() + ' ' + s + '\n'); } catch(e){} };
       _log(`doStreamOnce done, len=${result.content.length}, unclosed=${hasUnclosedCodeBlock(result.content)}`);
       if ((aiCfg.provider === 'ollama' || aiCfg.provider === 'local') && hasUnclosedCodeBlock(result.content)) {
         for (let i = 0; i < 3; i++) {
@@ -3436,7 +3436,7 @@ function setupIPC() {
 
   // ===== Plugin transports: stdio / grpc / mqtt =====
   // These need OS level access (child process, sockets), so they live in the main
-  // process; the renderer calls them through preload -> window.LabCode.plugin.*.
+  // process; the renderer calls them through preload -> window.BubaiCode.plugin.*.
 
   // stdio: spawn a child process and speak JSON-RPC over stdin/stdout (one JSON per line)
   ipcMain.handle('plugin:stdioCall', async (_, opts) => {
@@ -3582,7 +3582,7 @@ function setupIPC() {
       const client = mqtt.connect(o.brokerUrl, {
         username: o.username || undefined,
         password: o.password || undefined,
-        clientId: o.clientId || ('labcode-plugin-' + Math.random().toString(16).slice(2, 10)),
+        clientId: o.clientId || ('bubaicode-plugin-' + Math.random().toString(16).slice(2, 10)),
         reconnectPeriod: 0,
         connectTimeout: Math.min(timeoutMs, 10000)
       });
@@ -3687,7 +3687,7 @@ function setupIPC() {
       const client = mqtt.connect(url, {
         username: o.username || undefined,
         password: o.password || undefined,
-        clientId: o.clientId || ('labcode-' + id + '-' + Math.random().toString(16).slice(2, 8)),
+        clientId: o.clientId || ('bubaicode-' + id + '-' + Math.random().toString(16).slice(2, 8)),
         keepalive: Number(o.keepalive) || 60,
         clean: o.clean !== false,
         reconnectPeriod: Number(o.reconnectPeriod) || 2000,
@@ -4702,7 +4702,7 @@ function setupIPC() {
     if (/^[\x00-\x7F]*$/.test(realCwd)) return { cwd: realCwd, link: null };
     try {
       const key = require('crypto').createHash('md5').update(realCwd).digest('hex').slice(0, 12);
-      const link = path.join(os.tmpdir(), 'labcode-ac-' + key);
+      const link = path.join(os.tmpdir(), 'bubaicode-ac-' + key);
       if (!fs.existsSync(link)) {
         try { fs.symlinkSync(realCwd, link, 'junction'); } catch (e) { return { cwd: realCwd, link: null }; }
       }
@@ -4740,7 +4740,7 @@ function setupIPC() {
     if (path.basename(dir) === base) {
       return { target: dir, cleanup: null, created: false };
     }
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'labcode-sketch-'));
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bubaicode-sketch-'));
     const target = path.join(tmpRoot, base);
     fs.mkdirSync(target, { recursive: true });
     let copied = 0;
@@ -5237,7 +5237,7 @@ function setupIPC() {
         });
       } else {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ service: 'LabCode', status: 'running' }));
+        res.end(JSON.stringify({ service: 'BubaiCode', status: 'running' }));
       }
     });
     webhookServer.listen(port || 9876, '127.0.0.1', () => {
@@ -5377,14 +5377,14 @@ function setupIPC() {
   });
 
   // ============ 本地大模型引擎（llama.cpp，内置，无需 Ollama）===========
-  // 引擎目录：resources/llama（安装包内置）；模型目录：D:\LabCode\models（插件市场下载）
+  // 引擎目录：resources/llama（安装包内置）；模型目录：D:\BubaiCode\models（插件市场下载）
   function getEngineDir() {
-    // 开发模式：D:\LabCode\runtime\llama-cpp-*；打包后：resources/llama
+    // 开发模式：D:\BubaiCode\runtime\llama-cpp-*；打包后：resources/llama
     const candidates = [
       path.join(process.resourcesPath, 'llama'),           // 打包后内置
       path.join(__dirname, '..', 'resources', 'llama'),    // 开发目录
-      'D:\\LabCode\\runtime\\llama-cpp-vulkan',            // 本机验证目录
-      'D:\\LabCode\\runtime\\llama-cpp-cpu'
+      'D:\\BubaiCode\\runtime\\llama-cpp-vulkan',            // 本机验证目录
+      'D:\\BubaiCode\\runtime\\llama-cpp-cpu'
     ];
     for (const c of candidates) {
       try { if (fs.existsSync(path.join(c, 'llama-server.exe'))) return c; } catch (e) {}
@@ -5466,7 +5466,7 @@ function setupIPC() {
     // 卷根下的应用子目录（不往卷根里散落文件）
     const root = String(finalPool[0].path || '').replace(/[\\/]+$/, '');
     if (!root) return '';
-    return path.join(root, 'LabCode', 'models');
+    return path.join(root, 'BubaiCode', 'models');
   }
 
   function getModelsDir() {
@@ -5479,18 +5479,18 @@ function setupIPC() {
       }
     } catch (e) {}
     // ② 旧默认路径：用户已有模型在这里要保持兼容（别让人的模型"消失"）
-    const legacy = 'D:\\LabCode\\models';
+    const legacy = 'D:\\BubaiCode\\models';
     try {
       if (fs.existsSync(legacy) && fs.readdirSync(legacy).some(f => f.toLowerCase().endsWith('.gguf'))) return legacy;
     } catch (e) {}
     // ③ 自动推荐（SSD + 空间够）—— 新用户零操作就落在对的地方
     if (recommendedModelsDir) return recommendedModelsDir;
     // ④ 兜底：用户主目录下的应用目录（任何平台、几乎总能写）。
-    //    不能直接用 D:\LabCode\models —— 别人的机器可能根本没有 D 盘，
+    //    不能直接用 D:\BubaiCode\models —— 别人的机器可能根本没有 D 盘，
     //    那样模型会下载失败（商业化必须假设各种机器都有各种盘）。
     try {
       const os = require('os');
-      return path.join(os.homedir(), 'LabCode', 'models');
+      return path.join(os.homedir(), 'BubaiCode', 'models');
     } catch (e) {}
     return legacy;
   }
@@ -5636,7 +5636,7 @@ function setupIPC() {
     return { ok: true };
   }
 
-  // 检测本地大模型运行时（LabCode 内置 llama 引擎）
+  // 检测本地大模型运行时（BubaiCode 内置 llama 引擎）
   let currentEngineModel = null;
   ipcMain.handle('system:checkLLMRuntime', async () => {
     const result = {
@@ -5698,7 +5698,7 @@ function setupIPC() {
   async function startEngineInternal(modelFile) {
     try {
       const engineDir = getEngineDir();
-      if (!engineDir) return { success: false, error: '找不到内置引擎，请重新安装 LabCode' };
+      if (!engineDir) return { success: false, error: '找不到内置引擎，请重新安装 BubaiCode' };
       const serverExe = path.join(engineDir, 'llama-server.exe');
       if (!fs.existsSync(serverExe)) return { success: false, error: '引擎文件缺少: llama-server.exe' };
 
@@ -5744,7 +5744,7 @@ function setupIPC() {
         '--host', '127.0.0.1',
         '--port', '8080',
         '-ngl', '99',          // 全层 GPU（无独立显卡自动回退 CPU）
-        '-np', '1',            // 单并发 slot：LabCode 是单用户单会话。默认 4 slot 会让 KV cache
+        '-np', '1',            // 单并发 slot：BubaiCode 是单用户单会话。默认 4 slot 会让 KV cache
                                // 变成 4×ctx（16K×4=64K token），撑爆显存导致部分层回落 CPU，
                                // 实测单 slot 推理快 17%（69 → 81 tok/s）且显存占用大降
         '-c', String(engineCtx), // 上下文：为思考流（reasoning）预留空间
@@ -6484,7 +6484,7 @@ function setupAutoUpdate() {
 
 // ============ 应用生命周期 ============
 app.whenReady().then(() => {
-  console.log('馃殌 LabCode 启动不..');
+  console.log('馃殌 BubaiCode 启动不..');
   console.log('馃搧 用户数据目录:', USER_DATA_PATH);
   console.log('馃敡 开发模式', isDev);
 

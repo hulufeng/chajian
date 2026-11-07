@@ -9,7 +9,7 @@
   }
 
   function preview() {
-    var st = window.LabCodeUI && window.LabCodeUI.state;
+    var st = window.BubaiCodeUI && window.BubaiCodeUI.state;
     var agent = st && st.agent;
     if (!agent || !Array.isArray(agent.messages) || agent.messages.length === 0) return null;
     var msgs = agent.messages;
@@ -34,6 +34,6 @@
   }
 
   window.getCompactPreview = preview;
-  window.LabCode = window.LabCode || {};
-  window.LabCode.getCompactPreview = preview;
+  window.BubaiCode = window.BubaiCode || {};
+  window.BubaiCode.getCompactPreview = preview;
 })();

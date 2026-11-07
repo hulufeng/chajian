@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
 REM ============================================================
-REM  LabCode Windows 安装包一键构建脚本
+REM  BubaiCode Windows 安装包一键构建脚本
 REM  用法：双击运行，或在命令行执行 build-win.bat
-REM  产物：dist\LabCode Setup 1.0.0.exe（NSIS 安装程序）
+REM  产物：dist\BubaiCode Setup 1.0.0.exe（NSIS 安装程序）
 REM  前置：Node.js 20+（自带 npm）
 REM ============================================================
 cd /d "%~dp0.."
@@ -31,7 +31,7 @@ if errorlevel 1 (
 echo.
 echo ============================================================
 echo  构建完成！
-echo  安装包：%~dp0..\dist\LabCode Setup 1.0.0.exe
-echo  免安装版：dist\win-unpacked\LabCode.exe
+echo  安装包：%~dp0..\dist\BubaiCode Setup 1.0.0.exe
+echo  免安装版：dist\win-unpacked\BubaiCode.exe
 echo ============================================================
 pause

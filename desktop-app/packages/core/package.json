@@ -1,5 +1,5 @@
 {
-  "name": "@labcode/core",
+  "name": "@bubaicode/core",
   "version": "1.0.0",
   "private": true,
   "main": "src/index.js",

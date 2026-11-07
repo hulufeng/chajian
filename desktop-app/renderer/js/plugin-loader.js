@@ -112,7 +112,7 @@ async function ensurePluginDependencies(pluginId) {
   const deps = PLUGIN_DEPENDENCIES.get(pluginId) || [];
   const results = [];
   if (!deps.length) return { ok: true, pluginId, results, skipped: true };
-  const api = window.LabCode && window.LabCode.deps;
+  const api = window.BubaiCode && window.BubaiCode.deps;
   if (!api || typeof api.install !== 'function') {
     return { ok: false, pluginId, results, needsUpgrade: true, error: '主进程 deps 桥不可用（需 1.2.31+）' };
   }
@@ -175,7 +175,7 @@ async function dispatchTool(t, id, autoName, args) {
       const cli = t.cli || {};
       const cmdTpl = cli.command || '';
       if (!cmdTpl) return 'Error: cli.command 未配置';
-      const projectPath = (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) || '';
+      const projectPath = (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) || '';
       const ctx = Object.assign({}, a, { projectPath });
       // 引号感知分词："a b" 是一个参数；占位符按 token 替换——
       // AI 传入的参数值永远只是单个 argv 元素，绝不拼进 shell 字符串（防注入）
@@ -194,7 +194,7 @@ async function dispatchTool(t, id, autoName, args) {
       // 插件自身设置（工具链检测/一键安装结果存 pluginSettings.<id>.toolchain，供 {settings.*} 占位符用）
       let pset = {};
       try {
-        const cfg = (window.LabCode && window.LabCode.config && await window.LabCode.config.get()) || {};
+        const cfg = (window.BubaiCode && window.BubaiCode.config && await window.BubaiCode.config.get()) || {};
         pset = (cfg.pluginSettings && cfg.pluginSettings[id]) || {};
       } catch (e) { /* 设置读取失败按未配置处理 */ }
       const getDeep = (obj, path) => String(path).split('.').reduce((o, k) => (o == null || o[k] == null ? undefined : o[k]), obj);
@@ -217,7 +217,7 @@ async function dispatchTool(t, id, autoName, args) {
         return (ctx[k] != null ? String(ctx[k]) : m);
       }));
       // resolve: 用宿主已有的路径解析器替换命令首段（arduino-cli 不在 PATH，必须解析）
-      const tc = window.LabCode && window.LabCode.toolchain;
+      const tc = window.BubaiCode && window.BubaiCode.toolchain;
       if (argv.length && tc && tc.getArduinoCliPath && (cli.resolve === 'arduino-cli' || argv[0] === 'arduino-cli')) {
         try {
           const p = await tc.getArduinoCliPath();
@@ -244,7 +244,7 @@ async function dispatchTool(t, id, autoName, args) {
         return 'Error: 工具链未配置——占位符 {' + unresolved.join('},{') + '} 无值（pluginSettings.' + id + ' 中未找到）。请先在「设备」面板完成该工具链的检测/一键安装，或在插件设置中手动填写路径（如 IDF_PATH / pythonExe）。';
       }
       // 主进程 spawn（数组参数，无 shell）；envScript 由主进程逐参数安全引用后包装
-      const bridge = window.LabCode && window.LabCode.plugin;
+      const bridge = window.BubaiCode && window.BubaiCode.plugin;
       if (!bridge || !bridge.cliCall) return 'Error: plugin bridge 不可用（cli，需升级主进程）';
       const r = await bridge.cliCall({
         command: argv[0],
@@ -261,7 +261,7 @@ async function dispatchTool(t, id, autoName, args) {
     if (transport === 'http') {
       const http = t.http || {};
       const urlTpl = http.url || '';
-      const projectPath = (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) || '';
+      const projectPath = (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) || '';
       const ctx = Object.assign({}, a, { projectPath });
       const url = urlTpl.replace(/\{(\w+)\}/g, (m, k) => (ctx[k] != null ? encodeURIComponent(ctx[k]) : m));
       const method = (http.method || 'POST').toUpperCase();
@@ -273,16 +273,16 @@ async function dispatchTool(t, id, autoName, args) {
     }
     if (transport === 'mcp') {
       const mcp = t.mcp || {};
-      if (!window.LabCode || !window.LabCode.mcp || !window.LabCode.mcp.callTool) {
+      if (!window.BubaiCode || !window.BubaiCode.mcp || !window.BubaiCode.mcp.callTool) {
         return 'Error: MCP 桥不可用';
       }
-      const r = await window.LabCode.mcp.callTool(mcp.server, mcp.tool, a);
+      const r = await window.BubaiCode.mcp.callTool(mcp.server, mcp.tool, a);
       return typeof r === 'string' ? r : JSON.stringify(r);
     }
     if (transport === 'grpc') {
       // t.grpc = { protoPath, service, method, host, request, insecure, timeoutMs }
       // 由主进程加载 proto 并发起 unary 调用（需要 socket，渲染层做不了）
-      const bridge = window.LabCode && window.LabCode.plugin;
+      const bridge = window.BubaiCode && window.BubaiCode.plugin;
       if (!bridge || !bridge.grpcCall) return 'Error: plugin bridge 不可用（grpc）';
       const g = t.grpc || {};
       const r = await bridge.grpcCall({
@@ -295,10 +295,10 @@ async function dispatchTool(t, id, autoName, args) {
     }
     if (transport === 'stdio') {
       // t.stdio = { command, args, cwd, timeoutMs }；参数以 {argName} 模板注入 args
-      const bridge = window.LabCode && window.LabCode.plugin;
+      const bridge = window.BubaiCode && window.BubaiCode.plugin;
       if (!bridge || !bridge.stdioCall) return 'Error: plugin bridge 不可用（stdio）';
       const sd = t.stdio || {};
-      const projectPath = (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) || '';
+      const projectPath = (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) || '';
       const ctx = Object.assign({}, a, { projectPath });
       const args = Array.isArray(sd.args) ? sd.args.map(x => String(x).replace(/\{(\w+)\}/g, (m, k) => (ctx[k] != null ? String(ctx[k]) : m))) : [];
       const r = await bridge.stdioCall({
@@ -312,10 +312,10 @@ async function dispatchTool(t, id, autoName, args) {
     }
     if (transport === 'mqtt') {
       // t.mqtt = { brokerUrl, topic, responseTopic, payload, qos, username, password, timeoutMs }
-      const bridge = window.LabCode && window.LabCode.plugin;
+      const bridge = window.BubaiCode && window.BubaiCode.plugin;
       if (!bridge || !bridge.mqttCall) return 'Error: plugin bridge 不可用（mqtt）';
       const mq = t.mqtt || {};
-      const projectPath = (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath) || '';
+      const projectPath = (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath) || '';
       const ctx = Object.assign({}, a, { projectPath });
       const fill = (s) => String(s || '').replace(/\{(\w+)\}/g, (m, k) => (ctx[k] != null ? String(ctx[k]) : m));
       const r = await bridge.mqttCall({
@@ -341,7 +341,7 @@ async function dispatchTool(t, id, autoName, args) {
 // UI 按钮 / 菜单 / AI 都经 runCapability(cap) 一个入口，
 // 由它按「项目绑定的主动工具链」解析到具体插件的具体 transport。
 // ============================================================
-/** 能力 id 词汇表（宿主 UI 契约；LabCode 在 TrieCode 集基础上扩展 monitor/plot） */
+/** 能力 id 词汇表（宿主 UI 契约；BubaiCode 在 TrieCode 集基础上扩展 monitor/plot） */
 const CAPABILITY_IDS = [
   'compile', 'upload', 'flash', 'debug',
   'board-manage', 'board-select', 'library-manage', 'library-install',
@@ -371,19 +371,19 @@ function isToolchainPlugin(m) {
 
 /**
  * 项目 → 主动工具链插件 id（三级解析）：
- *  1. <projectPath>/.labcode.json 的 toolchain 字段（建项目时写入，权威）
+ *  1. <projectPath>/.bubaicode.json 的 toolchain 字段（建项目时写入，权威）
  *  2. 兜底：当前启用中的工具链插件恰好只有一个 → 用它
  *  3. 都没有 → null（调用方给可操作提示，不静默失败）
  */
 async function resolveActiveToolchain(projectPath) {
   const p = projectPath
-    || (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath)
+    || (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath)
     || '';
   if (p) {
     try {
-      const fsApi = window.LabCode && window.LabCode.fs;
+      const fsApi = window.BubaiCode && window.BubaiCode.fs;
       if (fsApi) {
-        const rr = await fsApi.readFile(String(p).replace(/[\\\/]+$/, '') + '/.labcode.json');
+        const rr = await fsApi.readFile(String(p).replace(/[\\\/]+$/, '') + '/.bubaicode.json');
         if (rr && rr.success && rr.content) {
           const meta = JSON.parse(rr.content);
           const tc = meta && meta.toolchain;
@@ -425,10 +425,10 @@ async function runCapability(cap, params, opts) {
     return { ok: false, error: `未知能力「${cap}」。可用：${CAPABILITY_IDS.join(' / ')}` };
   }
   const projectPath = (opts.projectPath != null ? opts.projectPath
-    : (window.LabCodeUI && window.LabCodeUI.state && window.LabCodeUI.state.projectPath)) || '';
+    : (window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectPath)) || '';
   const pluginId = opts.pluginId || await resolveActiveToolchain(projectPath);
   if (!pluginId) {
-    return { ok: false, error: '未绑定工具链：请打开一个项目（.labcode.json 含 toolchain），或到插件市场安装 arduino-cli-toolchain / esp-idf-toolchain' };
+    return { ok: false, error: '未绑定工具链：请打开一个项目（.bubaicode.json 含 toolchain），或到插件市场安装 arduino-cli-toolchain / esp-idf-toolchain' };
   }
   const manifest = PLUGIN_REGISTRY.get(pluginId);
   if (!manifest) return { ok: false, error: '工具链插件不存在: ' + pluginId };
@@ -583,9 +583,9 @@ function loadPluginManifestUnsafe(manifest) {
  * @param {(path:string)=>Promise<string>} readFileAsync
  */
 async function loadPluginsFromDir(pluginsRoot) {
-  const fsApi = (typeof window !== 'undefined' && window.LabCode && window.LabCode.fs) || null;
+  const fsApi = (typeof window !== 'undefined' && window.BubaiCode && window.BubaiCode.fs) || null;
   const results = { loaded: [], errors: [] };
-  if (!fsApi) { results.errors.push('window.LabCode.fs 不可用'); return results; }
+  if (!fsApi) { results.errors.push('window.BubaiCode.fs 不可用'); return results; }
   let files = [];
   try {
     const exists = await fsApi.exists(pluginsRoot);
@@ -628,8 +628,8 @@ let PLUGIN_ROOT_CACHE = '';
 async function getPluginsRoot() {
   if (PLUGIN_ROOT_CACHE) return PLUGIN_ROOT_CACHE;
   try {
-    if (window.LabCode && window.LabCode.app && window.LabCode.app.getPath) {
-      const userData = await window.LabCode.app.getPath('userData');
+    if (window.BubaiCode && window.BubaiCode.app && window.BubaiCode.app.getPath) {
+      const userData = await window.BubaiCode.app.getPath('userData');
       if (userData) {
         PLUGIN_ROOT_CACHE = String(userData).replace(/[\\\/]+$/, '') + '/plugins';
         return PLUGIN_ROOT_CACHE;
@@ -647,7 +647,7 @@ function joinPath(a, b) {
 /** 从 config 读取禁用列表（启动时调用一次） */
 async function loadPluginStates() {
   try {
-    const cfg = await window.LabCode?.config?.get?.() || {};
+    const cfg = await window.BubaiCode?.config?.get?.() || {};
     const disabled = cfg?.pluginStates?.disabled;
     PLUGIN_DISABLED.clear();
     if (Array.isArray(disabled)) disabled.forEach(id => PLUGIN_DISABLED.add(String(id)));
@@ -657,7 +657,7 @@ async function loadPluginStates() {
 
 async function savePluginStates() {
   try {
-    await window.LabCode?.config?.set?.('pluginStates', { disabled: Array.from(PLUGIN_DISABLED) });
+    await window.BubaiCode?.config?.set?.('pluginStates', { disabled: Array.from(PLUGIN_DISABLED) });
     return true;
   } catch (e) { return false; }
 }
@@ -689,8 +689,8 @@ async function copyDir(fsApi, src, dst) {
  * @returns {Promise<{success:boolean, id?:string, tools?:number, error?:string}>}
  */
 async function installFromDir(srcDir) {
-  const fsApi = (typeof window !== 'undefined' && window.LabCode && window.LabCode.fs) || null;
-  if (!fsApi) return { success: false, error: 'window.LabCode.fs 不可用' };
+  const fsApi = (typeof window !== 'undefined' && window.BubaiCode && window.BubaiCode.fs) || null;
+  if (!fsApi) return { success: false, error: 'window.BubaiCode.fs 不可用' };
   if (!srcDir) return { success: false, error: '缺插件目录路径' };
   try {
     const manifestPath = joinPath(srcDir, 'plugin.json');
@@ -711,7 +711,7 @@ async function installFromDir(srcDir) {
     const copied = await copyDir(fsApi, srcDir, dst);
     if (!copied) return { success: false, error: '没有拷贝到任何文件' };
     const r2 = loadPluginManifest(manifest);
-    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
+    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('bubaicode:plugins-changed')); } catch (e) {}
     return { success: true, id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || '', path: dst, tools: r2.loaded.tools, skills: r2.loaded.skills, errors: r2.loaded.errors };
   } catch (e) {
     return { success: false, error: '安装失败: ' + e.message };
@@ -725,7 +725,7 @@ async function installFromDir(srcDir) {
  * @returns {Promise<string|null>}
  */
 async function findManifestDir(dir, maxDepth) {
-  const fsApi = (typeof window !== 'undefined' && window.LabCode && window.LabCode.fs) || null;
+  const fsApi = (typeof window !== 'undefined' && window.BubaiCode && window.BubaiCode.fs) || null;
   if (!fsApi || !dir) return null;
   const sep = String(dir).includes('/') ? '/' : '\\';
   const walk = async (d, depth) => {
@@ -750,8 +750,8 @@ async function findManifestDir(dir, maxDepth) {
  * @param {object} manifest
  */
 async function installManifest(manifest) {
-  const fsApi = (typeof window !== 'undefined' && window.LabCode && window.LabCode.fs) || null;
-  if (!fsApi) return { success: false, error: 'window.LabCode.fs 不可用' };
+  const fsApi = (typeof window !== 'undefined' && window.BubaiCode && window.BubaiCode.fs) || null;
+  if (!fsApi) return { success: false, error: 'window.BubaiCode.fs 不可用' };
   if (!manifest || !manifest.id) return { success: false, error: 'manifest 缺 id' };
   try {
     const root = await getPluginsRoot();
@@ -761,7 +761,7 @@ async function installManifest(manifest) {
     const wr = await fsApi.writeFile(joinPath(dir, 'plugin.json'), JSON.stringify(manifest, null, 2));
     if (wr && wr.success === false) return { success: false, error: '写 plugin.json 失败: ' + (wr.error || '') };
     const r2 = loadPluginManifest(manifest);
-    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
+    try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('bubaicode:plugins-changed')); } catch (e) {}
     return { success: true, id: manifest.id, name: manifest.name || manifest.id, path: dir, tools: r2.loaded.tools, skills: r2.loaded.skills };
   } catch (e) {
     return { success: false, error: '安装失败: ' + e.message };
@@ -770,7 +770,7 @@ async function installManifest(manifest) {
 
 /** 卸载：删目录 + 从运行时注销工具/skills/views */
 async function uninstall(id) {
-  const fsApi = (typeof window !== 'undefined' && window.LabCode && window.LabCode.fs) || null;
+  const fsApi = (typeof window !== 'undefined' && window.BubaiCode && window.BubaiCode.fs) || null;
   // 1) 运行时注销
   for (let i = PLUGIN_TOOL_DEFS.length - 1; i >= 0; i--) {
     if (PLUGIN_TOOL_DEFS[i]._pluginId === id) PLUGIN_TOOL_DEFS.splice(i, 1);
@@ -788,7 +788,7 @@ async function uninstall(id) {
   }
   PLUGIN_DISABLED.delete(id);
   await savePluginStates();
-  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('labcode:plugins-changed')); } catch (e) {}
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('bubaicode:plugins-changed')); } catch (e) {}
   // 2) 删目录（deleteFile 对目录是递归删）
   if (fsApi) {
     try {
@@ -877,13 +877,13 @@ window.PluginSystem = {
   },
   getSetting: async (pluginId, key) => {
     try {
-      const cfg = await window.LabCode?.config?.get?.() || {};
+      const cfg = await window.BubaiCode?.config?.get?.() || {};
       return cfg?.pluginSettings?.[pluginId]?.[key];
     } catch (e) { return undefined; }
   },
   setSetting: async (pluginId, key, value) => {
     try {
-      await window.LabCode?.config?.set?.('pluginSettings.' + pluginId + '.' + key, value);
+      await window.BubaiCode?.config?.set?.('pluginSettings.' + pluginId + '.' + key, value);
       return true;
     } catch (e) { return false; }
   }

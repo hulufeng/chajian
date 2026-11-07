@@ -1,8 +1,8 @@
 # ============================================================
-#  LabCode Windows 安装包一键构建脚本（PowerShell）
+#  BubaiCode Windows 安装包一键构建脚本（PowerShell）
 #  用法：右键“使用 PowerShell 运行”，或:
 #        powershell -ExecutionPolicy Bypass -File build-win.ps1
-#  产物：dist\LabCode Setup 1.0.0.exe（NSIS 安装程序）
+#  产物：dist\BubaiCode Setup 1.0.0.exe（NSIS 安装程序）
 #  前置：Node.js 20+（自带 npm）
 # ============================================================
 $ErrorActionPreference = 'Stop'
@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ''
 Write-Host '============================================================' -ForegroundColor Green
 Write-Host ' 构建完成！' -ForegroundColor Green
-Write-Host " 安装包：$((Join-Path $PSScriptRoot '..\dist\LabCode Setup 1.0.0.exe'))" -ForegroundColor Green
-Write-Host ' 免安装版：dist\win-unpacked\LabCode.exe' -ForegroundColor Green
+Write-Host " 安装包：$((Join-Path $PSScriptRoot '..\dist\BubaiCode Setup 1.0.0.exe'))" -ForegroundColor Green
+Write-Host ' 免安装版：dist\win-unpacked\BubaiCode.exe' -ForegroundColor Green
 Write-Host '============================================================' -ForegroundColor Green
 Read-Host '按回车退出'

@@ -1,5 +1,5 @@
 {
-  "name": "@labcode/grpc",
+  "name": "@bubaicode/grpc",
   "version": "1.0.0",
   "private": true,
   "main": "src/index.js",

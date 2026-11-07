@@ -1,8 +1,8 @@
 // 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:* 通道）
-// 入口按钮：index.html 的 #board-manager-btn；通道：window.LabCode.board.*
+// 入口按钮：index.html 的 #board-manager-btn；通道：window.BubaiCode.board.*
 (function () {
   'use strict';
-  const api = (window.LabCode && window.LabCode.board) ? window.LabCode.board : null;
+  const api = (window.BubaiCode && window.BubaiCode.board) ? window.BubaiCode.board : null;
 
   // ---------- 注入模态框 DOM ----------
   function injectModal() {

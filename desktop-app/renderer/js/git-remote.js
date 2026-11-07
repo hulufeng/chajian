@@ -17,7 +17,7 @@
     const old = fetchBtn.textContent;
     fetchBtn.textContent = '获取中…';
     try {
-      const r = await window.LabCode.git.fetch(cwd);
+      const r = await window.BubaiCode.git.fetch(cwd);
       if (r && r.ok) {
         if (typeof showToast === 'function') showToast('已获取（fetch --all --prune）', 'success');
         if (typeof refreshGitStatus === 'function') refreshGitStatus();
@@ -43,7 +43,7 @@
     const old = prBtn.textContent;
     prBtn.textContent = '变基中…';
     try {
-      const r = await window.LabCode.git.pullRebase(cwd);
+      const r = await window.BubaiCode.git.pullRebase(cwd);
       if (r && r.ok) {
         if (typeof showToast === 'function') showToast('已拉取并变基', 'success');
         if (typeof refreshGitStatus === 'function') refreshGitStatus();
@@ -72,7 +72,7 @@
     if (!el) return;
     if (!cwd) { el.style.display = 'none'; return; }
     try {
-      const r = await window.LabCode.git.remoteStatus(cwd);
+      const r = await window.BubaiCode.git.remoteStatus(cwd);
       if (!r || !r.ok || !r.upstream) { el.style.display = 'none'; return; }
       const ahead = r.ahead || 0;
       const behind = r.behind || 0;

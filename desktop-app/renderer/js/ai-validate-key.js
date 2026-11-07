@@ -1,5 +1,5 @@
 // AI 供应商 API Key 内联校验（对齐 ChipCode validateKey）
-// 复用现有 window.LabCode.ai.checkConnection（main 侧真实打端点验证 Key），前端加绿/红反馈。
+// 复用现有 window.BubaiCode.ai.checkConnection（main 侧真实打端点验证 Key），前端加绿/红反馈。
 (function () {
   function debounce(fn, ms) {
     var t;
@@ -69,8 +69,8 @@
       var cfg = buildConfig(input);
       if (!cfg) return;
       setStatus(input, null);
-      if (window.LabCode && window.LabCode.ai && typeof window.LabCode.ai.checkConnection === 'function') {
-        window.LabCode.ai.checkConnection(cfg).then(function (res) {
+      if (window.BubaiCode && window.BubaiCode.ai && typeof window.BubaiCode.ai.checkConnection === 'function') {
+        window.BubaiCode.ai.checkConnection(cfg).then(function (res) {
           if (!res || !res.success) setStatus(input, false, friendly(res && res.error));
           else setStatus(input, true, res.model ? res.model : '');
         }).catch(function (e) {

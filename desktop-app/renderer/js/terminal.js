@@ -1,5 +1,5 @@
 /**
- * LabCode 终端管理器
+ * BubaiCode 终端管理器
  * 基于 xterm.js 实现终端界面
  */
 
@@ -11,7 +11,7 @@ class TerminalManager {
     this.xterm = null;
     this.fitAddon = null;
     this.container = null;
-    this.isElectron = window.LabCode && window.LabCode.terminal;
+    this.isElectron = window.BubaiCode && window.BubaiCode.terminal;
   }
 
   /**
@@ -152,7 +152,7 @@ class TerminalManager {
     
     if (this.isElectron) {
       // 使用 Electron 主进程终端服务
-      const result = await window.LabCode.terminal.create(options);
+      const result = await window.BubaiCode.terminal.create(options);
       if (result.success) {
         const id = result.terminal.id;
         const terminal = {
@@ -195,21 +195,21 @@ class TerminalManager {
 
           // 监听终端输入
           terminal.xterm.onData((data) => {
-            window.LabCode.terminal.write(id, data);
+            window.BubaiCode.terminal.write(id, data);
           });
 
           // 监听终端大小变化
           terminal.xterm.onResize(({ cols, rows }) => {
-            window.LabCode.terminal.resize(id, cols, rows);
+            window.BubaiCode.terminal.resize(id, cols, rows);
           });
 
           // 监听主进程终端数据输出
-          terminal.cleanupData = window.LabCode.terminal.onData(id, (data) => {
+          terminal.cleanupData = window.BubaiCode.terminal.onData(id, (data) => {
             terminal.xterm.write(data);
           });
 
           // 监听终端退出
-          terminal.cleanupExit = window.LabCode.terminal.onExit(id, ({ exitCode, signal }) => {
+          terminal.cleanupExit = window.BubaiCode.terminal.onExit(id, ({ exitCode, signal }) => {
             terminal.xterm.write(`\r\n\x1b[31m[进程已退出，退出码: ${exitCode}]\x1b[0m\r\n`);
           });
         }
@@ -259,9 +259,9 @@ class TerminalManager {
           fontFamily: 'Consolas, "Courier New", monospace',
           theme: { background: '#ffffff', foreground: '#333333', cursor: '#000000' }
         });
-        if (this.isElectron && window.LabCode && window.LabCode.terminal) {
-          terminal.xterm.onData((data) => window.LabCode.terminal.write(id, data));
-          terminal.cleanupData = window.LabCode.terminal.onData(id, (data) => terminal.xterm.write(data));
+        if (this.isElectron && window.BubaiCode && window.BubaiCode.terminal) {
+          terminal.xterm.onData((data) => window.BubaiCode.terminal.write(id, data));
+          terminal.cleanupData = window.BubaiCode.terminal.onData(id, (data) => terminal.xterm.write(data));
         }
         console.log(`[TerminalManager] 兜底创建 xterm 实例 for ${id}`);
       } catch(e) {
@@ -377,7 +377,7 @@ class TerminalManager {
     terminal.fallbackInput = input;
 
     // 欢迎信息
-    output.textContent = 'LabCode Terminal (降级模式)\n';
+    output.textContent = 'BubaiCode Terminal (降级模式)\n';
     output.textContent += '输入 help 查看可用命令\n\n';
 
     input.addEventListener('keydown', (e) => {
@@ -435,7 +435,7 @@ class TerminalManager {
         output.textContent += 'user\n';
         break;
       case 'version':
-        output.textContent += 'LabCode Terminal v1.0.0 (降级模式)\n';
+        output.textContent += 'BubaiCode Terminal v1.0.0 (降级模式)\n';
         break;
       default:
         output.textContent += `命令未找到: ${cmd}\n`;
@@ -479,7 +479,7 @@ class TerminalManager {
 
     // 通知主进程杀死终端
     if (this.isElectron) {
-      await window.LabCode.terminal.kill(id);
+      await window.BubaiCode.terminal.kill(id);
     }
 
     this.terminals.delete(id);
@@ -523,7 +523,7 @@ class TerminalManager {
    */
   async executeCommand(command, cwd, timeout = 30000) {
     if (this.isElectron) {
-      return await window.LabCode.terminal.execute(command, cwd, timeout);
+      return await window.BubaiCode.terminal.execute(command, cwd, timeout);
     } else {
       // 浏览器环境，返回模拟结果
       return {

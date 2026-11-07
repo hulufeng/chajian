@@ -1,8 +1,8 @@
 // schedule-panel.js — 定时任务面板（配合 main 的 schedule:* IPC）
 (function () {
   'use strict';
-  const LabCodeUI = (window.LabCodeUI = window.LabCodeUI || {});
-  const ipcInvoke = LabCodeUI.ipcInvoke, escapeHtml = LabCodeUI.escapeHtml, toast = LabCodeUI.toast;
+  const BubaiCodeUI = (window.BubaiCodeUI = window.BubaiCodeUI || {});
+  const ipcInvoke = BubaiCodeUI.ipcInvoke, escapeHtml = BubaiCodeUI.escapeHtml, toast = BubaiCodeUI.toast;
   let panelEl = null, built = false, editingId = null;
 
   function buildPanel() {
@@ -196,6 +196,6 @@
   async function discardPatch(runId, detail) { try { const res = await ipcInvoke('schedule:discardPatch', { runId }); toast('已丢弃补丁：' + (res && res.message ? res.message : runId), 'info'); detail.style.display = 'none'; panelEl.querySelector('#sched-list').style.display = 'block'; refreshSchedulePanel(); } catch (e) { toast('丢弃失败（依赖 main 实现 schedule:discardPatch）：' + e.message, 'error'); } }
 
   setInterval(function () { if (panelEl && panelEl.style.display !== 'none') refreshSchedulePanel(); }, 5000);
-  LabCodeUI.refreshSchedulePanel = refreshSchedulePanel;
+  BubaiCodeUI.refreshSchedulePanel = refreshSchedulePanel;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildPanel); else buildPanel();
 })();

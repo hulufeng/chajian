@@ -1,4 +1,4 @@
-// ============ LabCode Web 搜索模块（主进程）============
+// ============ BubaiCode Web 搜索模块（主进程）============
 // 真实联网搜索（Bing HTML 端点，无需 API Key）+ 网页抓取转 Markdown
 // 设计：SSRF 防护 / 15min 缓存 / 会话上限 / 超时熔断，与渲染端 WebTools 互补
 // 渲染端优先走本模块，失败时降级为 mock 并明确标注
@@ -67,7 +67,7 @@ async function rawFetch(url, timeoutMs) {
   try {
     const resp = await net.fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 LabCode/1.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 BubaiCode/1.0',
         'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
       },
