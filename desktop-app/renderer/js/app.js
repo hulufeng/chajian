@@ -15887,6 +15887,61 @@ function bindEvents() {
     });
   }
 
+  // ===== 仓库 Issues 列表（1:1 仿写 ChipCode git:issues:list：列出上游仓库 open issues；需 git 凭据 PAT） =====
+  async function renderGitIssues(cwd) {
+    const box = document.getElementById('git-issues');
+    const list = document.getElementById('git-issues-list');
+    const hint = document.getElementById('git-issues-hint');
+    const count = document.getElementById('git-issues-count');
+    if (!box || !list || !hint || !count) return;
+    const hide = () => { box.style.display = 'none'; };
+    if (!cwd || !window.LabCode.git || typeof window.LabCode.git.issuesList !== 'function') return hide();
+    // 先看本机是否已有该托管平台的 git 凭据（无则引导去「设置 → 服务商」添加 PAT）
+    let connectedHost = null;
+    try {
+      const cr = await window.LabCode.git.credentials.list();
+      if (cr && cr.success) {
+        const g = (cr.credentials || []).find(c => /github|gitee|gitlab/.test(String(c.host || '').toLowerCase()));
+        if (g) connectedHost = g.host;
+      }
+    } catch (e) {}
+    if (!connectedHost) {
+      box.style.display = '';
+      count.textContent = 'Issues';
+      list.innerHTML = '';
+      hint.innerHTML = '未连接代码托管平台。请先在「设置 → 服务商」添加 git 凭据（GitHub / Gitee / GitLab 的 Personal Access Token），即可在此列出仓库的 open Issues。';
+      return;
+    }
+    list.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);">加载中…</div>';
+    hint.textContent = '';
+    box.style.display = '';
+    let r;
+    try { r = await window.LabCode.git.issuesList(cwd, 20); } catch (e) { hide(); return; }
+    if (!r || !r.ok) {
+      count.textContent = 'Issues';
+      list.innerHTML = '';
+      hint.textContent = (r && r.message) || '无法加载 Issues';
+      return;
+    }
+    count.textContent = 'Issues · ' + (r.total || 0) + ' 个打开';
+    if (!r.issues || !r.issues.length) { list.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);">没有打开的 Issue</div>'; hint.textContent = ''; return; }
+    list.innerHTML = '';
+    r.issues.forEach(iss => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:11.5px;line-height:1.4;';
+      const num = document.createElement('span');
+      num.style.cssText = 'color:var(--text-tertiary);flex:0 0 auto;';
+      num.textContent = '#' + iss.number;
+      const link = document.createElement('a');
+      link.href = iss.url; link.target = '_blank'; link.rel = 'noopener';
+      link.style.cssText = 'color:var(--text-link);text-decoration:none;word-break:break-word;';
+      link.textContent = iss.title;
+      row.appendChild(num); row.appendChild(link);
+      list.appendChild(row);
+    });
+    hint.textContent = '';
+  }
+
   // ===== Git 面板 =====
   async function refreshGitStatus() {
     const cwd = state.projectPath;
@@ -15907,11 +15962,13 @@ function bindEvents() {
       showEmpty(true);
       const pend = document.getElementById('git-pending'); if (pend) pend.style.display = 'none';
       const cf = document.getElementById('git-conflicts'); if (cf) cf.style.display = 'none';
+      const iss = document.getElementById('git-issues'); if (iss) iss.style.display = 'none';
       return;
     }
     showEmpty(false);
     renderGitPendingOp(cwd);
     renderGitConflicts(cwd);
+    renderGitIssues(cwd);
     const r = await window.LabCode.git.status(cwd);
     if (!r.success) {
       // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口
@@ -16054,6 +16111,8 @@ function bindEvents() {
   function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   const gitRefreshBtn = document.getElementById('git-refresh');
   if (gitRefreshBtn) gitRefreshBtn.addEventListener('click', refreshGitStatus);
+  const gitIssuesRefreshBtn = document.getElementById('git-issues-refresh');
+  if (gitIssuesRefreshBtn) gitIssuesRefreshBtn.addEventListener('click', refreshGitStatus);
   const gitCommitBtn = document.getElementById('git-commit-btn');
   if (gitCommitBtn) gitCommitBtn.addEventListener('click', async () => {
     const msg = document.getElementById('git-commit-msg').value.trim();

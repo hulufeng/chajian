@@ -1208,6 +1208,68 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
+  // ===== Git 仓库 Issues 列表（1:1 仿写 ChipCode git:issues:list：解析 origin remote → provider → 取 gitCredentials 的 PAT → 调 GitHub/Gitee/GitLab API 拉 open issues）=====
+  function gitHostToProvider(host) {
+    const h = String(host || '').toLowerCase();
+    if (h === 'github.com' || h.endsWith('.github.com')) return 'github';
+    if (h === 'gitee.com' || h.endsWith('.gitee.com')) return 'gitee';
+    if (h === 'gitlab.com' || h.endsWith('.gitlab.com')) return 'gitlab';
+    return null;
+  }
+  function parseGitRemote(url) {
+    if (!url) return null;
+    const u = String(url).trim();
+    let m = /^[\w.-]+@([^:/]+)[:/](.+?)(?:\.git)?$/.exec(u);           // git@host:owner/repo  /  ssh://git@host/owner/repo
+    if (m) return { host: m[1], fullPath: m[2].replace(/^\/+/, '') };
+    m = /^https?:\/\/([^\/@]+)(?::\d+)?\/([^?]+?)(?:\.git)?$/.exec(u);    // https://host/owner/repo
+    if (m) return { host: m[1], fullPath: m[2] };
+    return null;
+  }
+  const GIT_API_BASE = { github: 'https://api.github.com', gitee: 'https://gitee.com/api/v5', gitlab: 'https://gitlab.com/api/v4' };
+  ipcMain.handle('git:issues:list', async (_, cwd, limit) => {
+    try {
+      if (!cwd) return { ok: false, error: 'no-cwd', message: '未选择项目' };
+      const ru = await runGit(cwd, ['remote', 'get-url', 'origin']);
+      if (!ru.ok || !ru.stdout.trim()) return { ok: false, error: 'no-remote', message: '仓库没有 origin 远程，无法定位 Issues' };
+      const parsed = parseGitRemote(ru.stdout);
+      if (!parsed) return { ok: false, error: 'unparsable', message: '无法解析远程地址：' + ru.stdout.trim() };
+      const provider = gitHostToProvider(parsed.host);
+      if (!provider) return { ok: false, error: 'unsupported-host', message: '不支持的托管平台：' + parsed.host + '（仅支持 GitHub / Gitee / GitLab）' };
+      const cred = (config.gitCredentials || []).find(c => c.host === parsed.host.toLowerCase());
+      if (!cred || !cred.secret) return { ok: false, error: 'not-connected', host: parsed.host, message: '未连接 ' + parsed.host + '，请先在「设置 → 服务商」添加 git 凭据（PAT）' };
+      const n = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+      const base = GIT_API_BASE[provider];
+      let url, headers = { Accept: 'application/json' };
+      if (provider === 'github') {
+        url = base + '/repos/' + parsed.fullPath + '/issues?state=open&per_page=' + n;
+        headers.Authorization = 'Bearer ' + cred.secret;
+        headers.Accept = 'application/vnd.github+json';
+      } else if (provider === 'gitlab') {
+        url = base + '/projects/' + encodeURIComponent(parsed.fullPath) + '/issues?state=opened&per_page=' + n;
+        headers['PRIVATE-TOKEN'] = cred.secret;
+      } else { // gitee
+        url = base + '/repos/' + parsed.fullPath + '/issues?state=open&per_page=' + n;
+        headers.Authorization = 'token ' + cred.secret;
+      }
+      const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+      const text = await resp.text();
+      if (!resp.ok) { let msg = 'HTTP ' + resp.status; try { const j = JSON.parse(text); if (j && j.message) msg = j.message; } catch (e) {} return { ok: false, error: 'api-error', message: msg }; }
+      let data; try { data = JSON.parse(text); } catch (e) { return { ok: false, error: 'bad-json', message: '返回数据解析失败' }; }
+      const arr = Array.isArray(data) ? data : [];
+      const issues = arr.filter(i => !i.pull_request).map(i => ({
+        number: i.number || i.iid,
+        title: i.title,
+        url: i.html_url || i.web_url || ('https://' + parsed.host + '/' + parsed.fullPath + '#' + (i.number || i.iid)),
+        state: i.state,
+        user: (i.user && (i.user.login || i.user.username)) || '',
+        comments: i.comments || 0,
+        labels: (i.labels || []).map(l => l.name || l),
+        createdAt: i.created_at || i.created_at
+      }));
+      return { ok: true, issues, provider, host: parsed.host, repo: parsed.fullPath, total: issues.length };
+    } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
+  });
+
   // ===== Python 解释器管理（TrieCode interpreters:* 简版：detect/list/setActive/runPython）=====
   async function probeCmd(cmd, args, timeoutMs) {
     return new Promise((resolve) => {

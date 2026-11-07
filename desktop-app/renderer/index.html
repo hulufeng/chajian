@@ -613,6 +613,15 @@
           <div class="git-conflicts-title" id="git-conflicts-title" style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;"></div>
           <div id="git-conflicts-list" style="display:flex;flex-direction:column;gap:6px;"></div>
         </div>
+        <!-- 仓库 Issues 列表（1:1 仿写 ChipCode git:issues:list：列出上游仓库 open issues，需 git 凭据 PAT） -->
+        <div class="git-issues" id="git-issues" style="display:none;padding:10px 12px;border-bottom:1px solid var(--border-color);background:rgba(35,134,54,0.07);">
+          <div id="git-issues-title" style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span id="git-issues-count">Issues</span>
+            <button class="icon-btn" id="git-issues-refresh" title="刷新 Issues"><svg class="icon"><use href="#icon-refresh"></use></svg></button>
+          </div>
+          <div id="git-issues-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+          <div id="git-issues-hint" style="font-size:11px;color:var(--text-tertiary);line-height:1.6;"></div>
+        </div>
         <!-- 无项目空态（1:1 对齐 ChipCode 源代码管理空状态：还没有打开项目 + 打开/克隆入口） -->
         <div class="scm-empty" id="git-empty" style="display:none;padding:16px 14px;">
           <h3 class="scm-empty-title">还没有打开项目</h3>
