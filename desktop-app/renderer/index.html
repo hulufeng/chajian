@@ -657,9 +657,19 @@
               <button class="btn btn-secondary btn-sm git-ai-btn" id="git-ai-commit-btn" title="AI 生成提交信息并直接提交" style="font-size: 11.5px;">AI 提交（生成并提交）</button>
               <button class="btn btn-secondary btn-sm git-ai-btn" id="git-ai-resolve-btn" title="用 AI 自动解决合并冲突" style="font-size: 11.5px;">AI 解决冲突</button>
               <button class="btn btn-secondary btn-sm git-ai-btn" id="git-ai-pr-btn" title="根据提交历史生成 PR 标题与描述" style="font-size: 11.5px;">AI 生成 PR 描述</button>
+              <button class="btn btn-secondary btn-sm" id="git-pr-toggle-btn" title="创建 Pull Request" style="font-size: 11.5px;">创建 PR</button>
             </div>
           </details>
           <textarea id="git-pr-desc" placeholder="AI 生成的 PR 标题与描述将显示在这里…" style="display:none;width:100%;height:90px;box-sizing:border-box;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:7px 9px;border-radius:6px;font-size: 11.5px;resize:vertical;font-family:inherit;"></textarea>
+          <div id="git-pr-form" style="display:none;flex-direction:column;gap:6px;margin-top:8px;border-top:1px solid var(--border-color);padding-top:8px;">
+            <input id="git-pr-title" placeholder="PR 标题（留空则用上方描述首行）" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:6px;font-size:11.5px;">
+            <div style="display:flex;gap:6px;">
+              <select id="git-pr-base" style="flex:1;min-width:0;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:6px;font-size:11.5px;"><option value="">base 分支…</option></select>
+              <select id="git-pr-head" style="flex:1;min-width:0;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);padding:6px 8px;border-radius:6px;font-size:11.5px;"><option value="">head 分支…</option></select>
+            </div>
+            <button class="btn btn-primary btn-sm" id="git-pr-submit-btn" style="font-size:11.5px;">提交创建 PR</button>
+            <div id="git-pr-status" style="font-size:11px;color:var(--text-tertiary);line-height:1.6;"></div>
+          </div>
         </div>
       </div>
 

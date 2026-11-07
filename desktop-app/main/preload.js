@@ -276,7 +276,8 @@ contextBridge.exposeInMainWorld('LabCode', {
     aiCommit: (cwd) => ipcRenderer.invoke('git:aiCommit', cwd),
     aiResolveConflicts: (cwd) => ipcRenderer.invoke('git:aiResolveConflicts', cwd),
     aiPrDescription: (cwd) => ipcRenderer.invoke('git:aiPrDescription', cwd),
-    issuesList: (cwd, limit) => ipcRenderer.invoke('git:issues:list', cwd, limit)
+    issuesList: (cwd, limit) => ipcRenderer.invoke('git:issues:list', cwd, limit),
+    prCreate: (cwd, opts) => ipcRenderer.invoke('git:pr:create', cwd, opts)
   },
 
   // Hermes: 记忆搜索 + Webhook + SSH

@@ -16316,6 +16316,56 @@ function bindEvents() {
     } catch (e) { showToast('生成异常: ' + e.message, 'error'); }
     finally { gitAiPrBtn.disabled = false; }
   });
+  // 创建 PR：展开表单并填充 base/head 分支
+  const gitPrToggleBtn = document.getElementById('git-pr-toggle-btn');
+  if (gitPrToggleBtn) gitPrToggleBtn.addEventListener('click', async () => {
+    const form = document.getElementById('git-pr-form');
+    if (!form) return;
+    const show = form.style.display !== 'flex';
+    form.style.display = show ? 'flex' : 'none';
+    if (!show) return;
+    const cwd = state.projectPath;
+    const headSel = document.getElementById('git-pr-head');
+    const baseSel = document.getElementById('git-pr-base');
+    if (cwd && headSel && baseSel && headSel.options.length <= 1) {
+      try {
+        const br = await window.LabCode.git.branches(cwd);
+        if (br && br.success && Array.isArray(br.branches)) {
+          [headSel, baseSel].forEach(sel => { sel.innerHTML = ''; br.branches.forEach(b => { const o = document.createElement('option'); o.value = b; o.textContent = b; sel.appendChild(o); }); if (b === br.current) headSel.value = b; });
+          if (!baseSel.value) baseSel.value = (br.branches.includes('main') ? 'main' : (br.branches.includes('master') ? 'master' : (br.branches[0] || '')));
+        }
+      } catch (e) {}
+    }
+  });
+  const gitPrSubmitBtn = document.getElementById('git-pr-submit-btn');
+  if (gitPrSubmitBtn) gitPrSubmitBtn.addEventListener('click', async () => {
+    const cwd = state.projectPath;
+    if (!cwd) { showToast('请先打开项目', 'warn'); return; }
+    const titleEl = document.getElementById('git-pr-title');
+    const baseEl = document.getElementById('git-pr-base');
+    const headEl = document.getElementById('git-pr-head');
+    const descEl = document.getElementById('git-pr-desc');
+    const statusEl = document.getElementById('git-pr-status');
+    const descText = descEl ? descEl.value.trim() : '';
+    let title = titleEl ? titleEl.value.trim() : '';
+    if (!title && descText) { const m = descText.match(/^#\s*(.+?)\s*$/m); title = m ? m[1] : descText.split('\n')[0].trim(); }
+    const opts = { title, body: descText, base: baseEl ? baseEl.value : '', head: headEl ? headEl.value : '' };
+    if (statusEl) statusEl.textContent = '创建中…';
+    gitPrSubmitBtn.disabled = true;
+    try {
+      const r = await window.LabCode.git.prCreate(cwd, opts);
+      if (r && r.ok) {
+        if (statusEl) { statusEl.innerHTML = '✅ 已创建 PR' + (r.number ? (' #' + r.number) : '') + '：<a href="' + r.url + '" target="_blank" rel="noopener" style="color:var(--text-link);">在浏览器打开</a>'; }
+        if (r.url && window.LabCode.shell && window.LabCode.shell.openExternal) window.LabCode.shell.openExternal(r.url);
+        else if (r.url && window.open) window.open(r.url, '_blank');
+        showToast('PR 创建成功', 'success');
+      } else {
+        if (statusEl) statusEl.textContent = (r && r.message) || '创建失败';
+        showToast('创建失败: ' + ((r && r.message) || ''), 'error');
+      }
+    } catch (e) { if (statusEl) statusEl.textContent = '异常: ' + e.message; showToast('创建异常: ' + e.message, 'error'); }
+    finally { gitPrSubmitBtn.disabled = false; }
+  });
 
   // ===== capabilities 路由:UI 按钮统一入口(对齐 TrieCode runCapability)=====
   // 编译/烧录/串口监视等不再直调插件工具或硬编码 terminal 命令,

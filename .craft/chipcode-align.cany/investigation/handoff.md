@@ -14,7 +14,7 @@
 6) Git 冲突区块 + 逐文件 AI 合并：见上「功能 4 更正 + 落地」。
 源码提交至 c51c519(功能3) / 7490eda(功能4/5) / 本功能待提交。交接文档 §14.12/§14.13/§14.14。H1 supported、fnd_1..15、unk_831150…、handoff 在 .craft/chipcode-align.cany。中文 Git i18n 全量 D:/work/tmp/ca_git_i18n_zh.txt(420 条/20 组)。
 
-【下一轮功能顺序】git 剩余(review/rejectHunk/pr:create/remoteStatus/probe 等，issues:list 已完成见 fnd_16)、ai(40 通道)、plugins(10)、board+core+lib(15)、devicePanel(3)、settings 分组、schedule(16)、agents(12)。每个功能：node D:/work/tmp/ca_locate.mjs 定位 renderer → node D:/work/tmp/ca_main_locate.mjs 看主进程 → 写差异表 → 仿写 → 复制 asar 镜像 → 部署 → CDP 验证 → core-finding-record。
+【下一轮功能顺序】git 剩余(review/rejectHunk/remoteStatus/probe/pullRebase 等，issues:list 见 fnd_16、pr:create 见 fnd_17)、ai(40 通道，子代理确认多数已等价)、plugins(10)、board+core+lib(15)、devicePanel(3)、settings 分组、schedule(16)、agents(12)。每个功能：node D:/work/tmp/ca_locate.mjs 定位 renderer → node D:/work/tmp/ca_main_locate.mjs 看主进程 → 写差异表 → 仿写 → 复制 asar 镜像 → 部署 → CDP 验证 → core-finding-record。
 
 【陷阱】
 - craft-anything MCP 自检超时，用 CLI 绝对路径(--deep --project)，--json 写文件 @路径。

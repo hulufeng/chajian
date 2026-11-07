@@ -1270,6 +1270,64 @@ function setupIPC() {
     } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
   });
 
+  // ===== 创建 Pull Request（1:1 仿写 ChipCode git:pr:create：解析 origin remote → provider → gitCredentials 取 PAT → 调 GitHub/Gitee/GitLab API 建 PR；无 PAT 回退 gh/glab CLI）=====
+  ipcMain.handle('git:pr:create', async (_, cwd, opts) => {
+    try {
+      opts = opts || {};
+      if (!cwd) return { ok: false, error: 'no-cwd', message: '未选择项目' };
+      const ru = await runGit(cwd, ['remote', 'get-url', 'origin']);
+      if (!ru.ok || !ru.stdout.trim()) return { ok: false, error: 'no-remote', message: '仓库没有 origin 远程，无法创建 PR' };
+      const parsed = parseGitRemote(ru.stdout);
+      if (!parsed) return { ok: false, error: 'unparsable', message: '无法解析远程地址：' + ru.stdout.trim() };
+      const provider = gitHostToProvider(parsed.host);
+      if (!provider) return { ok: false, error: 'unsupported-host', message: '不支持的托管平台：' + parsed.host + '（仅支持 GitHub / Gitee / GitLab）' };
+      const head = (opts.head && opts.head.trim()) || (await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim();
+      if (!head || head === 'HEAD') return { ok: false, error: 'no-branch', message: '无法确定当前分支' };
+      let base = (opts.base && opts.base.trim()) || null;
+      if (!base) { const cands = ['origin/main', 'origin/master', 'main', 'master']; for (const c of cands) { const rr = await runGit(cwd, ['rev-parse', '--verify', c]); if (rr.ok && rr.stdout.trim()) { base = c.replace(/^origin\//, ''); break; } } }
+      if (!base) base = 'main';
+      const title = (opts.title && opts.title.trim()) || '';
+      const body = (opts.body != null ? String(opts.body) : '') + '';
+      if (!title) return { ok: false, error: 'no-title', message: 'PR 标题不能为空' };
+      const cred = (config.gitCredentials || []).find(c => c.host === parsed.host.toLowerCase());
+      const baseApi = GIT_API_BASE[provider];
+      if (cred && cred.secret) {
+        let url, headers = { Accept: 'application/json' }, payload;
+        if (provider === 'github') {
+          url = baseApi + '/repos/' + parsed.fullPath + '/pulls';
+          headers.Authorization = 'Bearer ' + cred.secret; headers.Accept = 'application/vnd.github+json';
+          payload = { title, body, head, base };
+        } else if (provider === 'gitlab') {
+          url = baseApi + '/projects/' + encodeURIComponent(parsed.fullPath) + '/merge_requests';
+          headers['PRIVATE-TOKEN'] = cred.secret;
+          payload = { title, description: body, source_branch: head, target_branch: base };
+        } else { // gitee
+          url = baseApi + '/repos/' + parsed.fullPath + '/pulls';
+          headers.Authorization = 'token ' + cred.secret;
+          payload = { title, body, head, base };
+        }
+        const resp = await fetch(url, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(payload), signal: AbortSignal.timeout(15000) });
+        const text = await resp.text();
+        if (!resp.ok) { let msg = 'HTTP ' + resp.status; try { const j = JSON.parse(text); if (j && j.message) msg = j.message; } catch (e) {} return { ok: false, error: 'api-error', message: msg }; }
+        let data; try { data = JSON.parse(text); } catch (e) { return { ok: false, error: 'bad-json', message: '返回数据解析失败' }; }
+        const prUrl = data.html_url || data.web_url || ('https://' + parsed.host + '/' + parsed.fullPath + '/pull/' + (data.number || data.iid));
+        return { ok: true, url: prUrl, number: data.number || data.iid, provider };
+      }
+      // 无 PAT → 回退 gh / glab CLI
+      const spawnSync = require('child_process').spawnSync;
+      if (provider === 'github') {
+        const gh = spawnSync('gh', ['pr', 'create', '--title', title, '--body', body, '--base', base, '--head', head], { cwd, encoding: 'utf8' });
+        if (gh.status === 0 && gh.stdout.trim()) return { ok: true, url: gh.stdout.trim().split('\n')[0], number: null, provider, cli: true };
+        return { ok: false, error: 'cli-failed', message: (gh.stderr || '').trim() || 'gh pr create 失败（需安装并登录 gh）' };
+      } else if (provider === 'gitlab') {
+        const gl = spawnSync('glab', ['mr', 'create', '--title', title, '--description', body, '--source-branch', head, '--target-branch', base], { cwd, encoding: 'utf8' });
+        if (gl.status === 0) return { ok: true, url: (gl.stdout.trim().split('\n').pop() || ''), provider, cli: true };
+        return { ok: false, error: 'cli-failed', message: (gl.stderr || '').trim() || 'glab mr create 失败（需安装并登录 glab）' };
+      }
+      return { ok: false, error: 'not-connected', host: parsed.host, message: '未连接 ' + parsed.host + '，请先在「设置 → 服务商」添加 git 凭据（PAT），或安装并登录 gh/glab CLI' };
+    } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
+  });
+
   // ===== Python 解释器管理（TrieCode interpreters:* 简版：detect/list/setActive/runPython）=====
   async function probeCmd(cmd, args, timeoutMs) {
     return new Promise((resolve) => {
