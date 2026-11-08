@@ -49,8 +49,9 @@
   --surface-active: rgba(255, 255, 255, 0.11);
 
   --bg-primary: var(--surface-1);
-  --bg-secondary: var(--surface-0);
-  --bg-tertiary: var(--surface-2);
+  /* 背景层级对齐 ChipCode：secondary=surface-2 / tertiary=surface-3 */
+  --bg-secondary: var(--surface-2);
+  --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
   --bg-selected: rgba(59, 130, 246, 0.14);
   --bg-active: var(--surface-active);            /* 组件引用但未定义，补齐 */
@@ -62,13 +63,14 @@
   --border-dark: #3a4450;
   --border-color: var(--border);                  /* 组件引用但未定义，补齐 */
 
-  /* ④ 文字（对齐 TrieCode --text / -dim / -muted） */
+  /* ④ 文字（对齐 ChipCode --text-strong / --text / -2 / -3） */
   --text: #e6edf3;
   --text-primary: #e6edf3;
   --text-secondary: #9da7b3;
-  --text-tertiary: #9aa2ad;
+  --text-tertiary: #6e7681;      /* ChipCode --text-3 暗色 #6e7681（原 #9aa2ad 偏亮一档） */
   --text-quaternary: #8b949e;
   --text-inverse: #0d1117;
+  --text-strong: #f0f6fc;        /* ChipCode 暗色 --text-strong */
 
   /* ⑤ 状态语义（对齐 TrieCode） */
   --success: #4ade80;
@@ -79,6 +81,15 @@
   --warning-bg: rgba(251, 191, 36, 0.12);
   --info: #60a5fa;
   --info-bg: rgba(96, 165, 250, 0.16);
+  /* ChipCode 兼容色 token（暗色，0 引用，供后续组件安全使用） */
+  --ai-color: var(--accent);
+  --ai-hover: var(--primary-hover);
+  --ai-soft: var(--primary-light);
+  --ai-glow: rgba(59, 130, 246, 0.20);
+  --accent-glow: rgba(59, 130, 246, 0.22);
+  --success-soft: rgba(74, 222, 128, 0.12);
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --error-soft: rgba(248, 113, 113, 0.12);
 
   /* ⑥ 结构尺寸（对齐 TrieCode --toolbar-height: 36px） */
   --titlebar-height: 36px;
@@ -112,7 +123,7 @@
   --bg-elevated: var(--surface-2);
   --text-color: var(--text-primary);
   --radius: 8px;
-  --text-strong: var(--text-primary);
+  /* --text-strong 已在 ④ 按 ChipCode 定义，勿在此覆盖 */
   --accent-color: var(--accent);
   --text-2: var(--text-secondary);
   --text-3: var(--text-tertiary);
@@ -135,8 +146,9 @@
   --surface-active: rgba(15, 23, 42, 0.09);
 
   --bg-primary: var(--surface-1);
-  --bg-secondary: var(--surface-0);
-  --bg-tertiary: var(--surface-2);
+  /* 背景层级对齐 ChipCode（与暗色同构） */
+  --bg-secondary: var(--surface-2);
+  --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
   --bg-selected: rgba(37, 99, 235, 0.10);
   --bg-active: var(--surface-active);
@@ -153,6 +165,8 @@
   --text-tertiary: #9aa2ad;
   --text-quaternary: #9aa2ad;
   --text-inverse: #ffffff;
+  --text-strong: #16181d;                        /* ChipCode 亮色 --text-strong（覆盖 :root 暗色值） */
+  --text-muted: var(--text-tertiary);            /* ChipCode --text-muted 别名 */
   --brand-ink: #17171A;                          /* ChipCode 亮色主题品牌 logo 墨黑 */
 
   --success: #16a34a;
@@ -163,6 +177,15 @@
   --warning-bg: rgba(217, 119, 6, 0.10);
   --info: #2563eb;
   --info-bg: rgba(37, 99, 235, 0.10);
+  /* ChipCode 兼容色 token（亮色） */
+  --ai-color: var(--accent);
+  --ai-hover: var(--primary-hover);
+  --ai-soft: var(--primary-light);
+  --ai-glow: rgba(37, 99, 235, 0.14);
+  --accent-glow: rgba(37, 99, 235, 0.15);
+  --success-soft: rgba(22, 163, 74, 0.10);
+  --warning-soft: rgba(217, 119, 6, 0.10);
+  --error-soft: rgba(220, 38, 38, 0.10);
 
   --toolbar-height: 36px;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
