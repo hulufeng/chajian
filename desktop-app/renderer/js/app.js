@@ -6207,7 +6207,7 @@ function agentMemoryRecall(mem, errorText, limit = 2) {
 }
 
 class AgentRunner {
-  constructor({ onStream, onToolStep, onPlanRequest, onThinking, onToolFlow, onDiffSummary, onWorkStatus, mode='default', trackerSession='default' }) {
+  constructor({ onStream, onToolStep, onPlanRequest, onThinking, onToolFlow, onDiffSummary, onWorkStatus, mode='default', trackerSession='default', sessionId=null }) {
     this.trackerSession = trackerSession; // 文件回滚会话隔离（定时任务桥用独立会话收集补丁）
     this.onStream = onStream;
     this.onToolStep = onToolStep;
@@ -6242,7 +6242,7 @@ class AgentRunner {
     // ===== 2026-09-14 对齐 TrieCode 会话持久化：workLog 全程记录 + 会话 JSON 落盘 =====
     this.workLog = [];
     // Phase B：会话身份统一由 SessionStore 分配（消除此前 state.currentSessionId 死引用 + 两套 id 分裂）
-    this.sessionId = (window.SessionStore && typeof window.SessionStore.ensureCurrent === 'function'
+    this.sessionId = sessionId || (window.SessionStore && typeof window.SessionStore.ensureCurrent === 'function'
       ? window.SessionStore.ensureCurrent() : null) || state.currentSessionId || ('session_' + Date.now().toString(36));
     this.sessionTitle = '';
     this._persistTimer = null;
@@ -9117,11 +9117,16 @@ function showPlanApproval(plan) {
 }
 
 // 创建（或复用）AI 代理（含完整回调：流式上屏 / 代码块实时写编辑器 / 工具卡 / 权限卡）
-function ensureAgent() {
-  if (state.agent) return state.agent;
-  state.agent = new AgentRunner({
+function ensureAgent(pSessionId) {
+  state.agents = state.agents || {};
+  const sid = pSessionId || state.currentSessionId;
+  if (sid && state.agents[sid]) { if (!pSessionId) state.agent = state.agents[sid]; return state.agents[sid]; }
+  const agent = new AgentRunner({
     mode: state.mode,
+    sessionId: sid || undefined,
     onStream: ({ content, done }) => {
+      // 阶段①：仅前台会话上屏，后台会话静默累积（消息仍存 this.messages 并最终持久化）
+      if (sid && state.currentSessionId && state.currentSessionId !== sid) return;
       if (!currentAIBubble) {
         currentAIBubble = addChatMessage('ai', '');
         currentAIStream = '';
@@ -9386,15 +9391,16 @@ async function handleAISend() {
   streamCodeBlocks = new Set();
   streamLastCodeEnd = 0;
 
-  ensureAgent();
-  state.agent.mode = state.mode;
+  const agent = ensureAgent(state.currentSessionId);
+  state.agent = agent;
+  agent.mode = state.mode;
   // 把待发图片附件交给 agent（run() 会挂到本次 user 消息上，_buildMessages 转多模态 parts）
   if (pendingImages.length) {
-    state.agent._pendingAttachments = pendingImages;
+    agent._pendingAttachments = pendingImages;
     window._aiPendingImages = [];
     renderAiAttachPreview();
   }
-  await state.agent.run(finalText);
+  await agent.run(finalText);
   
   // 任务完成后，延迟隐藏计划进度面板
   setTimeout(() => {
@@ -13541,18 +13547,19 @@ function bindEvents() {
         welcome.style.display = 'none';
       }
       // Phase B 切换语义修复：重建 agent 身份 / 恢复 plan / 隔离上一会话的文件变更 turn 历史
-      state.agent = null;
       state.currentSessionId = id;
       state.currentPlan = s.plan || null;
       S.setCurrent(id);
       window._chatLog = [];
       (s.messages || []).forEach(function(m){ addChatMessage(m.role === 'assistant' ? 'ai' : 'user', m.content); });
-      ensureAgent();
-      if (state.agent) {
-        state.agent.messages = (s.messages || []).map(function(m){ return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' }; });
-        state.agent.sessionId = id;
-        state.agent.sessionTitle = s.title || '';
-        if (Array.isArray(s.workLog)) state.agent.workLog = s.workLog.slice();
+      const agent = ensureAgent(id);
+      state.agent = agent;
+      if (agent && !agent._fromStore) {
+        agent.messages = (s.messages || []).map(function(m){ return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' }; });
+        agent.sessionId = id;
+        agent.sessionTitle = s.title || '';
+        if (Array.isArray(s.workLog)) agent.workLog = s.workLog.slice();
+        agent._fromStore = true;
       }
       // Phase B+：恢复该会话自己的 turn 批次（此前是清空，导致跨会话串味且撤销历史丢失）
       const ft = window.BubaiCodeUI && window.BubaiCodeUI.fileTracker;
