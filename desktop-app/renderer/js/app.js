@@ -11900,14 +11900,47 @@ function bindEvents() {
     } else {
       body += '<div style="margin-bottom:12px;font-size:11px;color:var(--text-secondary);">该插件通过宿主内部服务 / MCP 工作，无需本机命令行工具。</div>';
     }
-    // 工具清单
-    body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin:10px 0 6px;">工具 ' + tools.length + '</div>';
+    // 工具清单（对齐 ChipCode plugin.panel 命令按钮：用户可主动运行插件工具）
+    body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin:10px 0 6px;">工具 ' + tools.length + ' <span style="font-weight:400;color:var(--text-tertiary);font-size:10.5px;">· 点「运行」可直接使用</span></div>';
     body += tools.length
-      ? '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;">' + tools.map(t =>
-          '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border-color);">' +
-          '<code style="font-size:11px;color:var(--text-primary);flex:1;">' + escapeHtml(String(t.name).replace('plugin_' + pluginId + '_', '')) + '</code>' +
-          '<span style="font-size:10px;color:var(--text-tertiary);">' + escapeHtml(String(t.category || t.description || '').slice(0, 46)) + '</span></div>').join('') + '</div>'
+      ? '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;">' + tools.map((t, ti) => {
+          const short = String(t.name).replace('plugin_' + pluginId + '_', '');
+          const schema = t.parameters || { type: 'object', properties: {} };
+          const props = schema.properties || {};
+          const keys = Object.keys(props);
+          const required = Array.isArray(schema.required) ? schema.required : [];
+          const fields = keys.length ? keys.map(k => {
+            const p = props[k] || {};
+            const label = escapeHtml(String(p.description || k)) + (required.includes(k) ? ' <span style="color:var(--error);">*</span>' : '');
+            const ph = escapeHtml(String(p.default !== undefined ? p.default : (p.type === 'number' ? '0' : '')));
+            const inp = (p.type === 'boolean')
+              ? '<input type="checkbox" data-tkey="' + escapeHtml(k) + '" data-ttype="boolean" style="width:auto;">'
+              : '<input type="' + (p.type === 'number' ? 'number' : 'text') + '" data-tkey="' + escapeHtml(k) + '" data-ttype="' + (p.type === 'number' ? 'number' : 'string') + '" placeholder="' + ph + '" style="flex:1;min-width:0;background:var(--bg-color);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 7px;border-radius:5px;font-size:11px;font-family:Consolas,monospace;">';
+            return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="font-size:10.5px;color:var(--text-secondary);min-width:96px;">' + label + '</span>' + inp + '</div>';
+          }).join('') : '<div style="font-size:10.5px;color:var(--text-tertiary);">该工具无需参数</div>';
+          const danger = String(t.category || '').toLowerCase() === 'execute';
+          return '<div class="plgd-tool" style="border-bottom:1px solid var(--border-color);">' +
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">' +
+              '<code style="font-size:11px;color:var(--text-primary);flex:1;">' + escapeHtml(short) + '</code>' +
+              '<span style="font-size:10px;color:var(--text-tertiary);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(String(t.description || '')) + '">' + escapeHtml(String(t.description || t.category || '').slice(0, 46)) + '</span>' +
+              '<button class="btn btn-secondary btn-sm plgd-run" data-ti="' + ti + '" style="padding:2px 8px;font-size:10px;flex-shrink:0;">运行</button>' +
+            '</div>' +
+            '<div class="plgd-form" id="plgd-form-' + ti + '" style="display:none;padding:9px 10px;background:var(--surface-2);">' +
+              (danger ? '<div style="font-size:10.5px;color:var(--warning,#d97706);margin-bottom:7px;">该工具会执行操作 / 修改文件，请确认参数后再点执行。</div>' : '') +
+              fields +
+              '<div style="display:flex;gap:6px;margin-top:8px;">' +
+                '<button class="btn btn-primary btn-sm plgd-exec" data-ti="' + ti + '" style="font-size:10.5px;">执行</button>' +
+                '<button class="btn btn-secondary btn-sm plgd-cancel" data-ti="' + ti + '" style="font-size:10.5px;">取消</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>'
       : '<div style="font-size:11px;color:var(--text-tertiary);">该插件未注册工具（可能仅记录、未安装插件包）。</div>';
+    // 执行结果区
+    body += '<div id="plgd-result" style="display:none;margin-top:10px;border-top:1px solid var(--border-color);padding-top:10px;">' +
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">执行结果 <span id="plgd-result-name" style="font-weight:400;color:var(--text-tertiary);"></span></div>' +
+      '<pre id="plgd-result-body" style="max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:10.5px;line-height:1.6;font-family:Consolas,monospace;background:var(--surface-2);border:1px solid var(--border-color);border-radius:6px;padding:9px;margin:0;color:var(--text-primary);"></pre>' +
+    '</div>';
     // 能力
     if (caps.length) body += '<div style="font-size:11px;color:var(--text-secondary);margin-top:9px;">能力：' + caps.map(c => '<span style="display:inline-block;padding:1px 7px;margin:0 4px 4px 0;background:rgba(37,99,235,.12);color:var(--primary);border-radius:4px;">' + escapeHtml(String(c)) + '</span>').join('') + '</div>';
     // manifest 声明的外部依赖（deps:install 惰性下载）
@@ -11943,6 +11976,73 @@ function bindEvents() {
     wrap.querySelector('#plgd-close').addEventListener('click', close);
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     wrap.querySelector('#plgd-reprobe').addEventListener('click', async () => { await refreshPluginRuntimeProbe(true); close(); showPluginDetail(pluginId); renderPluginsList(); });
+    // 工具运行（对齐 ChipCode plugin.panel 命令按钮 → command:invoke）
+    const showResult = (name, text, ok) => {
+      const boxEl = wrap.querySelector('#plgd-result');
+      const nm = wrap.querySelector('#plgd-result-name');
+      const bd = wrap.querySelector('#plgd-result-body');
+      if (!boxEl || !bd) return;
+      boxEl.style.display = '';
+      if (nm) nm.textContent = '· ' + name + (ok ? '' : '（失败）');
+      bd.textContent = String(text === undefined || text === null ? '(无返回)' : (typeof text === 'object' ? JSON.stringify(text, null, 2) : text)).slice(0, 6000);
+      bd.style.color = ok ? 'var(--text-primary)' : 'var(--error, #ef4444)';
+    };
+    wrap.querySelectorAll('.plgd-run').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ti = btn.dataset.ti;
+        wrap.querySelectorAll('.plgd-form').forEach(f => { f.style.display = 'none'; });
+        const form = wrap.querySelector('#plgd-form-' + ti);
+        if (form) form.style.display = '';
+      });
+    });
+    wrap.querySelectorAll('.plgd-cancel').forEach(btn => {
+      btn.addEventListener('click', () => { const f = wrap.querySelector('#plgd-form-' + btn.dataset.ti); if (f) f.style.display = 'none'; });
+    });
+    wrap.querySelectorAll('.plgd-exec').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ti = Number(btn.dataset.ti);
+        const def = tools[ti];
+        if (!def) return;
+        // 依赖缺失先拦截，避免用户点了才看到 ENOENT
+        const dh = pluginDepsHint(pluginId);
+        if (dh && !dh.ready) {
+          showResult(String(def.name).replace('plugin_' + pluginId + '_', ''), '本机缺少：' + dh.missing.join('、') + '。请先安装并加入 PATH，再点「重新检测依赖」。', false);
+          return;
+        }
+        if (!active) {
+          showResult(String(def.name).replace('plugin_' + pluginId + '_', ''), '该插件已停用，请先在详情页点「启用插件」。', false);
+          return;
+        }
+        // 收集参数
+        const args = {};
+        const form = wrap.querySelector('#plgd-form-' + ti);
+        if (form) form.querySelectorAll('[data-tkey]').forEach(inp => {
+          const k = inp.dataset.tkey, ty = inp.dataset.ttype;
+          let v = ty === 'boolean' ? inp.checked : (ty === 'number' ? (inp.value === '' ? '' : Number(inp.value)) : inp.value);
+          if (v === '' || v === undefined) return;
+          args[k] = v;
+        });
+        // 必填参数校验：缺了直接提示，不丢给工具报晦涩的底层错误
+        const schema = def.parameters || {};
+        const reqKeys = Array.isArray(schema.required) ? schema.required : [];
+        const missingKeys = reqKeys.filter(k => !(k in args) || args[k] === '');
+        if (missingKeys.length) {
+          showResult(String(def.name).replace('plugin_' + pluginId + '_', ''), '缺少必填参数：' + missingKeys.join('、') + '。请展开「运行」填写后再执行。', false);
+          return;
+        }
+        const oldLabel = btn.textContent;
+        btn.disabled = true; btn.textContent = '执行中…';
+        try {
+          const target = (ps.getToolDef ? ps.getToolDef(def.name) : null) || def;
+          const res = await target.execute(args);
+          const s = typeof res === 'string' ? res : JSON.stringify(res, null, 2);
+          const failed = /^\s*Error[:( ]|错误[:：]|ENOENT|不是可执行文件/.test(String(s));
+          showResult(String(def.name).replace('plugin_' + pluginId + '_', ''), s, !failed);
+        } catch (e) {
+          showResult(String(def.name).replace('plugin_' + pluginId + '_', ''), '执行异常：' + (e && e.message ? e.message : String(e)), false);
+        } finally { btn.disabled = false; btn.textContent = oldLabel; }
+      });
+    });
     const tb = wrap.querySelector('#plgd-toggle');
     if (tb) tb.addEventListener('click', async () => { await ps.setActive(pluginId, !active); close(); showPluginDetail(pluginId); renderPluginsList(); });
     const sb = wrap.querySelector('#plgd-settings');
@@ -12097,7 +12197,8 @@ function bindEvents() {
         actions = '<button class="btn btn-primary btn-sm" data-action="install" data-id="' + p.id + '">安装</button>';
       } else if (currentPluginsTab === 'installed' || currentPluginsTab === 'models') {
         // TrieCode 式图标操作区：⚙设置 + toggle 启用开关 + 🗑卸载
-        actions = '<button class="plg-ic-btn" data-action="settings" data-id="' + p.id + '" title="打开该插件的设置面板"><svg class="icon"><use href="#icon-settings"></use></svg></button>' +
+        actions = '<button class="btn btn-secondary btn-sm" data-action="detail" data-id="' + p.id + '" style="padding:3px 8px;margin-right:3px;">详情</button>' +
+          '<button class="plg-ic-btn" data-action="settings" data-id="' + p.id + '" title="打开该插件的设置面板"><svg class="icon"><use href="#icon-settings"></use></svg></button>' +
           (pluginRegistered(p.id)
             ? '<button class="plg-toggle' + (pluginActive(p.id) ? ' on' : '') + '" data-action="toggle" data-id="' + p.id + '" title="' + (pluginActive(p.id) ? '已启用，点击禁用' : '已禁用，点击启用') + '" aria-pressed="' + pluginActive(p.id) + '"></button>'
             : '') +
