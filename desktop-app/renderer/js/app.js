@@ -11895,8 +11895,8 @@ function bindEvents() {
       || (installedPlugins.find(p => p.id === pluginId))
       || (ps.listPlugins() || []).find(p => p.id === pluginId)
       || { id: pluginId, name: pluginId, version: '', description: '' };
-    const old = document.getElementById('plugin-detail-modal');
-    if (old) old.remove();
+    // 清理所有已存在的详情弹窗：getElementById 只删第一个，快速连点会堆积多个遮罩
+    document.querySelectorAll('#plugin-detail-modal').forEach(n => n.remove());
     await refreshPluginRuntimeProbe(false);
     const tools = (ps.allTools ? ps.allTools() : []).filter(t => t._pluginId === pluginId || String(t.name || '').indexOf('plugin_' + pluginId + '_') === 0);
     const caps = (ps.listCapabilities ? ps.listCapabilities(pluginId) : []) || [];
@@ -11990,6 +11990,8 @@ function bindEvents() {
           (isPluginInstalled(pluginId) ? '<button class="btn btn-secondary btn-sm" id="plgd-uninstall" style="color:var(--error);">卸载</button>' : '') +
         '</div>' +
       '</div>';
+    // append 前再清一次：上方有 await refreshPluginRuntimeProbe，并发调用可能已在此时插入旧弹窗
+    document.querySelectorAll('#plugin-detail-modal').forEach(n => n.remove());
     document.body.appendChild(wrap);
     const close = () => wrap.remove();
     wrap.querySelector('#plgd-close').addEventListener('click', close);
