@@ -13589,7 +13589,8 @@ function bindEvents() {
         '<div style="font-size:11px;opacity:.6;">' + t + ' · ' + (s.messages ? s.messages.length : 0) + ' 条' + (s.modelId ? ' · ' + escapeHtml(s.modelId) : '') + '</div>' + snip + '</div>' +
         '<button class="hist-load" data-sid="' + s.id + '" style="margin-left:8px;">打开</button>' +
         '<button class="hist-rename" data-sid="' + s.id + '" style="margin-left:6px;">重命名</button>' +
-        '<button class="hist-del" data-sid="' + s.id + '" style="margin-left:6px;">删除</button></div>';
+        '<button class="hist-del" data-sid="' + s.id + '" style="margin-left:6px;">删除</button>' +
+        '<button class="hist-export" data-sid="' + s.id + '" style="margin-left:6px;">导出</button></div>';
     }).join('');
     listEl.querySelectorAll('.hist-load').forEach(function(b){ b.onclick = function(){
       loadSession(b.getAttribute('data-sid'));
@@ -13612,7 +13613,34 @@ function bindEvents() {
       if (t && t.trim() && window.SessionStore) window.SessionStore.rename(id, t.trim());
       openHistoryPanel();
     }; });
+    listEl.querySelectorAll('.hist-export').forEach(function(b){ b.onclick = function(){
+      const id = b.getAttribute('data-sid');
+      if (window.exportSessionMd) window.exportSessionMd(id);
+    }; });
   }
+  window.exportSessionMd = function(id) {
+    const s = window.SessionStore && window.SessionStore.get(id);
+    if (!s) { if (typeof showToast === 'function') showToast('会话不存在', 'error'); return null; }
+    const msgs = (s.messages || []);
+    const lines = ['# ' + (s.title || '会话导出'), '', '> 导出时间：' + new Date().toLocaleString(), ''];
+    msgs.forEach(function(m, i) {
+      const role = m.role === 'user' ? '用户' : (m.role === 'assistant' ? '助手' : (m.role || '?'));
+      let content = m.content;
+      if (Array.isArray(content)) content = content.map(function(p){ return (p && p.type === 'text') ? p.text : ('[' + ((p && p.type) || 'attachment') + ']'); }).join('\n');
+      content = String(content == null ? '' : content);
+      lines.push('## ' + (i + 1) + '. ' + role, '', content, '');
+    });
+    const md = lines.join('\n');
+    try {
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = (s.title || 'session') + '.md';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch (e) {} }, 2000);
+    } catch (e) {}
+    return { title: s.title, count: msgs.length, length: md.length };
+  };
   function openHistoryPanel() {
     saveCurrentSessionToHistory();
     let overlay = document.getElementById('history-overlay');
