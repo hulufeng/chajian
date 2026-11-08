@@ -397,7 +397,34 @@ async function resolveActiveToolchain(projectPath) {
   }
   const active = Array.from(PLUGIN_REGISTRY.values()).filter(m => isToolchainPlugin(m) && !PLUGIN_DISABLED.has(m.id));
   if (active.length === 1) return active[0].id;
+  // 多个工具链同时启用时不再静默返回 null（此前编译/烧录按钮必然失败）：
+  // 优先用「用户主动选定的工具链」，再按项目类型推荐，最后取第一个并给出明确提示。
+  if (active.length > 1) {
+    let picked = null;
+    try { picked = localStorage.getItem('bubaicode_active_toolchain'); } catch (e) {}
+    if (picked && active.some(m => m.id === picked)) return picked;
+    // 按项目类型粗匹配（esp32 → ESP-IDF、stm32 → STM32Cube、其余 → Arduino CLI）
+    const pt = String((window.BubaiCodeUI && window.BubaiCodeUI.state && window.BubaiCodeUI.state.projectType) || '').toLowerCase();
+    const prefer = /esp32|esp-idf/.test(pt) ? 'espressif-idf-toolchain'
+      : /stm32/.test(pt) ? 'stm32-cube-toolchain'
+      : /8051|mcs51/.test(pt) ? 'sdcc-51-toolchain'
+      : 'arduino-cli-toolchain';
+    const hit = active.find(m => m.id === prefer);
+    return (hit || active[0]).id;
+  }
   return null;
+}
+
+/** 用户主动指定当前工具链（插件详情/设备面板调用），清空则回到自动解析 */
+function setActiveToolchain(id) {
+  try {
+    if (id) localStorage.setItem('bubaicode_active_toolchain', String(id));
+    else localStorage.removeItem('bubaicode_active_toolchain');
+  } catch (e) {}
+  return id || null;
+}
+function getActiveToolchainPreference() {
+  try { return localStorage.getItem('bubaicode_active_toolchain') || ''; } catch (e) { return ''; }
 }
 
 /** 能力 → binding：map 显式绑定优先；数组/未覆盖 → FALLBACK 约定工具名 */
@@ -860,6 +887,8 @@ window.PluginSystem = {
   CAPABILITY_IDS,
   CAPABILITY_TOOL_FALLBACK,
   resolveActiveToolchain,
+  setActiveToolchain,
+  getActiveToolchainPreference,
   runCapability,
   // 某插件提供了哪些能力（UI 状态栏/设置页展示用）
   listCapabilities: (pluginId) => {

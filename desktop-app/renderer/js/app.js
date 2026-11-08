@@ -10709,39 +10709,30 @@ function bindEvents() {
       }
 
   // ===== 已安装插件动态活动栏入口（对齐 VSCode：装带视图的插件→左侧出现图标，卸载即移除）=====
+  // 对齐 ChipCode「活动栏插件图标 → 左侧栏 plugin:<id> 聚合面板」：
+  // 我方插件大多只声明 tools、没有 views，因此入口按「已安装且启用的白名单插件」生成，
+  // 点开后落到该插件的详情/工具面板（有 webview 视图的仍走 iframe）。
   function renderPluginActivityButtons() {
-    const box = document.getElementById('plugin-activity-buttons');
-    if (!box) return;
-    box.innerHTML = '';
-    const ps = window.PluginSystem;
-    if (!ps || typeof ps.listPlugins !== 'function' || typeof ps.listViews !== 'function') return;
-    const plugins = ps.listPlugins() || [];
-    const views = ps.listViews() || [];
-    plugins.filter(p => p.active !== false).forEach(p => {
-      const pv = views.filter(v => v.pluginId === p.id);
-      if (!pv.length) return; // 只给声明了 webview 视图的插件在活动栏留入口
-      const btn = document.createElement('button');
-      btn.className = 'activity-btn plugin-activity-btn';
-      btn.dataset.pluginId = p.id;
-      btn.dataset.pluginView = p.id + ':' + pv[0].id;
-      btn.title = p.name || p.id;
-      btn.innerHTML = '<span class="activity-emoji">' + (p.icon || '🧩') + '</span><span class="activity-label">' + (p.name || p.id) + '</span>';
-      box.appendChild(btn);
-    });
+    if (window.__bubaiRenderPluginActivityButtons) window.__bubaiRenderPluginActivityButtons();
   }
-  // 点击插件活动栏图标 → 打开其 webview 视图面板（复用 open_plugin_view 逻辑）
+  // 点击插件活动栏图标 → 打开插件详情（有 webview 视图时优先打开视图面板）
   function openPluginActivityView(viewKey) {
     const ps = window.PluginSystem;
-    if (!ps || !ps.getView) return;
-    const v = ps.getView(viewKey);
-    if (!v) return;
-    const panel = document.getElementById('plugin-view-panel');
-    const title = document.getElementById('plugin-view-title');
-    const wv = document.getElementById('plugin-view-webview');
-    if (!panel || !wv) return;
-    if (title) title.textContent = v.title || viewKey;
-    wv.setAttribute('src', v.webviewUrl);
-    panel.style.display = 'flex';
+    if (viewKey && ps && ps.getView) {
+      const v = ps.getView(viewKey);
+      if (v && v.webviewUrl) {
+        const panel = document.getElementById('plugin-view-panel');
+        const title = document.getElementById('plugin-view-title');
+        const wv = document.getElementById('plugin-view-webview');
+        if (!panel || !wv) return;
+        if (title) title.textContent = v.title || viewKey;
+        wv.setAttribute('src', v.webviewUrl);
+        panel.style.display = 'flex';
+        return;
+      }
+    }
+    const pid = String(viewKey || '').split(':')[0];
+    if (pid) showPluginDetail(pid);
   }
   const _pab = document.getElementById('plugin-activity-buttons');
   if (_pab) {
@@ -10750,8 +10741,7 @@ function bindEvents() {
       if (!btn) return;
       document.querySelectorAll('.activity-btn').forEach(i => i.classList.remove('active'));
       btn.classList.add('active');
-      const vk = btn.dataset.pluginView;
-      if (vk) openPluginActivityView(vk);
+      openPluginActivityView(btn.dataset.pluginId || '');
     });
   }
   renderPluginActivityButtons();
@@ -11439,6 +11429,28 @@ function bindEvents() {
   // 对齐 ChipCode 市场后不再自动安装任何插件（此前会自动装 arduino/串口监视器/绘图仪，导致卸载后又冒出来）
   const CORE_PLUGIN_IDS = [];
 
+  // ===== 活动栏插件入口渲染（模块级全局，供启动 / 安装 / 卸载 / 列表刷新共用）=====
+  // 对齐 ChipCode「活动栏插件图标 → 插件面板」。此前该函数定义在活动栏点击回调的局部作用域内，
+  // 外部调用会抛 ReferenceError（整个插件列表渲染失败），故提升到全局并只保留一处实现。
+  // 我方插件多为纯工具型（views=0），因此按「已安装且启用的白名单插件」生成入口。
+  window.__bubaiRenderPluginActivityButtons = function () {
+    const box = document.getElementById('plugin-activity-buttons');
+    if (!box) return;
+    box.innerHTML = '';
+    const ps = window.PluginSystem;
+    if (!ps || typeof ps.listPlugins !== 'function') return;
+    const plugins = (ps.listPlugins() || []).filter(p => p.active !== false && MARKET_IDS.has(p.id));
+    plugins.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'activity-btn plugin-activity-btn';
+      btn.dataset.pluginId = p.id;
+      btn.title = p.name || p.id;
+      const iv = String(p.icon || '🧩');
+      btn.innerHTML = '<span class="activity-emoji">' + escapeHtml(iv.indexOf('<svg') === 0 ? '🧩' : iv) + '</span>';
+      box.appendChild(btn);
+    });
+  };
+
   // ===== 内置插件 internal services（TrieCode 式宿主服务注册：manifest.tools → dispatchTool → 这里）=====
   if (window.PluginSystem && window.PluginSystem.registerInternalService) {
     window.PluginSystem.registerInternalService('git', {
@@ -11532,14 +11544,44 @@ function bindEvents() {
     }
     return [id].concat(extra);
   }
+  // 磁盘真相源缓存：主进程 plugins:list 扫 <userData>/plugins/*/plugin.json。
+  // 用于清除 localStorage 里的「残留已安装记录」（目录已删/换 userData 却仍显示已安装）。
+  let diskPluginIds = null;   // null=尚未对账；Set=已对账
+  async function reconcileInstalledPlugins(force) {
+    if (!window.BubaiCode || !window.BubaiCode.plugins || typeof window.BubaiCode.plugins.list !== 'function') return;
+    if (!force && diskPluginIds) return;
+    try {
+      const rows = await window.BubaiCode.plugins.list();
+      const ids = new Set((Array.isArray(rows) ? rows : []).map(r => r && r.id).filter(Boolean));
+      // 注册表也算磁盘真相（本地安装 / bundles 插件可能不在主进程扫描目录里）
+      try { (window.PluginSystem.listPlugins() || []).forEach(p => ids.add(p.id)); } catch (e) {}
+      diskPluginIds = ids;
+      const before = installedPlugins.length;
+      // 只清理白名单市场条目：第三方本地插件可能用了别的安装记录形式，不误删
+      installedPlugins = installedPlugins.filter(p => !MARKET_IDS.has(p.id) || ids.has(p.id) ||
+        pluginIdCandidates(p.id).some(c => ids.has(c)));
+      if (installedPlugins.length !== before) {
+        saveInstalledPlugins();
+        logInstalledReconcile(before, installedPlugins.length);
+        renderPluginsList();
+      }
+    } catch (e) { /* 对账失败不阻塞 UI */ }
+  }
+  function logInstalledReconcile(a, b) {
+    try { addOutputLog('已清理 ' + (a - b) + ' 条残留的插件安装记录（磁盘上已不存在）', 'info'); } catch (e) {}
+  }
   function isPluginInstalled(id) {
     // 双真相源合一：市场徽章以「运行时注册表」为准（bundles 插件从未进 installedPlugins，
     // 曾导致 serial-monitor/openscad/wokwi 等实际已加载却显示「安装」可再装）
     const candidates = pluginIdCandidates(id);
+    let inRegistry = false;
     try {
-      if (window.PluginSystem && typeof window.PluginSystem.listPlugins === 'function'
-          && window.PluginSystem.listPlugins().some(p => candidates.includes(p.id))) return true;
+      inRegistry = !!(window.PluginSystem && typeof window.PluginSystem.listPlugins === 'function'
+        && window.PluginSystem.listPlugins().some(p => candidates.includes(p.id)));
     } catch (e) { /* 注册表未就绪时回退持久化列表 */ }
+    if (inRegistry) return true;
+    // 注册表未命中时，若磁盘对账已完成且明确没有该插件 → 不认 localStorage 的残留记录
+    if (diskPluginIds && !candidates.some(c => diskPluginIds.has(c))) return false;
     return installedPlugins.some(p => candidates.includes(p.id));
   }
 
@@ -11803,9 +11845,140 @@ function bindEvents() {
     return p.icon || '🧩';
   }
 
+  // ===== 插件运行时依赖状态（主进程扫 tools[].cli.command → where 探测 PATH）=====
+  // 对齐 ChipCode 卡片上的 depsReady 状态点：缺本机工具链时明确提示，而不是点工具才看到 ENOENT。
+  let pluginRuntimeProbe = {};   // pluginId -> { exes:[{name,found}], ready:bool }
+  let pluginRuntimeProbedAt = 0;
+  async function refreshPluginRuntimeProbe(force) {
+    if (!window.BubaiCode || !window.BubaiCode.plugins || typeof window.BubaiCode.plugins.probeRuntime !== 'function') return;
+    if (!force && Date.now() - pluginRuntimeProbedAt < 30000) return;
+    try {
+      const r = await window.BubaiCode.plugins.probeRuntime();
+      if (r && typeof r === 'object') { pluginRuntimeProbe = r; pluginRuntimeProbedAt = Date.now(); }
+    } catch (e) { /* 探测失败不阻塞列表 */ }
+  }
+  function pluginDepsHint(id) {
+    const info = pluginRuntimeProbe[id];
+    if (!info || !info.exes || !info.exes.length) return null;
+    const missing = info.exes.filter(x => !x.found);
+    return {
+      ready: missing.length === 0,
+      missing: missing.map(x => x.name),
+      all: info.exes.map(x => x.name)
+    };
+  }
+
+  // ===== 插件详情页（对齐 ChipCode 点击卡片进 ROe 详情：工具 / 依赖 / 状态 / 操作）=====
+  async function showPluginDetail(pluginId) {
+    const ps = window.PluginSystem;
+    if (!ps) return;
+    const meta = getAllPlugins().find(p => p.id === pluginId)
+      || (installedPlugins.find(p => p.id === pluginId))
+      || (ps.listPlugins() || []).find(p => p.id === pluginId)
+      || { id: pluginId, name: pluginId, version: '', description: '' };
+    const old = document.getElementById('plugin-detail-modal');
+    if (old) old.remove();
+    await refreshPluginRuntimeProbe(false);
+    const tools = (ps.allTools ? ps.allTools() : []).filter(t => t._pluginId === pluginId || String(t.name || '').indexOf('plugin_' + pluginId + '_') === 0);
+    const caps = (ps.listCapabilities ? ps.listCapabilities(pluginId) : []) || [];
+    const depList = (ps.getPluginDependencies ? ps.getPluginDependencies(pluginId) : []) || [];
+    const hint = pluginDepsHint(pluginId);
+    const registered = (ps.listPlugins() || []).some(p => p.id === pluginId);
+    const active = registered && (ps.isActive ? ps.isActive(pluginId) : true);
+    const views = (ps.listViews ? ps.listViews() : []).filter(v => v.pluginId === pluginId);
+
+    let body = '';
+    // 依赖状态（本机可执行）
+    if (hint) {
+      body += '<div style="margin-bottom:12px;padding:9px 11px;border-radius:8px;background:' + (hint.ready ? 'rgba(34,197,94,.08)' : 'rgba(217,119,6,.10)') + ';border:1px solid ' + (hint.ready ? 'rgba(34,197,94,.3)' : 'rgba(217,119,6,.35)') + ';">';
+      body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + (hint.ready ? '✅ 本机依赖已就绪' : '⚠️ 本机缺少依赖，部分功能暂不可用') + '</div>';
+      body += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.6;">' +
+        (hint.ready
+          ? '需要：' + hint.all.join('、')
+          : '缺少：<code>' + hint.missing.join('</code>、<code>') + '</code>。请安装该命令行工具并确保已加入 PATH，然后点下方「重新检测」。') +
+        '</div></div>';
+    } else {
+      body += '<div style="margin-bottom:12px;font-size:11px;color:var(--text-secondary);">该插件通过宿主内部服务 / MCP 工作，无需本机命令行工具。</div>';
+    }
+    // 工具清单
+    body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin:10px 0 6px;">工具 ' + tools.length + '</div>';
+    body += tools.length
+      ? '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;">' + tools.map(t =>
+          '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border-color);">' +
+          '<code style="font-size:11px;color:var(--text-primary);flex:1;">' + escapeHtml(String(t.name).replace('plugin_' + pluginId + '_', '')) + '</code>' +
+          '<span style="font-size:10px;color:var(--text-tertiary);">' + escapeHtml(String(t.category || t.description || '').slice(0, 46)) + '</span></div>').join('') + '</div>'
+      : '<div style="font-size:11px;color:var(--text-tertiary);">该插件未注册工具（可能仅记录、未安装插件包）。</div>';
+    // 能力
+    if (caps.length) body += '<div style="font-size:11px;color:var(--text-secondary);margin-top:9px;">能力：' + caps.map(c => '<span style="display:inline-block;padding:1px 7px;margin:0 4px 4px 0;background:rgba(37,99,235,.12);color:var(--primary);border-radius:4px;">' + escapeHtml(String(c)) + '</span>').join('') + '</div>';
+    // manifest 声明的外部依赖（deps:install 惰性下载）
+    if (depList.length) {
+      body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin:10px 0 6px;">声明的外部依赖</div>';
+      body += depList.map(d => '<div style="display:flex;gap:8px;font-size:11px;padding:3px 0;"><code style="min-width:110px;">' + escapeHtml(String(d.name)) + '</code><span style="color:' + (d.ready ? 'var(--success)' : 'var(--warning,#d97706)') + ';">' + (d.ready ? '已就绪' : '待安装') + '</span></div>').join('');
+      body += '<button class="btn btn-secondary btn-sm" id="plgd-deps" style="margin-top:6px;">重试下载缺失依赖</button>';
+    }
+
+    const wrap = document.createElement('div');
+    wrap.id = 'plugin-detail-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    wrap.innerHTML =
+      '<div style="width:600px;max-width:92vw;max-height:84vh;overflow-y:auto;background:var(--bg-color);border:1px solid var(--border-color);border-radius:12px;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.4);">' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">' +
+          '<div><div style="font-size:14px;font-weight:600;color:var(--text-primary);">' + escapeHtml(meta.name || pluginId) + '<span style="font-size:11px;color:var(--text-tertiary);font-weight:400;margin-left:8px;">v' + escapeHtml(String(meta.version || '')) + '</span></div>' +
+          '<div style="font-size:11px;color:var(--text-secondary);margin-top:5px;line-height:1.6;">' + escapeHtml(meta.description || '') + '</div></div>' +
+          '<button id="plgd-close" style="border:none;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;flex-shrink:0;">✕</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-secondary);margin:10px 0;">状态：' + (registered ? (active ? '✅ 已启用（工具已注入 AI）' : '⏸ 已禁用（工具不注入 AI）') : '⚠️ 未注册到运行时') + '</div>' +
+        body +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color);">' +
+          '<button class="btn btn-secondary btn-sm" id="plgd-reprobe">重新检测依赖</button>' +
+          (registered ? '<button class="btn btn-secondary btn-sm" id="plgd-toggle">' + (active ? '停用插件' : '启用插件') + '</button>' : '') +
+          (registered ? '<button class="btn btn-secondary btn-sm" id="plgd-settings">设置</button>' : '') +
+          (views.length ? '<button class="btn btn-primary btn-sm" id="plgd-open">打开插件面板</button>' : '') +
+          '<button class="btn btn-secondary btn-sm" id="plgd-src">查看源码</button>' +
+          (isPluginInstalled(pluginId) ? '<button class="btn btn-secondary btn-sm" id="plgd-uninstall" style="color:var(--error);">卸载</button>' : '') +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.querySelector('#plgd-close').addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('#plgd-reprobe').addEventListener('click', async () => { await refreshPluginRuntimeProbe(true); close(); showPluginDetail(pluginId); renderPluginsList(); });
+    const tb = wrap.querySelector('#plgd-toggle');
+    if (tb) tb.addEventListener('click', async () => { await ps.setActive(pluginId, !active); close(); showPluginDetail(pluginId); renderPluginsList(); });
+    const sb = wrap.querySelector('#plgd-settings');
+    if (sb) sb.addEventListener('click', () => { close(); showPluginSettingsModal(pluginId); });
+    const ob = wrap.querySelector('#plgd-open');
+    if (ob) ob.addEventListener('click', () => {
+      close();
+      const v = views[0];
+      const panel = document.getElementById('plugin-view-panel');
+      const wv = document.getElementById('plugin-view-webview');
+      const titleEl = document.getElementById('plugin-view-title');
+      if (v && v.webviewUrl && panel && wv) {
+        if (titleEl) titleEl.textContent = v.title || v.id;
+        wv.setAttribute('src', v.webviewUrl);
+        panel.style.display = 'flex';
+      } else showToast('该插件未声明可打开的视图面板', 'warn');
+    });
+    wrap.querySelector('#plgd-src').addEventListener('click', () => {
+      const u = meta.sourceUrl || ('https://github.com/' + (meta.githubRepo || OFFICIAL_PLUGIN_REPO) + '/tree/main/' + (GH_PLUGIN_ID_MAP[pluginId] || pluginId));
+      if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal(u); else window.open(u, '_blank');
+    });
+    const ub = wrap.querySelector('#plgd-uninstall');
+    if (ub) ub.addEventListener('click', async () => { if (confirm('卸载插件「' + (meta.name || pluginId) + '」？')) { close(); await uninstallPlugin(pluginId); } });
+    const db = wrap.querySelector('#plgd-deps');
+    if (db) db.addEventListener('click', async () => {
+      db.disabled = true;
+      try { const r = await ps.ensurePluginDependencies(pluginId); showToast(r && r.ok ? '依赖已就绪' : '依赖未就绪：' + ((r && r.error) || ''), r && r.ok ? 'success' : 'error'); }
+      catch (e) { showToast('依赖检查失败：' + e.message, 'error'); }
+      finally { db.disabled = false; close(); showPluginDetail(pluginId); }
+    });
+  }
+
   function renderPluginsList() {
     const listEl = document.getElementById('plugins-list');
     if (!listEl) return;
+    refreshPluginRuntimeProbe(false);
     try {
     // 社区插件 tab：独立渲染（GitHub 仓库卡片）
     if (currentPluginsTab === 'community') { renderCommunityPlugins(listEl); return; }
@@ -11930,17 +12103,24 @@ function bindEvents() {
             : '') +
           '<button class="plg-ic-btn danger" data-action="uninstall" data-id="' + p.id + '" title="卸载"><svg class="icon"><use href="#icon-trash"></use></svg></button>';
       } else {
-        actions = '<span class="plg-installed">已安装</span>';
+        // 对齐 ChipCode：已安装卡片也要能点开（详情/工具/依赖/操作），不能是只读文本
+        actions = '<button class="btn btn-secondary btn-sm" data-action="detail" data-id="' + p.id + '" style="padding:3px 8px;">详情</button>' +
+          '<span class="plg-installed">已安装</span>';
       }
       // 「查看源码 →」仅官方市场卡显示（对齐 TrieCode 已安装卡：只有 齿轮/toggle/垃圾桶）
       const srcUrl = p.sourceUrl || ('https://github.com/' + (p.githubRepo || OFFICIAL_PLUGIN_REPO) + '/tree/main/' + (GH_PLUGIN_ID_MAP[p.id] || p.id));
       const srcLink = (currentPluginsTab === 'market' && p.category !== 'ai-model')
-        ? '<a class="plg-src" data-action="source" data-url="' + escapeHtml(srcUrl) + '">查看源码 →</a>'
+        ? '<a class="plg-src" data-action="source" data-url="' + escapeHtml(srcUrl) + '">源码 →</a>'
         : '';
       // TrieCode 卡片：品牌/emoji 图标 + [绿点(已注册且启用)] + 名称 + 版本号 + 一行截断描述
       const runDot = (installed && pluginRegistered(p.id) && pluginActive(p.id)) ? '<span class="plg-dot" title="运行中"></span>' : '';
-      const topLine = runDot + '<span class="plg-name">' + p.name + '</span><span class="plg-ver">v' + p.version + '</span>';
-      return '<div class="plg-row">' +
+      // 本机依赖缺失：橙色警示点（对齐 ChipCode depsReady 状态点），hover 提示缺什么
+      const dh = installed ? pluginDepsHint(p.id) : null;
+      const depDot = (dh && !dh.ready)
+        ? '<span class="plg-dep-miss" title="本机缺少：' + escapeHtml(dh.missing.join('、')) + ' — 点击卡片查看安装引导">!</span>'
+        : '';
+      const topLine = runDot + depDot + '<span class="plg-name">' + p.name + '</span><span class="plg-ver">v' + p.version + '</span>';
+      return '<div class="plg-row plg-row-clickable" data-plugin-id="' + escapeHtml(p.id) + '" title="点击查看插件详情">' +
         '<div class="plg-row-ic">' + brandIconHtml(p) + '</div>' +
         '<div class="plg-row-body">' +
           '<div class="plg-row-top">' + topLine + '</div>' +
@@ -11976,9 +12156,19 @@ function bindEvents() {
     listEl.querySelectorAll('.plugin-cat-btn').forEach(btn => {
       btn.addEventListener('click', () => { currentPluginCategory = btn.dataset.cat; renderPluginsList(); });
     });
+    // 整行点击进详情（对齐 ChipCode 卡片 onClick → ROe 详情页）；按钮/链接点击不冒泡触发
+    listEl.querySelectorAll('.plg-row-clickable').forEach(row => {
+      row.addEventListener('click', (ev) => {
+        if (ev.target.closest('button, a, .plg-toggle')) return;
+        showPluginDetail(row.dataset.pluginId);
+      });
+    });
     // 绑定安装/卸载按钮
     listEl.querySelectorAll('[data-action="install"]').forEach(btn => {
       btn.addEventListener('click', () => installPlugin(btn.dataset.id));
+    });
+    listEl.querySelectorAll('[data-action="detail"]').forEach(btn => {
+      btn.addEventListener('click', (ev) => { ev.stopPropagation(); showPluginDetail(btn.dataset.id); });
     });
     listEl.querySelectorAll('[data-action="uninstall"]').forEach(btn => {
       btn.addEventListener('click', () => uninstallPlugin(btn.dataset.id));
@@ -11996,8 +12186,9 @@ function bindEvents() {
         else window.open(u, '_blank');
       });
     });
-    // 插件自定义面板入口已上移到活动栏动态按钮（对齐 TrieCode：列表保持纯卡片，无「插件面板(N)」块）
-    // TrieCode 式：已安装插件直接在活动栏显示入口（装了就显示，卸载即消失）
+    // 插件自定义面板入口已上移到活动栏动态按钮（对齐 TrieCode：列表保持纯卡片）
+    // 仍保留 views 型插件的「插件面板(N)」快捷块（此前该函数只有定义、无调用点）
+    try { renderPluginViews(listEl); } catch (e) { /* views 型插件为空时无副作用 */ }
     refreshPluginActivityButtons();
     // 静态工具链按钮与市场安装状态同步（装了显示/没装隐藏）
     try { syncToolchainActivityButtons(); } catch (e) { /* 未定义时忽略 */ }
@@ -12653,8 +12844,12 @@ function bindEvents() {
         installedTools = r.tools || 0;
         addOutputLog('插件「' + (r.name || id) + '」已安装：注册 ' + installedTools + ' 个工具、' + (r.skills || 0) + ' 条技能', 'success');
       } else {
-        hasManifest = false;
-        addOutputLog('⚠️ 该插件没有可注册的 manifest（仅记录已安装），工具可能不可用', 'warning');
+        // 不再「仅登记假安装」：没有可注册的 manifest 就是安装失败，
+        // 否则卡片会显示「已安装」但工具为零，用户点了才报 ENOENT/找不到插件。
+        hideInstallModal();
+        addOutputLog('安装中止：该插件没有可注册的 plugin.json（未标记为已安装）', 'warning');
+        showToast(plugin.name + ' 安装失败：插件包缺少 plugin.json，未标记为已安装', 'error');
+        return { success: false, error: '插件包缺少 plugin.json，未标记为已安装' };
       }
     }
 
@@ -12664,15 +12859,12 @@ function bindEvents() {
     saveInstalledPlugins();
     // 安装状态一落盘就刷新活动栏入口（不依赖后面的「是否立即启用」提示，用户不点也能即时生效）
     try { refreshPluginActivityButtons(); syncToolchainActivityButtons(); } catch (e) {}
-    setInstallProgress(100, hasManifest ? '安装完成' : '登记完成');
+    // 新插件可能带来新的本机命令行依赖，强制重探一次
+    try { await refreshPluginRuntimeProbe(true); } catch (e) {}
+    setInstallProgress(100, '安装完成');
     await new Promise(r => setTimeout(r, 800));
     hideInstallModal();
-    // 无可安装包的条目只是登记，不能报"安装成功"（此前会误导用户以为真的装上了）
-    if (hasManifest) {
-      showToast(plugin.name + ' 安装成功', 'success');
-    } else {
-      showToast(plugin.name + ' 已登记（无插件包，不提供工具）', 'warning');
-    }
+    showToast(plugin.name + ' 安装成功（' + installedTools + ' 个工具）', 'success');
     // TrieCode 式：装完询问是否立即启用（暂不 → 保持禁用，稍后可在插件列表手动开启）
     if (hasManifest && plugin.category !== 'ai-model') {
       const enableNow = await showEnablePrompt(plugin);
@@ -12865,32 +13057,10 @@ function bindEvents() {
   }
 
   // ============ 活动栏动态插件入口（对齐 TrieCode：安装插件即出现在侧栏）============
+  // 直接调用模块级全局实现，不依赖任何局部作用域/事件监听器。
   function refreshPluginActivityButtons() {
-    const host = document.getElementById('plugin-activity-btns');
-    if (!host || !window.PluginSystem || typeof window.PluginSystem.getViews !== 'function') return;
-    // 白名单外的磁盘插件视图不生成活动栏入口（对齐 ChipCode 清单）
-    const views = (window.PluginSystem.getViews() || []).filter(v => MARKET_IDS.has(v.pluginId));
-    const seen = new Set();
-    let html = '';
-    views.forEach(v => {
-      if (seen.has(v.pluginId)) return; seen.add(v.pluginId);
-      const inst = installedPlugins.find(p => p.id === v.pluginId) || {};
-      const title = inst.name || v.title || v.pluginId;
-      // 图标：品牌 SVG（立创EDA=蓝云等，对齐 TrieCode 活动栏彩色品牌图标）；无品牌映射的插件用其 emoji
-      let ic = brandIconHtml({ id: v.pluginId, name: title, icon: inst.icon });
-      if (ic.indexOf('<svg') !== 0) ic = '<span style="font-size:19px;line-height:1;">' + ic + '</span>';
-      html += '<button class="activity-btn" data-plugin-view="' + encodeURIComponent(v.pluginId + '|' + v.id) + '" title="' + title + '">' + ic + '<span class="activity-label">' + title + '</span></button>';
-    });
-    host.innerHTML = html;
-    host.querySelectorAll('[data-plugin-view]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const [pid, vid] = decodeURIComponent(btn.dataset.pluginView).split('|');
-        const v = views.find(x => x.pluginId === pid && x.id === vid);
-        if (v) { if (v.webviewUrl && v.webviewUrl.indexOf('lceda') >= 0) { showLcedaPanel(); } else { showPluginViewModal(v.title || v.id, v.webviewUrl); } }
-      });
-    });
+    try { if (window.__bubaiRenderPluginActivityButtons) window.__bubaiRenderPluginActivityButtons(); } catch (e) {}
   }
-
   // ============ 插件自定义面板（manifest.views）============
   // 之前只注册不渲染，这里补上：列表 → 点击在模态里用 iframe 打开 webviewUrl
   function renderPluginViews(listEl) {
@@ -19430,7 +19600,12 @@ function init() {
         if (disabled && disabled.length) addOutputLog('插件系统：已禁用 ' + disabled.length + ' 个插件（' + disabled.join(', ') + '）', 'warn');
       }
       const r = await window.PluginSystem.loadPluginsFromDir(pluginsRoot);
+      // 与磁盘对账，清掉残留的「已安装」记录；随后探测本机工具链并刷新市场卡片
+      try { await reconcileInstalledPlugins(true); } catch (e) {}
+      try { await refreshPluginRuntimeProbe(true); } catch (e) {}
       try { window.dispatchEvent(new CustomEvent('bubaicode:plugins-changed')); } catch (e) {}
+      try { if (window.__bubaiRenderPluginActivityButtons) window.__bubaiRenderPluginActivityButtons(); } catch (e) {}
+      try { renderPluginsList(); } catch (e) {}
       const totalTools = window.PluginSystem.allTools().length;
       addOutputLog(`插件系统：加载 ${r.loaded.length} 个本地插件，共 ${totalTools} 个 manifest 工具`, 'success');
       if (r.errors && r.errors.length) addOutputLog('插件加载警告: ' + r.errors.join('; '), 'warn');

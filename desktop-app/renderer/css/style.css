@@ -5243,8 +5243,13 @@ body.no-open-file .editor-toolbar { display: none !important; }
 /* 面板标题与安装进度条文字也统一 12px */
 #plugins-panel #plugins-title,
 #plugins-panel #pip-text { font-size: 12px; }
-/* 对齐 ChipCode 卡片：无「查看源码 →」链接，描述占满剩余宽度（窄面板下更易读） */
-#plugins-panel #plugins-list .plg-src { display: none; }
+/* 卡片整行可点进详情（对齐 ChipCode 卡片 onClick → 详情页） */
+.plg-row-clickable { cursor: pointer; }
+.plg-row-clickable:hover .plg-name { color: var(--accent, #007acc); }
+/* 本机依赖缺失警示点（对齐 ChipCode depsReady 状态点） */
+.plg-dep-miss { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #d97706; color: #fff; font-size: 8px; line-height: 7px; text-align: center; font-weight: 700; cursor: help; }
+/* 「源码 →」保留为可用外链（此前被隐藏，导致卡片上唯一入口不可见） */
+#plugins-panel #plugins-list .plg-src { display: inline; }
 /* ChipCode 层次：名称 12px，版本/描述/源码等辅助信息小一号灰字 */
 #plugins-panel #plugins-list .plg-ver { font-size: 10px !important; }
 #plugins-panel #plugins-list .plg-desc,

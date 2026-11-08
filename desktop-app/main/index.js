@@ -2012,6 +2012,48 @@ function setupIPC() {
 
   ipcMain.handle('plugins:list', async () => listInstalledPlugins());
 
+  // 插件运行时依赖探测：扫描每个插件 tools[].cli.command 的首个 token（可执行名），
+  // 用 where（Windows）/ which 检查 PATH，返回每个插件的就绪状态。
+  // 供插件市场卡片/详情页展示「缺依赖」，避免用户点了工具才看到 ENOENT。
+  const _exeCache = new Map(); // exeName -> found bool
+  function probeExe(name) {
+    if (_exeCache.has(name)) return _exeCache.get(name);
+    let found = false;
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], {
+        encoding: 'utf8', timeout: 4000, windowsHide: true,
+        env: process.env
+      });
+      found = !!(r && r.status === 0 && String(r.stdout || '').trim());
+    } catch (e) { found = false; }
+    _exeCache.set(name, found);
+    return found;
+  }
+  ipcMain.handle('plugins:probeRuntime', async () => {
+    const out = {};
+    const root = pluginsRootDir();
+    if (!root || !fs.existsSync(root)) return out;
+    let dirs = [];
+    try { dirs = fs.readdirSync(root).filter(n => !n.startsWith('.')); } catch (e) { return out; }
+    for (const d of dirs) {
+      const m = readPluginManifestSafe(d);
+      if (!m || !m.id) continue;
+      const exes = new Set();
+      (m.tools || []).forEach(t => {
+        const cmd = t && t.cli && (t.cli.command || (typeof t.cli === 'string' ? t.cli : ''));
+        if (!cmd) return;
+        const first = String(cmd).trim().split(/\s+/)[0].replace(/^["']|["']$/g, '');
+        // 跳过占位符 / 内建命令 / 绝对路径依赖（由 deps 惰性下载）
+        if (!first || /[{}]/ .test(first) || /^(echo|dir|type|cmd|powershell|node|python|python3)$/i.test(first)) return;
+        exes.add(first);
+      });
+      const list = Array.from(exes).map(name => ({ name, found: probeExe(name) }));
+      out[m.id] = { exes: list, ready: list.every(x => x.found) };
+    }
+    return out;
+  });
+
   ipcMain.handle('plugins:getManifest', async (_, id) => {
     const m = readPluginManifestSafe(id);
     return m ? { ok: true, manifest: m } : { ok: false, error: '未找到插件: ' + id };

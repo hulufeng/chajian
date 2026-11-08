@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
   // 插件管理（对齐 ChipCode plugins:* 主进程通道；管理逻辑主进程侧，渲染层经此桥接 + 监听 changed/progress 推送）
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),
+    probeRuntime: () => ipcRenderer.invoke('plugins:probeRuntime'),
     getManifest: (id) => ipcRenderer.invoke('plugins:getManifest', id),
     getSettings: (id) => ipcRenderer.invoke('plugins:getSettings', id),
     setSettings: (id, settings) => ipcRenderer.invoke('plugins:setSettings', id, settings),
