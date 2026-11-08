@@ -176,7 +176,7 @@ classifyTestOutcome 8/8 通过：成功统计行→pass、结构化通过→pass
 generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失→UNVERIFIABLE、
 真实执行成功→PASS/high、真实执行失败→FAIL
 端到端 verify()：真实 runner→PASS/high/executed；环境缺失→UNVERIFIABLE/none/missing
-回归：playwright 25 工具、活动栏 4 项、插件 26 工具、重复 id 全为 1、死命令 0
+回归：playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具、重复 id 全为 1、死命令 0
 ```
 
 **仍未做（保守边界）**：内置按项目类型的轻量静态验证模板（易假阳性，且静态证据现在只能得 PARTIAL/UNVERIFIABLE）、结构化 VERDICT 事件与置信度 UI 组件（当前仅以文本注入与 verdict 对象承载）、`alwaysVerify`/`loopTimeoutMs` 默认值仍关闭、三处轮次计数语义未统一。
@@ -198,7 +198,7 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 
 **纠偏（交叉验收）**：`toolchain:installCli` 是 arduino-cli 专用、无入参、URL 硬编码单源、不跟随 3xx、无哈希/退出码校验，不可直接复用；`downloadFile` **本身已跟随 3xx**（旧文档归因有误）。子代理还纠正了 8 处行号偏差。
 
-**验收（运行态）**：`window.BubaiCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.bubaicode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 4 项、插件 26 工具。
+**验收（运行态）**：`window.BubaiCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.bubaicode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具。
 
 **仍未做**：gdb/openocd 的真实下载源与 sha256 配置（需选定可信发行包后填入 `deps:install` opts）、`dap:toolPath` 前置 `TOOLS_DIR` 绝对路径探测、`deps:status` 聚合状态页、统一进度 schema 的主进程侧彻底收敛（当前为接收侧兼容）。方案 C 的线上部署已完成校验（见下方备注）。
 
@@ -212,14 +212,14 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 |---|---|---|
 | 1 | `project-stats` 三处口径矛盾：`OFFICIAL_PLUGINS` 注释「暂不上架：加载导致渲染进程崩溃」、`BUILTIN_PLUGIN_MANIFESTS` 注释「已用隔离实验确认正常，恢复上架」、`projectStats` 服务注册仍在；而 `MARKET_IDS` 不含它 → 用户看不到也装不上 | **统一为「内置保留、不进市场」**：两条矛盾注释改为同一口径，说明官网无对应 zip（加进白名单会 404），内置 manifest 与服务保留供看板/内部调用 |
 | 2 | 插件加载无整体沙箱（`loadPluginManifest` 只逐 tool 有 try/catch），单个异常 manifest 会冒泡 | 新增外层 `try/catch` 包装：拆出 `loadPluginManifestUnsafe`，异常时**回滚该插件已部分注册的工具/技能/注册表**并返回结构化错误，不再拖垮渲染进程 |
-| 3 | 看板 `dashboard-panel.js:init()` 因 `!document.querySelector('.activity-btn[data-panel="dashboard"]')` 提前 return（活动栏已 1:1 精简为 4 项）→ 刷新/关闭按钮与 `openDashboard` 全无绑定，整块死 UI | 改为**始终绑定**刷新/关闭，暴露 `openDashboard`/`closeDashboard`；两套命令面板各加回一条指向真实函数的「打开看板 · 项目统计」（此前是死命令被删） |
+| 3 | 看板 `dashboard-panel.js:init()` 因 `!document.querySelector('.activity-btn[data-panel="dashboard"]')` 提前 return（活动栏已精简、无 dashboard 按钮）→ 刷新/关闭按钮与 `openDashboard` 全无绑定，整块死 UI | 改为**始终绑定**刷新/关闭，暴露 `openDashboard`/`closeDashboard`；两套命令面板各加回一条指向真实函数的「打开看板 · 项目统计」（此前是死命令被删） |
 
 **验收（运行态）**：
 ```
 看板         open→display:flex、close→none、按钮存在且有响应、命令面板 1 条
 沙箱         异常 manifest → 沙箱拦截 "boom-in-map"、半加载工具 leakedTools:0 / noLeak:true、
              正常插件加载仍返回 tools:1
-回归         easyeda 3 工具 / playwright 25 工具、活动栏 4 项、插件 26 工具、
+回归         easyeda 3 工具 / playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具、
              deps API 可用、探针残留 0、启动日志无异常
 ```
 
