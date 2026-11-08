@@ -9401,7 +9401,23 @@ async function handleAISend() {
     window._aiPendingImages = [];
     renderAiAttachPreview();
   }
-  await agent.run(finalText);
+  // 阶段③：对话转入后台 UI —— AI 生成期间显示「转入后台」浮动按钮，完成后若已切走会话则通知
+  const bgSessionId = state.currentSessionId;
+  let bgBtn = document.getElementById('bg-run-btn');
+  if (!bgBtn) {
+    bgBtn = document.createElement('div');
+    bgBtn.id = 'bg-run-btn';
+    bgBtn.style.cssText = 'position:fixed;right:18px;bottom:80px;z-index:9999;background:var(--primary);color:#fff;padding:8px 14px;border-radius:20px;cursor:pointer;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+    bgBtn.textContent = 'AI 生成中 · 点此转入后台';
+    bgBtn.onclick = function() { showToast('AI 已在后台继续生成，可切换会话查看', 'info'); bgBtn.remove(); };
+    document.body.appendChild(bgBtn);
+  }
+  try {
+    await agent.run(finalText);
+  } finally {
+    if (bgBtn && bgBtn.parentNode) bgBtn.remove();
+    if (state.currentSessionId !== bgSessionId) showToast('已转入后台运行', 'info');
+  }
   
   // 任务完成后，延迟隐藏计划进度面板
   setTimeout(() => {
