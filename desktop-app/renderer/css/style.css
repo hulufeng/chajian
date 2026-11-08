@@ -63,14 +63,18 @@
   --border-dark: #3a4450;
   --border-color: var(--border);                  /* 组件引用但未定义，补齐 */
 
-  /* ④ 文字（对齐 ChipCode --text-strong / --text / -2 / -3） */
+  /* ④ 文字：ChipCode --text/-2/-3/-strong 为一等公民字面量；
+     BubaiCode 历史名 --text-primary/secondary/tertiary/muted 改为 var() 别名（自动跟随主题，避免两套值漂移） */
   --text: #e6edf3;
-  --text-primary: #e6edf3;
-  --text-secondary: #9da7b3;
-  --text-tertiary: #6e7681;      /* ChipCode --text-3 暗色 #6e7681（原 #9aa2ad 偏亮一档） */
+  --text-2: #9da7b3;
+  --text-3: #6e7681;
+  --text-strong: #f0f6fc;
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--text-3);
+  --text-muted: var(--text-3);
   --text-quaternary: #8b949e;
   --text-inverse: #0d1117;
-  --text-strong: #f0f6fc;        /* ChipCode 暗色 --text-strong */
 
   /* ⑤ 状态语义（对齐 TrieCode） */
   --success: #4ade80;
@@ -140,9 +144,7 @@
   --radius: 8px;
   /* --text-strong 已在 ④ 按 ChipCode 定义，勿在此覆盖 */
   --accent-color: var(--accent);
-  --text-2: var(--text-secondary);
-  --text-3: var(--text-tertiary);
-  --text-muted: var(--text-tertiary);
+  /* --text-2/-3/-muted 已在 ④ 作为 ChipCode 一等公民/别名定义，勿在此反向覆盖（会循环引用） */
 }
 
 /* 浅色主题（对齐 TrieCode 浅色界面） */
@@ -174,14 +176,17 @@
   --border-dark: #cfd4db;
   --border-color: var(--border);
 
+  /* ④ 文字：与 :root 同构，ChipCode 一等公民字面量 + 历史名别名 */
   --text: #2b2f36;
-  --text-primary: #2b2f36;
-  --text-secondary: #5b6470;
-  --text-tertiary: #9aa2ad;
+  --text-2: #5b6470;
+  --text-3: #9aa2ad;
+  --text-strong: #16181d;
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--text-3);
+  --text-muted: var(--text-3);
   --text-quaternary: #9aa2ad;
   --text-inverse: #ffffff;
-  --text-strong: #16181d;                        /* ChipCode 亮色 --text-strong（覆盖 :root 暗色值） */
-  --text-muted: var(--text-tertiary);            /* ChipCode --text-muted 别名 */
   --brand-ink: #17171A;                          /* ChipCode 亮色主题品牌 logo 墨黑 */
 
   --success: #16a34a;
