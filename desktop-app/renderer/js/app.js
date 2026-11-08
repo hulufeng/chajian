@@ -16370,7 +16370,7 @@ function bindEvents() {
         if (unstaged.length) {
           // TrieCode 式组头：未跟踪/未暂存 + 右侧全部暂存
           const allUntracked = unstaged.every(f => f.status[1] === '?' || f.status[0] === '?');
-          html += '<div style="padding:4px 8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size: 10.5px;color:var(--text-tertiary);">' + (allUntracked ? '未跟踪 ' + unstaged.length : '未暂存 ' + unstaged.length) + '</span><span style="font-size:10.5px;color:var(--primary);cursor:pointer;" onclick="gitStageAllVisible()" title="全部暂存">全部暂存</span></div>';
+          html += '<div style="padding:4px 8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size: 10.5px;color:var(--text-tertiary);">' + (allUntracked ? '未跟踪 ' + unstaged.length : '未暂存 ' + unstaged.length) + '</span><span style="font-size:10.5px;color:var(--primary);cursor:pointer;"><span onclick="gitStageAllVisible()" title="全部暂存">全部暂存</span><span style="margin-left:8px;" onclick="gitReviewChanges()" title="AI 逐文件审阅改动，挑选保留后暂存">AI 审阅</span></span></div>';
           html += unstaged.map(f => {
             const isU = f.status[1] === '?' || f.status[0] === '?';
             const badge = isU ? (f.status[1] !== ' ' ? f.status[1] : (f.status[0] !== ' ' ? f.status[0] : '?')) : f.status[1];
@@ -16424,6 +16424,64 @@ function bindEvents() {
     const r = await window.BubaiCode.git.discard(state.projectPath, [path]);
     if (r.success) { showToast('已丢弃 ' + path, 'success'); refreshGitStatus(); }
     else showToast('丢弃失败: ' + (r.error || ''), 'error');
+  };
+  // ===== GitReview：AI 逐文件审阅未暂存改动（对齐 ChipCode git.review.*） =====
+  // 场景：AI 助手帮你改了一堆文件后，你逐文件看 AI 给的审阅意见，勾选要保留的再暂存。
+  window.gitReviewChanges = async () => {
+    const cwd = state.projectPath;
+    if (!cwd) { showToast('请先打开项目目录', 'warn'); return; }
+    if (!window.BubaiCode || !window.BubaiCode.git) { showToast('Git 能力未就绪', 'error'); return; }
+    let status;
+    try { status = await window.BubaiCode.git.status(cwd); } catch (e) { showToast('获取状态失败: ' + e.message, 'error'); return; }
+    const files = (status && status.files || []).filter(f => f.status[0] === '?' || f.status[1] !== ' ');
+    if (!files.length) { showToast('没有未暂存的改动', 'info'); return; }
+    const overlay = document.createElement('div');
+    overlay.id = 'git-review-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.style.cssText = 'width:680px;max-height:78vh;overflow:auto;background:var(--surface-1);border:1px solid var(--border-color);border-radius:12px;padding:16px;color:var(--text);box-shadow:0 8px 40px rgba(0,0,0,.4);';
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="margin:0;">AI 审阅改动（' + files.length + ' 个文件）</h3><span id="git-review-close" style="cursor:pointer;font-size:20px;line-height:1;">×</span></div>' +
+      '<div id="git-review-list" style="font-size:13px;"></div>' +
+      '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button id="git-review-stage" class="pf-btn">应用并暂存选中</button></div>';
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    const listEl = box.querySelector('#git-review-list');
+    listEl.innerHTML = '<div style="opacity:.7;">AI 正在逐文件审阅，请稍候…</div>';
+    const rows = [];
+    for (const f of files) {
+      const path = f.path;
+      let diff = '';
+      try { const d = await window.BubaiCode.git.diff(cwd, path); diff = (d && d.diff) ? d.diff : ''; } catch (e) {}
+      let opinion = '';
+      if (diff && window.BubaiCode.ai && window.BubaiCode.ai.chat) {
+        try {
+          const snippet = diff.split('\n').slice(0, 80).join('\n');
+          const res = await window.BubaiCode.ai.chat({
+            messages: [
+              { role: 'system', content: '你是资深代码审阅专家。下面是一段 git diff。请用一句话（不超过 45 字）给出中文审阅意见：是否建议保留此改动，或指出明显风险/需注意点。只输出这一句话，不要代码块、不要解释。' },
+              { role: 'user', content: '文件: ' + path + '\n```diff\n' + snippet + '\n```' }
+            ],
+            maxTokens: 200, temperature: 0.3
+          });
+          opinion = (res && res.success && res.content) ? String(res.content).replace(/\s+/g, ' ').trim().slice(0, 60) : '（AI 审阅不可用）';
+        } catch (e) { opinion = '（AI 审阅异常）'; }
+      } else {
+        opinion = '（新文件，请确认内容）';
+      }
+      rows.push({ path: path, opinion: opinion });
+      listEl.innerHTML = rows.map(function (rv) {
+        const dsp = rv.path.length > 56 ? '...' + rv.path.slice(-55) : rv.path;
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border-color);"><input type="checkbox" class="git-review-cb" data-path="' + rv.path.replace(/"/g, '&quot;') + '" checked style="margin-top:3px;"><span style="flex:1;overflow:hidden;"><span style="font-weight:600;">' + dsp + '</span><br><span style="font-size:11.5px;opacity:.85;">' + (rv.opinion || '') + '</span></span></label>';
+      }).join('');
+    }
+    if (!rows.length) listEl.innerHTML = '<div>没有可审阅的改动</div>';
+    box.querySelector('#git-review-close').onclick = function () { overlay.remove(); };
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    box.querySelector('#git-review-stage').onclick = async function () {
+      const sel = Array.from(listEl.querySelectorAll('.git-review-cb')).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-path'); });
+      if (!sel.length) { showToast('未选择任何文件', 'warn'); return; }
+      try { await window.BubaiCode.git.add(cwd, sel); showToast('已暂存 ' + sel.length + ' 个文件', 'success'); } catch (e) { showToast('暂存失败: ' + e.message, 'error'); return; }
+      overlay.remove(); refreshGitStatus();
+    };
   };
   window.gitShowDiff = async (path) => {
     const r = await window.BubaiCode.git.diff(state.projectPath, path);
