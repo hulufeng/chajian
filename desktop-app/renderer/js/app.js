@@ -9330,7 +9330,9 @@ function ensureAgent(pSessionId) {
       showPermissionModal(tool, command, detail, callback);
     }
   });
-  return state.agent;
+  if (sid) state.agents[sid] = agent;
+  if (!pSessionId) state.agent = agent;
+  return agent;
 }
 
 async function handleAISend() {
