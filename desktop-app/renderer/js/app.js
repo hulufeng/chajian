@@ -6737,7 +6737,7 @@ class AgentRunner {
               // 而计划轮模型往往已输出完整代码（被 planPending 暂存）。批准后直接落盘 → 编译验证 → 结束 run。
               this.messages.push({ role: 'system', content: '## 执行模式：计划已批准\n用户已批准上述执行计划。' });
               try {
-                const appliedFiles = autoApplyCodeBlocks(finalText);
+                const appliedFiles = autoApplyCodeBlocks(finalText, this);
                 if (appliedFiles.length > 0) {
                   addOutputLog(`计划批准后已落盘代码块: ${appliedFiles.join(', ')}`, 'info');
                   this._stream('计划已批准，代码已生成并落盘，正在编译验证...\n', false);
@@ -6926,7 +6926,7 @@ class AgentRunner {
         // 此处同步兜底落盘一次，确保验证闸门能看到真实文件修改并触发编译。
         if (this.lastFileModTurn <= this.lastVerifyTurn && /```[a-z]+\s*\n/.test(finalText)) {
           try {
-            const applied = autoApplyCodeBlocks(finalText);
+            const applied = autoApplyCodeBlocks(finalText, this);
             if (applied.length > 0) {
               addOutputLog(`验证前同步兜底落盘: ${applied.join(', ')}`, 'info');
             }
@@ -8209,7 +8209,8 @@ function extractCodeBlocks(text, onlyClosed) {
   return blocks;
 }
 
-function autoApplyCodeBlocks(text) {
+function autoApplyCodeBlocks(text, agent) {
+  const a = agent || state.agent;
   if (!text || text.length < 80) return [];
   const created = [];
   let count = 0;
@@ -8230,8 +8231,8 @@ function autoApplyCodeBlocks(text) {
       continue;
     }
     // before 优先取生成前快照（避免流式 partial 覆盖导致 +0 -0）
-    const before = (state.agent && state.agent._preGenSnapshot && state.agent._preGenSnapshot[filePath] !== undefined)
-      ? state.agent._preGenSnapshot[filePath]
+    const before = (a && a._preGenSnapshot && a._preGenSnapshot[filePath] !== undefined)
+      ? a._preGenSnapshot[filePath]
       : ((state.files[filePath] && state.files[filePath].content) || '');
     const _streamIsNew = !state.files[filePath];
     state.files[filePath] = { content: code, language: getLanguage(filePath), dirty: true };
@@ -8241,18 +8242,18 @@ function autoApplyCodeBlocks(text) {
     fileChangeTracker.beginTurn('stream');
     fileChangeTracker.recordChange('stream', { path: filePath, before, after: code, action: _streamIsNew ? 'create' : 'modify' });
     // ===== 兜底落盘：记录 diff 变更 + 触发工具面板 Flow + 标记文件修改（触发验证闸门）=====
-    if (state.agent) {
-      if (typeof state.agent._streamTurn === 'number') state.agent.lastFileModTurn = state.agent._streamTurn;
-      else if (state.agent.lastFileModTurn < 0) state.agent.lastFileModTurn = 0;
+    if (a) {
+      if (typeof a._streamTurn === 'number') a.lastFileModTurn = a._streamTurn;
+      else if (a.lastFileModTurn < 0) a.lastFileModTurn = 0;
     }
     // ===== 自动编译验证（必须在 lastFileModTurn 设置之后调用，才能正确标记 lastVerifyTurn 阻止验证提示）=====
     triggerAutoCompile();
     // 注意：onStream completed 分支已记录过时跳过，避免 before 被覆写为最终版导致 +0 -0
-    if (state.agent && !state.agent.fileChanges[filePath]) {
-      state.agent.fileChanges[filePath] = { before, after: code };
-      if (typeof state.agent.onToolFlow === 'function') {
-        state.agent.onToolFlow({ tool: 'write_file', status: 'running', args: { file_path: filePath, content: code.slice(0, 600) } });
-        state.agent.onToolFlow({ tool: 'write_file', status: 'done', args: { file_path: filePath }, result: `文件已生成: ${filePath} (${code.length} 字符)` });
+    if (a && !a.fileChanges[filePath]) {
+      a.fileChanges[filePath] = { before, after: code };
+      if (typeof a.onToolFlow === 'function') {
+        a.onToolFlow({ tool: 'write_file', status: 'running', args: { file_path: filePath, content: code.slice(0, 600) } });
+        a.onToolFlow({ tool: 'write_file', status: 'done', args: { file_path: filePath }, result: `文件已生成: ${filePath} (${code.length} 字符)` });
       }
     }
     created.push(filePath);
