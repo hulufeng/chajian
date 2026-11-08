@@ -34,8 +34,8 @@
   --primary: #3b82f6;
   --primary-hover: #60a5fa;
   --primary-active: #2563eb;
-  --primary-light: rgba(59, 130, 246, 0.14);   /* 蓝色浅底（选中/头像） */
-  --primary-lighter: rgba(59, 130, 246, 0.07);
+  --primary-light: rgba(59, 130, 246, .14);   /* 蓝色浅底（选中/头像） */
+  --primary-lighter: rgba(59, 130, 246, .07);
   --accent: var(--primary);                      /* 暗 #3b82f6 / 亮 #2563eb */
   /* 品牌 logo 专用墨色（对齐 ChipCode .brand-logo：亮 #17171A，暗 filter:invert(1) → #e8e8e5） */
   --brand-ink: #e8e8e5;
@@ -45,15 +45,15 @@
   --surface-1: #131820;        /* 主面板 */
   --surface-2: #1a212b;        /* 次级面板 */
   --surface-3: #232c38;        /* 三级面板 */
-  --surface-hover: rgba(255, 255, 255, 0.07);
-  --surface-active: rgba(255, 255, 255, 0.11);
+  --surface-hover: rgba(255, 255, 255, .07);
+  --surface-active: rgba(255, 255, 255, .11);
 
   --bg-primary: var(--surface-1);
   /* 背景层级对齐 ChipCode：secondary=surface-2 / tertiary=surface-3 */
   --bg-secondary: var(--surface-2);
   --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
-  --bg-selected: rgba(59, 130, 246, 0.14);
+  --bg-selected: rgba(59, 130, 246, .14);
   --bg-active: var(--surface-active);            /* 组件引用但未定义，补齐 */
 
   /* ③ 边框（对齐 TrieCode --border / -strong / -weak） */
@@ -78,22 +78,22 @@
 
   /* ⑤ 状态语义（对齐 TrieCode） */
   --success: #4ade80;
-  --success-bg: rgba(74, 222, 128, 0.12);
+  --success-bg: rgba(74, 222, 128, .12);
   --error: #f87171;
-  --error-bg: rgba(248, 113, 113, 0.16);
+  --error-bg: rgba(248, 113, 113, .16);
   --warning: #fbbf24;
-  --warning-bg: rgba(251, 191, 36, 0.12);
+  --warning-bg: rgba(251, 191, 36, .12);
   --info: #60a5fa;
-  --info-bg: rgba(96, 165, 250, 0.16);
+  --info-bg: rgba(96, 165, 250, .16);
   /* ChipCode 兼容色 token（暗色，0 引用，供后续组件安全使用） */
   --ai-color: var(--accent);
   --ai-hover: var(--primary-hover);
   --ai-soft: var(--primary-light);
-  --ai-glow: rgba(59, 130, 246, 0.20);
-  --accent-glow: rgba(59, 130, 246, 0.22);
-  --success-soft: rgba(74, 222, 128, 0.12);
-  --warning-soft: rgba(251, 191, 36, 0.12);
-  --error-soft: rgba(248, 113, 113, 0.12);
+  --ai-glow: rgba(59, 130, 246, .20);
+  --accent-glow: rgba(59, 130, 246, .22);
+  --success-soft: rgba(74, 222, 128, .12);
+  --warning-soft: rgba(251, 191, 36, .12);
+  --error-soft: rgba(248, 113, 113, .12);
 
   /* ⑥ 结构尺寸（对齐 TrieCode --toolbar-height: 36px） */
   --titlebar-height: 36px;
@@ -117,12 +117,12 @@
   --text-lg: 15px;
   --text-xl: 18px;
   /* ChipCode --shadow-1/2/3（暗色）；既有的 --shadow-sm/md/lg 为兼容别名保留 */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.45);
-  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.55);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, .55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, .45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, .55);
   /* ChipCode 动效与控制尺寸 token */
   --control-height-sm: 26px;
   --control-height-md: 32px;
@@ -134,7 +134,7 @@
   --ease-in-out: cubic-bezier(.65, 0, .35, 1);
   --focus-ring: 0 0 0 3px var(--accent-glow);
   --font-family: 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system, BlinkMacSystemFont, 'Source Han Sans SC', '思源黑体', sans-serif;
-  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
 
   /* 兼容别名：历史 UI（插件/设备等面板）引用了 TrieCode 风格 token 名但主题从未定义，导致大面积颜色跑偏；此处映射到真实 token（var 动态解析，自动适配深浅色） */
   --card-color: var(--surface-1);
@@ -152,22 +152,22 @@
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --primary-active: #1e40af;
-  --primary-light: rgba(37, 99, 235, 0.10);
-  --primary-lighter: rgba(37, 99, 235, 0.05);
+  --primary-light: rgba(37, 99, 235, .1);
+  --primary-lighter: rgba(37, 99, 235, .05);
 
   --surface-0: #f5f6f8;
   --surface-1: #ffffff;
   --surface-2: #f0f1f3;
   --surface-3: #e9ebef;
-  --surface-hover: rgba(15, 23, 42, 0.055);
-  --surface-active: rgba(15, 23, 42, 0.09);
+  --surface-hover: rgba(15, 23, 42, .055);
+  --surface-active: rgba(15, 23, 42, .09);
 
   --bg-primary: var(--surface-1);
   /* 背景层级对齐 ChipCode（与暗色同构） */
   --bg-secondary: var(--surface-2);
   --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
-  --bg-selected: rgba(37, 99, 235, 0.10);
+  --bg-selected: rgba(37, 99, 235, .1);
   --bg-active: var(--surface-active);
 
   --border: #e2e5ea;
@@ -190,32 +190,32 @@
   --brand-ink: #17171A;                          /* ChipCode 亮色主题品牌 logo 墨黑 */
 
   --success: #16a34a;
-  --success-bg: rgba(22, 163, 74, 0.10);
+  --success-bg: rgba(22, 163, 74, .1);
   --error: #dc2626;
-  --error-bg: rgba(220, 38, 38, 0.10);
+  --error-bg: rgba(220, 38, 38, .1);
   --warning: #d97706;
-  --warning-bg: rgba(217, 119, 6, 0.10);
+  --warning-bg: rgba(217, 119, 6, .1);
   --info: #2563eb;
-  --info-bg: rgba(37, 99, 235, 0.10);
+  --info-bg: rgba(37, 99, 235, .1);
   /* ChipCode 兼容色 token（亮色） */
   --ai-color: var(--accent);
   --ai-hover: var(--primary-hover);
   --ai-soft: var(--primary-light);
-  --ai-glow: rgba(37, 99, 235, 0.14);
-  --accent-glow: rgba(37, 99, 235, 0.15);
-  --success-soft: rgba(22, 163, 74, 0.10);
-  --warning-soft: rgba(217, 119, 6, 0.10);
-  --error-soft: rgba(220, 38, 38, 0.10);
+  --ai-glow: rgba(37, 99, 235, .14);
+  --accent-glow: rgba(37, 99, 235, .15);
+  --success-soft: rgba(22, 163, 74, .1);
+  --warning-soft: rgba(217, 119, 6, .1);
+  --error-soft: rgba(220, 38, 38, .1);
 
   --toolbar-height: 36px;
   /* ChipCode --shadow-1/2/3（亮色） */
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-2: 0 4px 14px rgba(16, 24, 40, 0.10);
-  --shadow-3: 0 12px 32px rgba(16, 24, 40, 0.16);
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.10);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.16);
-  --modal-backdrop: rgba(244, 246, 250, 0.72);
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-2: 0 4px 14px rgba(16, 24, 40, .1);
+  --shadow-3: 0 12px 32px rgba(16, 24, 40, .16);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, .1);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, .16);
+  --modal-backdrop: rgba(244, 246, 250, .72);
 }
 
 /* 全局重置 */
@@ -533,7 +533,7 @@ input, textarea {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
   padding: 6px 0;
   z-index: 10000;
   display: none;
@@ -1272,7 +1272,7 @@ input, textarea {
 /* 对齐 ChipCode 文件树空态：52×52 圆形 + --accent-soft 柔和底 + 24px 亮色图标 */
 .welcome-panel-icon {
   width: 52px; height: 52px; border-radius: 50%;
-  background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.10) */
+  background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.1) */
   color: var(--brand-ink);                   /* ChipCode 品牌 logo 中性墨色 */
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 12px;
@@ -1312,13 +1312,13 @@ input, textarea {
 
 /* ===== 代码符号搜索浮层（1:1 仿写 ChipCode：遮罩 z90 / 卡片 z91 / 宽540 / top52 / inline 输入框） ===== */
 .symbol-search-overlay { position: fixed; inset: 0; z-index: 10001; }
-.symbol-search-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 90; }
+.symbol-search-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 90; }
 .symbol-search-card {
   position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
   width: 540px; max-width: 92vw; z-index: 91;
   background: var(--card-color, var(--bg-color)); color: var(--text-color);
   border: 1px solid var(--border-color); border-radius: var(--radius-card, 10px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .35); overflow: hidden;
 }
 .symbol-search-inputbar {
   display: flex; align-items: center; gap: 8px;
@@ -1802,7 +1802,7 @@ input, textarea {
 
 .ai-input-box:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, .2);
 }
 
 .ai-input-textarea {
@@ -1878,7 +1878,7 @@ input, textarea {
   animation: ctx-rec-pulse 1s ease-in-out infinite;
 }
 @keyframes ctx-rec-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .5); }
   50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 }
 
@@ -2047,7 +2047,7 @@ input, textarea {
 .model-key-tag {
   font-size: 9.5px;
   color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  border: 1px solid rgba(239, 68, 68, .4);
   border-radius: 4px;
   padding: 0 4px;
   margin-left: auto;
@@ -2060,7 +2060,7 @@ input, textarea {
 .model-local-tag {
   font-size: 9.5px;
   color: #059669;
-  border: 1px solid rgba(5, 150, 105, 0.45);
+  border: 1px solid rgba(5, 150, 105, .45);
   border-radius: 4px;
   padding: 0 4px;
   margin-left: auto;
@@ -2070,7 +2070,7 @@ input, textarea {
 }
 .model-local-tag.bad {
   color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.4);
+  border-color: rgba(239, 68, 68, .4);
 }
 .model-local-tag.pending {
   color: var(--text-tertiary);
@@ -2231,23 +2231,23 @@ body.no-open-file .ai-panel {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  border: 0.5px solid rgba(0,0,0,0.12);
+  border: 0.5px solid rgba(0,0,0, .12);
   border-radius: 999px;
-  background: rgba(255,255,255,0.95);
+  background: rgba(255,255,255, .95);
   color: #1A1B1C;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 14px rgba(0,0,0, .12);
   transition: transform .15s ease, box-shadow .15s ease;
   min-height: 40px;
 }
-.chat-scroll-bottom:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.16); }
+.chat-scroll-bottom:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0, .16); }
 
 /* 工作状态条（对齐 TrieCode：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文） */
 .work-status-msg .work-status-bubble {
-  background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.14));
-  border: 0.5px solid rgba(99,102,241,0.22);
+  background: linear-gradient(135deg, rgba(99,102,241, .08), rgba(139,92,246, .14));
+  border: 0.5px solid rgba(99,102,241, .22);
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -2255,8 +2255,8 @@ body.no-open-file .ai-panel {
 .work-status-line b { color: #6366f1; font-weight: 700; }
 .work-status-meta { display: block; margin-top: 4px; font-size: 11px; color: #6B7280; }
 .work-status-msg.work-status-done .work-status-bubble {
-  background: linear-gradient(135deg, rgba(82,196,26,0.08), rgba(82,196,26,0.12));
-  border-color: rgba(82,196,26,0.25);
+  background: linear-gradient(135deg, rgba(82,196,26, .08), rgba(82,196,26, .12));
+  border-color: rgba(82,196,26, .25);
 }
 .work-status-msg.work-status-done .work-status-line b { color: #389e0d; }
 
@@ -2536,12 +2536,12 @@ body.no-open-file .ai-panel {
 .btn-primary {
   background: var(--primary);
   color: white;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
 }
 
 .btn-primary:hover {
   background: var(--primary-hover);
-  box-shadow: 0 3px 8px rgba(59, 130, 246, 0.28);
+  box-shadow: 0 3px 8px rgba(59, 130, 246, .28);
 }
 
 .btn-primary:active {
@@ -2583,7 +2583,7 @@ body.no-open-file .ai-panel {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, .5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3257,7 +3257,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
 
 .statusbar .status-item#status-board:hover,
 .statusbar .status-item#status-toolchain:hover {
-  background: rgba(128, 128, 128, 0.18);
+  background: rgba(128, 128, 128, .18);
 }
 
 /* ============ 模型安装进度弹窗（对齐 Qwen 安装界面）============ */
@@ -3265,7 +3265,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   width: 340px;
   background: var(--bg-primary);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, .22);
   overflow: hidden;
   user-select: none;
 }
@@ -3574,9 +3574,9 @@ body.no-open-file .editor-toolbar { display: none !important; }
 /* ============ AI 思考过程展示（豆包式深度思考）============ */
 .thinking-block {
   margin: 8px 0;
-  border: 1px solid rgba(99,102,241,0.18);
+  border: 1px solid rgba(99,102,241, .18);
   border-radius: var(--radius-md);
-  background: linear-gradient(180deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  background: linear-gradient(180deg, rgba(99,102,241, .06), rgba(99,102,241, .02));
   overflow: hidden;
 }
 
@@ -3590,12 +3590,12 @@ body.no-open-file .editor-toolbar { display: none !important; }
   font-size: 11.5px;
   color: var(--text-secondary);
   background: transparent;
-  border-bottom: 1px solid rgba(99,102,241,0.10);
+  border-bottom: 1px solid rgba(99,102,241, .1);
   transition: background 0.15s ease;
 }
 
 .thinking-header:hover {
-  background: rgba(99,102,241,0.06);
+  background: rgba(99,102,241, .06);
 }
 
 .thinking-icon {
@@ -3845,14 +3845,14 @@ body.no-open-file .editor-toolbar { display: none !important; }
   padding: 8px 10px; border-radius: 8px; cursor: pointer;
   background: transparent; border: 1px solid transparent;
 }
-.ai-skill-item:hover { background: var(--bg-hover, rgba(0,0,0,0.04)); border-color: var(--border-light); }
+.ai-skill-item:hover { background: var(--bg-hover, rgba(0,0,0, .04)); border-color: var(--border-light); }
 .ai-skill-item-icon { color: var(--primary); display: flex; flex-shrink: 0; }
 .ai-skill-item-icon .icon { width: 14px; height: 14px; }
 .ai-skill-item-main { flex: 1; min-width: 0; }
 .ai-skill-item-name { font-size: 11.5px; font-weight: 600; color: var(--text-primary); }
 .ai-skill-item-desc { font-size: 10.5px; color: var(--text-tertiary); margin-top: 1px; }
 .ai-skill-item-badge {
-  font-size: 9.5px; color: var(--primary); background: rgba(139,200,234,0.12);
+  font-size: 9.5px; color: var(--primary); background: rgba(139,200,234, .12);
   padding: 2px 6px; border-radius: 8px; flex-shrink: 0;
 }
 
@@ -4048,16 +4048,16 @@ body.no-open-file .editor-toolbar { display: none !important; }
 }
 
 .tool-flow-item.running {
-  border-color: rgba(96, 165, 250, 0.4);
+  border-color: rgba(96, 165, 250, .4);
   background: var(--primary-lighter);
 }
 
 .tool-flow-item.done {
-  border-color: rgba(16, 185, 129, 0.35);
+  border-color: rgba(16, 185, 129, .35);
 }
 
 .tool-flow-item.error {
-  border-color: rgba(239, 68, 68, 0.4);
+  border-color: rgba(239, 68, 68, .4);
 }
 
 .tool-flow-head {
@@ -4106,7 +4106,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   overflow: auto;
   font-size: 10.5px;
   line-height: 1.5;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, .03);
   border-radius: 6px;
   padding: 6px 8px;
   color: var(--text-secondary);
@@ -4215,12 +4215,12 @@ body.no-open-file .editor-toolbar { display: none !important; }
 }
 
 .diff-line.add {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(16, 185, 129, .12);
   color: #047857;
 }
 
 .diff-line.del {
-  background: rgba(239, 68, 68, 0.10);
+  background: rgba(239, 68, 68, .1);
   color: #b91c1c;
 }
 
@@ -4503,11 +4503,11 @@ body.no-open-file .editor-toolbar { display: none !important; }
 
 /* 思考过程 - 豆包式深度思考（浅紫柔和块） */
 .thinking-block {
-  border: 1px solid rgba(99,102,241,0.18);
+  border: 1px solid rgba(99,102,241, .18);
   border-radius: 8px;
   overflow: hidden;
   margin: 6px 0;
-  background: linear-gradient(180deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  background: linear-gradient(180deg, rgba(99,102,241, .06), rgba(99,102,241, .02));
 }
 
 .thinking-header {
@@ -5206,14 +5206,14 @@ body.no-open-file .editor-toolbar { display: none !important; }
   background: var(--bg-color, #fff);
   color: var(--text-color);
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
 }
 .plugin-card {
   transition: border-color 0.2s, box-shadow 0.15s;
 }
 .plugin-card:hover {
   border-color: var(--accent, #007acc) !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .1);
 }
 /* 插件管理（对齐 TrieCode 卡片式：白底圆角卡、品牌图标、齿轮/toggle/垃圾桶、绿色运行点） */
 .plg-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--surface-1); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 1px 2px rgba(16,24,40,.04); transition: box-shadow .15s, border-color .15s; }
@@ -5290,7 +5290,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
 .plg-badge { font-size: 9.5px; padding: 1px 6px; border-radius: 5px; flex-shrink: 0; }
 .plg-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .plg-tags span { font-size: 10px; color: var(--text-tertiary); }
-.plg-badge-official { background: rgba(16, 185, 129, 0.13); color: #10b981; }
+.plg-badge-official { background: rgba(16, 185, 129, .13); color: #10b981; }
 .plg-badge-builtin { background: var(--surface-3); color: var(--text-tertiary); }
 .plg-badge-rec { background: #10b981; color: #fff; }
 .plg-tag { font-size: 9.5px; padding: 1px 7px; border-radius: 5px; background: var(--surface-3); color: var(--text-secondary); }
@@ -5341,7 +5341,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   white-space: nowrap;
   transition: all 0.2s;
 }
-.device-tab-cta:hover { background: rgba(5,150,105,0.12); }
+.device-tab-cta:hover { background: rgba(5,150,105, .12); }
 
 /* BYOK 一步配置弹窗里的服务商选择 chip（跟随主题变量，不再硬编码深色） */
 .byok-chip {
@@ -5355,9 +5355,9 @@ body.no-open-file .editor-toolbar { display: none !important; }
   cursor: pointer;
   transition: all 0.15s;
 }
-.byok-chip:hover { border-color: #059669; color: #059669; background: rgba(5,150,105,0.06); }
-.byok-chip.active { background: #059669; border-color: #059669; color: #fff; box-shadow: 0 1px 4px rgba(5,150,105,0.3); }
-#byok-key:focus { border-color: #059669; outline: none; box-shadow: 0 0 0 3px rgba(5,150,105,0.15); }
+.byok-chip:hover { border-color: #059669; color: #059669; background: rgba(5,150,105, .06); }
+.byok-chip.active { background: #059669; border-color: #059669; color: #fff; box-shadow: 0 1px 4px rgba(5,150,105, .3); }
+#byok-key:focus { border-color: #059669; outline: none; box-shadow: 0 0 0 3px rgba(5,150,105, .15); }
 #byok-save:hover { background: #047857; }
 .device-content {
   flex: 1;
@@ -5680,8 +5680,8 @@ body.logged-out .editor-container, body.logged-out .editor-wrapper { background:
   --surface-1: #11161d;
   --surface-2: #171e27;
   --surface-3: #1f2833;
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --surface-active: rgba(255, 255, 255, 0.10);
+  --surface-hover: rgba(255, 255, 255, .06);
+  --surface-active: rgba(255, 255, 255, .1);
   --border: #232c37;
   --border-light: #1a222b;
   --border-medium: #232c37;
@@ -5694,12 +5694,12 @@ body.logged-out .editor-container, body.logged-out .editor-wrapper { background:
   --primary: #2563eb;
   --primary-hover: #3b82f6;
   --primary-active: #1d4ed8;
-  --primary-light: rgba(37, 99, 235, 0.18);
-  --primary-lighter: rgba(37, 99, 235, 0.09);
-  --modal-backdrop: rgba(0, 0, 0, 0.7);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.32);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --primary-light: rgba(37, 99, 235, .18);
+  --primary-lighter: rgba(37, 99, 235, .09);
+  --modal-backdrop: rgba(0, 0, 0, .7);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .32);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, .45);
 }
 
 /* ---------- ② 全局质感与动效 ---------- */
@@ -5765,7 +5765,7 @@ button.btn {
 }
 .btn-primary {
   background: linear-gradient(135deg, var(--primary), var(--primary-active));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
 }
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.08);
@@ -5866,7 +5866,7 @@ select:focus,
 
 /* 命令面板：全屏遮罩 + 精致卡片 */
 #command-palette {
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, .45);
   backdrop-filter: blur(4px);
 }
 #command-palette .command-palette-modal {
@@ -5987,18 +5987,18 @@ select:focus,
 /* 设置：左侧分类栏 + 右侧面板（对齐 TrieCode 设置布局）——仅作用于设置弹窗，避免污染其他 modal-body（曾把命令面板输入框/列表挤成两列） */
 #settings-modal .modal-body { flex: 1; display: flex; min-height: 0; }
 .settings-layout { display: flex; flex: 1; min-height: 520px; }
-.settings-sidebar { width: 220px; flex: none; border-right: 1px solid var(--border-color); padding: 14px 10px; overflow-y: auto; background: rgba(128,128,128,0.04); }
+.settings-sidebar { width: 220px; flex: none; border-right: 1px solid var(--border-color); padding: 14px 10px; overflow-y: auto; background: rgba(128,128,128, .04); }
 .settings-search { width: 100%; box-sizing: border-box; padding: 7px 10px; margin-bottom: 14px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-color); color: var(--text-color); font-size: 12.5px; }
 .settings-search:focus { outline: none; border-color: var(--accent); }
 .settings-nav-group { margin-bottom: 14px; }
 .settings-nav-group-title { font-size: 10.5px; color: var(--text-tertiary); margin: 0 0 6px 8px; letter-spacing: .06em; text-transform: uppercase; }
 .settings-nav-item { padding: 7px 10px; border-radius: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; margin-bottom: 2px; user-select: none; }
-.settings-nav-item:hover { background: rgba(128,128,128,0.12); color: var(--text-color); }
+.settings-nav-item:hover { background: rgba(128,128,128, .12); color: var(--text-color); }
 .settings-nav-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
 .settings-panels { flex: 1; padding: 18px 22px; overflow-y: auto; max-height: 62vh; }
 .settings-panel { display: none; }
 .settings-panel.active { display: block; }
-.settings-placeholder { padding: 24px 12px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; line-height: 1.7; background: rgba(128,128,128,0.05); border: 1px dashed var(--border-color); border-radius: 8px; }
+.settings-placeholder { padding: 24px 12px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; line-height: 1.7; background: rgba(128,128,128, .05); border: 1px dashed var(--border-color); border-radius: 8px; }
 /* 开关（补全启用） */
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -6146,12 +6146,12 @@ select:focus,
 .cmd-palette-overlay {
   position: fixed; inset: 0; z-index: 6000;
   display: none; align-items: flex-start; justify-content: center;
-  background: rgba(0,0,0,0.35); padding-top: 12vh;
+  background: rgba(0,0,0, .35); padding-top: 12vh;
 }
 .cmd-palette {
   width: 560px; max-width: 92vw; background: var(--card-color, #252526);
   border: 1px solid var(--border-color, #3c3c3c); border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.45); overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0, .45); overflow: hidden;
 }
 .cmd-input {
   width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 13px;
@@ -6165,11 +6165,11 @@ select:focus,
 }
 .cmd-item.active { background: var(--accent-color, #0e639c); color: #fff; }
 .cmd-group { font-size: 10.5px; color: var(--text-tertiary, #888); min-width: 40px; }
-.cmd-item.active .cmd-group { color: rgba(255,255,255,0.75); }
+.cmd-item.active .cmd-group { color: rgba(255,255,255, .75); }
 .cmd-title { flex: 1; }
 .cmd-empty { padding: 16px; color: var(--text-tertiary, #888); font-size: 12.5px; text-align: center; }
 .cmd-hint { display: flex; gap: 16px; padding: 8px 14px; border-top: 1px solid var(--border-color, #3c3c3c); font-size: 10.5px; color: var(--text-tertiary, #888); }
-.cmd-hint kbd { background: rgba(128,128,128,0.2); border-radius: 3px; padding: 1px 5px; margin-right: 3px; }
+.cmd-hint kbd { background: rgba(128,128,128, .2); border-radius: 3px; padding: 1px 5px; margin-right: 3px; }
 
 /* ---------- 编辑器工具栏：快捷编译/烧录 ---------- */
 .editor-toolbar-sep {
