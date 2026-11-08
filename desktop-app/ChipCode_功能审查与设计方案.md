@@ -9,7 +9,7 @@
 ChipCode 是一个 **AI 原生的桌面编程 IDE**（Electron + 原生 JS），面向嵌入式/硬件开发，但内核是通用的「智能体 + 工具 + 插件」平台。
 
 界面骨架（截图已确认）：
-- **活动栏**：文件 / 盒子(设备) / 源代码管理 / 插件 —— 4 个入口
+- **活动栏**：explorer（文件）/ product-factory（产品工厂）/ git（源代码管理）/ context（上下文）/ plugins（插件，入口为各插件品牌图标）/ device（设备，常显）—— 6 个面板，互斥切换
 - **标题栏**：App 图标 + 品牌名 + 2 个布局切换（◫ 侧栏、⊞ 编辑器）+ 菜单（文件/编辑/视图/帮助）+ 3 个工具图标（串口监视器/终端/搜索）
 - **侧栏**：文件树 / 源代码管理空状态（无项目时显示「还没有打开项目」+ 打开项目…/从 Git 克隆项目…）
 - **编辑区**：中央编辑器 + 左侧 AI 智能体对话面板
@@ -176,7 +176,7 @@ classifyTestOutcome 8/8 通过：成功统计行→pass、结构化通过→pass
 generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失→UNVERIFIABLE、
 真实执行成功→PASS/high、真实执行失败→FAIL
 端到端 verify()：真实 runner→PASS/high/executed；环境缺失→UNVERIFIABLE/none/missing
-回归：playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具、重复 id 全为 1、死命令 0
+回归：playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 常显）、插件 28 工具、重复 id 全为 1、死命令 0
 ```
 
 **仍未做（保守边界）**：内置按项目类型的轻量静态验证模板（易假阳性，且静态证据现在只能得 PARTIAL/UNVERIFIABLE）、结构化 VERDICT 事件与置信度 UI 组件（当前仅以文本注入与 verdict 对象承载）、`alwaysVerify`/`loopTimeoutMs` 默认值仍关闭、三处轮次计数语义未统一。
@@ -198,7 +198,7 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 
 **纠偏（交叉验收）**：`toolchain:installCli` 是 arduino-cli 专用、无入参、URL 硬编码单源、不跟随 3xx、无哈希/退出码校验，不可直接复用；`downloadFile` **本身已跟随 3xx**（旧文档归因有误）。子代理还纠正了 8 处行号偏差。
 
-**验收（运行态）**：`window.BubaiCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.bubaicode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具。
+**验收（运行态）**：`window.BubaiCode.deps.{install,cancel,onProgress}` 均为 function；`deps.install({})` 正确返回 `stage:'args'` 参数错误；`normProgress({progress:42})` → `percent:42`；`window.bubaicode === undefined`（死订阅已修）；两个引导卡组件存在；playwright 仍健康、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 常显）、插件 28 工具。
 
 **仍未做**：gdb/openocd 的真实下载源与 sha256 配置（需选定可信发行包后填入 `deps:install` opts）、`dap:toolPath` 前置 `TOOLS_DIR` 绝对路径探测、`deps:status` 聚合状态页、统一进度 schema 的主进程侧彻底收敛（当前为接收侧兼容）。方案 C 的线上部署已完成校验（见下方备注）。
 
@@ -219,7 +219,7 @@ generateVerdict：静态审查→UNVERIFIABLE（旧为恒 PASS）、环境缺失
 看板         open→display:flex、close→none、按钮存在且有响应、命令面板 1 条
 沙箱         异常 manifest → 沙箱拦截 "boom-in-map"、半加载工具 leakedTools:0 / noLeak:true、
              正常插件加载仍返回 tools:1
-回归         easyeda 3 工具 / playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 在 UI 隐藏）、插件 28 工具、
+回归         easyeda 3 工具 / playwright 25 工具、活动栏 6 项（实机复测 2026-11-08：explorer/product-factory/git/context/plugins 可见、device 常显）、插件 28 工具、
              deps API 可用、探针残留 0、启动日志无异常
 ```
 
