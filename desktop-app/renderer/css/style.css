@@ -37,8 +37,8 @@
   --primary-light: rgba(59, 130, 246, .14);   /* 蓝色浅底（选中/头像） */
   --primary-lighter: rgba(59, 130, 246, .07);
   --accent: var(--primary);                      /* 暗 #3b82f6 / 亮 #2563eb */
-  /* 品牌 logo 专用墨色（对齐 ChipCode .brand-logo：亮 #17171A，暗 filter:invert(1) → #e8e8e5） */
-  --brand-ink: #e8e8e5;
+  /* 品牌 logo 专用色（回归 BubaiCode 交付包官方资产：亮 #1a1a2e 墨黑 / 暗 -reversed- 纯白） */
+  --brand-ink: #ffffff;
 
   /* ② 中性骨架：界面每一层背景（对齐 TrieCode --surface-0..3） */
   --surface-0: #0d1117;        /* canvas / 最底 */
@@ -187,7 +187,7 @@
   --text-muted: var(--text-3);
   --text-quaternary: #9aa2ad;
   --text-inverse: #ffffff;
-  --brand-ink: #17171A;                          /* ChipCode 亮色主题品牌 logo 墨黑 */
+  --brand-ink: #1a1a2e;                         /* BubaiCode 交付包官方墨黑（logo-final.svg） */
 
   --success: #16a34a;
   --success-bg: rgba(22, 163, 74, .1);
@@ -408,7 +408,7 @@ button span + .icon {
 .app-icon .icon {
   width: 18px;
   height: 18px;
-  color: var(--brand-ink);                  /* ChipCode 品牌 logo 中性墨色，非强调蓝 */
+  color: var(--brand-ink);                  /* BubaiCode 官方品牌色，随主题切换墨黑/反白 */
 }
 
 html, body {
@@ -1273,7 +1273,7 @@ input, textarea {
 .welcome-panel-icon {
   width: 52px; height: 52px; border-radius: 50%;
   background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.1) */
-  color: var(--brand-ink);                   /* ChipCode 品牌 logo 中性墨色 */
+  color: var(--brand-ink);                   /* BubaiCode 官方品牌色，随主题切换墨黑/反白 */
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 12px;
 }
