@@ -11440,13 +11440,32 @@ function bindEvents() {
     const ps = window.PluginSystem;
     if (!ps || typeof ps.listPlugins !== 'function') return;
     const plugins = (ps.listPlugins() || []).filter(p => p.active !== false && MARKET_IDS.has(p.id));
+    // 品牌 SVG symbol 按插件 id 精确映射（与插件市场卡片 brandIconHtml() 同源）。
+    // registry 里 manifest.icon 多数为空，此前全部回退成 🧩，活动栏 9 个图标一模一样。
+    const BRAND_SYM = {
+      'arduino-cli-toolchain': 'brand-arduino',
+      'browser-toolchain': 'brand-browser',
+      'espressif-idf-toolchain': 'brand-espidf',
+      'stm32-cube-toolchain': 'brand-stm32',
+      'wokwi-simulator': 'brand-wokwi',
+      'easyeda-toolchain': 'brand-lceda',
+      'openscad-toolchain': 'brand-openscad',
+      'sdcc-51-toolchain': 'brand-mcs51',
+      'plugin-dev-toolchain': 'brand-plugdev',
+      'ai-hardware-lab': 'brand-aihwlab'
+    };
     plugins.forEach(p => {
       const btn = document.createElement('button');
       btn.className = 'activity-btn plugin-activity-btn';
       btn.dataset.pluginId = p.id;
       btn.title = p.name || p.id;
-      const iv = String(p.icon || '🧩');
-      btn.innerHTML = '<span class="activity-emoji">' + escapeHtml(iv.indexOf('<svg') === 0 ? '🧩' : iv) + '</span>';
+      const sym = BRAND_SYM[p.id];
+      if (sym) {
+        btn.innerHTML = '<svg class="brand-ic"><use href="#' + sym + '"></use></svg>';
+      } else {
+        const fallback = p.icon || (MARKET_CATALOG[p.id] && MARKET_CATALOG[p.id].icon) || '🧩';
+        btn.innerHTML = '<span class="activity-emoji">' + escapeHtml(String(fallback)) + '</span>';
+      }
       box.appendChild(btn);
     });
   };
