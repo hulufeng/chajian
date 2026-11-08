@@ -39,6 +39,10 @@
         </div>
       </div>
       <div class="ctx-body">
+        <div class="ctx-empty" id="ctx-empty" style="display:none;line-height:1.6;">
+          <div style="font-weight:600;color:var(--text-secondary);margin-bottom:6px;">还没有打开项目</div>
+          <div>上下文用量用于你打开的那个项目（已打开的文件与对话内容会在这里估算）。先打开一个项目，再看看估算结果。</div>
+        </div>
         <div class="ctx-card">
           <div class="ctx-stat"><span class="ctx-stat-label">估算 Token</span><span class="ctx-stat-value" id="ctx-tokens">0</span></div>
           <div class="ctx-stat-sub" id="ctx-chars">字符：0</div>
@@ -64,6 +68,8 @@
 
   function refreshContextPanel() {
     if (!panelEl) buildPanel();
+    const empty = panelEl.querySelector('#ctx-empty');
+    if (empty) empty.style.display = (state && state.projectPath) ? 'none' : '';
     const { chars, tokens } = estimateTokensFromState();
     const t = panelEl.querySelector('#ctx-tokens'), c = panelEl.querySelector('#ctx-chars'), f = panelEl.querySelector('#ctx-bar-fill');
     if (t) t.textContent = tokens.toLocaleString();

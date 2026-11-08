@@ -120,7 +120,7 @@
   }
 
   function init() {
-    // 方案 D：活动栏已 1:1 对齐 ChipCode 精简为 4 项，没有 data-panel="dashboard" 按钮。
+    // 方案 D：活动栏共 6 项（文件/产品工厂/源代码管理/上下文/插件/设备），没有 data-panel="dashboard" 按钮。
     // 旧实现因 !btn 直接 return，导致刷新/关闭按钮与 openDashboard 全都没绑定（死 UI）。
     // 现在始终绑定，看板改由命令面板「打开看板」调用 window.BubaiCodeUI.openDashboard 打开。
     const btn = document.querySelector('.activity-btn[data-panel="dashboard"]');

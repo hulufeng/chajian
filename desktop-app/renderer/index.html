@@ -340,14 +340,14 @@
 
   <!-- 主内容区 -->
   <div class="main-container">
-    <!-- 活动栏（1:1 对齐 ChipCode：文件 / 产品工厂(box) / 源代码管理 / 插件，共 4 项；设备入口收敛至状态栏「开发板/工具链」点击打开） -->
+    <!-- 活动栏（对齐 ChipCode 并扩展：文件 / 产品工厂 / 源代码管理 / 上下文 / 插件 / 设备，共 6 项；状态栏「开发板/工具链」段亦可点击打开设备面板） -->
     <div class="activity-bar">
       <button class="activity-btn active" data-panel="explorer" title="文件"><svg class="icon"><use href="#icon-folder"></use></svg><span class="activity-label">文件</span></button>
       <button class="activity-btn" data-panel="product-factory" title="产品工厂"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">产品工厂</span></button>
       <button class="activity-btn" data-panel="git" title="源代码管理"><svg class="icon"><use href="#icon-git-branch"></use></svg><span class="activity-label">源代码管理</span></button>
       <button class="activity-btn" data-panel="context" title="上下文用量 / 压缩预览"><svg class="icon"><use href="#icon-list-check"></use></svg><span class="activity-label">上下文</span></button>
       <button class="activity-btn" data-panel="plugins" title="插件"><svg class="icon"><use href="#icon-puzzle"></use></svg><span class="activity-label">插件</span></button>
-      <button class="activity-btn" data-panel="device" title="设备" style="display:none;"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
+      <button class="activity-btn" data-panel="device" title="设备"><svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">设备</span></button>
       <!-- 已安装插件（带视图）动态入口：安装出现、卸载移除（对齐 VSCode 扩展活动栏图标） -->
       <div id="plugin-activity-buttons" style="display:flex;flex-direction:column;"></div>
     </div>

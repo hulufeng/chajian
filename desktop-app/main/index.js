@@ -453,7 +453,7 @@ function showAboutDialog() {
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: '关于 BubaiCode',
-    message: 'BubaiCode v1.0.0',
+    message: `BubaiCode v${app.getVersion()}`,
     detail: '通用 AI 软件开发智能体\n\n内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网查资料。\n\n© 2026 BubaiCode Team. All rights reserved.',
     buttons: ['确定']
   });

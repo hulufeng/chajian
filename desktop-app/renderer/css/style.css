@@ -3247,7 +3247,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   opacity: 1;
 }
 
-/* 硬件收敛（对齐 ChipCode 活动栏 4 tab）：设备入口移入状态栏，开发板/工具链可点击打开设备面板 */
+/* 设备面板双入口：活动栏「设备」图标常显；状态栏开发板/工具链段也可点击打开设备面板 */
 .statusbar .status-item#status-board,
 .statusbar .status-item#status-toolchain {
   cursor: pointer;

@@ -9755,8 +9755,13 @@ function handleMenuAction(action) {
   }
 }
 
-function showAboutDialog() {
-  const version = window.BubaiCode && window.BubaiCode.app ? window.BubaiCode.app.getVersion() : '1.0.0';
+async function showAboutDialog() {
+  let version = '1.2.31';
+  try {
+    if (window.BubaiCode && window.BubaiCode.app && window.BubaiCode.app.getVersion) {
+      version = await window.BubaiCode.app.getVersion() || version;
+    }
+  } catch (e) { /* 保留兜底版本 */ }
   showToast(`BubaiCode v${version}`, 'info');
   addOutputLog(`关于 BubaiCode v${version}`, 'info');
 }
@@ -10535,7 +10540,7 @@ function bindEvents() {
       if (mcpPanel) mcpPanel.style.display = 'none';
       // 面板互斥（根治）：先统一隐藏所有侧栏面板，目标分支只负责显示自己——
       // 此前逐分支手动列「要关谁」多次漏关（wokwi 叠设备、git 叠插件），统一隐藏后不会再漏
-      ['plugins-panel', 'device-panel', 'git-panel', 'wokwi-panel', 'mcp-panel'].forEach(pid => {
+      ['plugins-panel', 'device-panel', 'git-panel', 'wokwi-panel', 'mcp-panel', 'context-panel', 'schedule-panel'].forEach(pid => {
         const el = document.getElementById(pid);
         if (el && pid !== (panel === 'models' ? 'plugins-panel' : panel + '-panel')) el.style.display = 'none';
       });
@@ -10661,7 +10666,7 @@ function bindEvents() {
         if (devicePanel) devicePanel.style.display = 'none';
         if (gitPanel) gitPanel.style.display = 'none';
         if (mcpPanel) mcpPanel.style.display = 'none';
-        if (wokwiPanel) wokwiPanel.style.display = 'none';
+        const wokwiPanelCtx = document.getElementById('wokwi-panel'); if (wokwiPanelCtx) wokwiPanelCtx.style.display = 'none';
         var _schedP = document.getElementById('schedule-panel'); if (_schedP) _schedP.style.display = 'none';
         var _pfP = document.getElementById('product-factory-view'); if (_pfP) _pfP.style.display = 'none';
         const ctxPanel = document.getElementById('context-panel');
@@ -18745,7 +18750,7 @@ function bindEvents() {
   const gitEmptyClone = document.getElementById('git-empty-clone');
   if (gitEmptyClone) gitEmptyClone.addEventListener('click', () => { const b = document.getElementById('welcome-clone-project'); if (b) b.click(); });
 
-  // 硬件收敛（UI 对齐 ChipCode 活动栏 4 tab）：设备面板入口移入状态栏——点击「开发板/工具链」段打开设备面板，功能保留可用
+  // 设备面板双入口：活动栏「设备」图标常显；状态栏「开发板/工具链」段同样可点击打开设备面板，功能保留可用
   const openDevicePanel = () => { const b = document.querySelector('.activity-btn[data-panel="device"]'); if (b) b.click(); };
   const statusBoard = document.getElementById('status-board');
   if (statusBoard) statusBoard.addEventListener('click', openDevicePanel);
