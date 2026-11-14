@@ -250,7 +250,8 @@ list_ports  → "可用串口:\n1. COM1 — 通信端口 (COM1)"
 select_port → "已选择串口: COM1（通信端口 (COM1)）（后续 upload/串口监视将使用该端口）"
 状态         → state.compilePort="COM1"  state.arduinoPort="COM1"   状态栏 #status-port="COM1"
 ```
-**验收**：`verify-host-extra-tools.cjs` **7/7**；八套单测合计 **88/88**；`verify-ipc-contract.cjs` PASS。
+**验收**：`verify-host-extra-tools.cjs` **7/7**；八套单测合计 **88/88**（当时快照）；`verify-ipc-contract.cjs` PASS。
+> 2026-11-14 后续：新增工作流集成测试 11 项后，`npm test` 聚合结果为 **12 个脚本 / 99 项断言全绿**，见 §5。
 
 ### P3-2 · 剩余（架构级重写，不属对齐能力缺口）
 1. `packages/engine/loop.js` 的 `runLoop` 替换 app.js 内联循环（两套实现收敛，风险高）
@@ -268,22 +269,27 @@ cd D:\work\daimaLABshiyanshi\codelab-desktop\desktop-app
 npm install
 npm start                 # electron .
 npm run dev               # electron . --dev
+npm test                  # 【推荐】聚合回归：scripts/verify-all.cjs，自动跑全部 12 个脚本 / 99 项断言
+npm run test:workflow     # 单独跑工作流 jsdom 集成测试（11 项）
 node scripts/verify-ipc-contract.cjs     # IPC 契约（CHANNEL + PRELOAD 两类 diff）
 node scripts/theme-probe.mjs             # 设计令牌对齐
 node scripts/wf_logic_test.js            # 工作流纯算法单测
-node scripts/wf_integration_test.js     # jsdom 集成（需 jsdom，package.json 未列）
-node scripts/verify-chipcode-align.cjs   # 【新增】对齐模块单测（18 项）
-node scripts/verify-align-adapter.cjs    # 【新增】接线层单测（9 项）
-node scripts/verify-align-p1b.cjs        # 【新增】P1b 接线验收（12 项，含 app.js 语法解析）
-node scripts/verify-align-p2.cjs         # 【新增】P2 验收（12 项，含跨文件语法/契约检查）
+node scripts/wf_integration_test.js     # jsdom 集成（jsdom 已列入 devDependencies）
+node scripts/verify-chipcode-align.cjs   # 对齐模块单测（18 项）
+node scripts/verify-align-adapter.cjs    # 接线层单测（9 项）
+node scripts/verify-align-p1b.cjs        # P1b 接线验收（12 项，含 app.js 语法解析）
+node scripts/verify-align-p2.cjs         # P2 验收（12 项，含跨文件语法/契约检查）
 npm run build:win         # electron-rebuild serialport,node-pty && electron-builder --win
 ```
 
+**测试口径（2026-11-14 更新）**：`npm test` 由 `scripts/verify-all.cjs` 聚合，自动发现 `scripts/verify-*.cjs`（排除自身）并纳入 `theme-probe.mjs`、`wf_logic_test.js`、`wf_integration_test.js`；零第三方依赖 runner 本体、跨平台、任一失败即非零退出。`jsdom ^31.0.1` 已在 `devDependencies`。`wf_integration_test.js` 已重写为按源码标记动态抽取工作流模块（不再硬编码 app.js 行号），适配多 Agent 引擎的 `data.status`/`route`/审批门/环检测，详见 `.handoff/BubaiCode_实机验收_20261108.md` §27.4。
+
 **注意口径不一致**（文档勿沿用旧文案）：
-- `package.json:53` 输出目录 `dist168`，`:124` 产物名 `BubaiCode-Setup-${version}.${ext}`；
+- `package.json` 版本 `1.2.33`、`build.directories.output` 为 **`dist179`**（旧文档写的 `dist168` 已过时），产物名 `BubaiCode-Setup-${version}.${ext}`；
 - `scripts/build-win.ps1` / `.bat` 仍写 `dist\BubaiCode Setup 1.0.0.exe`（旧版），且**不调用** `electron-rebuild` / `inject-gateway`；
-- `package.json` **无 `test`/`lint`/`verify` 脚本**，所有测试须手动 `node scripts/xxx`；
-- `prebuild*` 会跑 `inject-gateway.js` 生成空凭据 `resources/gateway.json`。
+- `package.json` 已有 `test` / `test:workflow`，**仍无 `lint` 脚本**；
+- `prebuild*` 会跑 `inject-gateway.js` 生成空凭据 `resources/gateway.json`；
+- ⚠️ 直接 `npm run build` 到非空 `dist179` 会触发 CodeBuddy `node-safe-delete-shim` 批量删除守卫（>500 文件），需临时把输出目录改到不存在的目录再打包，见交接书 §二十二。
 
 ### 编码规范
 1. 新增能力优先放 `packages/engine/` 纯函数模块，附 `node:test` 单测，再考虑接入 `app.js`。

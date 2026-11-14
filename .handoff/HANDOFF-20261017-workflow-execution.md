@@ -30,6 +30,7 @@
 - `node --check renderer/js/app.js` 通过。
 - `node scripts/wf_logic_test.js` 10/10 通过（纯算法层：线性+false 跳过 / 菱形汇聚 / 环检测 / 普通线性）。
 - `node scripts/wf_integration_test.js` **16/16 通过**：在 jsdom 真实 DOM + mock LabCode 下抽离并运行真实工作流模块，覆盖 AI 节点真实 `ai.chat`、工具节点真实 `terminal.execute`、条件分支真/假裁剪与下游跳过、导出/导入往返（剥离并恢复 `_state`）、空画布不崩溃。
+  - ⚠️ **2026-11-14 状态更新**：以上为 10-17 当时的旧引擎验收。此后 `app.js` 工作流模块重构为「多 Agent 引擎」（`data.status` 状态机 / `route=success|loop` / 审批门 / 环检测 / 按钮内联导入导出），本测试因硬编码行号 `slice(8424,8603)` 失效，已**重写为 11 个用例**（按源码标记动态抽取），纳入 `npm test` 默认套件（现 12 脚本 / 99 断言全绿）。详见 `.handoff/BubaiCode_实机验收_20261108.md` §27.4。
 - 依赖已重装：`npm install` 经 npmmirror（此前 `node_modules` 在清理时被移至 `D:/_nm_quarantine/`，现已恢复；重装前需先结束残留 `electron.exe` 进程以释放 `electron/dist` 文件锁，否则 EBUSY）。
 - **仍待用户机器真机验证**：GUI 渲染、AI 节点真实 API Key 调用、终端节点真实命令执行需在带显示环境 + 配置可用 API Key 下确认。
 
