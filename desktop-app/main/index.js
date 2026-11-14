@@ -8,8 +8,8 @@ const os = require('os');
 const https = require('https');
 const { spawn, execFile } = require('child_process');
 
-// ============ 品牌迁移：从旧 LabCode userData 安全迁移到新 BubaiCode userData ============
-// 全量改名 name: LabCode→BubaiCode 后，Electron userData 路径随之改变，旧插件/配置留在 LabCode 目录。
+// ============ 品牌迁移：从旧 旧版 userData 安全迁移到新 BubaiCode userData ============
+// 全量改名 name: 旧版→BubaiCode 后，Electron userData 路径随之改变，旧插件/配置留在 旧版 目录。
 // 仅在目标子项尚不存在时复制（绝不删旧目录），迁移失败不阻塞启动。
 function copyDirSync(s, d) {
   fs.mkdirSync(d, { recursive: true });
@@ -99,7 +99,7 @@ function getDefaultConfig() {
       model: 'qwen3-8b',
       apiKey: '',
       thinkingLevel: 'standard',
-      agentMode: 'default'
+      agentMode: 'auto'
     },
     proxy: {
       mode: 'system',
@@ -116,7 +116,7 @@ function getDefaultConfig() {
     extra: {
       skills: [],
       mcpServers: [
-        // 2026-09-15 对齐 TrieCode browser-toolchain：默认注释掉，用户装 playwright 后取消注重
+        // 2026-09-15 对齐参考基线 browser-toolchain：默认注释掉，用户装 playwright 后取消注重
         // { name: 'browser', command: 'npx', args: ['-y', '@playwright/mcp@latest'], env: {} }
       ],
       hooks: {}
@@ -150,8 +150,8 @@ function loadSessions() {
   }
 }
 
-// ===== Phase B：完整会话 store（对齐 ChipCode session-store.js 的 load/save/revise/search 语义）=====
-// sessionId 白名单：防路径穿越（与 ChipCode auto-memory.js / file-change-tracker.js 同源边界）
+// ===== Phase B：完整会话 store（对齐参考基线 session-store.js 的 load/save/revise/search 语义）=====
+// sessionId 白名单：防路径穿越（与 参考基线 auto-memory.js / file-change-tracker.js 同源边界）
 const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function safeSessionFile(id) {
   if (!SESSION_ID_RE.test(String(id || ''))) return null;
@@ -188,7 +188,7 @@ function deleteSession(id) {
   }
 }
 
-/** 单会话全量读取（含 messages 的展示字段；对齐 ChipCode loadSession 的 display 原样重建语义） */
+/** 单会话全量读取（含 messages 的展示字段；对齐参考基线 loadSession 的 display 原样重建语义） */
 function loadSessionById(id) { return readSession(id); }
 
 function renameSession(id, title) {
@@ -199,10 +199,10 @@ function renameSession(id, title) {
 }
 
 /**
- * 修订（单一写者；对齐 ChipCode reviseSession 的 ops 语义）。
+ * 修订（单一写者；对齐参考基线 reviseSession 的 ops 语义）。
  * ops: replace_all{messages,meta} | delete_range{fromSeq,toSeq} | insert{atSeq,messages}
  *      | update{seq,message} | rename{title} | meta{...}
- * 单事务：所有 op 在内存数组按序应用后一次写盘；数组下标即 seq，天然连续（等价 ChipCode 批末 renumber）。
+ * 单事务：所有 op 在内存数组按序应用后一次写盘；数组下标即 seq，天然连续（等价 参考基线 批末 renumber）。
  */
 function reviseSession(id, ops) {
   const s = readSession(id);
@@ -248,7 +248,7 @@ function reviseSession(id, ops) {
 }
 
 /**
- * 全文检索（对齐 ChipCode searchSessions：3-gram 中文分词 + BM25 相关性排序 + 命中高亮）。
+ * 全文检索（对齐参考基线 searchSessions：3-gram 中文分词 + BM25 相关性排序 + 命中高亮）。
  * Electron 28 内置 Node 18 不支持 node:sqlite/FTS5，故用零依赖内存索引（main/search-index.js）。
  */
 const searchIndex = require('./search-index');
@@ -506,7 +506,7 @@ function setupIPC() {
     require('electron').session.defaultSession.setPermissionRequestHandler((_wc, _permission, cb) => cb(true));
   } catch (e) { /* 会话未就绪时忽略 */ }
 
-  // ===== 语音识别 STT（对齐 TrieCode speech.js：16kHz WAV → OpenAI 兼容 /audio/transcriptions 或百炼 input_audio）=====
+  // ===== 语音识别 STT（对齐参考基线 speech.js：16kHz WAV → OpenAI 兼容 /audio/transcriptions 或百炼 input_audio）=====
   let sttAbort = null;
   function sttErr(status, json) {
     const errText = json && typeof json.error === 'string' && json.error.indexOf('<') !== 0 && /[\u4e00-\u9fff]/.test(json.error) ? json.error.slice(0, 200) : '';
@@ -557,7 +557,7 @@ function setupIPC() {
         const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
         text = typeof content === 'string' ? content : '';
       } else {
-        // OpenAI 兼容：手工拼 multipart（TrieCode 教训：undici FormData 喂 electron net.fetch 会序列化成 "[object FormData]" 且不报错）
+        // OpenAI 兼容：手工拼 multipart（参考基线 教训：undici FormData 喂 electron net.fetch 会序列化成 "[object FormData]" 且不报错）
         const boundary = '----BubaiCodeSTT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
         const CRLF = '\r\n';
         const headParts = [
@@ -695,7 +695,7 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // ============ clangd LSP 客户端（对齐 TrieCode code-symbols.db）===========
+  // ============ clangd LSP 客户端（对齐参考基线 code-symbols.db）===========
   const lspClients = new Map(); // language -> { proc, pending: Map<id, resolve>, buf, initialized }
   function spawnLsp(language, cmd, args) {
     if (lspClients.has(language)) return lspClients.get(language);
@@ -788,7 +788,7 @@ function setupIPC() {
     if (c) { try { c.proc.kill(); } catch (e) {} lspClients.delete(language); }
     return { success: true };
   });
-  // ============ DAP 调试器客户端（对齐 TrieCode 路线图：DAP 调试器与断点）============
+  // ============ DAP 调试器客户端（对齐参考基线 路线图：DAP 调试器与断点）============
   const dapClients = new Map(); // sessionId -> { proc, pending, buf, seq, sender }
   function dapSend(sessionId, msg) {
     return new Promise((resolve) => {
@@ -949,12 +949,12 @@ function setupIPC() {
       });
     });
   }
-  // 初始化仓库（对齐 TrieCode 源代码管理空态「在此初始化仓库」）
+  // 初始化仓库（对齐参考基线 源代码管理空态「在此初始化仓库」）
   ipcMain.handle('git:init', async (_, cwd) => {
     const r = await runGit(cwd, ['init']);
     return { success: r.ok, error: r.stderr };
   });
-  // 远程关联（对齐 TrieCode 源代码管理：面板内直接粘贴 URL 关联 origin；已存在则 set-url 覆盖）
+  // 远程关联（对齐参考基线 源代码管理：面板内直接粘贴 URL 关联 origin；已存在则 set-url 覆盖）
   ipcMain.handle('git:remote-url', async (_, cwd) => {
     const r = await runGit(cwd, ['remote', 'get-url', 'origin']);
     if (!r.ok) return { success: true, url: null };
@@ -984,7 +984,7 @@ function setupIPC() {
     });
     return { success: true, branch, ahead, behind, files };
   });
-  // ===== Git 进行中操作（1:1 仿写 ChipCode detectPendingOp/finishOp） =====
+  // ===== Git 进行中操作（1:1 仿写 参考基线 detectPendingOp/finishOp） =====
   // 靠 .git 下的标记文件识别 rebase/merge/cherry-pick/revert/bisect/git am
   const PENDING_OP_MARKS = [
     { file: 'MERGE_HEAD', kind: 'merge', label: '正在合并（merge）', canContinue: true, continueLabel: '完成合并', abortLabel: '放弃合并' },
@@ -1074,7 +1074,7 @@ function setupIPC() {
     if (!r.ok) return { success: false, error: r.stderr || r.stdout || 'clone 失败' };
     return { success: true, path: dest };
   });
-  // ===== Git 图形面板：diff / branch（对齐 TrieCode 路线图第一项）=====
+  // ===== Git 图形面板：diff / branch（对齐参考基线 路线图第一项）=====
   ipcMain.handle('git:diff', async (_, cwd, filePath) => {
     const args = ['diff', '--unified=3'];
     if (filePath) args.push('--', filePath);
@@ -1099,7 +1099,7 @@ function setupIPC() {
     return { success: r.ok, error: r.stderr };
   });
 
-  // ===== Git 检查点（对齐 TrieCode 影子仓库：userData 下独立 GIT_DIR，add -A → write-tree → commit-tree）=====
+  // ===== Git 检查点（对齐参考基线 影子仓库：userData 下独立 GIT_DIR，add -A → write-tree → commit-tree）=====
   const CP_PREVIEW_LIMIT = 200;
   function cpBaseDir() { try { return path.join(app.getPath('userData'), 'checkpoints'); } catch (e) { return ''; } }
   function cpProjectKey(p) { try { return require('crypto').createHash('sha1').update(String(p)).digest('hex').slice(0, 16); } catch (e) { return 'default'; } }
@@ -1195,7 +1195,7 @@ function setupIPC() {
   ipcMain.handle('git:checkpoint:preview', (_, cwd, id) => cpPreview(cwd, id));
   ipcMain.handle('git:checkpoint:restore', (_, cwd, id) => cpRestore(cwd, id));
 
-  // ===== Git 凭据管理（TrieCode git:credential:*；明文存 userData 配置——与 TrieCode 同样有明文警告；经 insteadOf 注入，免改远端 URL）=====
+  // ===== Git 凭据管理（参考基线 git:credential:*；明文存 userData 配置——与 参考基线 同样有明文警告；经 insteadOf 注入，免改远端 URL）=====
   function credPublic(c) { return { host: c.host, username: c.username, secretTail: String(c.secret || '').slice(-4), createdAt: c.createdAt }; }
   ipcMain.handle('git:credential:list', () => ({ success: true, credentials: (config.gitCredentials || []).map(credPublic) }));
   ipcMain.handle('git:credential:set', async (_, opts) => {
@@ -1234,7 +1234,7 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // ===== Git 仓库 Issues 列表（1:1 仿写 ChipCode git:issues:list：解析 origin remote → provider → 取 gitCredentials 的 PAT → 调 GitHub/Gitee/GitLab API 拉 open issues）=====
+  // ===== Git 仓库 Issues 列表（1:1 仿写 参考基线 git:issues:list：解析 origin remote → provider → 取 gitCredentials 的 PAT → 调 GitHub/Gitee/GitLab API 拉 open issues）=====
   function gitHostToProvider(host) {
     const h = String(host || '').toLowerCase();
     if (h === 'github.com' || h.endsWith('.github.com')) return 'github';
@@ -1296,7 +1296,7 @@ function setupIPC() {
     } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
   });
 
-  // ===== 创建 Pull Request（1:1 仿写 ChipCode git:pr:create：解析 origin remote → provider → gitCredentials 取 PAT → 调 GitHub/Gitee/GitLab API 建 PR；无 PAT 回退 gh/glab CLI）=====
+  // ===== 创建 Pull Request（1:1 仿写 参考基线 git:pr:create：解析 origin remote → provider → gitCredentials 取 PAT → 调 GitHub/Gitee/GitLab API 建 PR；无 PAT 回退 gh/glab CLI）=====
   ipcMain.handle('git:pr:create', async (_, cwd, opts) => {
     try {
       opts = opts || {};
@@ -1354,8 +1354,8 @@ function setupIPC() {
     } catch (e) { return { ok: false, error: 'exception', message: String((e && e.message) || e) }; }
   });
 
-  // ===== Git 审阅 AI 改动（对齐 ChipCode git:review / git:applyAndStage）=====
-  // 说明：ChipCode 把会话改动存于主进程 Sr；BubaiCode 的 FileChangeTracker 在渲染进程，
+  // ===== Git 审阅 AI 改动（对齐参考基线 git:review / git:applyAndStage）=====
+  // 说明：参考基线 把会话改动存于主进程 Sr；BubaiCode 的 FileChangeTracker 在渲染进程，
   // 故由渲染层把本轮改动（path/before/after/action）经 opts.changes 传入，主进程负责
   // hunk 拆分、按 hunk 接受/拒绝、回写磁盘并 git add 暂存。无会话时回退 git diff HEAD。
   const _gitReviewStore = new Map(); // cwd -> 最近一次 review（含 before/hunks，供 apply 使用）
@@ -1381,7 +1381,7 @@ function setupIPC() {
     return ops;
   }
 
-  // 由 before/after 文本生成带上下文的 hunk 列表（结构对齐 ChipCode review）
+  // 由 before/after 文本生成带上下文的 hunk 列表（结构对齐参考基线 review）
   function _buildReviewHunks(beforeText, afterText) {
     const a = (beforeText || '').split('\n');
     const b = (afterText || '').split('\n');
@@ -1571,7 +1571,7 @@ function setupIPC() {
     }
   });
 
-  // ===== 远程通道（对齐 ChipCode git:fetch / git:pullRebase / git:remoteStatus）=====
+  // ===== 远程通道（对齐参考基线 git:fetch / git:pullRebase / git:remoteStatus）=====
   // 获取：拉取所有远程并清理已删除分支
   ipcMain.handle('git:fetch', async (_, cwd) => {
     if (!cwd) return { ok: false, error: '缺少 cwd' };
@@ -1630,7 +1630,7 @@ function setupIPC() {
     } catch (e) { return { ok: false, error: e.message }; }
   });
 
-  // ===== 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:* 通道）=====
+  // ===== 开发板核心与库管理器（对齐参考基线 board:*/core:*/lib:* 通道）=====
   // 复用现有 arduino-cli 探测（resolveArduinoCli）与 ASCII 联结（asciiCwd），
   // 沿用 ARDUINO_DIRECTORIES_DATA 环境变量隔离数据目录。
   // 查询类走 --format json；安装/卸载类捕获 stderr 百分比进度并回推事件。
@@ -1823,8 +1823,8 @@ function setupIPC() {
     return { ok: true, details: r.data };
   });
 
-  // ---- 设备面板：board:attach / board:load（对齐 ChipCode board:attach：将选中板卡/端口持久化到项目配置）----
-  // ChipCode 在设备面板选好板卡+端口后写入 project.yaml 的 default_fqbn/default_port；
+  // ---- 设备面板：board:attach / board:load（对齐参考基线 board:attach：将选中板卡/端口持久化到项目配置）----
+  // 参考基线 在设备面板选好板卡+端口后写入 project.yaml 的 default_fqbn/default_port；
   // BubaiCode 用项目级 .bubaicode/device.json 等价持久化，使重新打开工程时自动恢复选择。
   ipcMain.handle('board:attach', async (_e, payload) => {
     const projectPath = payload && payload.projectPath;
@@ -1855,7 +1855,7 @@ function setupIPC() {
   });
 
   // ===== Git 凭据连通性探测（git:probe：验证某 host 的 PAT 能否真正访问对应平台 API；
-  //   对齐 ChipCode git:probe 的「连接性预检」语义——在添加/选择凭据、或尝试 Issues/PR 前提前暴露
+  //   对齐参考基线 git:probe 的「连接性预检」语义——在添加/选择凭据、或尝试 Issues/PR 前提前暴露
   //   凭据无效 / 权限不足 / 网络不通；复用 parseGitRemote → gitHostToProvider → config.gitCredentials）=====
   ipcMain.handle('git:probe', async (_, cwd, host) => {
     try {
@@ -1908,9 +1908,9 @@ function setupIPC() {
     }
   });
 
-  // ===== 插件管理（对齐 ChipCode plugins:* 主进程通道）=====
+  // ===== 插件管理（对齐参考基线 plugins:* 主进程通道）=====
   // BubaiCode 此前插件管理逻辑主要在渲染层 PluginSystem（list/install/uninstall/setActive/settings/market），
-  // 主进程只提供 transport 桥（plugin:cliCall 等）与 deps:*。现补齐与 ChipCode 同名的 plugins:* 主进程通道，
+  // 主进程只提供 transport 桥（plugin:cliCall 等）与 deps:*。现补齐与 参考基线 同名的 plugins:* 主进程通道，
   // 使主进程也能直接管理插件（供 AI agent / 外部工具调用），并广播 plugins:changed 让渲染层重载注册表。
   function pluginsRootDir() {
     try { return path.join(app.getPath('userData'), 'plugins'); } catch (e) { return ''; }
@@ -2113,7 +2113,7 @@ function setupIPC() {
     return { ok: true, id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || '', path: dst };
   });
 
-  // 重试某插件声明失败的外部依赖（对齐 ChipCode plugins:retryDeps）
+  // 重试某插件声明失败的外部依赖（对齐参考基线 plugins:retryDeps）
   ipcMain.handle('plugins:retryDeps', async (_, id) => {
     const m = readPluginManifestSafe(id);
     if (!m) return { ok: false, error: '未找到插件: ' + id };
@@ -2159,7 +2159,7 @@ function setupIPC() {
     } catch (e) {
       // 兜底：返回内置白名单（带官网真实 zip 地址），保证离线也能浏览/安装
       const plugins = Object.keys(MAIN_MARKET_CATALOG).map(id => Object.assign({}, MAIN_MARKET_CATALOG[id], {
-        id, author: 'TrieCode', channels: ['http'], capabilities: [],
+        id, author: 'BubaiCode', channels: ['http'], capabilities: [],
         downloadUrl: origin + '/api/plugins/download/' + id + '.zip', source: 'builtin'
       }));
       return { ok: true, online: false, plugins, error: e.message };
@@ -2215,7 +2215,7 @@ function setupIPC() {
     }
   });
 
-  // ===== Python 解释器管理（TrieCode interpreters:* 简版：detect/list/setActive/runPython）=====
+  // ===== Python 解释器管理（参考基线 interpreters:* 简版：detect/list/setActive/runPython）=====
   async function probeCmd(cmd, args, timeoutMs) {
     return new Promise((resolve) => {
       const { spawn } = require('child_process');
@@ -2298,7 +2298,7 @@ function setupIPC() {
     return { success: r.ok, error: r.stderr };
   });
 
-  // ============ Git AI 增强（对齐 TrieCode AI 提交信息 / 冲突解决 / PR 描述）============
+  // ============ Git AI 增强（对齐参考基线 AI 提交信息 / 冲突解决 / PR 描述）============
   // 生成提交信息：优先 staged diff，无则 unstaged diff；附带最近提交风格
   async function buildCommitMessage(cwd) {
     let diff = '';
@@ -2339,7 +2339,7 @@ function setupIPC() {
     try {
       const message = await buildCommitMessage(cwd);
       if (!message) return { success: false, message: '', error: 'AI 未返回提交信息' };
-      // 先暂存全部改动（与「提交我的修改」预期一致；对齐 TrieCode AI 提交）
+      // 先暂存全部改动（与「提交我的修改」预期一致；对齐参考基线 AI 提交）
       await runGit(cwd, ['add', '-A']);
       const r = await runGit(cwd, ['commit', '-m', message]);
       if (!r.ok) return { success: false, message, error: r.stderr || '提交失败（可能没有可提交的改动）' };
@@ -2347,7 +2347,7 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // 列出当前工作区冲突文件与冲突块数（对齐 ChipCode 在源代码管理面板渲染冲突区块）
+  // 列出当前工作区冲突文件与冲突块数（对齐参考基线 在源代码管理面板渲染冲突区块）
   ipcMain.handle('git:listConflicts', async (_, cwd) => {
     if (!cwd) return { success: false, error: '缺少 cwd' };
     try {
@@ -2368,7 +2368,7 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // 解析冲突标记，逐文件交给 AI 解决后写回并暂存（onlyRel 可只解决指定文件，对齐 ChipCode 逐文件 AI 合并）
+  // 解析冲突标记，逐文件交给 AI 解决后写回并暂存（onlyRel 可只解决指定文件，对齐参考基线 逐文件 AI 合并）
   ipcMain.handle('git:aiResolveConflicts', async (_, cwd, onlyRel) => {
     if (!cwd) return { success: false, error: '缺少 cwd' };
     try {
@@ -2586,7 +2586,7 @@ function setupIPC() {
     return { reasoning_effort: effort === 'max' ? 'high' : effort };
   }
 
-  // AI provider 注册表（单一数据源，参考 TrieCode provider-registry）
+  // AI provider 注册表（单一数据源，参考基线 provider-registry）
   // 合并：内置(builtin) + 用户自定义(config.ai.customProviders) + 未来云端；派生旧版 AI_PROVIDERS 形状
   const providerRegistry = require('../packages/engine/provider-registry');
   function refreshProvidersFromConfig() {
@@ -2604,6 +2604,53 @@ function setupIPC() {
   // 会导致对话请求 404 静默失败（用户表现为"发消息没反应"）。统一矫正为真实可用的模型。
   const GW_AVAILABLE_MODELS = ['qwen3-8b'];
   const normalizeGwModel = (m) => (GW_AVAILABLE_MODELS.includes(m) ? m : GW_AVAILABLE_MODELS[0]);
+
+  // 2026-11-14：本地模型默认优选 7B。qwen2.5-coder-3b 太小，对本 app 的本地 GBNF 工具决策格式
+  // 常产出畸形输出（如 {"":}），用户看到乱码而非真实答案；其专用 LoRA 修正也未必生效。
+  // 故本地通道一律把 3B 重定向到 7B，保证默认/自动选用的本地模型可用。
+  const LOCAL_WEAK_MODEL = 'qwen2.5-coder-3b-instruct-q4_k_m.gguf';
+  const LOCAL_PREFERRED_MODEL = 'qwen2.5-coder-7b-instruct-q4_k_m.gguf';
+  function resolveModel(model, aiCfg, provider) {
+    let m = model || (aiCfg && aiCfg.model) || (provider && provider.defaultModel) || '';
+    if (provider && provider.type === 'local' && m === LOCAL_WEAK_MODEL) {
+      m = LOCAL_PREFERRED_MODEL;
+    }
+    return m;
+  }
+
+  // 网关一次性对话（非流式 /api/chat）。用途：本地来源（ollama/local/custom）连不上时，
+  // 若用户已登录（有网关 token）则回退云端，避免直接把 net::ERR_CONNECTION_REFUSED 抛给用户。
+  async function gatewayChatOnce(aiCfg, { messages, temperature = 0.7, model }) {
+    const candidates = gatewayAuthCandidates(aiCfg);
+    if (!candidates.length) return { ok: false, error: 'not logged in, please login in settings' };
+    const gwModel = normalizeGwModel(model || aiCfg.model);
+    let resp = null, lastErr = '';
+    for (const c of candidates) {
+      const cUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/chat';
+      try {
+        resp = await net.fetch(cUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
+          body: JSON.stringify({ model: gwModel, messages, temperature })
+        });
+      } catch (e) { lastErr = e.message || String(e); resp = null; continue; }
+      if (resp.status !== 401) break;
+    }
+    if (!resp) return { ok: false, error: lastErr || '网关不可达' };
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return {
+        ok: false, status: resp.status,
+        error: data.error || ('网关返回 ' + resp.status),
+        creditsInsufficient: resp.status === 402,
+        needReauth: resp.status === 401,
+      };
+    }
+    return {
+      ok: true, content: data.content || '', creditsLeft: data.creditsLeft,
+      dailyRemaining: data.dailyRemaining, cost: data.cost, totalTokens: data.totalTokens, model: gwModel,
+    };
+  }
 
   // 兼容历史配置的 baseURL/baseUrl 大小写字段（旧版 UI 写入 ai.baseUrl，新版读 ai.baseURL）。
   // 优先大写 baseURL；为空时回退小写 baseUrl；custom provider 下 baseUrl 指向本地 127.0.0.1 优先。
@@ -2628,7 +2675,7 @@ function setupIPC() {
     const baseURL = (aiCfg.provider === 'gateway' && (aiCfg.gatewayUrl || gwBuiltinUrl))
       ? (aiCfg.gatewayUrl || gwBuiltinUrl)
       : (resolveAiBaseURL(aiCfg) || provider.baseURL);
-    const useModel = model || aiCfg.model || provider.defaultModel;
+    const useModel = resolveModel(model, aiCfg, provider);
     const apiKey = aiCfg.apiKey || '';
 
     if (!baseURL) {
@@ -2671,6 +2718,35 @@ function setupIPC() {
           return { success: false, error: `网关返回 ${gwResp.status}: ${(gwData.error || '')}` };
         }
         return { success: true, content: gwData.content || '', creditsLeft: gwData.creditsLeft, dailyRemaining: gwData.dailyRemaining, cost: gwData.cost, totalTokens: gwData.totalTokens, model: gwModel, gateway: true };
+      }
+
+      // ===== 参考基线 对齐：Anthropic (/v1/messages) 协议分支 =====
+      // provider.type 是唯一新增的「协议类型」概念（registry 一直产出但此前无人读取）；
+      // 只有 type==='claude' 才走这里，其余 provider 行为逐字不变。
+      if (provider && provider.type === 'claude') {
+        try {
+          const AP = require('../packages/engine/anthropic-protocol.cjs');
+          const aUrl = AP.buildAnthropicUrl(baseURL);
+          const aHeaders = AP.toAnthropicHeaders(apiKey);
+          const aBody = AP.toAnthropicBody({
+            messages, model: useModel, maxTokens: maxTokens, temperature: temperature,
+          });
+          const aResp = await net.fetch(aUrl, {
+            method: 'POST', headers: aHeaders, body: JSON.stringify(aBody),
+          });
+          const aJson = await aResp.json().catch(() => ({}));
+          if (!aResp.ok) {
+            const msg = (aJson && aJson.error && aJson.error.message) || ('Anthropic 返回 ' + aResp.status);
+            return { success: false, error: msg };
+          }
+          const parsed = AP.parseAnthropicResponse(aJson);
+          return {
+            success: true, content: parsed.content, toolCalls: parsed.toolCalls,
+            usage: parsed.usage, model: useModel,
+          };
+        } catch (e) {
+          return { success: false, error: 'Anthropic 调用失败：' + (e.message || String(e)) };
+        }
       }
 
       const url = baseURL.replace(/\/$/, '') + '/chat/completions';
@@ -2726,6 +2802,22 @@ function setupIPC() {
       const usage = data?.usage || {};
       return { success: true, content, usage, model: useModel };
     } catch (e) {
+      // 本地来源（ollama/local/custom）不可用：已登录则回退云端网关，避免直接抛连接失败
+      if (aiCfg.provider !== 'gateway' && gatewayAvailable(aiCfg)) {
+        try {
+          const gw = await gatewayChatOnce(aiCfg, { messages, temperature, model: useModel });
+          if (gw.ok) {
+            console.warn('[ai:chat] 本地来源不可用，已回退云端网关:', e.message);
+            return {
+              success: true, content: gw.content, creditsLeft: gw.creditsLeft,
+              dailyRemaining: gw.dailyRemaining, cost: gw.cost, totalTokens: gw.totalTokens,
+              model: gw.model, gateway: true, fallbackFrom: aiCfg.provider,
+            };
+          }
+          if (gw.creditsInsufficient) return { success: false, error: gw.error || '积分不足', creditsInsufficient: true };
+          if (gw.needReauth) return { success: false, error: gw.error, needReauth: true };
+        } catch (e2) { /* 回退失败：保留原始错误 */ }
+      }
       return { success: false, error: 'AI 请求失败: ' + redactError(e.message || String(e)) };
     }
   });
@@ -2861,7 +2953,7 @@ function setupIPC() {
   async function streamChatCompletion(sender, runId, { messages, model, temperature, maxTokens, tools, aiCfg }) {
     const provider = AI_PROVIDERS[aiCfg.provider] || AI_PROVIDERS.deepseek;
     const baseURL = (aiCfg.provider === 'gateway' && aiCfg.gatewayUrl) ? aiCfg.gatewayUrl : (resolveAiBaseURL(aiCfg) || provider.baseURL);
-    let useModel = model || aiCfg.model || provider.defaultModel;
+    let useModel = resolveModel(model, aiCfg, provider);
     const abortCtrl = new AbortController();
     activeAiControllers.set(runId, abortCtrl);
     const acSignal = abortCtrl.signal;
@@ -2875,13 +2967,20 @@ function setupIPC() {
       console.warn('[chatStream] 修复轮自动切换到 qwen2.5-coder:7b（长上下文输出空）');
     }
     const apiKey = aiCfg.apiKey || '';
-    const isGateway = aiCfg.provider === 'gateway';
+    // isGateway / url / bodyObj 用 let：本地来源请求失败时 switchToGateway() 会把本次请求
+    // 原地切换成网关通道（复用下方同一套流式解析与工具调用处理）。
+    let isGateway = aiCfg.provider === 'gateway';
+    // 本次请求是否由「本地来源失败」自动回退到网关（true 时不注入本地专用思考参数）
+    let gwFallback = false;
     // 网关模式：矫正旧配置残留的不可用模型（deepseek-flash 等），否则对话 404 静默失败
     if (isGateway) useModel = normalizeGwModel(useModel);
+    // ===== 参考基线 对齐：Anthropic (/v1/messages) 流式分支 =====
+    const isClaude = !!(provider && provider.type === 'claude');
+    const AP = isClaude ? require('../packages/engine/anthropic-protocol.cjs') : null;
     // 网关模式：走内置模型 + 积分扣费；请求体只发模型 id 与消息（Key 在服务端）
-    const url = isGateway
+    let url = isGateway
       ? (baseURL || '').replace(/\/$/, '') + '/api/chat/stream'
-      : (baseURL || '').replace(/\/$/, '') + '/chat/completions';
+      : (isClaude ? AP.buildAnthropicUrl(baseURL) : (baseURL || '').replace(/\/$/, '') + '/chat/completions');
     if (!url || url === '/api/chat/stream' || url === '/chat/completions') throw new Error('未配置API baseURL，请在设置中配置');
 
     const headers = { 'Content-Type': 'application/json' };
@@ -2891,12 +2990,19 @@ function setupIPC() {
       gwCandidates = gatewayAuthCandidates(aiCfg);
       if (!gwCandidates.length) throw new Error('not logged in, please login in settings');
       headers['Authorization'] = 'Bearer ' + gwCandidates[0].token;
+    } else if (isClaude) {
+      // Anthropic 用 x-api-key + anthropic-version（无 Bearer）
+      Object.assign(headers, AP.toAnthropicHeaders(apiKey));
     } else if (apiKey) {
       headers['Authorization'] = 'Bearer ' + apiKey;
     }
-    const bodyObj = isGateway
-      ? { model: useModel, messages, temperature }
-      : { model: useModel, messages, temperature, max_tokens: maxTokens, stream: true };
+    let bodyObj = isClaude
+      ? Object.assign(AP.toAnthropicBody({
+          messages, tools, model: useModel, maxTokens: maxTokens, temperature: temperature,
+        }), { stream: true })
+      : (isGateway
+        ? { model: useModel, messages, temperature }
+        : { model: useModel, messages, temperature, max_tokens: maxTokens, stream: true });
     // 网关模式同样透传 tools（网关支持 function calling 转发）
     if (isGateway && Array.isArray(tools) && tools.length > 0) {
       bodyObj.tools = tools;
@@ -2928,21 +3034,39 @@ function setupIPC() {
       bodyObj.think = false;
     }
 
+    // 把本次请求原地切换为「云端网关」通道：本地来源连不上时的回退路径。
+    // 复用同一套 SSE 解析 / tool_calls 事件 / usage 处理，因此回退后仍具备工具调用能力。
+    function switchToGateway() {
+      gwCandidates = gatewayAuthCandidates(aiCfg);
+      if (!gwCandidates.length) return false;
+      isGateway = true;
+      gwFallback = true;
+      useModel = normalizeGwModel(model || aiCfg.model);
+      url = ((aiCfg.gatewayUrl || AI_PROVIDERS.gateway.baseURL) || '').replace(/\/$/, '') + '/api/chat/stream';
+      headers['Authorization'] = 'Bearer ' + gwCandidates[0].token;
+      bodyObj = { model: useModel, messages, temperature };
+      if (Array.isArray(tools) && tools.length > 0) bodyObj.tools = tools;
+      return true;
+    }
+
     const send = (type, data) => {
       try { if (sender && !sender.isDestroyed()) sender.send('ai:stream', { runId, type, ...data }); } catch (e) {}
     };
 
     // 本地引擎：确保引擎加载的就是本次请求的模型。
     // llama-server 忽略 model 字段，引擎若还跑着别的模型就会「答非所问」（静默降级）。
+    // 失败不在此处直接抛出（否则会绕过下方 try/catch 的云端回退），改为在 try 内抛出。
+    let engineReady = true;
+    let engineError = '';
     if (aiCfg.provider === 'local') {
       const ensured = await ensureEngineServesModel(useModel);
-      if (!ensured.ok) throw new Error(ensured.error);
+      if (!ensured.ok) { engineReady = false; engineError = ensured.error; }
     }
 
     // ===== Phase1：本地模型 GBNF 约束工具决策轮 =====
     // 条件：provider=local + 有工具 + 开关允许（自动：7B/9B 开、3B 关）。
     // 选到工具 → 发 tool_calls 事件 + done，渲染层直接执行；选 none/超时/失败 → 继续下面原有流式路径。
-    if (aiCfg.provider === 'local' && Array.isArray(tools) && tools.length > 0 && localToolGrammarEnabled(aiCfg)) {
+    if (aiCfg.provider === 'local' && engineReady && Array.isArray(tools) && tools.length > 0 && localToolGrammarEnabled(aiCfg)) {
       const decision = await toolDecisionWithGrammar({ messages, tools, model: useModel, baseURL, maxTokens: 4096 });
       if (activeAiStreams.get(runId)) {
         // 决策期间用户取消：不再发起新请求，直接结束
@@ -2965,8 +3089,12 @@ function setupIPC() {
         headers['Authorization'] = 'Bearer ' + gwCandidates[candIdx].token;
       }
       const b = Object.assign({}, bodyObj);
-      if (aiCfg.provider === 'local') b.chat_template_kwargs = { enable_thinking: enableThinking !== false };
-      else if (aiCfg.provider === 'ollama') b.think = enableThinking !== false;
+      // gwFallback（本地失败→网关）时不注入 llama.cpp/ollama 专用思考参数，保持网关请求体干净
+      if (aiCfg.provider === 'local') {
+        if (!gwFallback) b.chat_template_kwargs = { enable_thinking: enableThinking !== false };
+      } else if (aiCfg.provider === 'ollama') {
+        if (!gwFallback) b.think = enableThinking !== false;
+      }
       // 2026-10-14 云推理模型思考档位（BYOK reasoning 强度）：
       // 仅当 renderer 显式传了 thinkingParams（按厂商预设展开后的字段，如
       // {reasoning_effort:'high'} / {thinking:{type:'enabled'}} / {reasoning_split:true}）才附加。
@@ -3004,6 +3132,36 @@ function setupIPC() {
         }
         if (evt._event === 'error') {
           send('error', { error: redactError(evt.error) || '网关错误' });
+          continue;
+        }
+        // ===== 参考基线 对齐：Anthropic SSE 事件（事件名与 OpenAI 完全不同，不能走 choices 分支）=====
+        if (isClaude) {
+          const ae = AP.parseAnthropicEvent(evt);
+          if (!ae) continue;
+          if (ae.type === 'text') {
+            fullText += ae.delta;
+            send('delta', { delta: ae.delta });
+          } else if (ae.type === 'thinking') {
+            send('thinking_delta', { delta: ae.delta });
+          } else if (ae.type === 'tool_start') {
+            const idx = ae.index || 0;
+            if (!toolCalls[idx]) toolCalls[idx] = { id: ae.id || ('call_' + idx), name: '', arguments: '' };
+            if (ae.id) toolCalls[idx].id = ae.id;
+            if (ae.name) toolCalls[idx].name += ae.name;
+          } else if (ae.type === 'tool_delta') {
+            const idx = ae.index || 0;
+            if (!toolCalls[idx]) toolCalls[idx] = { id: 'call_' + idx, name: '', arguments: '' };
+            toolCalls[idx].arguments += ae.delta;
+          } else if (ae.type === 'usage') {
+            if (ae.usage && Object.keys(ae.usage).length) {
+              lastUsage = Object.assign({}, lastUsage || {}, ae.usage);
+              send('usage', { usage: ae.usage });
+            }
+          } else if (ae.type === 'done') {
+            lastFinish = ae.stopReason || lastFinish || 'stop';
+          } else if (ae.type === 'error') {
+            send('error', { error: redactError(ae.error) || 'Anthropic 流式错误' });
+          }
           continue;
         }
         if (evt.usage) lastUsage = evt.usage;
@@ -3086,6 +3244,8 @@ function setupIPC() {
     }
 
     try {
+      // 本地引擎不可用（已在上面探测）：在此抛出，交由下方 catch 统一走「云端回退」或报错
+      if (!engineReady) throw new Error(engineError || '本地引擎不可用');
       // 2026-09-14：修复轮（编译失败提示）强制关闭思考——避免思考占满 4096 token 预算导致正文空输出
       const lastUserMsg = messages.filter(m => m.role === 'user').pop();
       const isFixTurn = !!(lastUserMsg && /编译失败|淇代码|仍然失败|编译错误/.test(lastUserMsg.content || ''));
@@ -3171,6 +3331,18 @@ function setupIPC() {
           }
         } catch (fbErr) { /* 继续抛原始错话*/ }
       }
+      // ===== 云端回退：本地来源（ollama/local/custom）不可用且用户已登录 → 切网关通道重试一次 =====
+      // 网关节点的请求体与工具定义在此重建（switchToGateway），故回退后仍保留 function calling 能力。
+      if (!isGateway && aiCfg.provider !== 'gateway' && !activeAiStreams.get(runId) && gatewayAvailable(aiCfg)) {
+        try {
+          if (switchToGateway()) {
+            console.warn('[streamChat] 本地来源不可用，已回退云端网关:', e.message);
+            const gwResult = await doStreamOnce(true);
+            send('done', { content: gwResult.content, toolCalls: gwResult.toolCalls, usage: gwResult.usage || null });
+            return gwResult;
+          }
+        } catch (ge) { console.warn('[streamChat] 网关回退失败:', ge.message); }
+      }
       send('error', { error: e.message || String(e), creditsInsufficient: !!e.creditsInsufficient });
       return { success: false, error: e.message || String(e), creditsInsufficient: !!e.creditsInsufficient };
     }
@@ -3235,7 +3407,7 @@ function setupIPC() {
     const aiCfg = { ...(config.ai || {}), ...(testConfig || {}) };
     const provider = AI_PROVIDERS[aiCfg.provider] || AI_PROVIDERS.deepseek;
     const baseURL = (aiCfg.provider === 'gateway' && aiCfg.gatewayUrl) ? aiCfg.gatewayUrl : (resolveAiBaseURL(aiCfg) || provider.baseURL);
-    const useModel = aiCfg.model || provider.defaultModel;
+    const useModel = resolveModel(null, aiCfg, provider);
     if (!baseURL) return { success: false, error: '未配置baseURL' };
     try {
       // 网关模式：用 /api/me 验证 token 有效性（不消耗积分）
@@ -3430,6 +3602,31 @@ function setupIPC() {
           user: { email: u.email, totalCredits: u.totalCredits, planCredits: u.planCredits, rechargeCredits: u.rechargeCredits, dailyRemaining: u.dailyRemaining, dailyUsed: u.dailyUsed }
         };
       }
+      // 找回密码：网关 /api/auth/reset-password（2026-11-13 已部署）。
+      // 字段按原品 TrieCode 规范用 newPassword；发码走独立 /api/auth/send-reset-code。
+      // 不再降级到 register —— 注册码通道会拒绝已注册邮箱，找回密码根本走不通。
+      // 透传后端真实错误，绝不假装成功。
+      if (action === 'send-reset-code') {
+        if (!email) return { success: false, error: '请输入邮箱' };
+        const res = await net.fetch(`${gwBase}/api/auth/send-reset-code`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return { success: false, error: data.error || `网关返回 ${res.status}` };
+        return { success: true, ...(data.consoleMode ? { consoleMode: true, devCode: data.devCode } : {}) };
+      }
+      if (action === 'reset-password') {
+        if (!email || !password || !code) return { success: false, error: '请填写邮箱、验证码和新密码' };
+        if (String(password).length < 6) return { success: false, error: '新密码至少 6 位' };
+        const res = await net.fetch(`${gwBase}/api/auth/reset-password`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code, newPassword: password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return { success: false, error: data.error || `网关返回 ${res.status}` };
+        return { success: true };
+      }
       if (action === 'me') {
         const token = (config.ai || {}).gatewayToken || '';
     if (!token) return { success: false, error: 'not logged in' };
@@ -3437,7 +3634,7 @@ function setupIPC() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return { success: false, error: data.error || `网关返回 ${res.status}` };
         const u = data.user || {};
-        // 对齐 TrieCode getProfile：透传套餐/邀请码/用户名（网关返回什么透什么，缺失则 undefined）
+        // 对齐参考基线 getProfile：透传套餐/邀请码/用户名（网关返回什么透什么，缺失则 undefined）
         return { success: true, user: { email: u.email, username: u.username, plan: u.plan, inviteCode: u.inviteCode, totalCredits: u.totalCredits, planCredits: u.planCredits, rechargeCredits: u.rechargeCredits, dailyRemaining: u.dailyRemaining, dailyUsed: u.dailyUsed } };
       }
       if (action === 'logout') {
@@ -3462,6 +3659,23 @@ function setupIPC() {
   ipcMain.handle('sessions:rename', (_, id, title) => renameSession(id, title));
   ipcMain.handle('sessions:revise', (_, id, ops) => reviseSession(id, ops));
   ipcMain.handle('sessions:search', (_, query, opts) => searchSessions(query, opts));
+
+  // 参考基线 对齐：Agent 注入埋点日志（可观测性，不参与决策）。
+  // 与会话落盘解耦：append-only JSONL、512KB 轮转、失败静默，绝不阻断主流程。
+  ipcMain.handle('log:append', (_, name, record) => {
+    try {
+      const safe = String(name || 'agent-injections').replace(/[^A-Za-z0-9_.-]/g, '_');
+      const dir = path.join(USER_DATA_PATH, 'logs');
+      ensureDir(dir);
+      const file = path.join(dir, safe + '.jsonl');
+      const MAX = 512 * 1024;
+      try { if (fs.existsSync(file) && fs.statSync(file).size > MAX) fs.writeFileSync(file, '', 'utf-8'); } catch (e) {}
+      fs.appendFileSync(file, JSON.stringify(record || {}) + '\n', 'utf-8');
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
 
   // 文件操作
   ipcMain.handle('dialog:openFile', async () => {
@@ -3696,11 +3910,11 @@ function setupIPC() {
     }
   });
 
-  // ===== Phase C · MQTT 长连接（对齐 ChipCode mqtt manager：持久 client + 状态/消息推送）=====
+  // ===== Phase C · MQTT 长连接（对齐参考基线 mqtt manager：持久 client + 状态/消息推送）=====
   // 与上面 plugin:mqttCall 的一次性请求/应答并存：那个给插件工具用，这个给用户面板用。
   const MQTT_URL_PREFIXES = ['mqtt://', 'mqtts://', 'ws://', 'wss://', 'tcp://', 'tls://'];
   const mqttClients = new Map(); // id -> { client, url, topics, allowPublish, buffer, status, error }
-  const MQTT_BUFFER_MAX = 200;   // 对齐 ChipCode mqtt.js:2-9 默认 maxMessages
+  const MQTT_BUFFER_MAX = 200;   // 对齐 BubaiCode mqtt.js:2-9 默认 maxMessages
 
   function mqttSend(channel, payload) {
     try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload); } catch (e) {}
@@ -3815,7 +4029,7 @@ function setupIPC() {
     if (!v) return { success: false, error: '未连接' };
     const topic = String(o.topic || '').trim();
     if (!topic) return { success: false, error: 'topic 不能为空' };
-    // 对齐 ChipCode fail-closed：配置了白名单时，仅允许白名单内主题发布
+    // 对齐参考基线 fail-closed：配置了白名单时，仅允许白名单内主题发布
     if (v.allowPublish.length && v.allowPublish.indexOf(topic) < 0) {
       return { success: false, error: 'topic 不在允许发布白名单内' };
     }
@@ -3852,8 +4066,8 @@ function setupIPC() {
     });
   });
 
-  // ===== Phase C · 账户订阅 / 套餐（对齐 ChipCode payment:getPlans + auth:openPaymentPage）=====
-  // 桌面端不做本地 checkout/订单（ChipCode 亦如此）：套餐列表取远端，购买入口打开外部账户页。
+  // ===== Phase C · 账户订阅 / 套餐（对齐参考基线 payment:getPlans + auth:openPaymentPage）=====
+  // 桌面端不做本地 checkout/订单（参考基线 亦如此）：套餐列表取远端，购买入口打开外部账户页。
   const PAYMENT_PLANS_FALLBACK = [
     { id: 'free', name: '免费版', price: 0, credits: 0, features: ['每日免费积分', '自带 Key 模型'] },
     { id: 'lite', name: '轻量版', price: null, credits: null, features: ['更多套餐积分', '账号模型'] },
@@ -4119,7 +4333,7 @@ function setupIPC() {
     }
   });
 
-  // ===== 读取 PDF 文件（对齐 TrieCode pdf.js）=====
+  // ===== 读取 PDF 文件（对齐参考基线 pdf.js）=====
   ipcMain.handle('fs:readPdf', async (_, filePath, maxPages = 20) => {
     try {
       if (!fs.existsSync(filePath)) return { success: false, error: '文件不存在' };
@@ -4145,7 +4359,7 @@ function setupIPC() {
     }
   });
 
-  // ===== 图片分析（对齐 TrieCode vision.js，需视觉模型）=====
+  // ===== 图片分析（对齐参考基线 vision.js，需视觉模型）=====
   ipcMain.handle('fs:analyzeImage', async (_, filePath, prompt) => {
     try {
       if (!fs.existsSync(filePath)) return { success: false, error: '文件不存在' };
@@ -4163,7 +4377,7 @@ function setupIPC() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify({
-          model: aiCfg.model || provider.defaultModel,
+          model: resolveModel(null, aiCfg, provider),
           messages: [{ role: 'user', content: [
             { type: 'text', text: prompt || '请描述这张图片的内容' },
             { type: 'image_url', image_url: { url: dataUrl } }
@@ -4304,7 +4518,7 @@ function setupIPC() {
     return { path: p, exists: fs.existsSync(p) };
   });
 
-  // toolchain.status：检测 arduino-cli + 平台 + 库（对齐 TrieCode）
+  // toolchain.status：检测 arduino-cli + 平台 + 库（对齐参考基线）
   ipcMain.handle('toolchain:status', async () => {
     const p = resolveArduinoCli();
     const cliExists = fs.existsSync(p);
@@ -4686,19 +4900,33 @@ function setupIPC() {
     const o = opts || {};
     const name = String(o.name || '');
     const send = (stage, percent, message) => sendDepsProgress(name, stage, percent, message);
-    if (!name || !o.url || !o.exeRelPath) {
-      return { ok: false, name, stage: 'args', error: '缺少 name/url/exeRelPath' };
+    // 参考基线 对齐：exeRelPath 现在可缺省（装完按 destDir 自动探测可执行文件），
+    // 但 name / url 仍是硬性前置。
+    if (!name || !o.url) {
+      return { ok: false, name, stage: 'args', error: '缺少 name/url' };
     }
     const destDir = o.destDir || path.join(TOOLS_DIR, name);
-    const exePath = path.join(destDir, o.exeRelPath);
     const mirrors = Array.isArray(o.mirrors) && o.mirrors.length ? o.mirrors : [o.url];
     const controller = new AbortController();
     depsAbort.set(name, controller);
     try {
       send('checking', 0, '检查是否已安装');
-      if (fs.existsSync(exePath)) {
-        send('done', 100, '已安装，跳过下载');
-        return { ok: true, name, path: exePath, cached: true, skipped: true };
+      // 已安装判定：有 exeRelPath 时按它判；否则看 destDir 里是否已有可执行文件
+      let exePath = '';
+      if (o.exeRelPath) {
+        exePath = path.join(destDir, o.exeRelPath);
+        if (fs.existsSync(exePath)) {
+          send('done', 100, '已安装，跳过下载');
+          return { ok: true, name, path: exePath, cached: true, skipped: true };
+        }
+      } else {
+        const SPEC = require('../packages/engine/plugin-installer-spec.cjs');
+        const probe = SPEC.detectExeRelPath(destDir, name, SPEC.exeCandidates(process.platform));
+        if (probe) {
+          exePath = path.join(destDir, probe);
+          send('done', 100, '已安装，跳过下载');
+          return { ok: true, name, path: exePath, cached: true, skipped: true };
+        }
       }
       fs.mkdirSync(destDir, { recursive: true });
       const tmp = path.join(destDir, 'dl-' + Date.now() + (o.archive === 'tar.gz' ? '.tgz' : '.zip'));
@@ -4707,7 +4935,27 @@ function setupIPC() {
         if (controller.signal.aborted) return { ok: false, name, cancelled: true, stage: 'cancelled', error: '用户取消' };
         try {
           send('downloading', 5, '下载中（源 ' + (i + 1) + '/' + mirrors.length + '）');
-          await downloadFile(mirrors[i], tmp);
+          // 参考基线 对齐：fileName 通配时，先 HEAD 探测真实文件名，避免 404 静默失败
+          let srcUrl = mirrors[i];
+          if (o.fileNamePattern && o.fileNamePattern.prefix) {
+            try {
+              const SPEC = require('../packages/engine/plugin-installer-spec.cjs');
+              const dirUrl = mirrors[i].replace(/\/[^/]*$/, '');
+              const listing = await fetch(dirUrl, { headers: { 'User-Agent': 'BubaiCode' } });
+              if (listing.ok) {
+                const html = await listing.text();
+                const re = new RegExp('href="([^"]*)"', 'gi');
+                let m2, hit = '';
+                const pfx = o.fileNamePattern.prefix, sfx = o.fileNamePattern.suffix || '';
+                while ((m2 = re.exec(html)) !== null) {
+                  const nm = m2[1].split('/').pop();
+                  if (nm.startsWith(pfx) && (!sfx || nm.endsWith(sfx))) { hit = m2[1]; break; }
+                }
+                if (hit) srcUrl = /^https?:/i.test(hit) ? hit : dirUrl.replace(/\/+$/, '') + '/' + hit.replace(/^\/+/, '');
+              }
+            } catch (e) { /* 探测失败则用原 URL 继续 */ }
+          }
+          await downloadFile(srcUrl, tmp);
           const size = fs.statSync(tmp).size;
           if (size < (o.minBytes || 1000000)) throw new Error('下载内容过小(' + size + 'B)，疑似错误页');
           if (o.sha256) {
@@ -4736,6 +4984,13 @@ function setupIPC() {
             }
           }
           try { fs.unlinkSync(tmp); } catch (e) {}
+          // exeRelPath 缺省 → 解压后自动探测
+          if (!o.exeRelPath) {
+            const SPEC = require('../packages/engine/plugin-installer-spec.cjs');
+            const probe = SPEC.detectExeRelPath(destDir, name, SPEC.exeCandidates(process.platform));
+            if (!probe) throw new Error('解压后未找到可执行文件（可显式声明 exeRelPath）');
+            exePath = path.join(destDir, probe);
+          }
           if (!fs.existsSync(exePath)) throw new Error('解压后未找到 ' + o.exeRelPath + '（可尝试 flatten:true）');
           send('done', 100, '安装完成');
           return { ok: true, name, path: exePath, cached: false, skipped: false };
@@ -4960,7 +5215,7 @@ function setupIPC() {
   }
 
   // 导出固件：编译并复制二进制产物到用户指定路径（保存对话框）
-  // ============ Wokwi 仿真运行器（对齐 TrieCode Wokwi 工具链：编译产物 → wokwi-cli → 串口回传）============
+  // ============ Wokwi 仿真运行器（对齐参考基线 Wokwi 工具链：编译产物 → wokwi-cli → 串口回传）============
   ipcMain.handle('wokwi:run', async (_, options) => {
     const { projectPath, timeoutMs = 90000 } = options || {};
     if (!projectPath) return { success: false, stage: 'args', error: '缺少 projectPath' };
@@ -5237,7 +5492,7 @@ function setupIPC() {
 
   // 外部链接
   ipcMain.handle('shell:openExternal', (_, url) => shell.openExternal(url));
-  // 在文件管理器中显示（对齐 ChipCode 产品包已生成时点击 pf-export 打开 hardware-package）
+  // 在文件管理器中显示（对齐参考基线 产品包已生成时点击 pf-export 打开 hardware-package）
   ipcMain.handle('shell:showItemInFolder', (_, p) => { try { shell.showItemInFolder(String(p || '')); return { success: true }; } catch (e) { return { success: false, error: e.message }; } });
 
   // ============ Web 搜索/抓取（真实联网，渲染端 WebTools 优先走这里）============
@@ -5640,6 +5895,14 @@ function setupIPC() {
         });
       }
     } catch (e) { console.error('扫描本地模型失败:', e.message); }
+    // 2026-11-14：本地模型默认优选 7B（3B 太小、工具决策易畸形），排到列表首位，
+    // 影响自动选模型 + 下拉默认高亮；其余按体积降序（更大=更聪明）。
+    models.sort((a, b) => {
+      const a7 = /qwen2\.5-coder-7b/i.test(a.file) ? 0 : 1;
+      const b7 = /qwen2\.5-coder-7b/i.test(b.file) ? 0 : 1;
+      if (a7 !== b7) return a7 - b7;
+      return (b.sizeGB || 0) - (a.sizeGB || 0);
+    });
     return models;
   }
 
@@ -6416,7 +6679,7 @@ function setupIPC() {
     saveSchedule();
     return { success: true, message: '已丢弃改动，未对工作区做任何修改' };
   });
-  // ── 编辑 / 删除 / 启停（补齐 ChipCode schedule 域的 CRUD；复用同一 scheduleStore 持久化）──
+  // ── 编辑 / 删除 / 启停（补齐 参考基线 schedule 域的 CRUD；复用同一 scheduleStore 持久化）──
   ipcMain.handle('schedule:getTask', (_, opts) => {
     try {
       const t = scheduleStore.tasks.find(x => x.id === (opts && opts.taskId));
@@ -6424,7 +6687,7 @@ function setupIPC() {
       return { success: true, task: t };
     } catch (e) { return { success: false, error: e.message }; }
   });
-  // 编辑任务：白名单字段（对齐 ChipCode schedule-store 的 UPDATABLE 思路，仅允许安全字段）
+  // 编辑任务：白名单字段（对齐参考基线 schedule-store 的 UPDATABLE 思路，仅允许安全字段）
   ipcMain.handle('schedule:update', (_, opts) => {
     try {
       const o = opts || {};
@@ -6452,7 +6715,7 @@ function setupIPC() {
       const idx = scheduleStore.tasks.findIndex(x => x.id === taskId);
       if (idx < 0) return { success: false, error: 'task not found: ' + taskId };
       scheduleStore.tasks.splice(idx, 1);
-      // 级联清理该任务的运行记录（对齐 ChipCode deleteTask 的事务级联）
+      // 级联清理该任务的运行记录（对齐参考基线 deleteTask 的事务级联）
       scheduleStore.runs = scheduleStore.runs.filter(r => r.taskId !== taskId);
       saveSchedule();
       return { success: true, deleted: taskId };
@@ -6573,7 +6836,7 @@ app.whenReady().then(() => {
     console.error('MCP 启动失败:', e.message);
   }
 
-  // 启动插件声明的 MCP 服务器（对齐 TrieCode browser-toolchain：插件在 plugin.json 里自带
+  // 启动插件声明的 MCP 服务器（对齐参考基线 browser-toolchain：插件在 plugin.json 里自带
   // mcpServers，宿主在主进程侧自动拉起，无需用户手填 config.extra.mcpServers；被 disabled 的插件跳过）
   try {
     const mcpService = require('./mcp').getMcpService();

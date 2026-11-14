@@ -8,7 +8,7 @@ function __onDCL(cb) {
   else queueMicrotask(cb);
 }
 
-// ============ 记忆持久化（对齐 TrieCode memory/ 目录）============
+// ============ 记忆持久化（对齐参考基线 memory/ 目录）============
 async function saveMemoriesToDisk(memories) {
   if (!isElectron || !window.BubaiCode || !window.BubaiCode.fs) return;
   try {
@@ -112,10 +112,10 @@ const FileSystem = {
 // ============ State ============
 const state = {
   files: {}, openTabs: [], activeTab: null, fileTree: {},
-  mode: 'default', monaco: null, editor: null, terminal: null,
+  mode: 'auto', monaco: null, editor: null, terminal: null,
   agent: null, planApproved: false, currentPlan: null, todoList: [],
   projectPath: null,
-  arduinoFqbn: '', // 2026-09-14 对齐 TrieCode：select_board 选择的 FQBN，compile 优先使用
+  arduinoFqbn: '', // 2026-09-14 对齐 BubaiCode：select_board 选择的 FQBN，compile 优先使用
 };
 
 // Publish the live state object so other renderer modules (e.g. plugin-loader) can
@@ -182,7 +182,8 @@ def write_file(filepath: str, content: str) -> None:
 // ============ 工具函数 ============
 function getLanguage(filename) {
   const ext = filename.split('.').pop().toLowerCase();
-  const map = { py:'python', js:'javascript', ts:'typescript', html:'html', css:'css', json:'json', md:'markdown', java:'java', c:'c', cpp:'cpp', go:'go', rs:'rust', rb:'ruby', php:'php', sql:'sql', sh:'shell', yml:'yaml', yaml:'yaml', xml:'xml' };
+  // ino/c 统一映射到 Monaco 内置的 'cpp'（Monaco 无 'c' 语言 id，映射 'c' 会静默失败变纯文本无高亮）
+  const map = { py:'python', js:'javascript', ts:'typescript', html:'html', css:'css', json:'json', md:'markdown', java:'java', c:'cpp', cpp:'cpp', ino:'cpp', h:'cpp', go:'go', rs:'rust', rb:'ruby', php:'php', sql:'sql', sh:'shell', yml:'yaml', yaml:'yaml', xml:'xml' };
   return map[ext] || 'plaintext';
 }
 function getFileIcon(filename) {
@@ -196,7 +197,7 @@ function initFiles() {
     loadProjectFromDisk(state.projectPath);
     return;
   }
-  // 1:1 对齐 TrieCode：无项目时不加载样本文件，隐藏文件树，只显示欢迎面板
+  // 1:1 对齐参考基线：无项目时不加载样本文件，隐藏文件树，只显示欢迎面板
   state.files = {};
   state.fileTree = {};
   buildFileTree();
@@ -215,7 +216,7 @@ function updateProjectStatusText(projectPath) {
   } catch (e) { console.error('更新项目状态显示失败:', e); }
 }
 
-// 统一同步欢迎页/文件树显隐（对齐 TrieCode：有项目/文件则隐藏欢迎页，无项目则显示）
+// 统一同步欢迎页/文件树显隐（对齐参考基线：有项目/文件则隐藏欢迎页，无项目则显示）
 function syncWelcomePanel() {
   try {
     const welcomePanel = document.getElementById('welcome-panel');
@@ -223,7 +224,7 @@ function syncWelcomePanel() {
     const hasProject = !!(state && (state.projectPath || (state.files && Object.keys(state.files).length > 0)));
     if (welcomePanel) welcomePanel.style.display = hasProject ? 'none' : 'flex';
     if (fileTree) fileTree.style.display = hasProject ? 'block' : 'none';
-    // 侧栏头部（1:1 对齐 ChipCode：「文件」标题恒定 + 打开.../新建项目 2 个图标按钮）
+    // 侧栏头部（1:1 对齐参考基线：「文件」标题恒定 + 打开.../新建项目 2 个图标按钮）
     const sidebarTitle = document.getElementById('sidebar-title');
     const openFolderBtn = document.getElementById('open-folder-btn');
     if (sidebarTitle) sidebarTitle.textContent = '文件';
@@ -232,6 +233,16 @@ function syncWelcomePanel() {
     document.body.classList.toggle('app-welcome', !hasProject);
     // 无项目态刷新「最近打开」列表（renderRecentProjects 是 bindEvents 局部函数，经全局桥调用）
     if (!hasProject && typeof window.__renderRecentProjects === 'function') window.__renderRecentProjects();
+    // 项目加载后刷新五阶段导航（已并入文件侧栏）：仅在项目路径变化时重取快照，避免每次同步都发 IPC
+    if (hasProject && state.projectPath && window.ProductFactory && typeof window.ProductFactory.refresh === 'function') {
+      if (window.__pfLastRefreshRoot !== state.projectPath) {
+        window.__pfLastRefreshRoot = state.projectPath;
+        window.ProductFactory.refresh();
+      }
+    } else if (window.ProductFactory && typeof window.ProductFactory.syncVisibility === 'function') {
+      if (!hasProject) window.__pfLastRefreshRoot = null;
+      window.ProductFactory.syncVisibility();
+    }
   } catch (e) { console.error('同步欢迎页显隐失败:', e); }
 }
 
@@ -268,8 +279,14 @@ async function loadProjectFromDisk(projectPath) {
     if (mainEditorAfterLoad) mainEditorAfterLoad.style.display = 'none';
     updateProjectStatusText(projectPath);
     showToast(`已加载项目: ${projectPath}`, 'success');
-    addOutputLog(`项目已加载: ${projectPath}`, 'success');
-    addOutputLog(`共 ${Object.keys(state.files).length} 个文件`, 'info');
+    // 对齐 ChipCode：项目加载日志只进 console，输出面板保持空态「点击 ✓ 编译 来编译项目」直到用户真正编译
+    try { console.log('[project] 已加载:', projectPath, '| 文件数:', Object.keys(state.files).length); } catch (e) {}
+    // 对齐 ChipCode：打开已有项目后自动打开首个源文件，编辑器立即显示代码
+    // （否则停在「打开或新建项目开始编程」占位，即「没有编辑区」；createProject 已如此处理）
+    try {
+      const firstFile = Object.keys(state.files).find(f => f.endsWith('.ino') || f.endsWith('.py') || f.endsWith('.c') || f.endsWith('.js'));
+      if (firstFile) openFile(firstFile);
+    } catch (e) { console.warn('自动打开主文件失败:', e); }
     // 记录最近项目（内联实现，避免跨作用域调用局部函数 recordRecentProject 报 ReferenceError）
     try {
       if (window.BubaiCode && window.BubaiCode.config) {
@@ -282,6 +299,8 @@ async function loadProjectFromDisk(projectPath) {
         if (typeof window.__renderRecentProjects === 'function') window.__renderRecentProjects();
       }
     } catch (e) { console.warn('记录最近项目失败:', e); }
+    // 状态栏分支段（对齐 ChipCode：master •N）
+    try { updateStatusBranch(); } catch (e) {}
   } catch (e) {
     console.error('加载项目失败:', e);
     showToast('加载项目失败: ' + e.message, 'error');
@@ -301,7 +320,11 @@ const PROJECT_TEMPLATES = {
   arduino: {
     folder: 'Arduino',
     files: {
-      'SKETCH.ino': `void setup() {
+      'SKETCH.ino': `// ESP32 多数板卡无 LED_BUILTIN 定义
+// 通用做法：用具体 GPIO 引脚（如 GPIO2）
+#define LED_BUILTIN 2
+
+void setup() {
   // put your setup code here
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(115200);
@@ -314,8 +337,7 @@ void loop() {
   digitalWrite(LED_BUILTIN, LOW);
   delay(1000);
 }
-`,
-      'README.md': '# Arduino Project\n\nStandard Arduino (.ino) sketch.\n'
+`
     }
   },
   'esp-idf': {
@@ -562,76 +584,76 @@ function getSelectedProjectType() {
   return active ? active.dataset.type : 'arduino';
 }
 
-// 项目类型预览数据（icon + subtitle 对齐 TrieCode 预览区）
+// 项目类型预览数据（icon + subtitle 对齐参考基线 预览区）
 const PROJECT_PREVIEW_DATA = {
   arduino: {
-    icon: '⚙️', subtitle: 'Arduino CLI 工具链',
+    icon: '⚙️', symbol: 'icon-chip', color: '#00878f', subtitle: 'Arduino CLI 工具链',
     title: 'Arduino 项目',
     desc: '使用 Arduino CLI 工具链，支持 ESP32、Arduino Uno、Nano 等开发板的编译与烧录。集成串口监视器和绘图仪。',
-    files: (name) => [(name || 'MySketch') + '.ino', '.bubaicode.json', 'README.md']
+    files: (name) => [(name || 'MySketch') + '.ino', '.bubaicode.json']
   },
   python: {
-    icon: '🐍', subtitle: 'Python 解释器',
+    icon: '🐍', symbol: 'icon-code', color: '#3776ab', subtitle: 'Python 解释器',
     title: 'Python 项目',
     desc: 'Python 脚本与应用开发，支持直接运行和调试。可用于数据分析、爬虫、自动化脚本等场景。',
     files: () => ['main.py', 'requirements.txt', '.bubaicode.json']
   },
   node: {
-    icon: '🟢', subtitle: 'Node.js 运行时',
+    icon: '🟢', symbol: 'icon-code', color: '#16a34a', subtitle: 'Node.js 运行时',
     title: 'Node.js 项目',
     desc: 'JavaScript / TypeScript 服务端与前端开发，支持 npm 包管理和直接运行。',
     files: () => ['index.js', 'package.json', '.bubaicode.json']
   },
   'esp-idf': {
-    icon: '🔧', subtitle: 'ESP-IDF 工具链',
+    icon: '🔧', symbol: 'icon-chip', color: '#e8362a', subtitle: 'ESP-IDF 工具链',
     title: 'ESP-IDF 项目',
     desc: 'ESP-IDF 官方开发框架，支持 ESP32 系列芯片的原生开发，功能更强大但配置较复杂。',
     files: () => ['main/main.c', 'CMakeLists.txt', '.bubaicode.json']
   },
   c: {
-    icon: '©️', subtitle: 'CMake 工具链',
+    icon: '©️', symbol: 'icon-code', color: '#659ad2', subtitle: 'CMake 工具链',
     title: 'C/C++ 项目',
     desc: 'C/C++ 原生开发，使用 CMake 构建系统，支持 gcc/g++ 编译运行。',
     files: () => ['main.c', 'CMakeLists.txt', '.bubaicode.json']
   },
   rust: {
-    icon: '🦀', subtitle: 'Cargo 工具链',
+    icon: '🦀', symbol: 'icon-code', color: '#b7410e', subtitle: 'Cargo 工具链',
     title: 'Rust 项目',
     desc: 'Rust 语言开发，标准 Cargo 工程结构（Cargo.toml + src/main.rs），可用 cargo build / cargo run 构建运行。',
     files: () => ['Cargo.toml', 'src/main.rs', '.bubaicode.json']
   },
   plugin: {
-    icon: '🧩', subtitle: 'BubaiCode 插件开发',
+    icon: '🧩', symbol: 'icon-puzzle', color: '#16a34a', subtitle: 'BubaiCode 插件开发',
     title: '插件项目',
     desc: 'BubaiCode 插件脚手架，包含 package.json 插件清单与 index.js 入口，放入插件目录即可在「插件市场」加载。',
     files: () => ['package.json', 'index.js', '.bubaicode.json', 'README.md']
   },
   stm32f103: {
-    icon: '🔩', subtitle: 'STM32Cube 工具链',
+    icon: '🔩', symbol: 'icon-chip', color: '#2b579a', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F103C8T6',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
     files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   stm32f401: {
-    icon: '🔩', subtitle: 'STM32Cube 工具链',
+    icon: '🔩', symbol: 'icon-chip', color: '#2b579a', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F401CC',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
     files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   stm32f411: {
-    icon: '🔩', subtitle: 'STM32Cube 工具链',
+    icon: '🔩', symbol: 'icon-chip', color: '#2b579a', subtitle: 'STM32Cube 工具链',
     title: 'STM32 F411CE',
     desc: '基于 STM32Cube HAL 的工程脚手架（Core/Src/main.c + CMakeLists），需 arm-none-eabi-gcc 与 OpenOCD 编译烧录。',
     files: () => ['Core/Src/main.c', 'Core/Inc/main.h', 'CMakeLists.txt', '.bubaicode.json']
   },
   wokwi: {
-    icon: '🖥️', subtitle: 'Wokwi 在线模拟器',
+    icon: '🖥️', symbol: 'icon-box', color: '#7c3aed', subtitle: 'Wokwi 在线模拟器',
     title: 'Wokwi 模拟项目',
     desc: '生成 diagram.json + sketch.ino，可在 Wokwi 在线模拟器中仿真 ESP32/Arduino 电路与代码，无需本地工具链。',
     files: (name) => [(name || 'sketch') + '.ino', 'diagram.json', 'wokwi.toml', '.bubaicode.json']
   },
   generic: {
-    icon: '📁', subtitle: '空白工程',
+    icon: '📁', symbol: 'icon-folder', color: '#6b7280', subtitle: '空白工程',
     title: '通用项目',
     desc: '空白文件夹，可自由创建任意类型的文件和项目结构。',
     files: () => ['.bubaicode.json']
@@ -647,12 +669,18 @@ function updateProjectPreview(type) {
   const subEl = document.getElementById('preview-subtitle');
   if (titleEl) titleEl.textContent = data.title;
   if (descEl) descEl.textContent = data.desc;
-  if (iconEl) iconEl.textContent = data.icon || '📁';
+  if (iconEl) {
+    // 对齐 ChipCode 原品：预览区图标用单色线稿 SVG，而非 emoji
+    const sym = data.symbol || 'icon-folder';
+    iconEl.innerHTML = '<svg class="icon" style="width:20px;height:20px;color:' + (data.color || 'var(--text-secondary)') + '"><use href="#' + sym + '"></use></svg>';
+  }
   if (subEl) subEl.textContent = data.subtitle || '';
   if (filesEl) {
     const name = (document.getElementById('new-project-name') || {}).value || '';
     const files = typeof data.files === 'function' ? data.files(name.trim()) : data.files;
-    filesEl.innerHTML = files.map(f => '<div class="preview-file">📄 ' + f + '</div>').join('');
+    // 对齐 ChipCode 原品：纯文本树（├─ / └─），mono 字体，无底色块
+    filesEl.innerHTML = files.map((f, i) =>
+      '<div class="preview-file">' + (i === files.length - 1 ? '└─ ' : '├─ ') + f + '</div>').join('');
   }
 }
 
@@ -783,6 +811,22 @@ function renderFileTree() {
   const container = document.getElementById('file-tree');
   container.innerHTML = '';
   renderTreeNode(state.fileTree, container, 0);
+  // 侧栏项目头：项目名 +「N 个文件」（对齐 ChipCode：TESTBLINK / 2 个文件）
+  try {
+    const wrap = document.getElementById('explorer-project');
+    if (wrap) {
+      if (state.projectPath) {
+        const name = state.projectPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || state.projectPath;
+        const nameEl = document.getElementById('explorer-project-name');
+        const countEl = document.getElementById('explorer-project-count');
+        if (nameEl) nameEl.textContent = name.toUpperCase();
+        if (countEl) countEl.textContent = Object.keys(state.files || {}).length + ' 个文件';
+        wrap.style.display = 'block';
+      } else {
+        wrap.style.display = 'none';
+      }
+    }
+  } catch (e) {}
 }
 function renderTreeNode(node, container, depth) {
   const entries = Object.entries(node).sort((a,b) => {
@@ -872,6 +916,29 @@ function closeTab(path, e) {
   }
   renderTabs(); renderFileTree();
 }
+// 对齐 ChipCode 侧栏项目行 ×：关闭当前项目回到欢迎态（与 loadProjectFromDisk 反向）
+function closeProject() {
+  try {
+    state.openTabs = [];
+    state.activeTab = null;
+    state.files = {};
+    state.fileTree = {};
+    state.projectPath = null;
+    state.projectType = null;
+    if (state.editor) { try { state.editor.setValue(''); } catch (e) {} }
+    const mainEditor = document.getElementById('monaco-editor');
+    if (mainEditor) mainEditor.style.display = 'none';
+    const mainWelcome = document.getElementById('welcome-screen');
+    if (mainWelcome) mainWelcome.style.display = 'flex';
+    document.body.classList.add('no-open-file');
+    const ep = document.getElementById('explorer-project');
+    if (ep) ep.style.display = 'none';
+    renderTabs();
+    renderFileTree();
+    syncWelcomePanel();
+    addOutputLog('已关闭项目', 'info');
+  } catch (e) { console.warn('closeProject 失败:', e); }
+}
 function renderTabs() {
   const bar = document.getElementById('tabs-bar'); bar.innerHTML = '';
   for (const path of state.openTabs) {
@@ -926,9 +993,9 @@ function ensureMonacoEditor() {
       ],
       colors: { 'editor.background': '#1a1b26', 'editor.foreground': '#c0caf5', 'editorLineNumber.foreground': '#565f89', 'editor.selectionBackground': '#33467c', 'editor.lineHighlightBackground': '#1e2030', 'editorCursor.foreground': '#c0caf5' }
     });
-    // 浅色主题默认 'vs'，深色用 'bubaicode-dark'（1:1 对齐 TrieCode 浅色主题）
+    // 浅色主题默认 'vs'，深色用 'bubaicode-dark'（1:1 对齐参考基线 浅色主题）
     monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'bubaicode-dark');
-    state.editor.onDidChangeCursorPosition((e) => { document.getElementById('cursor-position').textContent = `行 ${e.position.lineNumber}, 列 ${e.position.column}`; });
+    state.editor.onDidChangeCursorPosition((e) => { document.getElementById('cursor-position').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`; });
     state.editor.onDidChangeModelContent(() => {
       if (state.activeTab && state.files[state.activeTab]) {
         state.files[state.activeTab].content = state.editor.getValue();
@@ -1130,7 +1197,16 @@ function showToast(message, type='info') {
   setTimeout(() => { toast.style.opacity='0'; toast.style.transform='translateX(100%)'; toast.style.transition='all 0.3s'; setTimeout(()=>toast.remove(),300); }, 3000);
 }
 function addOutputLog(message, type='info') {
+  // 对齐 ChipCode：启动阶段（前 4s）的引擎自检日志只进 console，不进输出面板，
+  // 保持空态占位「点击 ✓ 编译 来编译项目」可见
+  if (window.__bootQuiet === undefined) {
+    window.__bootQuiet = true;
+    setTimeout(function () { window.__bootQuiet = false; }, 4000);
+  }
+  if (window.__bootQuiet) { try { console.log('[boot]', message); } catch (e) {} return; }
   const content = document.getElementById('output-content');
+  const empty = document.getElementById('output-empty');
+  if (empty) empty.style.display = 'none';
   const time = new Date().toLocaleTimeString('zh-CN',{hour12:false});
   const line = document.createElement('div');
   line.className = 'log-line';
@@ -1146,7 +1222,7 @@ function addOutputLog(message, type='info') {
 // ---------- 1. 工具注册表（ToolRegistry）----------
 // 参考业界: 工具分三类 query(只读) / modify(修改) / execute(执行)
 
-// glob 模式 → 正则（find_files 用，对齐 TrieCode）：** 任意层级，* 单层任意，? 单字符
+// glob 模式 → 正则（find_files 用，对齐参考基线）：** 任意层级，* 单层任意，? 单字符
 function globToRegExp(pattern) {
   let re = '';
   let i = 0;
@@ -1225,7 +1301,7 @@ const TOOL_DEFS = [
         const existed = !!state.files[args.file_path];
         state.files[args.file_path] = { content: args.content, language: getLanguage(args.file_path), dirty: true };
         buildFileTree(); renderFileTree();
-        // 对齐 TrieCode：AI 写入文件后自动在中间编辑器打开展示
+        // 对齐参考基线：AI 写入文件后自动在中间编辑器打开展示
         // 统一调用 openFile 处理：移除 no-open-file、显示 monaco-editor、渲染标签页、设置编辑器内容
         try { openFile(args.file_path); } catch (e) { console.error('openFile 失败:', e); }
         // Electron 环境：同时写入磁盘
@@ -1328,7 +1404,7 @@ const TOOL_DEFS = [
         // 不再谎报"执行完成，退出码 0"——命令根本没跑
         return `Error: 当前环境无法执行命令（非 Electron 或未连接终端），命令未执行: ${cmd}`;
       }
-      // ===== 2026-09-13 安全护栏（对齐 TrieCode terminal-exec 三层防线）=====
+      // ===== 2026-09-13 安全护栏（对齐参考基线 terminal-exec 三层防线）=====
       // deny：危险命令硬拦截，不可绕过；confirm：高风险命令弹确认窗，用户同意后 force 放行
       try {
         const cwd = state.projectPath || undefined;
@@ -1502,7 +1578,7 @@ const TOOL_DEFS = [
         const pm = output.match(/(\d+)\s+passed/g); if (pm) passed = parseInt(pm[pm.length-1].match(/\d+/)[0]);
         const fm = output.match(/(\d+)\s+failed/g); if (fm) failed = parseInt(fm[fm.length-1].match(/\d+/)[0]);
         const em = output.match(/(\d+)\s+error/g); if (em) errors = parseInt(em[em.length-1].match(/\d+/)[0]);
-        // ===== 自研本体 P0-1：失败分类提取（对齐 TrieCode 实测行为）=====
+        // ===== 自研本体 P0-1：失败分类提取（对齐参考基线 实测行为）=====
         let classifyNote = '';
         const failedFlag = exitCode !== 0 || failed > 0 || errors > 0;
         if (failedFlag) {
@@ -1549,7 +1625,7 @@ const TOOL_DEFS = [
           if (firstErr) classifyNote += `\n- 首条错误: ${firstErr}`;
           classifyNote += knowledgeNote;
         }
-        // ===== 自研本体 P0-1：arduino 资源占用解析（对齐 TrieCode 底部面板）=====
+        // ===== 自研本体 P0-1：arduino 资源占用解析（对齐参考基线 底部面板）=====
         let resourceNote = '';
         if (framework === 'arduino' && !failedFlag) {
           const sketchM = output.match(/Sketch uses\s+([\d,]+)\s+bytes?\s+\((\d+)%\)\s+of\s+program\s+storage\s+space/i);
@@ -1562,7 +1638,7 @@ const TOOL_DEFS = [
         }
         const summary = '测试完成: ' + passed + ' 通过, ' + failed + ' 失败, ' + errors + ' 错误 (退出码 ' + exitCode + ')';
         addOutputLog(summary, exitCode === 0 ? 'success' : 'error');
-        // ===== 测试输出结构化解析（对齐 TrieCode test-runner.js parseTestOutput）=====
+        // ===== 测试输出结构化解析（对齐参考基线 test-runner.js parseTestOutput）=====
         // 把失败明细解析成 {name,file,error,category} 注入模型，agent 可按类别精准修复
         let structBlock = '';
         try {
@@ -1586,7 +1662,7 @@ const TOOL_DEFS = [
         } catch (e) {
           addOutputLog('测试结构化解析失败: ' + e.message, 'warn');
         }
-        // ===== 编译后自动显示底部面板 + 渲染环形资源占用图（对齐 TrieCode）=====
+        // ===== 编译后自动显示底部面板 + 渲染环形资源占用图（对齐参考基线）=====
         try {
           showBottomPanel('output');
           const oc = document.getElementById('output-content');
@@ -1619,16 +1695,16 @@ const TOOL_DEFS = [
       }
     }
   },
-  // ===== 2026-09-14 对齐 TrieCode：arduino-cli 工具链 agent 工具族 =====
-  // TrieCode 实测：agent 自主调用 search_boards→select_board→install_platform→install_library→compile 完成自愈
-  // （参照 %APPDATA%\TrieCode\chat-sessions\mtzwd2k6b2osu1.json / mtze2zuhnod8rr.json）
+  // ===== 2026-09-14 对齐参考基线：arduino-cli 工具链 agent 工具族 =====
+  // 参考基线 实测：agent 自主调用 search_boards→select_board→install_platform→install_library→compile 完成自愈
+  // （参照 %APPDATA%\参考基线\chat-sessions\mtzwd2k6b2osu1.json / mtze2zuhnod8rr.json）
   // 统一执行器：优先主进程探测的 arduino-cli 完整路径（避免 PATH 缺失），经真实 terminal 执行
   // 2026-09-15 迁移：这 8 个工具从硬编码 TOOL_DEFS 迁到 manifest（plugins/arduino-cli-toolchain/plugin.json）
   // 执行逻辑保留为命名函数，通过 internal service 暴露给 manifest 调用
 
   // (arduino 工具的 execute 函数定义见下方 ARDUINO_TOOL_IMPLS)
   {
-    name: 'create_project', category: 'modify', description: '创建新项目（对齐 TrieCode：生成项目骨架 + .bubaicode.json 配置）',
+    name: 'create_project', category: 'modify', description: '创建新项目',
     parameters: { type: 'object', properties: { name: { type:'string', description:'项目名称' }, type: { type:'string', description:'项目类型：arduino/python/node/esp-idf/c/generic' } }, required: ['name','type'] },
     execute: async (args) => {
       const name = (args.name || '').trim();
@@ -1641,7 +1717,7 @@ const TOOL_DEFS = [
     }
   },
   {
-    name: 'add_file', category: 'modify', description: '在项目中添加新文件（对齐 TrieCode 签名：sketch_name + file_path + content，自动创建父目录）',
+    name: 'add_file', category: 'modify', description: '在项目中添加新文件',
     parameters: { type: 'object', properties: { sketch_name: { type:'string', description:'项目名称（用于归属校验）' }, file_path: { type:'string', description:'相对项目根的文件路径，如 src/main.c' }, content: { type:'string', description:'文件内容' } }, required: ['file_path'] },
     execute: async (args) => {
       const filePath = (args.file_path || '').trim();
@@ -1665,7 +1741,7 @@ const TOOL_DEFS = [
     }
   },
   {
-    name: 'find_files', category: 'query', description: '按 glob 模式查找文件（支持 **/*.md、**/*todo* 等，对齐 TrieCode）',
+    name: 'find_files', category: 'query', description: '按 glob 模式查找文件（支持 **/*.md、**/*todo* 等，对齐参考基线）',
     parameters: { type: 'object', properties: { pattern: { type:'string', description:'glob 模式，如 **/*.ino' } }, required: ['pattern'] },
     execute: (args) => {
       const pattern = (args.pattern || '').trim();
@@ -1679,7 +1755,7 @@ const TOOL_DEFS = [
     }
   },
   {
-    name: 'search_files', category: 'query', description: '按正则搜索文件内容（对齐 TrieCode：pattern 为正则，subpath 限定子目录）',
+    name: 'search_files', category: 'query', description: '按正则搜索文件内容',
     parameters: { type: 'object', properties: { pattern: { type:'string', description:'正则表达式' }, subpath: { type:'string', description:'限定搜索的子路径（可选）' } }, required: ['pattern'] },
     execute: (args) => {
       const pattern = (args.pattern || '').trim();
@@ -1706,7 +1782,7 @@ const TOOL_DEFS = [
     }
   },
   {
-    name: 'read_diagnostics', category: 'query', description: '读取最近编译诊断（对齐 TrieCode：返回 COMPILE OK/FAIL、首条错误、FQBN）',
+    name: 'read_diagnostics', category: 'query', description: '读取最近编译诊断',
     parameters: { type: 'object', properties: { file_path: { type:'string', description:'文件路径（可选）' } } },
     execute: (args) => {
       const d = state.lastCompileResult;
@@ -1873,10 +1949,20 @@ const TOOL_DEFS = [
       if (!task) return 'Error: 任务描述不能为空';
       if (task.length > 500) return 'Error: 任务描述不能超过500字符';
       addOutputLog(`子智能体启动: ${task.substring(0, 50)}...`, 'info');
-      const subagent = new SubAgent({ task, parentContext: { focus: args.focus || '' }, onStream: () => {} });
-      const result = await subagent.run();
-      addOutputLog(`子智能体完成: ${task.substring(0, 50)}...`, 'success');
-      return `## 子智能体研究结果\n\n${result}\n\n（注：以上为只读子智能体的研究结论，仅使用了只读工具。）`;
+      // 参考基线 对齐：全局子代理并发闸门（默认 4），超限 fail-fast 而非无限放大
+      const _caGate = window.CHIPCODE_ALIGN;
+      const _caGated = !!(_caGate && _caGate.enabled && _caGate.globalGate.tryAcquire());
+      if (_caGate && _caGate.enabled && !_caGated) {
+        return `Error: 同时运行的子智能体已达上限（${_caGate.globalGate.limit} 个）。请等已有的子代理返回，或把调研拆成更少的委托。`;
+      }
+      try {
+        const subagent = new SubAgent({ task, parentContext: { focus: args.focus || '' }, onStream: () => {} });
+        const result = await subagent.run();
+        addOutputLog(`子智能体完成: ${task.substring(0, 50)}...`, 'success');
+        return `## 子智能体研究结果\n\n${result}\n\n（注：以上为只读子智能体的研究结论，仅使用了只读工具。）`;
+      } finally {
+        if (_caGated) _caGate.globalGate.release();
+      }
     }
   },
   {
@@ -1914,7 +2000,7 @@ const TOOL_DEFS = [
       return vs.map(v => `- ${v.pluginId}:${v.id} (${v.title}) → ${v.webviewUrl}`).join('\n');
     }
   },
-  // ===== 2026-09-15 对齐 TrieCode plugin-dev-toolchain：create/validate/install =====
+  // ===== 2026-09-15 对齐参考基线 plugin-dev-toolchain：create/validate/install =====
   {
     name: 'plugin_dev_create', category: 'create',
     description: '创建 BubaiCode 插件骨架：生成 plugin.json（最小 manifest + 示例 cli 工具）+ README.md。参数 dir（工作区内目录）、id（kebab-case 唯一）、name、description、developer、icon。生成后用 write_file 完善 manifest，再调 plugin_dev_validate 校验、plugin_dev_install 安装。',
@@ -1995,7 +2081,7 @@ const TOOL_DEFS = [
     }
   }
 ,
-  // ===== 对齐 TrieCode pdf.js：读取 PDF =====
+  // ===== 对齐参考基线 pdf.js：读取 PDF =====
   {
     name: 'mcp_list', category: 'query', description: '列出已配置的 MCP 服务器及其工具（设置→模型供应商→MCP 服务器里可增删/测试连接）',
     execute: async () => {
@@ -2047,7 +2133,7 @@ const TOOL_DEFS = [
       } catch (e) { return 'Error: 读取 PDF 失败: ' + e.message; }
     }
   },
-  // ===== 对齐 TrieCode vision.js：分析图片 =====
+  // ===== 对齐参考基线 vision.js：分析图片 =====
   {
     name: 'analyze_image', category: 'query',
     description: '分析图片文件内容（截图、电路图、照片等）。需要当前模型支持视觉输入。',
@@ -2068,7 +2154,7 @@ const TOOL_DEFS = [
     }
   },
 
-  // ================= 对齐 TrieCode git_*：git 工具集（复用 window.BubaiCode.git） =================
+  // ================= 对齐参考基线 git_*：git 工具集（复用 window.BubaiCode.git） =================
   {
     name: 'git_status', category: 'query', description: '查看仓库状态（含冲突文件 UU/AA 等未合并状态）。参数：cwd(可选，默认当前项目)',
     parameters: { type: 'object', properties: { cwd: { type: 'string', description: '仓库根目录' } }, required: [] },
@@ -2158,7 +2244,7 @@ const TOOL_DEFS = [
     }
   },
 
-  // ================= 对齐 TrieCode code_symbols/lsp_*：符号/LSP 工具（复用 window.BubaiCode.lsp.request） =================
+  // ================= 对齐参考基线 code_symbols/lsp_*：符号/LSP 工具（复用 window.BubaiCode.lsp.request） =================
   {
     name: 'code_symbols', category: 'query', description: '全局符号搜索（函数/类/方法/变量，与顶栏符号搜索共用同一索引）。参数：query(必填)',
     parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
@@ -2185,7 +2271,7 @@ const TOOL_DEFS = [
     }
   },
 
-  // ================= 对齐 TrieCode mcp:*：MCP 管理工具 =================
+  // ================= 对齐参考基线 mcp:*：MCP 管理工具 =================
   {
     name: 'mcp_list_servers', category: 'query', description: '列出已配置的 MCP 服务器',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -2238,7 +2324,7 @@ const TOOL_DEFS = [
     execute: async () => { try { const r = await window.BubaiCode.schedule.status(); return JSON.stringify(r, null, 2); } catch (e) { return 'Error: ' + e.message; } }
   },
 
-  // ================= 对齐 TrieCode conflict:aiMerge：AI 自动解决合并冲突 =================
+  // ================= 对齐参考基线 conflict:aiMerge：AI 自动解决合并冲突 =================
   {
     name: 'resolve_merge_conflict', category: 'modify', description: 'AI 自动解决工作区中的 git 合并冲突：检测冲突文件→逐个用模型生成最终内容→写回→git add。参数：cwd(可选)',
     parameters: { type: 'object', properties: { cwd: { type: 'string' } }, required: [] },
@@ -2287,7 +2373,7 @@ if (window.ProductAITools && Array.isArray(window.ProductAITools.defs)) {
 
 // 统一的「向用户确认」弹窗助手（ask_user 工具与 install_plugin 工具共用）
 async function askUserConfirm(question, options, header) {
-  // 真实选择弹窗（对齐 TrieCode）：渲染选项卡片，等待用户点击选择或「让 AI 自行决定」
+  // 真实选择弹窗（对齐参考基线）：渲染选项卡片，等待用户点击选择或「让 AI 自行决定」
   let selected = null;
   try {
     // 健壮性：若存在上一个未决的询问弹窗，先自动关闭（超时路径）
@@ -2326,7 +2412,7 @@ async function askUserConfirm(question, options, header) {
   return `用户回答：${selected}\n\n（注：用户选择了「${selected}」，请基于此回答继续执行。）`;
 }
 
-// ===== 2026-09-14 对齐 TrieCode：arduino-cli 工具链辅助执行器 =====
+// ===== 2026-09-14 对齐参考基线：arduino-cli 工具链辅助执行器 =====
 // 统一：主进程探测完整路径（避免 PATH 缺失）→ 真实 terminal 执行 → {ok, code, out}
 async function getArduinoCliCmd() {
   if (!isElectron || !window.BubaiCode) return { ok: false, out: '错误：非 Electron 环境，arduino-cli 不可用' };
@@ -2338,7 +2424,7 @@ async function getArduinoCliCmd() {
   } catch (e) {}
   return { ok: false, out: '错误：arduino-cli 未找到，请先安装 Arduino 编译插件（设置 → 插件市场 → Arduino 编译上传）' };
 }
-// ===== 2026-09-15 arduino-cli 结果缓存（对齐 TrieCode daemon 常驻效果，减少重复 spawn）=====
+// ===== 2026-09-15 arduino-cli 结果缓存（对齐参考基线 daemon 常驻效果，减少重复 spawn）=====
 const _arduinoCache = new Map(); // key -> { data, exp }
 function cacheGet(key, ttlMs) {
   const c = _arduinoCache.get(key);
@@ -2416,7 +2502,7 @@ const ARDUINO_TOOL_IMPLS = {
     }
     if (!fqbn) return '未从搜索结果解析到 FQBN，请先安装对应平台（install_platform）后重试。\n原始输出:\n' + r.out.slice(0, 1200);
     state.arduinoFqbn = fqbn;
-    // 状态栏开发板段：对齐 TrieCode（选择开发板后显示 FQBN）
+    // 状态栏开发板段：对齐参考基线（选择开发板后显示 FQBN）
     const boardEl = document.getElementById('status-board');
     if (boardEl) boardEl.textContent = fqbn;
     return '已选择开发板: ' + fqbn + '（后续 compile 将使用该 FQBN）';
@@ -2443,6 +2529,24 @@ const ARDUINO_TOOL_IMPLS = {
     if (!args.platform) return 'Error: 缺少 platform 参数';
     const r = await runArduinoCli(['core', 'uninstall', String(args.platform)], 120000);
     return r.out || (r.code === 0 ? '已卸载: ' + args.platform : '卸载失败');
+  },
+  // 参考基线 对齐：串口枚举（对齐 arduino-cli-toolchain 的 list_ports）
+  // 走主进程 serial:list（serialport 原生枚举，主进程已解析 VID/PID），不依赖 arduino-cli 是否在 PATH
+  async list_ports() {
+    try {
+      if (!window.BubaiCode || !window.BubaiCode.serial) return '串口桥不可用';
+      const r = await window.BubaiCode.serial.list();
+      if (!r || !r.ports || !r.ports.length) return '无可用串口';
+      const lines = r.ports.map((p, i) => {
+        const vid = p.vendorId ? ' VID:' + p.vendorId : '';
+        const pid = p.productId ? ' PID:' + p.productId : '';
+        const dev = p.board || p.friendlyName || p.manufacturer || '未知设备';
+        return `${i + 1}. ${p.port} — ${dev}${vid}${pid}`;
+      });
+      return '可用串口:\n' + lines.join('\n');
+    } catch (e) {
+      return '串口枚举失败: ' + (e && e.message ? e.message : String(e));
+    }
   },
   async get_board_info(args) {
     const fqbn = (args && args.fqbn) || state.arduinoFqbn;
@@ -2591,7 +2695,7 @@ async function refreshMcpToolDefs() {
         const tools = (r && r.tools) || [];
         for (const t of tools) {
           const schema = t.inputSchema || { type: 'object', properties: {} };
-          // 命名对齐 TrieCode：mcp__<server>__<tool>（双下划线，server 名中的非安全字符已安全化为下划线）
+          // 命名对齐参考基线：mcp__<server>__<tool>（双下划线，server 名中的非安全字符已安全化为下划线）
           let vname = ('mcp__' + s.name + '__' + t.name).toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
           if (seenNames[vname]) { vname = vname + '_' + (seenNames[vname]++); } else { seenNames[vname] = 1; }
           defs.push({
@@ -2604,7 +2708,7 @@ async function refreshMcpToolDefs() {
             execute: async (args) => {
               const res = await window.BubaiCode.mcp.callTool(s.name, t.name, args || {});
               if (res && res.ok) {
-                // 对齐 TrieCode：MCP 工具返回视为不可信数据，包 <untrusted-mcp-tool-result> 标签，
+                // 对齐参考基线：MCP 工具返回视为不可信数据，包 <untrusted-mcp-tool-result> 标签，
                 // 防止插件 / MCP 服务器通过工具输出向 Agent 注入提示词
                 const raw = res.text || '';
                 return `<untrusted-mcp-tool-result server="${s.name}" tool="${t.name}">\n${raw}\n</untrusted-mcp-tool-result>`;
@@ -2761,11 +2865,11 @@ function isProtectedPath(path) {
 }
 
 // 参考业界 computeNeedsConfirm: 判定工具是否需要用户确认
-// 用户授权（2026-11-02）：权限确认默认自动放行（运行/跳过/拒绝 弹卡不再出现）。
+// 默认逐条确认（对齐 ChipCode：等待确认／允许一次／本会话允许／拒绝），与用户授权一致。
 // 硬拦截层（rm -rf /、mkfs、fork 炸弹等 DANGEROUS_PATTERNS）不受影响，仍由主进程护栏硬拒。
-// 逃生口：localStorage['bubaicode_agent_auto_run'] = '0' 恢复逐条确认。
+// 逃生口：localStorage['bubaicode_agent_auto_run'] = '1' 可恢复自动放行。
 function isAgentAutoRun() {
-  try { return localStorage.getItem('bubaicode_agent_auto_run') !== '0'; } catch (e) { return true; }
+  try { return localStorage.getItem('bubaicode_agent_auto_run') === '1'; } catch (e) { return false; }
 }
 function computeNeedsConfirm(toolName, args, mode, denialHits=0) {
   if (isAgentAutoRun()) return false;
@@ -3112,11 +3216,11 @@ class ToolFailureClassifier {
 
 const toolFailureClassifier = new ToolFailureClassifier();
 
-// ============ 测试输出结构化解析（对齐 TrieCode test-runner.js）============
+// ============ 测试输出结构化解析（对齐参考基线 test-runner.js）============
 // 把 pytest/jest/node:test 的散文输出解析成结构化失败对象，agent 可按错误类别精准修复
 class TestResultParser {
   constructor() {
-    // categorizeError 判定顺序对齐 TrieCode：import → timeout → assertion → compile → crash → unknown
+    // categorizeError 判定顺序对齐参考基线：import → timeout → assertion → compile → crash → unknown
     this.errorCategories = [
       { name: 'import', patterns: [/cannot find module/i, /module not found/i, /no module named/i, /import error/i, /unresolved import/i, /include.*no such file/i, /undefined reference to/i] },
       { name: 'timeout', patterns: [/timed out/i, /timeout(?!\s*error:)/i, /timeouterror/i, /killed/i, /runaway/i, /test execution timeout/i] },
@@ -3197,7 +3301,7 @@ class TestResultParser {
     };
   }
 
-  /** 生成注入模型的 [TEST_RESULT] 结构化块（对齐 TrieCode 结构化失败结果） */
+  /** 生成注入模型的 [TEST_RESULT] 结构化块（对齐参考基线 结构化失败结果） */
   toInjectionBlock(parsed, exitCode) {
     const slim = {
       exitCode,
@@ -3576,7 +3680,7 @@ class WebTools {
 const webTools = new WebTools();
 
 // ============ 增强：文件回滚系统（Turn级回滚 + undo/redo + 磁盘同步）============
-// 对齐 TrieCode file-change-tracker.js：turn 级快照 / 安全校验不覆盖用户改动 / 磁盘同步 / undo-redo 栈
+// 对齐参考基线 file-change-tracker.js：turn 级快照 / 安全校验不覆盖用户改动 / 磁盘同步 / undo-redo 栈
 class FileChangeTracker {
   constructor() {
     this.turns = new Map();        // sessionId -> [{ turn, changes, timestamp, rolledBack }]
@@ -3639,7 +3743,7 @@ class FileChangeTracker {
 
   /**
    * 回滚单条变更（安全校验：仅当当前内容仍等于 agent 写入后的 after 才恢复；
-   * 用户手工改过则跳过，绝不覆盖用户改动 —— 对齐 TrieCode 核心不变量）
+   * 用户手工改过则跳过，绝不覆盖用户改动 —— 对齐参考基线 核心不变量）
    */
   async rollbackChange(change) {
     const path = change.path;
@@ -3746,7 +3850,7 @@ class FileChangeTracker {
   }
 
   // 批量 rewind：恢复到第 N 批（回滚 turn > N 的所有批次；安全不覆盖用户改动）
-  // permanent=true 时同时清空 redo 栈，使回退不可重做（对齐 ChipCode rewindCode / truncate）
+  // permanent=true 时同时清空 redo 栈，使回退不可重做（对齐参考基线 rewindCode / truncate）
   async keepBatchesUpTo(targetTurn, sessionId, permanent) {
     const sessions = sessionId ? [sessionId] : ['default', 'stream'];
     let rolledBack = 0;
@@ -3773,7 +3877,7 @@ class FileChangeTracker {
 
   clear(sessionId = 'default') { this.turns.delete(sessionId); this.redoStacks.delete(sessionId); this.activeTurn.delete(sessionId); this.currentTurn = 0; }
 
-  // ===== Phase B+ · turn 批次按会话持久化（对齐 ChipCode turns/<sessionId>.json）=====
+  // ===== Phase B+ · turn 批次按会话持久化（对齐参考基线 turns/<sessionId>.json）=====
   // 内部仍保留 'default'/'stream' 两个逻辑通道，但整体作为一个会话快照存取，避免串味。
   // before/after 是整文件全文，限制快照体积：单个 change 内容超过 200KB 时只存元数据。
   snapshotTurns() {
@@ -3819,6 +3923,9 @@ class FileChangeTracker {
 const fileChangeTracker = new FileChangeTracker();
 window.BubaiCodeUI = window.BubaiCodeUI || {};
 window.BubaiCodeUI.fileTracker = fileChangeTracker;
+// 暴露项目/编译相关桥（对齐 19772 注释：bindEvents 之外的入口需经此调用）
+window.BubaiCodeUI.loadProjectFromDisk = loadProjectFromDisk;
+window.BubaiCodeUI.getArduinoCli = () => (typeof ARDUINO_TOOL_IMPLS !== 'undefined' ? ARDUINO_TOOL_IMPLS : null);
 
 // 全局撤销/重做入口（UI 按钮 + agent 工具共用）
 // 双栈感知：'default'（工具调用轮）与 'stream'（流式写码轮）统一进撤销/重做，取最新
@@ -3871,7 +3978,7 @@ async function redoLastAgentTurn() {
 }
 
 // ============ 命令面板（Ctrl+Shift+P / 菜单「命令面板」）============
-// 对齐 TrieCode/VS Code：顶部命令输入 + 模糊过滤 + 上下键选择 + Enter 执行
+// 对齐参考基线/VS Code：顶部命令输入 + 模糊过滤 + 上下键选择 + Enter 执行
 const COMMAND_PALETTE_COMMANDS = [
   { label: '新建文件', group: '文件', run: () => { const btn = document.getElementById('new-file-btn') || document.getElementById('quick-new-file'); if (btn) btn.click(); else showToast('未找到新建文件入口', 'warn'); } },
   { label: '打开项目…', group: '文件', run: () => { const btn = document.getElementById('welcome-open-project'); if (btn) btn.click(); else { const di = document.querySelector('.dropdown-item[data-action="open-project"]'); if (di) di.click(); } } },
@@ -3909,6 +4016,17 @@ function switchPanel(panel, kind) {
   }
   if (el) el.click();
   else showToast('未找到面板: ' + panel, 'warn');
+}
+
+// 打开「AI 模型」视图（本地模型下载页）：活动栏隐藏代理按钮 [data-panel="models"] 触发
+// app.js:10950 的完整分支（currentPluginsTab='models' + renderPluginsList + 标题「AI 模型」）。
+// 此前下拉两处跳转直连不存在的按钮而静默失效，统一收口到这里。
+function openAiModelsView() {
+  const btn = document.querySelector('.activity-btn[data-panel="models"]');
+  if (btn) { btn.click(); return true; }
+  if (typeof switchPanel === 'function') { switchPanel('models', 'activity'); return true; }
+  showToast('AI 模型面板未就绪', 'warn');
+  return false;
 }
 
 function cmdPaletteEsc(s) {
@@ -3995,7 +4113,7 @@ function bindCommandPalette() {
   });
 }
 
-// ===== 代码符号搜索（1:1 对齐 ChipCode 顶栏搜索；与 AI code_symbols 共用同一份索引） =====
+// ===== 代码符号搜索（1:1 对齐参考基线 顶栏搜索；与 AI code_symbols 共用同一份索引） =====
 // 用 IIFE 包裹：app.js 是普通脚本，顶层 const 全局共享，避免与已有标识符冲突
 (function () {
   const SYM_RULES = {
@@ -4017,7 +4135,7 @@ function bindCommandPalette() {
     ]
   };
   let _symItems = [], _symIdx = 0, _symBound = false;
-  // 1:1 仿写 ChipCode：250ms debounce + 递增序号丢弃过期响应 + limit 30
+  // 1:1 仿写 参考基线：250ms debounce + 递增序号丢弃过期响应 + limit 30
   const SYM_DEBOUNCE_MS = 250, SYM_LIMIT = 30;
   let _symTimer = null, _symSeq = 0, _symHits = [];
   const SYM_TEXT = {
@@ -4096,13 +4214,13 @@ function bindCommandPalette() {
     _symItems = window.BubaiCodeSymbols.build();
     _symHits = []; _symIdx = 0;
     input.value = '';
-    // 1:1 仿写 ChipCode：空输入显示空列表，不预列符号
+    // 1:1 仿写 参考基线：空输入显示空列表，不预列符号
     document.getElementById('symbol-search-list').innerHTML = '';
     symStatus('');
     ov.style.display = 'block';
     setTimeout(function () { input.focus(); }, 30);
   }
-  // 1:1 仿写 ChipCode 的 useEffect：输入后 250ms debounce，序号丢弃过期响应
+  // 1:1 仿写 参考基线 的 useEffect：输入后 250ms debounce，序号丢弃过期响应
   function symQuery() {
     const input = document.getElementById('symbol-search-input');
     if (!input) return;
@@ -4120,7 +4238,7 @@ function bindCommandPalette() {
     symStatus(SYM_TEXT.searching);
     _symTimer = setTimeout(async function () {
       try {
-        // 索引查询（BubaiCode 为 renderer 内存索引；ChipCode 为 tree-sitter IPC，见 unk_831150…）
+        // 索引查询（BubaiCode 为 renderer 内存索引；参考基线 为 tree-sitter IPC，见 unk_831150…）
         const lower = q.toLowerCase();
         const hits = window.BubaiCodeSymbols.build()
           .filter(function (s) { return s.name.toLowerCase().indexOf(lower) >= 0; })
@@ -4149,7 +4267,7 @@ function bindCommandPalette() {
       list.innerHTML = '<div class="symbol-search-empty">' + symEsc(SYM_TEXT.empty) + '</div>';
       return;
     }
-    // 1:1 仿写 ChipCode 结果项：图标 + name(粗) + kind + filePath:line
+    // 1:1 仿写 参考基线 结果项：图标 + name(粗) + kind + filePath:line
     list.innerHTML = hits.map(function (s, i) {
       return '<div class="symbol-item' + (i === _symIdx ? ' active' : '') + '" data-i="' + i + '">' +
         '<svg class="icon icon-xs symbol-icon"><use href="#icon-code"></use></svg>' +
@@ -4176,7 +4294,7 @@ function bindCommandPalette() {
   async function symJump(s) {
     if (!s) return;
     symClose();
-    // 1:1 仿写 ChipCode：先 project.readFile 读内容，再 openFile(path, content)
+    // 1:1 仿写 参考基线：先 project.readFile 读内容，再 openFile(path, content)
     try {
       const f = state.files[s.file];
       if (!f || !f.content) {
@@ -4384,9 +4502,9 @@ class ThinkingManager {
 }
 const thinkingManager = new ThinkingManager();
 
-// ---------- 2.4b 模型上下文窗口规格表（对齐 TrieCode core/model-specs.js：单一来源）----------
+// ---------- 2.4b 模型上下文窗口规格表（对齐参考基线 core/model-specs.js：单一来源）----------
 // 用途：AI 面板上下文占用环 / （后续）压缩阈值 / 输出上限防越界。
-// 数据纪律同 TrieCode：仅收录有官方口径依据的型号；查不到走保守兜底并告警一次，不编数字。
+// 数据纪律同 参考基线：仅收录有官方口径依据的型号；查不到走保守兜底并告警一次，不编数字。
 const MODEL_SPECS = {
   // ── OpenAI ──
   'gpt-4.1': { contextWindow: 1047576, maxOutput: 32768 },
@@ -4471,10 +4589,10 @@ function inputBudgetOf(model) {
   const b = s.maxInput ?? s.contextWindow;
   return b > 0 ? b : s.contextWindow;
 }
-/** 单次最大输出；未知返回 undefined（不要写死 32768——正是 TrieCode 注释里 gpt-4o 越界 400 的原因） */
+/** 单次最大输出；未知返回 undefined（不要写死 32768——正是 参考基线 注释里 gpt-4o 越界 400 的原因） */
 function maxOutputOf(model) { const s = modelSpecOf(model); return s ? s.maxOutput : undefined; }
 
-// ---------- 2.4c 上下文占用环（对齐 TrieCode 上下文圆环：估算 token/模型窗口）----------
+// ---------- 2.4c 上下文占用环（对齐参考基线 上下文圆环：估算 token/模型窗口）----------
 function estimateTextTokens(text) {
   const s = String(text || '');
   let cjk = 0;
@@ -4512,6 +4630,9 @@ async function updateContextRing() {
   const model = await resolveCurrentModelId();
   const budget = inputBudgetOf(model);
   const used = estimateConversationTokens();
+  // 对齐 ChipCode 原品：欢迎态（尚无会话消息）不显示上下文占用环；0 占用同样隐藏
+  const _welcomeEl = document.getElementById('ai-welcome');
+  if (!used || (_welcomeEl && _welcomeEl.style.display !== 'none')) { el.style.display = 'none'; return; }
   const pct = Math.max(0, Math.min(1, used / budget));
   const R = 7, C = 2 * Math.PI * R;
   const dash = (pct * C).toFixed(1);
@@ -4601,7 +4722,7 @@ const BUILTIN_SKILLS = [
     ],
     fileExtensions: ['.html', '.css', '.js', '.ts', '.jsx', '.tsx']
   },
-  // ===== 2026-09-15 对齐 TrieCode arduino-cli-toolchain skills =====
+  // ===== 2026-09-15 对齐参考基线 arduino-cli-toolchain skills =====
   {
     id: 'burn-precheck',
     name: '烧录前检查',
@@ -4720,7 +4841,7 @@ class SkillManager {
     return `## SKILL: ${skill.name}\n${body}`;
   }
 
-  // ===== 2026-09-15 对齐 TrieCode devicePanel API =====
+  // ===== 2026-09-15 对齐参考基线 devicePanel API =====
   listDeviceItems() {
     return [
       { id: 'board', label: '开发板', value: state.arduinoFqbn || '未选择', kind: 'select' },
@@ -4854,7 +4975,7 @@ class RealAIClient {
     }
   }
 
-  _buildSystemPrompt(useNativeTools = false) {
+  _buildSystemPrompt(useNativeTools = false, userInput = '') {
     const allDefs = TOOL_DEFS.concat(window.PluginSystem ? window.PluginSystem.allToolsForProject(state.projectType) : [], MCP_TOOL_DEFS);
     const toolList = allDefs.map(t => {
       const params = t.parameters?.properties ? Object.entries(t.parameters.properties).map(([k, v]) =>
@@ -4863,7 +4984,7 @@ class RealAIClient {
       return `### ${t.name}\n${t.description}\n参数:\n${params}`;
     }).join('\n\n');
 
-    // 插件 skills 注入（对齐 TrieCode Claude Code 兼容 skills）
+    // 插件 skills 注入（对齐参考基线 Claude Code 兼容 skills）
     let skillsSection = '';
     if (window.PluginSystem) {
       const skills = window.PluginSystem.allSkills();
@@ -4895,10 +5016,24 @@ class RealAIClient {
 
 
     // 长期记忆注入（跨会话）
+    // 参考基线 对齐：开启后按当前输入做相关性排序（bigram Jaccard），并声明记忆为不可信数据
     let memorySection = '';
     if (state.memories && state.memories.length) {
-      memorySection = '\n## 用户长期记忆（remember 保存，跨会话保留，回答时自动参考）\n' +
-        state.memories.map(m => `- **${m.name}** (${m.type}): ${m.content}`).join('\n') + '\n';
+      const _caMem = window.CHIPCODE_ALIGN;
+      let _mems = state.memories;
+      let _untrusted = false;
+      if (_caMem && _caMem.enabled) {
+        try {
+          const _q = String(userInput || '');
+          _mems = _caMem.rankMemories(state.memories, _q, { limit: 5 });
+          _untrusted = true;
+        } catch (e) { _mems = state.memories; _untrusted = false; }
+      }
+      const _body = _mems.map(m => `- **${m.name}** (${m.type}): ${m.content}`).join('\n');
+      memorySection = _untrusted
+        ? '\n' + _caMem.wrapUntrustedMemory(
+            '（remember 保存，跨会话保留；以下按与当前输入的相关性排序）\n' + _body) + '\n'
+        : '\n## 用户长期记忆（remember 保存，跨会话保留，回答时自动参考）\n' + _body + '\n';
     }
 
     const formatSection = useNativeTools
@@ -4950,7 +5085,7 @@ class RealAIClient {
     }
 
     const identity = this.customSystemPrompt || '你是 BubaiCode（代码实验室）的 AI 编程助手。你可以使用工具来读写文件、执行命令、联网搜索等。';
-    // Phase D · PRODUCT STATE 动态块（对齐 ChipCode main:1562）：产品项目时把五阶段焦点与磁盘状态注入
+    // Phase D · PRODUCT STATE 动态块（对齐参考基线 main:1562）：产品项目时把五阶段焦点与磁盘状态注入
     let productStageSection = '';
     try {
       const pfSnap = window.ProductFactory && window.ProductFactory.snapshot;
@@ -4965,7 +5100,7 @@ class RealAIClient {
           '可用产品工具: propose_criteria / propose_shape / propose_bom / record_evidence / build_package。\n';
       }
     } catch (e) { /* 产品状态不可用时不注入 */ }
-    // Phase B+ · PLAN STATE 动态块（对齐 ChipCode planStore 每轮注入防失忆）
+    // Phase B+ · PLAN STATE 动态块（对齐参考基线 planStore 每轮注入防失忆）
     // _buildMessages() 每次 LLM 调用都重建 system prompt，因此这里是天然的「每轮注入」点。
     let planProgressSection = '';
     try {
@@ -5035,8 +5170,8 @@ void loop() {
 8.5 **本地模型简化流程（重要）**：如果你是本地小模型，工具调用能力有限，可以**直接输出代码块**（用 \`\`\`ino、\`\`\`py、\`\`\`js 等语言标注），系统会自动：① 创建对应类型的项目（Arduino/Python/Node）② 把代码块保存为正确格式的文件并在中间编辑器打开 ③ 自动编译验证。你只需专注输出正确、完整、可编译的代码，不需要调用 create_project/write_file/compile 等工具。编译失败时系统会把错误信息发给你，你直接输出修复后的完整代码块即可。
 9. **支持合法的爬虫、数据采集和自动化测试开发**：对于用户有合法授权或公开数据的采集需求，应提供完整可运行的代码实现（requests/httpx/BeautifulSoup/Scrapy/Playwright 等），同时提醒用户遵守 robots.txt、平台条款和相关法律法规；不要因"爬虫"关键词直接拒绝
 10. 涉及账号密码时，提醒用户通过环境变量或配置文件管理敏感信息，不要硬编码在代码中
-11. **需求模糊时先询问用户（对齐 TrieCode 澄清机制）**：当用户需求存在多个合理实现方向（如开发框架选择、功能范围、技术方案取舍）且缺少关键信息时，优先调用 ask_user 工具向用户提问（给出 2-4 个具体可选的选项），等收到用户回答后再继续；不要擅自替用户做重大技术选型。只有当选项确实不重要或用户明确说"随便/你决定"时才自行决策。询问一次即可，不要连环追问
-12. **任务完成收尾时输出文档式总结（对齐 TrieCode 文档式输出）**：当任务执行完毕（写完代码并通过/尝试过验证）需要给出最终答复时，不要只写一句"已完成"，用清晰的 Markdown 文档式总结输出，包含以下区块（按需取舍，有则必写）：
+11. **需求模糊时先询问用户**：当用户需求存在多个合理实现方向（如开发框架选择、功能范围、技术方案取舍）且缺少关键信息时，优先调用 ask_user 工具向用户提问（给出 2-4 个具体可选的选项），等收到用户回答后再继续；不要擅自替用户做重大技术选型。只有当选项确实不重要或用户明确说"随便/你决定"时才自行决策。询问一次即可，不要连环追问
+12. **任务完成收尾时输出文档式总结**：当任务执行完毕（写完代码并通过/尝试过验证）需要给出最终答复时，不要只写一句"已完成"，用清晰的 Markdown 文档式总结输出，包含以下区块（按需取舍，有则必写）：
 - **项目结构**：用代码块树形展示创建/修改的文件
 - **功能特性**：用表格列出实现了哪些功能及说明
 - **使用方法**：接线说明（引脚对应关系）、需要修改的配置（如 WiFi 账号密码）、如何编译上传、如何使用
@@ -5044,7 +5179,7 @@ void loop() {
 这是最终交付形态，让用户拿到项目即可上手。不要在收尾时继续抛出新问题或新任务分支。
 13. **自主迭代与问题自愈（像豆包一样主动解决）**：遇到编译/运行/配置错误时不要停在报错上，先自行分析根因并尝试修复（修改代码→重跑验证，可多轮迭代直到通过）。确认缺少依赖或工具链时：① 先调用 list_plugins 查看已安装/可安装的插件能力；② 如果缺的是 BubaiCode 插件能解决的（AI 模型、编译工具链、串口等），先用 ask_user 询问用户「是否允许安装 X（说明用途、大小、耗时）」，用户同意后调用 install_plugin 安装，装完继续执行任务；③ 如果缺的是系统级软件（python、gcc、库等）且插件市场没有，评估是否可用 terminal 安装（需先向用户说明并确认）；④ 用户拒绝时说明影响并给出替代方案。不要假装问题已解决，也不要跳过验证直接宣称完成——每轮修复后必须重新编译/运行验证，拿到真实结果再收尾。
 
-## 回复风格（对齐 TrieCode，必须遵守）
+## 回复风格（对齐参考基线，必须遵守）
 1. **用简体中文回复**；若用户用其他语言，则跟随用户语言。代码、标识符、专有技术名词保持原文。
 2. **先给结论，再给解释**：回复开头直接给出答案/行动结果，不要开场白、不要复述用户问题、不要以"我将要/让我先"开头。开场结论保持简短（≤100 字），随后再给必要的说明与证据。
 3. **使用平实专业的文本，禁止 emoji 与装饰符号**（✅⚠️🎉📌🔥 等），尤其在代码或报错说明中。不用感叹号堆砌，不用多余空行，排版紧凑。
@@ -5055,7 +5190,7 @@ void loop() {
   }
 
   _buildMessages(userInput, messages, useNativeTools) {
-    const systemPrompt = this._buildSystemPrompt(useNativeTools);
+    const systemPrompt = this._buildSystemPrompt(useNativeTools, userInput);
     const chatMessages = [{ role: 'system', content: systemPrompt }];
 
     if (Array.isArray(messages)) {
@@ -5301,6 +5436,7 @@ void loop() {
     // 2026-09-15：grammar/response_format=json_object 约束下，模型直接吐裸 JSON 对象
     // （无 ```json 围栏、无 <tool_call> 包裹）。兼容 {"name","arguments"} 与 {"tool_call":{...}} 两种形状。
     const bare = content.trim();
+    let malformedJsonObject = false;
     if (bare.startsWith('{') && bare.endsWith('}')) {
       try {
         const obj = JSON.parse(bare);
@@ -5310,14 +5446,23 @@ void loop() {
           addOutputLog(`裸JSON工具调用解析: ${callObj.name}`, 'info');
           return { text: '', toolCalls: [{ id: 'call_c1', name: callObj.name, arguments: callObj.arguments || {} }] };
         }
-      } catch (e) { /* 非合法 JSON，落到正文 */ }
+      } catch (e) {
+        // 2026-11-14：本地小模型（如 3B）常吐畸形工具决策 JSON（如 {"":}），
+        // 解析失败却被当正文回显成乱码。标记畸形 JSON 对象，下方剥离为空文本。
+        malformedJsonObject = true;
+      }
+    }
+
+    if (malformedJsonObject) {
+      addOutputLog('本地模型输出畸形工具决策 JSON，已剥离为空文本（建议升级 7B）', 'warn');
+      return { text: '', toolCalls: [] };
     }
 
     return { text: content.trim(), toolCalls: [] };
   }
 
   _buildToolDefs() {
-    // 对齐 TrieCode：ask_user 对模型可见——需求模糊、存在多个实现方向时，模型应主动询问用户
+    // 对齐参考基线：ask_user 对模型可见——需求模糊、存在多个实现方向时，模型应主动询问用户
     const builtin = TOOL_DEFS.map(t => ({
       type: 'function',
       function: {
@@ -5407,7 +5552,10 @@ void loop() {
         }
         if (rt.engine && !rt.engineRunning) {
           if (this.onEngineStarting) this.onEngineStarting();
-          const startRes = await window.BubaiCode.system.startLLMEngine({ modelFile: aiCfg.model });
+          // 2026-11-14：本地 3B 太弱、对本 app 工具决策格式产出畸形输出，默认升级到 7B
+          const engineModel = (aiCfg.model === 'qwen2.5-coder-3b-instruct-q4_k_m.gguf')
+            ? 'qwen2.5-coder-7b-instruct-q4_k_m.gguf' : aiCfg.model;
+          const startRes = await window.BubaiCode.system.startLLMEngine({ modelFile: engineModel });
           if (!startRes || !startRes.success) {
             return this._degradedReply(
               `⚠️ 本地模型启动失败：${(startRes && startRes.error) || '未知错误'}\n\n` +
@@ -5444,7 +5592,7 @@ void loop() {
         const nativeMessages = this._buildMessages(userInput, messages, true);
         const streamResult = await this._streamChat(nativeMessages);
         if (streamResult && streamResult.ok) {
-          // 累加 token 用量（对齐 TrieCode usage.promptTokens/completionTokens）
+          // 累加 token 用量（对齐参考基线 usage.promptTokens/completionTokens）
           const u = streamResult.result.usage;
           if (u) {
             this.usageAcc = this.usageAcc || { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
@@ -5452,6 +5600,15 @@ void loop() {
             this.usageAcc.completionTokens += u.completion_tokens || u.completionTokens || 0;
             this.usageAcc.totalTokens += u.total_tokens || u.totalTokens || 0;
             this.usageAcc.calls += 1;
+            // 参考基线 对齐：前缀缓存命中观测（OpenAI 兼容端靠静态前缀隐式命中，不发 cache_control）
+            const _caCache = window.CHIPCODE_ALIGN;
+            if (_caCache && _caCache.enabled) {
+              try {
+                const cached = _caCache.readCachedTokens(u);
+                this.usageAcc.cacheReadTokens = (this.usageAcc.cacheReadTokens || 0) + cached;
+                if (cached > 0) this.usageAcc.cacheHitCalls = (this.usageAcc.cacheHitCalls || 0) + 1;
+              } catch (e) {}
+            }
           }
           // 用量统计（对齐 Ekko Usage Analytics）
           try { usageRecord((aiCfg && aiCfg.model) || '默认', true, (u && (u.total_tokens || u.totalTokens)) || 0); } catch (e) {}
@@ -5886,7 +6043,7 @@ class VerificationAgent {
       case 'run_tests':
       case 'compile':
       case 'run': {
-        // ===== P0 修复：验证代理真实调用 run_test（对齐 TrieCode：编译要有真实过程）=====
+        // ===== P0 修复：验证代理真实调用 run_test（对齐参考基线：编译要有真实过程）=====
         // arduino 项目 → 真实 arduino-cli 编译；其他项目 → 真实执行测试/运行命令
         const projectType = context && context.projectType ? context.projectType : (window.state ? state.projectType : '');
         const toolRunner = context && context.toolRunner;
@@ -6065,6 +6222,23 @@ ${toolListText}
       }
       // 无工具调用 → 最终答案
       this.onStream({ type: 'text', content: `\n✅ 子智能体完成\n` });
+      // 参考基线 对齐：结构化报告终止协议（激活 formatStructuredOutput，报告以校验后的数据为准）
+      const _caStruct = window.CHIPCODE_ALIGN;
+      if (_caStruct && _caStruct.enabled) {
+        try {
+          const _jm = String(parsed.text || '').match(/```(?:json)?\s*([\s\S]*?)```/);
+          const _candidate = _jm ? JSON.parse(_jm[1].trim()) : null;
+          const _accepted = _candidate && _caStruct.acceptStructuredOutput(_candidate);
+          if (_accepted && _accepted.ok) {
+            const _r = _accepted.report;
+            const _findings = (Array.isArray(_r.findings) ? _r.findings : []).map((f, i) => ({
+              type: 'finding', step: (f && (f.step || f.name)) || `发现 ${i + 1}`,
+              result: { output: typeof f === 'string' ? f : String((f && (f.output || f.text || f.summary)) || JSON.stringify(f)) }
+            }));
+            return this.formatStructuredOutput(_findings) + `\n\n> ${_accepted.reply}`;
+          }
+        } catch (e) { /* JSON 解析失败即回退普通文本报告 */ }
+      }
       return parsed.text || raw;
     }
     return '子智能体达到最大轮次，未完成。';
@@ -6239,7 +6413,7 @@ class AgentRunner {
     this._mem = null;               // 项目经验记忆（懒加载）
     this._pendingMem = null;        // 待沉淀的记忆条目
     this._replanDoneFor = -1;       // 已做过计划回顾的轮次
-    // ===== 2026-09-14 对齐 TrieCode 会话持久化：workLog 全程记录 + 会话 JSON 落盘 =====
+    // ===== 2026-09-14 对齐参考基线 会话持久化：workLog 全程记录 + 会话 JSON 落盘 =====
     this.workLog = [];
     // Phase B：会话身份统一由 SessionStore 分配（消除此前 state.currentSessionId 死引用 + 两套 id 分裂）
     this.sessionId = sessionId || (window.SessionStore && typeof window.SessionStore.ensureCurrent === 'function'
@@ -6254,7 +6428,7 @@ class AgentRunner {
     this.placeholderVerify = false;
     // 进展闸状态：连续有失败无进展的轮次计数
     this.noProgressRounds = 0;
-    // ===== 自研本体 P0-1：测试失败自动修复循环（对齐 TrieCode 实测：编译失败→分类→修复→重跑）=====
+    // ===== 自研本体 P0-1：测试失败自动修复循环（对齐参考基线 实测：编译失败→分类→修复→重跑）=====
     this.testFixRounds = 0;          // 当前任务已执行的测试失败修复轮次
     this.MAX_TEST_FIX_ROUNDS = 3;    // 单任务最大自动修复轮次（防死循环）
     this.lastTestFailed = false;     // 最近一次 run_test 是否失败（供结束闸门判定）
@@ -6265,13 +6439,13 @@ class AgentRunner {
     this.alwaysVerify = false;           // B3：常驻验证代理
     this.loopTimeoutMs = 0;              // B4：整体循环超时（ms，0=关）
     this.strictPlanGate = true;          // B2：严格 plan 门控（默认开）
-    // ===== 对齐 TrieCode agent-runner：失败决策台账（append-only，防盲改重试）=====
+    // ===== 对齐参考基线 agent-runner：失败决策台账（append-only，防盲改重试）=====
     this.failureLedger = new Map();   // ledgerKey(工具::参数键) → 首次失败原因摘要
     this.budgetHinted = false;        // 预算提前提醒（75%）是否已注入
     this._startedSteps = new Set();   // 已发 running 的工具 stepId（收尾时补发 interrupted）
-    // ===== 对齐 TrieCode context-manager：最近读文件 LRU（压缩后重注入）=====
+    // ===== 对齐参考基线 context-manager：最近读文件 LRU（压缩后重注入）=====
     this.recentReads = new Map();     // path → { content(截断5000), turn }
-    // ===== 工作状态条（对齐 TrieCode：▶ 已工作 Xs · 思考 · N 个工具）=====
+    // ===== 工作状态条（对齐参考基线：▶ 已工作 Xs · 思考 · N 个工具）=====
     this.workStartTime = 0;      // 任务开始时间戳
     this.toolCount = 0;          // 已完成工具数
     this.contextCollect = 0;     // 上下文收集次数（read_file/list_dir/web_search/web_fetch）
@@ -6339,7 +6513,7 @@ class AgentRunner {
     } catch (e) { /* 配置读取失败则保持默认值 */ }
     this.forceCodeNudges = 0;          // 强制写码追问次数
 
-    // ===== 工作状态条：任务开始计时与计数归零（对齐 TrieCode 提交后即时显示状态条）=====
+    // ===== 工作状态条：任务开始计时与计数归零（对齐参考基线 提交后即时显示状态条）=====
     this.workStartTime = Date.now();
     this.toolCount = 0;
     this.contextCollect = 0;
@@ -6418,10 +6592,10 @@ class AgentRunner {
       this.messages.push({ role: 'system', content: '## 执行模式：计划先行\n请先分析需求，输出一份结构化的「执行计划」。\n\n【输出格式要求】\n1. 第一行写：执行计划：\n2. 然后用编号列表列出 3-6 个具体步骤，每个步骤一行，格式如：\n   1. 读取/分析现有文件（列出文件名）\n   2. 编写核心代码（说明要创建/修改哪些文件）\n   3. 补充配置或依赖文件\n   4. 保存并验证\n3. 每个步骤必须具体，不要写"我将为您编写..."这种空话。\n\n本轮【绝对不要】调用 write_file/edit_file/terminal/run_test 等任何工具，只输出计划文本，等待用户批准后再执行。' });
     }
 
-    // ===== 对齐 TrieCode：需求澄清预处理（第一轮，需求模糊时先弹「AI 需要你的选择」）=====
+    // ===== 对齐参考基线：需求澄清预处理（第一轮，需求模糊时先弹「AI 需要你的选择」）=====
     // 本地 7B 模型工具调用不稳定，不保证主动 ask_user；客户端在入口兜底：
     // 用户要求"写项目/用某开发板"但未明确框架/功能 → 先弹多组选项卡片（开发框架+项目功能），
-    // 用户选择后注入回答再让模型继续，与 TrieCode 截图1 的澄清交互一致。
+    // 用户选择后注入回答再让模型继续，与 参考基线 截图1 的澄清交互一致。
     const userMsgCount = this.messages.filter(m => m.role === 'user').length;
     if (userMsgCount <= 1) {
       const clar = detectClarification(userInput);
@@ -6440,7 +6614,7 @@ class AgentRunner {
         } catch (e) { answers = null; }
         if (this.cancelled) { this._emitDiffSummary(); this._emitWorkStatus('done'); this._stream('已停止。', true); return; }
         if (answers && answers.length) {
-          // ===== 对齐 TrieCode 截图2：选择框架后自动创建项目（当前无工作空间/untitled 残留时）=====
+          // ===== 对齐参考基线 截图2：选择框架后自动创建项目（当前无工作空间/untitled 残留时）=====
           let projectNote = '';
           try {
             const frameworkLine = answers.find(a => a.startsWith('开发框架'));
@@ -6487,7 +6661,12 @@ class AgentRunner {
       disarm() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } }
     };
     _timeoutGuard.arm();
-    for (let turn = 0; turn < 20; turn++) {
+    // 参考基线 对齐：轮次自我延长（20 → +20 → 上限 200），仅开关开启时启用；默认仍是硬 20 轮
+    const _caTurn = window.CHIPCODE_ALIGN;
+    const _turnBudget = (_caTurn && _caTurn.enabled)
+      ? _caTurn.createTurnBudget(this.budget.maxTurns || 20, _caTurn.CONSTANTS.INTERACTIVE_TURNS_CEILING)
+      : null;
+    for (let turn = 0; turn < (_turnBudget ? _turnBudget.limit : 20); turn++) {
       if (this.cancelled || _timeoutGuard.expired) {
         this._stream(_timeoutGuard.expired ? '[系统] 任务执行超过时限，已强制终止。' : '已停止。', true);
         this._emitDiffSummary(); this._emitWorkStatus('done');
@@ -6495,7 +6674,7 @@ class AgentRunner {
         return;
       }
 
-      // ===== 对齐 TrieCode agent-runner：预算提前提醒（≥75% 注入一次"尽快收尾"）=====
+      // ===== 对齐参考基线 agent-runner：预算提前提醒（≥75% 注入一次"尽快收尾"）=====
       if (!this.budgetHinted && this.budget.iterations >= Math.floor(this.budget.maxTurns * 0.75)) {
         this.budgetHinted = true;
         const used = Math.round(this.budget.iterations / this.budget.maxTurns * 100);
@@ -6522,7 +6701,7 @@ class AgentRunner {
         const verificationDone = this.lastVerifyTurn >= 0;
         
         const summary = `\n## 任务总结（预算耗尽）\n\n` +
-          `- 已执行轮次: ${turn + 1}/20\n` +
+          `- 已执行轮次: ${turn + 1}/${_turnBudget ? _turnBudget.limit : 20}\n` +
           `- 工具调用次数: ${completedTools.length}\n` +
           `- 文件修改次数: ${modifiedFiles}\n` +
           `- 验证状态: ${verificationDone ? '已执行验证' : '未执行验证（建议手动验证）'}\n` +
@@ -6539,9 +6718,92 @@ class AgentRunner {
 
       this.budget.recordIteration();
 
-      // 上下文压缩—— B1：可选 LLM 摘要压缩（默认关闭，保持原有 compressContext 行为）
+      // 参考基线 对齐：距上限≤5 轮且近 10 轮有实质进展 → +20 轮（封顶 200）
+      // 用现成信号 lastFileModTurn / lastVerifyTurn（只读不算进展），并同步 BudgetTracker 的 maxTurns
+      if (_turnBudget) {
+        try {
+          const lastProgress = Math.max(this.lastFileModTurn ?? -1, this.lastVerifyTurn ?? -1);
+          const ext = _turnBudget.maybeExtend(turn, lastProgress);
+          if (ext.extended) {
+            this.budget.maxTurns = ext.to;
+            this.budgetHinted = false; // 允许在新上限下再次注入 75% 收尾提醒
+            this._stream(`\n[系统] 任务仍在推进，工具轮次上限已自动延长到 ${ext.to} 轮（第 ${turn} 轮）。\n`, false);
+            if (_caTurn) {
+              this.workLog.push({ type: 'tool', tool: 'system/turn-extend',
+                status: 'done', args: { from: ext.from, to: ext.to }, summary: '轮次自我延长' });
+              _caTurn.record('turn-extend', `轮次上限 ${ext.from}→${ext.to}（第 ${turn} 轮）`, this.sessionId, turn);
+            }
+          }
+        } catch (e) { /* 对齐能力异常不影响原循环 */ }
+      }
+
+      // 参考基线 对齐：65% 主动水位只做无损剪裁（不折叠、不调 LLM），原文存 _fullContent
       const estTokens = this.estimateTokens();
-      if (estTokens > this.contextBudget) {
+      if (_caTurn && _caTurn.enabled && estTokens > Math.floor(this.contextBudget * _caTurn.CONSTANTS.PROACTIVE_RATIO)
+          && estTokens <= this.contextBudget) {
+        try {
+          const before = estTokens;
+          this.messages = _caTurn.pruneOnlyMessages(this.messages, _caTurn.CONSTANTS.PROTECT_TURNS);
+          const after = this.estimateTokens();
+          addOutputLog(`上下文无损剪裁(65%水位): ${before} → 约 ${after} tokens`, 'debug');
+          _caTurn.record('context-prune', `65% 水位无损剪裁 ${before}→${after} tokens`, this.sessionId, turn);
+        } catch (e) { /* 回退原逻辑 */ }
+      }
+
+      // 上下文压缩—— B1：可选 LLM 摘要压缩（默认关闭，保持原有 compressContext 行为）
+      // 参考基线 对齐：开启对齐开关时走三级降级（replay → text → 启发式兜底），
+      // 且摘要落在 user 角色上（_buildMessages 不转发 role:'system'，否则到不了模型）。
+      const _caComp = window.CHIPCODE_ALIGN;
+      if (_caComp && _caComp.enabled && window.BubaiCode && window.BubaiCode.engine
+          && window.BubaiCode.engine.compressionPolicy) {
+        try {
+          const CP = window.BubaiCode.engine.compressionPolicy;
+          const before = this.estimateTokens();
+          const recentBlock = (typeof this.buildRecentReadsSystemBlock === 'function')
+            ? (this.buildRecentReadsSystemBlock() || '') : '';
+          const { old, keep } = CP.splitByProtectTurns(this.messages, CP.CONSTANTS.PROTECT_TURNS);
+          const transcript = CP.buildTranscript(old);
+          const instruction = CP.buildSummaryInstruction ? CP.buildSummaryInstruction() : '';
+          const decision = CP.decideTier(before, (this.usageAcc && this.usageAcc.totalTokens) || undefined,
+            this.contextBudget, true);
+          let summary = '';
+          let tier = decision.tier;
+          if (old.length && decision.tier !== CP.TIER.NONE && decision.tier !== CP.TIER.PRUNE) {
+            // 第一级 replay（带原始 system+tools 重放 → 复用前缀缓存）
+            try {
+              const r = await this.ai.generateResponse(null, [
+                { role: 'user', content: instruction + '\n\n' + transcript },
+              ]);
+              summary = (r && r.content) || '';
+            } catch (e) { summary = ''; }
+            // 第二级 text（单独摘要请求）
+            if (!summary) {
+              tier = CP.TIER.TEXT;
+              try {
+                const r = await this.ai.generateResponse(null, [
+                  { role: 'user', content: instruction },
+                  { role: 'user', content: transcript },
+                ]);
+                summary = (r && r.content) || '';
+              } catch (e) { summary = ''; }
+            }
+            // 第三级 启发式（不调 LLM，最终兜底）
+            if (!summary) {
+              tier = CP.TIER.HEURISTIC;
+              summary = CP.heuristicSummary(old);
+            }
+            const rebuilt = CP.rebuildCompressedMessages({ old, keep, summary, recentBlock });
+            if (rebuilt && rebuilt.length) {
+              this.messages = rebuilt;
+              addOutputLog(`上下文压缩[${tier}]: ${before} → 约 ${this.estimateTokens()} tokens（${decision.reason}）`, 'warn');
+              if (_caComp.record) _caComp.record('context-prune', `压缩降级=${tier} ${before}→${this.estimateTokens()}`, this.sessionId, turn);
+            }
+          }
+        } catch (e) {
+          // 回退到既有行为
+          if (estTokens > this.contextBudget) this.messages = this.compressContext(this.messages, 3);
+        }
+      } else if (estTokens > this.contextBudget) {
         if (this.useSummaryCompression) {
           this.messages = await window.BubaiCode.engine.summarizeOldTurns(
             (msgs) => this.ai.generateResponse(null, msgs), this.messages,
@@ -6580,6 +6842,14 @@ class AgentRunner {
       };
       // 网关流式 credits 事件：直接用服务端下发的今日剩余积分更新徽标（不再多打一次 /api/me）
       this.ai.onCredits = (evt) => {
+        // 参考基线 对齐：积分消耗累计并随会话落盘（此前只刷 UI，会话 JSON 无 creditsUsed）
+        const _caCredits = window.CHIPCODE_ALIGN;
+        if (_caCredits && _caCredits.enabled && evt) {
+          try {
+            const used = Number(evt.used ?? evt.cost ?? evt.creditsUsed) || 0;
+            if (used > 0) this.creditsUsed = (this.creditsUsed || 0) + used;
+          } catch (e) {}
+        }
         if (evt && typeof evt.dailyRemaining === 'number') {
           try { updateDailyCredits(evt.dailyRemaining); } catch (e) {}
         } else if (typeof window.__labCreditsRefresh === 'function') {
@@ -6644,6 +6914,26 @@ class AgentRunner {
       // 无工具调用 → 结束（先过验证硬闸门）
       if (!result.toolCalls || result.toolCalls.length === 0) {
         const finalText = String(result.content || '').trim();
+        // ===== 参考基线 对齐：反幻觉自纠（声称已改文件却零工具调用 → 注入警告再跑一轮，≤3 次）=====
+        // 仅在对齐开关开启时生效；plan 模式（只读）跳过；工具集合从 workLog 重建（本任务全程）。
+        const _caAnti = window.CHIPCODE_ALIGN;
+        if (_caAnti && _caAnti.enabled && this.mode !== 'plan') {
+          try {
+            if (this._alignHalluCount === undefined) this._alignHalluCount = 0;
+            if (this._alignHalluCount < _caAnti.CONSTANTS.MAX_HALLUCINATION_CORRECTIONS) {
+              const _called = new Set((this.workLog || []).map(w => w.tool).filter(Boolean));
+              const _warn = _caAnti.checkHallucination(finalText, _called);
+              if (_warn) {
+                this._alignHalluCount += 1;
+                this.messages.push({ role: 'assistant', content: finalText });
+                this.messages.push({ role: 'user', content: _warn });
+                this._stream(`\n[系统] ${_warn}\n`, false);
+                _caAnti.record('hallucination', _warn, this.sessionId, turn);
+                continue; // 重新进入循环，禁止空口邀功
+              }
+            }
+          } catch (e) { /* 对齐能力异常不影响原流程 */ }
+        }
         // 代码块检测（提前定义，供强制写码闸/思路兜底/提问判定共用）
         // 2026-09-14 修复：本地模型常输出"裸代码块"（``` 后无语言标识），
         // 旧正则只认带标识的 ```ino，导致 UI 已落盘但 hasCodeBlock=false，
@@ -6799,20 +7089,28 @@ class AgentRunner {
           const _task = String(userInput).replace(/(帮我|请|深度研究|调研|子智能体|subagent|深入研究|全面分析|做个研究)/g, '').trim() || '当前项目的技术架构';
           addOutputLog(`研究类任务路由 → run_subagent: ${_task.substring(0, 50)}...`, 'info');
           this._stream('正在派只读子智能体深度研究（子智能体只能使用只读工具，不会修改任何文件）...\n', false);
-          try {
-            const subagent = new SubAgent({ task: _task, parentContext: { focus: '技术实现和最佳实践' }, onStream: (evt) => { if (evt && evt.content) this._stream(evt.content, false); } });
-            const result = await subagent.run();
-            this._stream(`## 子智能体研究结果\n\n${result}\n`, false);
-            this.messages.push({ role: 'assistant', content: `## 子智能体研究结果\n\n${result}` });
-            this._emitDiffSummary();
-            this._emitWorkStatus('done');
-            return;
-          } catch (e) {
-            addOutputLog('子智能体研究失败: ' + e.message, 'warn');
+          const _caGate2 = window.CHIPCODE_ALIGN;
+          const _caGated2 = !!(_caGate2 && _caGate2.enabled && _caGate2.globalGate.tryAcquire());
+          if (_caGate2 && _caGate2.enabled && !_caGated2) {
+            this._stream(`[系统] 同时运行的子智能体已达上限（${_caGate2.globalGate.limit} 个），本次委托跳过。\n`, false);
+          } else {
+            try {
+              const subagent = new SubAgent({ task: _task, parentContext: { focus: '技术实现和最佳实践' }, onStream: (evt) => { if (evt && evt.content) this._stream(evt.content, false); } });
+              const result = await subagent.run();
+              this._stream(`## 子智能体研究结果\n\n${result}\n`, false);
+              this.messages.push({ role: 'assistant', content: `## 子智能体研究结果\n\n${result}` });
+              this._emitDiffSummary();
+              this._emitWorkStatus('done');
+              return;
+            } catch (e) {
+              addOutputLog('子智能体研究失败: ' + e.message, 'warn');
+            } finally {
+              if (_caGated2) _caGate2.globalGate.release();
+            }
           }
         }
 
-        // ===== 对齐 TrieCode 进展闸：项目创建后强制写码 =====
+        // ===== 对齐参考基线 进展闸：项目创建后强制写码 =====
         // 用户已通过澄清卡片选定框架+功能，模型仍输出纯文本（反问/承诺句/思路）即视为未完成任务。
         // 本地 7B 模型常用陈述句反问（"请提供更多详细信息。"无问号）绕过 asksUser 检测，
         // 因此此闸门不依赖问句特征：只要 _expectingCodeAfterProject 且本轮无代码块、无工具调用 → 强制重写代码。
@@ -6893,10 +7191,10 @@ class AgentRunner {
           const tail = noCode.trim().slice(-80);
           return /[?？]\s*$/.test(noCode.trim()) || /(请问|是否应该|要不要我|需不需要|你觉得|可以吗|是否先|是否需要)[?？]?\s*$/.test(tail);
         })();
-        // ===== 对齐 TrieCode：模型自然语言反问 → 结构化「AI 需要你的选择」卡片 =====
+        // ===== 对齐参考基线：模型自然语言反问 → 结构化「AI 需要你的选择」卡片 =====
         // 本地小模型（qwen2.5-coder 等）工具调用格式不稳定，需求模糊时倾向自然语言反问
         //（"项目的目标是什么？"）。客户端检测到开放式提问且无代码块 → 自动转为选项卡片，
-        // 用户点选后把回答注入对话继续执行，体验与 TrieCode 的 ask_user 弹窗一致。
+        // 用户点选后把回答注入对话继续执行，体验与 参考基线 的 ask_user 弹窗一致。
         if (asksUser && !hasCodeBlock && (this.askNudges || 0) < 2) {
           const conv = buildAskCardFromText(finalText);
           if (conv) {
@@ -6960,7 +7258,7 @@ class AgentRunner {
         // 本地模型（Qwen3.5-9B 关思考后）不产出 tool_calls，无法主动调用 run_test；
         // 由 IDE 检测"文件已修改但未验证"时自动运行真实编译（arduino-cli），
         // 把真实输出注入对话：失败 → 自动修复循环（模型输出修改后代码块→落盘→再编译），
-        // 通过 → 记录验证轮次。对齐 TrieCode：AI 写完代码自动编译验证，不依赖模型工具调用。
+        // 通过 → 记录验证轮次。对齐参考基线：AI 写完代码自动编译验证，不依赖模型工具调用。
         addOutputLog(`自动验证条件检查: fm=${this.lastFileModTurn} v=${this.lastVerifyTurn} asksUser=${asksUser} fix=${this.testFixRounds} max=${this.MAX_TEST_FIX_ROUNDS}`, 'info');
         if (this.lastFileModTurn > this.lastVerifyTurn && !asksUser && state.projectPath && this.testFixRounds < this.MAX_TEST_FIX_ROUNDS) {
           this._stream('\n[系统] 检测到文件修改，IDE 自动运行验证（run_test）...\n', false);
@@ -6987,9 +7285,9 @@ class AgentRunner {
                 this.lastTestFailed = false;
                 this.lastVerifyTurn = turn;
                 this._stream('\n[系统] 自动验证通过。\n', false);
-                // ===== 对齐 TrieCode：验证通过后解除强制写码闸，并要求文档式总结收尾 =====
+                // ===== 对齐参考基线：验证通过后解除强制写码闸，并要求文档式总结收尾 =====
                 // 代码已写出并通过编译：不再强制"必须输出代码"，转入总结模式；
-                // 注入文档式总结要求（项目结构/功能特性/使用方法/验证结果），对齐 TrieCode 最终交付形态。
+                // 注入文档式总结要求（项目结构/功能特性/使用方法/验证结果），对齐参考基线 最终交付形态。
                 if (this._expectingCodeAfterProject) {
                   this._expectingCodeAfterProject = false;
                   const inoK = Object.keys(state.files || {}).find(f => f.endsWith('.ino') && !f.includes('bubaicode_build'));
@@ -7054,7 +7352,12 @@ class AgentRunner {
                 return;
               }
               // ===== P0-1：验证代理失败（真实编译失败）→ 记录失败状态，交给失败修复循环 =====
-              if (verdict.level === 'FAIL' || verdict.level === 'PARTIAL') {
+              // 参考基线 对齐：PARTIAL/UNVERIFIABLE 是「没验证到位」而非失败事实位，不触发失败计数与降级
+              const _caVerdict = window.CHIPCODE_ALIGN;
+              const _isFail = (_caVerdict && _caVerdict.enabled)
+                ? _caVerdict.isFailureVerdict(verdict.level)
+                : (verdict.level === 'FAIL' || verdict.level === 'PARTIAL');
+              if (_isFail) {
                 this.lastTestFailed = true;
                 this.testFixRounds = Math.min(this.testFixRounds + 1, this.MAX_TEST_FIX_ROUNDS + 1);
                 this._stream(`\n[系统] 真实编译未通过（${verdict.level}），进入自动修复循环...\n`, false);
@@ -7083,7 +7386,7 @@ class AgentRunner {
           this._stream('\n[系统] 验证输出疑似占位符，请运行真实验证。\n', false);
           continue;
         }
-        // ===== 自研本体 P0-1：测试失败结束闸门（对齐 TrieCode 实测：失败不会就此收尾）=====
+        // ===== 自研本体 P0-1：测试失败结束闸门（对齐参考基线 实测：失败不会就此收尾）=====
         // AI 想收尾但最近一次测试/编译失败且未达最大修复轮次 → 强制继续修复重跑，不允许谎报通过
         if (this.lastTestFailed && this.testFixRounds < this.MAX_TEST_FIX_ROUNDS) {
           this.messages.push({ role: 'assistant', content: result.content || '' });
@@ -7164,7 +7467,10 @@ class AgentRunner {
         }
 
         // 权限判定
-        const denialKey = tc.name === 'terminal' ? `terminal:${String(tc.arguments?.command||'').split(' ')[0]}` : tc.name;
+        const _caDenial = window.CHIPCODE_ALIGN;
+        const denialKey = (_caDenial && _caDenial.enabled)
+          ? _caDenial.denialKeyFor(tc.name, tc.arguments)
+          : (tc.name === 'terminal' ? `terminal:${String(tc.arguments?.command||'').split(' ')[0]}` : tc.name);
         const dHits = this.denialHits.get(denialKey) || 0;
         const needsConfirm = computeNeedsConfirm(tc.name, tc.arguments, this.mode, dHits);
         
@@ -7183,7 +7489,8 @@ class AgentRunner {
               : `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 100)})`;
             const detail = `工具: ${tc.name}\n操作类型: ${toolDef?.description || '未知'}\n风险等级: ${needsConfirm === 'high' ? '高' : '中'}`;
             
-            const userChoice = await new Promise((resolve) => {
+            const _caPerm = window.CHIPCODE_ALIGN;
+            const _mkChoice = () => new Promise((resolve) => {
               this.onPermissionRequest({
                 tool: tc.name,
                 command,
@@ -7191,8 +7498,19 @@ class AgentRunner {
                 callback: (choice) => resolve(choice)
               });
             });
+            let userChoice;
+            if (_caPerm && _caPerm.enabled) {
+              const _d = await _caPerm.withDecisionTimeout(() => _mkChoice());
+              userChoice = _d && _d.action === 'reject' ? 'reject' : (_d && _d.action === 'approve' ? 'once' : _d);
+            } else {
+              userChoice = await _mkChoice();
+            }
             
             if (userChoice === 'reject') {
+              // 参考基线 对齐：拒绝按 denialKey 累计，≥3 次后 auto 模式也强制确认（修复死规则）
+              if (_caPerm && _caPerm.enabled) {
+                try { this.denialHits.set(denialKey, dHits + 1); } catch (e) {}
+              }
               const err = 'Error: 用户拒绝执行此操作';
               this.messages.push({ role: 'tool', tool_call_id: tc.id, content: err });
               this._toolStep(tc.id, tc.name, 'rejected', '用户拒绝执行');
@@ -7232,7 +7550,7 @@ class AgentRunner {
         this._pendingChange = null;
         // ===== 文件回滚：本轮工具执行前开 turn（同一轮多工具共享一个 turn）=====
         if (['write_file','edit_file','delete_file'].includes(tc.name)) {
-          // 影子仓库自动快照（对齐 TrieCode：AI 改文件前留全仓检查点；树未变主进程自动去重，2 分钟节流）
+          // 影子仓库自动快照（对齐参考基线：AI 改文件前留全仓检查点；树未变主进程自动去重，2 分钟节流）
           if (!window.__cpLastAuto || Date.now() - window.__cpLastAuto > 120000) {
             window.__cpLastAuto = Date.now();
             const cpCwd = state.projectPath || '';
@@ -7288,8 +7606,8 @@ class AgentRunner {
         }
 
         this._toolStep(tc.id, tc.name, 'done', String(toolResult).slice(0,80));
-        // ===== 2026-09-14 对齐 TrieCode workLog：{tool,status,args,summary} 全程记录（落盘前持久化）=====
-        // 2026-09-15：加 diff（write_file/edit_file 时 before/after，对齐 TrieCode）
+        // ===== 2026-09-14 对齐参考基线 workLog：{tool,status,args,summary} 全程记录（落盘前持久化）=====
+        // 2026-09-15：加 diff（write_file/edit_file 时 before/after，对齐参考基线）
         const wlEntry = {
           type: 'tool', tool: tc.name, status: 'done',
           args: tc.arguments,
@@ -7334,10 +7652,15 @@ class AgentRunner {
           if (!state.toolOutputs) state.toolOutputs = {};
           state.toolOutputs[managedPath] = injected;
           
+          // 参考基线 对齐：完整原文挂到 tool 消息的 _fullContent（权威历史落盘保留，不发给模型）
+          const _caHist = window.CHIPCODE_ALIGN;
+          const _fullToolOutput = String(injected);
           // 返回截断输出 + 路径提示
           const truncated = injected.substring(0, TOOL_OUTPUT_THRESHOLD);
           injected = `${truncated}\n\n... [输出已截断，完整内容(${injected.length}字符)已保存到受管目录]\n[受管路径] ${managedPath}\n[提示] 可用 read_file 工具读取完整内容，路径填 "${managedPath}"`;
-          
+          if (_caHist && _caHist.enabled) {
+            try { this._alignPendingFullContent = _fullToolOutput; } catch (e) {}
+          }
           addOutputLog(`大输出受管目录: ${tc.name} 输出 ${injected.length} 字符 → ${managedPath}`, 'debug');
         }
         
@@ -7351,7 +7674,7 @@ class AgentRunner {
           }
         }
         
-        // ===== 对齐 TrieCode agent-runner：failureLedger 失败决策台账 =====
+        // ===== 对齐参考基线 agent-runner：failureLedger 失败决策台账 =====
         // 同工具同参数再失败 → 注入"此前你用相同方式试过并失败：{原因}"，防失忆循环
         {
           let ledgerKey = null;
@@ -7374,8 +7697,8 @@ class AgentRunner {
           }
         }
         
-        // ===== 自研本体 P0-1：测试失败→自动修复→重跑闭环（对齐 TrieCode 实测行为）=====
-        // TrieCode 实测：编译失败 → AI 识别根因（宏冲突/API不兼容）→ 改代码 → 自动重编译直到成功
+        // ===== 自研本体 P0-1：测试失败→自动修复→重跑闭环（对齐参考基线 实测行为）=====
+        // 参考基线 实测：编译失败 → AI 识别根因（宏冲突/API不兼容）→ 改代码 → 自动重编译直到成功
         // 这里在 run_test / 编译类命令失败时注入"修复并重跑"的强制指令，并限制最大修复轮次防死循环
         if (isFailed && isTestOrCompile) {
           this.lastTestFailed = true;
@@ -7404,7 +7727,7 @@ class AgentRunner {
           if (this.onToolFlow && this.testFixRounds > 0) this.onToolFlow({ tool: 'auto_fix', status: 'done', args: { round: this.testFixRounds, max: this.MAX_TEST_FIX_ROUNDS, passed: true } });
         }
         
-        // ===== 增强2：文件回滚记录（对齐 TrieCode file-change-tracker.js）=====
+        // ===== 增强2：文件回滚记录（对齐参考基线 file-change-tracker.js）=====
         // 修复：before 必须用执行前快照（_pendingChange/fileChanges），此前取执行后 state 值导致回滚无效
         if (['write_file','edit_file','delete_file'].includes(tc.name) && !isFailed) {
           try {
@@ -7438,16 +7761,23 @@ class AgentRunner {
         if (WRAP_TOOLS.has(tc.name)) {
           injected = `<tool_result name="${tc.name}" success="${!isFailed}">\n${injected}\n</tool_result>`;
         }
-        this.messages.push({ role: 'tool', tool_call_id: tc.id, content: injected });
+        const _toolMsg = { role: 'tool', tool_call_id: tc.id, content: injected };
+        // 参考基线 对齐：权威历史带完整原文（_fullContent 不会被 _buildMessages 发给模型）
+        const _caFull = window.CHIPCODE_ALIGN;
+        if (_caFull && _caFull.enabled && this._alignPendingFullContent) {
+          try { _toolMsg._fullContent = this._alignPendingFullContent; } catch (e) {}
+        }
+        this._alignPendingFullContent = null;
+        this.messages.push(_toolMsg);
         addOutputLog(`工具 ${tc.name} 执行完成`, isFailed ? 'error' : 'success');
 
         // 验证跟踪（P0-4）：文件修改 → lastFileModTurn；验证 → lastVerifyTurn + 占位符检测
         if (['write_file','edit_file','delete_file'].includes(tc.name) && !isFailed) {
           this.lastFileModTurn = turn;
-          // 写文件后同步隐藏欢迎页、显示文件树（对齐 TrieCode）
+          // 写文件后同步隐藏欢迎页、显示文件树（对齐参考基线）
           try { if (typeof syncWelcomePanel === 'function') syncWelcomePanel(); } catch (e) {}
         }
-        // ===== 对齐 TrieCode context-manager：最近读文件 LRU（读成功记录，写成功失效）=====
+        // ===== 对齐参考基线 context-manager：最近读文件 LRU（读成功记录，写成功失效）=====
         if (tc.name === 'read_file' && !isFailed && tc.arguments) {
           const p = tc.arguments.path || tc.arguments.file_path || tc.arguments.file;
           if (p) {
@@ -7569,7 +7899,7 @@ class AgentRunner {
       this._cleanupOrphanTools();
       // 本任务期间发生过本地→云端升级 → 还原用户原本的模型通道
       if (this._cloudEscalated) await this._restoreLocalProvider();
-      // ===== 2026-09-15 对齐 TrieCode：给最后一条 assistant message 补元数据 =====
+      // ===== 2026-09-15 对齐参考基线：给最后一条 assistant message 补元数据 =====
       const lastAsst = [...this.messages].reverse().find(m => m.role === 'assistant');
       if (lastAsst) {
         lastAsst.startedAt = runStartedAt;
@@ -7577,12 +7907,12 @@ class AgentRunner {
         lastAsst.usage = this.usageAcc || null;
         lastAsst.thinking = this.thinkingAcc || null;
       }
-      // ===== 2026-09-14 对齐 TrieCode：会话持久化（messages+thinking+workLog 落盘 %APPDATA%/BubaiCode/chat-sessions/）=====
+      // ===== 2026-09-14 对齐参考基线：会话持久化（messages+thinking+workLog 落盘 %APPDATA%/BubaiCode/chat-sessions/）=====
       this._persistSession();
     }
   }
 
-  // ===== 2026-09-14 对齐 TrieCode 会话存储：{id,title,messages,mode,modelId,projectPath,projectType,plan,timestamp} =====
+  // ===== 2026-09-14 对齐参考基线 会话存储：{id,title,messages,mode,modelId,projectPath,projectType,plan,timestamp} =====
   async _persistSession() {
     try {
       if (!isElectron || !window.BubaiCode || !window.BubaiCode.sessions || !window.BubaiCode.sessions.save) return;
@@ -7598,13 +7928,15 @@ class AgentRunner {
         projectType: state.projectType || null,
         plan: state.currentPlan || null,
         usage: this.usageAcc || null,
+        creditsUsed: this.creditsUsed || 0,
         timestamp: Date.now()
       };
       // Phase B 单一写者：富字段经 SessionStore 合并进 UI 同一条会话（消除双写 id 分裂）
       if (window.SessionStore && typeof window.SessionStore.captureFromAgent === 'function') {
         window.SessionStore.captureFromAgent(this, {
           modelId: session.modelId, projectPath: session.projectPath,
-          projectType: session.projectType, plan: session.plan, usage: session.usage
+          projectType: session.projectType, plan: session.plan, usage: session.usage,
+          creditsUsed: session.creditsUsed
         });
       } else {
         await window.BubaiCode.sessions.save(session);
@@ -7687,13 +8019,13 @@ class AgentRunner {
   }
 
   _toolStep(id, tool, status, summary) {
-    // ===== 对齐 TrieCode agent-runner：工具 step 追踪（收尾补发 interrupted）=====
+    // ===== 对齐参考基线 agent-runner：工具 step 追踪（收尾补发 interrupted）=====
     if (id != null) {
       if (status === 'running') this._startedSteps.add(id);
       else this._startedSteps.delete(id);
     }
     if (this.onToolStep) this.onToolStep({ id, tool, status, summary });
-    // ===== 工作状态条：工具完成计数 + 上下文收集统计（对齐 TrieCode 底栏计数）=====
+    // ===== 工作状态条：工具完成计数 + 上下文收集统计（对齐参考基线 底栏计数）=====
     if (status === 'done') {
       this.toolCount++;
       if (['read_file', 'list_dir', 'read_directory', 'web_search', 'web_fetch', 'get_file_contents'].includes(tool)) {
@@ -7703,7 +8035,7 @@ class AgentRunner {
     }
   }
 
-  // ===== 工作状态条：向渲染层推送实时状态（对齐 TrieCode「已工作 Xs · N 个工具 · 收集上下文」）=====
+  // ===== 工作状态条：向渲染层推送实时状态（对齐参考基线「已工作 Xs · N 个工具 · 收集上下文」）=====
   _emitWorkStatus(state) {
     if (!this.onWorkStatus) return;
     const elapsed = this.workStartTime ? Math.max(0, Math.round((Date.now() - this.workStartTime) / 1000)) : 0;
@@ -7835,7 +8167,7 @@ class AgentRunner {
     return total;
   }
 
-  // 上下文压缩（对齐 TrieCode context-manager 三级：snip → prune → fold + 最近读重注入）
+  // 上下文压缩（对齐参考基线 context-manager 三级：snip → prune → fold + 最近读重注入）
   compressContext(messages, keepTurns = 3) {
     // 找到最近 keepTurns 个 user 消息的边界（保护边界）
     let userCount = 0;
@@ -7975,6 +8307,40 @@ function renderChatMarkdown(bubble, text) {
   bubble.style.whiteSpace = 'normal';
 }
 
+// 助手消息「已工作 Ns」实时计时（每 1s 刷新，消息被移除 / 标记 done 后自停）
+function tickAiWork(el) {
+  const t = setInterval(() => {
+    if (!el.isConnected || el.dataset.done === '1') { clearInterval(t); return; }
+    const span = el.querySelector('.chat-ai-head__time');
+    if (span) span.textContent = '已工作 ' + Math.max(1, Math.round((Date.now() - Number(el.dataset.t0)) / 1000)) + 's';
+  }, 1000);
+  el._workTick = t;
+}
+
+// 一轮对话结束后：补折叠头「已工作 Ns · N 步」+ 底部用量 meta（对齐 ChipCode，无真实数据则留空）
+function finalizeAiTurn({ steps, inTok, outTok, credits } = {}) {
+  const area = document.getElementById('ai-chat-area');
+  if (!area) return;
+  const list = area.querySelectorAll('.chat-message.ai');
+  const msg = list[list.length - 1];
+  if (!msg || msg.dataset.done === '1') return;
+  msg.dataset.done = '1';
+  if (msg._workTick) clearInterval(msg._workTick);
+  const sec = Math.max(1, Math.round((Date.now() - Number(msg.dataset.t0 || Date.now())) / 1000));
+  const tEl = msg.querySelector('.chat-ai-head__time');
+  if (tEl) tEl.textContent = '已工作 ' + sec + 's';
+  const sEl = msg.querySelector('.chat-ai-head__steps');
+  if (sEl) sEl.textContent = Number(steps) > 0 ? Number(steps) + ' 步' : '';
+  const meta = msg.querySelector('.chat-ai-meta');
+  if (!meta) return;
+  const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
+  const parts = [];
+  if (Number(inTok) > 0) parts.push('输入 ' + fmt(Number(inTok)));
+  if (Number(outTok) > 0) parts.push('输出 ' + fmt(Number(outTok)));
+  if (Number(credits) > 0) parts.push('消耗 ' + (Number(credits) < 10 ? Number(credits).toFixed(1) : Math.round(Number(credits))) + ' 积分');
+  meta.textContent = parts.join(' · ');
+}
+
 function addChatMessage(role, content) {
   const area = document.getElementById('ai-chat-area');
   const msg = document.createElement('div');
@@ -7985,24 +8351,52 @@ function addChatMessage(role, content) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   if (role === 'ai') {
+    // 折叠头（对齐 ChipCode：chevron + 已工作 Ns + N 步）
+    const head = document.createElement('div');
+    head.className = 'chat-ai-head';
+    const headBtn = document.createElement('button');
+    headBtn.type = 'button';
+    headBtn.className = 'chat-ai-head__btn';
+    headBtn.setAttribute('aria-expanded', 'true');
+    headBtn.innerHTML =
+      '<span class="chat-ai-head__chev"><svg class="icon"><use href="#icon-chevron-right"></use></svg></span>' +
+      '<span class="chat-ai-head__time">已工作 0s</span>' +
+      '<span class="chat-ai-head__steps"></span>';
+    headBtn.addEventListener('click', () => {
+      const collapsed = msg.classList.toggle('is-collapsed');
+      headBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+    head.appendChild(headBtn);
+    msg.dataset.t0 = String(Date.now());
     renderChatMarkdown(bubble, content);
+    // 操作条（对齐 ChipCode：复制 / 重新生成 / 删除 + 用量 meta）
+    const acts = document.createElement('div');
+    acts.className = 'chat-ai-actions';
+    acts.innerHTML =
+      '<span class="chat-ai-actions__group">' +
+      '<button class="chat-ai-act" data-act="copy" title="复制消息"><svg class="icon"><use href="#icon-copy"></use></svg></button>' +
+      '<button class="chat-ai-act" data-act="retry" title="重新生成（重发上一条提问）"><svg class="icon"><use href="#icon-refresh"></use></svg></button>' +
+      '<button class="chat-ai-act" data-act="delete" title="删除该消息"><svg class="icon"><use href="#icon-trash"></use></svg></button>' +
+      '</span><span class="chat-ai-meta"></span>';
+    msg.appendChild(head); msg.appendChild(bubble); msg.appendChild(acts);
+    tickAiWork(msg);
   } else {
     bubble.textContent = content;
     bubble.style.whiteSpace = 'pre-wrap';
+    msg.appendChild(avatar); msg.appendChild(bubble);
   }
-  msg.appendChild(avatar); msg.appendChild(bubble);
   area.appendChild(msg);
   area.scrollTop = area.scrollHeight;
   // 会话历史：把每条消息写入日志（新对话/历史面板据此持久化）
   if (!window._chatLog) window._chatLog = [];
-  // Phase B：消息带稳定 id / ts（对齐 ChipCode session_message 的展示字段完整性）
+  // Phase B：消息带稳定 id / ts（对齐参考基线 session_message 的展示字段完整性）
   window._chatLog.push({
     role: role === 'ai' ? 'assistant' : 'user',
     content: content || '',
     id: 'm' + Date.now().toString(36) + '_' + window._chatLog.length,
     ts: Date.now()
   });
-  // 上下文占用环随消息更新（对齐 TrieCode 上下文圆环）
+  // 上下文占用环随消息更新（对齐参考基线 上下文圆环）
   if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
   return bubble;
 }
@@ -8043,7 +8437,7 @@ function rejectShardCode(filePath, code, where) {
   }
 }
 
-// ===== 自动编译验证（本地模型不调用 compile 工具时的兜底，对齐 TrieCode 写码后自动编译）=====
+// ===== 自动编译验证（本地模型不调用 compile 工具时的兜底，对齐参考基线 写码后自动编译）=====
 function triggerAutoCompile() {
   if (!state.projectType || !['arduino','esp-idf','python','node','c'].includes(state.projectType)) return;
   if (state._autoCompileTimer) return;
@@ -8114,7 +8508,7 @@ function triggerAutoCompile() {
   }, 800);
 }
 
-// 对齐 TrieCode：AI 回复中的代码块自动创建文件并在中间编辑器打开
+// 对齐参考基线：AI 回复中的代码块自动创建文件并在中间编辑器打开
 // 返回创建的文件路径列表
 // 代码块落盘（Electron 环境写真实磁盘，与 write_file 工具一致）
 async function persistCodeFile(filePath, code) {
@@ -8237,7 +8631,7 @@ function autoApplyCodeBlocks(text, agent) {
     const _streamIsNew = !state.files[filePath];
     state.files[filePath] = { content: code, language: getLanguage(filePath), dirty: true };
     buildFileTree(); renderFileTree();
-    openFile(filePath); // 对齐 TrieCode：渲染编辑器 tab、显示中间代码区、更新面包屑
+    openFile(filePath); // 对齐 BubaiCode：渲染编辑器 tab、显示中间代码区、更新面包屑
     persistCodeFile(filePath, code);
     fileChangeTracker.beginTurn('stream');
     fileChangeTracker.recordChange('stream', { path: filePath, before, after: code, action: _streamIsNew ? 'create' : 'modify' });
@@ -8260,7 +8654,7 @@ function autoApplyCodeBlocks(text, agent) {
     count++;
     if (count >= 10) break;
   }
-  // AI 写文件后同步隐藏欢迎页、显示文件树（对齐 TrieCode）
+  // AI 写文件后同步隐藏欢迎页、显示文件树（对齐参考基线）
   if (created.length > 0) syncWelcomePanel();
   return created;
 }
@@ -8351,7 +8745,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ===== 编译资源占用环形图（对齐 TrieCode 底部输出面板）=====
+// ===== 编译资源占用环形图（对齐参考基线 底部输出面板）=====
 function renderResourceRings(sketchBytes, sketchPct, sketchTotal, memBytes, memPct, memTotal) {
   function ring(pct, bytes, total, label, color) {
     const r = 42, c = 2 * Math.PI * r;
@@ -8427,7 +8821,7 @@ function addToolCallBlock(tool, status, summary, args, result) {
   return id;
 }
 
-// ============ 工作状态条（对齐 TrieCode：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文）============
+// ============ 工作状态条（对齐参考基线：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文）============
 
 /** 根据当前 AI 配置生成引擎标签（云端 / 本地 / 自有 API） */
 function describeAiModel(ai) {
@@ -8461,7 +8855,7 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
       } else {
         area.insertBefore(workStatusBarEl, area.firstChild);
       }
-      // 实时跳秒计时器（思考期间无工具事件也持续更新，对齐 TrieCode）
+      // 实时跳秒计时器（思考期间无工具事件也持续更新，对齐参考基线）
       workStatusStart = Date.now() - ((elapsed || 0) * 1000);
       if (!workStatusTimer) {
         workStatusTimer = setInterval(() => {
@@ -8496,7 +8890,7 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
   }
 }
 
-// ============ ↓ 回到底部（对齐 TrieCode：工作流滚动时提供一键回底）============
+// ============ ↓ 回到底部（对齐参考基线：工作流滚动时提供一键回底）============
 function initChatScrollBottom() {
   const area = document.getElementById('ai-chat-area');
   const btn = document.getElementById('chat-scroll-bottom');
@@ -8678,7 +9072,7 @@ function updateToolFlowPanel({ tool, status, args, result }) {
     const cmd = (args && (args.command || args.test_path || '')) || '';
     inner += `<div class="tool-flow-cmd">$ ${escapeHtml(String(cmd).slice(0, 120))}</div>`;
     if (status === 'done' && result) {
-      // 测试结果结构化徽标（对齐 TrieCode test-runner 摘要）
+      // 测试结果结构化徽标（对齐参考基线 test-runner 摘要）
       if (tool === 'run_test') {
         try {
           const sm = String(result).match(/测试完成:\s*(\d+)\s*通过,\s*(\d+)\s*失败[^]*?错误\s*\(退出码\s*(-?\d+)\)/);
@@ -8767,7 +9161,7 @@ function toggleDiffFile(rowEl, idx) {
 }
 
 
-// ============ 权限确认 - 内联卡片（对齐 TrieCode）============
+// ============ 权限确认 - 内联卡片（对齐参考基线）============
 let inlinePermissionCallback = null;
 function showInlinePermission(tool, command, detail, callback) {
   const area = document.getElementById('ai-chat-area');
@@ -8823,7 +9217,7 @@ function showInlinePermission(tool, command, detail, callback) {
   }, 60000);
 }
 
-// ============ AI 询问用户 - 选项卡片（对齐 TrieCode 截图1「AI 需要你的选择」）============
+// ============ AI 询问用户 - 选项卡片（对齐参考基线 截图1「AI 需要你的选择」）============
 // 从用户输入生成项目名（如 "esp32_led"、"esp32_robot"）
 function genProjectName(input) {
   const s = String(input || '');
@@ -8878,7 +9272,7 @@ function buildAskCardFromText(text) {
   if (!question) question = clean.slice(-60);
   question = question.replace(/^(好的|好的，|嗯|OK|明白了|明白|了解|你好|您好|hello|hi)[，,、\s]*/i, '').slice(0, 120);
 
-  // 根据关键词生成结构化选项（对齐 TrieCode：开发框架 / 项目功能 分组）
+  // 根据关键词生成结构化选项（对齐参考基线：开发框架 / 项目功能 分组）
   const lower = clean.toLowerCase();
   let options = null;
   let header = 'AI 需要你的选择';
@@ -8905,7 +9299,7 @@ function showAskUserCard(question, options, header) {
   const card = document.createElement('div');
   card.className = 'chat-message ai';
   card.id = 'ask-user-' + uid;
-  // 2026-09-14 对齐 TrieCode：options 支持 {label, description} 结构化选项（模型侧 ask_user 用对象数组）
+  // 2026-09-14 对齐参考基线：options 支持 {label, description} 结构化选项（模型侧 ask_user 用对象数组）
   const normOpts = (options || []).map(o => (typeof o === 'string') ? { label: o, description: '' } : o);
   const optsHtml = normOpts.map((o, i) => `
     <button type="button" class="ask-option-btn" data-idx="${i}">
@@ -8951,7 +9345,7 @@ function showAskUserCard(question, options, header) {
   }
 }
 
-// ============ 需求澄清卡片（多组选项，对齐 TrieCode 截图1：开发框架 + 项目功能）============
+// ============ 需求澄清卡片（多组选项，对齐参考基线 截图1：开发框架 + 项目功能）============
 function showClarifyCard(questions, headers) {
   const area = document.getElementById('ai-chat-area');
   if (!area) return;
@@ -9048,7 +9442,7 @@ function finishAskUserCard(card, choice, isAuto) {
 // ============ 权限确认弹窗（保留备选）============
 let permissionCallback = null;
 function showPermissionModal(tool, command, detail, callback) {
-  // 默认使用内联卡片（对齐 TrieCode）
+  // 默认使用内联卡片（对齐参考基线）
   showInlinePermission(tool, command, detail, callback);
 }
 
@@ -9179,10 +9573,10 @@ function ensureAgent(pSessionId) {
               }
               buildFileTree(); renderFileTree();
               persistCodeFile(filePath, code);
-              // ===== 流式代码块落盘：接入 turn 级文件回滚（对齐 TrieCode file-change-tracker）=====
+              // ===== 流式代码块落盘：接入 turn 级文件回滚（对齐参考基线 file-change-tracker）=====
               fileChangeTracker.beginTurn('stream');
               fileChangeTracker.recordChange('stream', { path: filePath, before, after: code, action: isNew ? 'create' : 'modify' });
-              // ===== 代码块落盘视为文件修改：更新 lastFileModTurn 触发验证闸门（对齐 TrieCode 写码后自动编译验证）=====
+              // ===== 代码块落盘视为文件修改：更新 lastFileModTurn 触发验证闸门（对齐参考基线 写码后自动编译验证）=====
               if (state.agent) {
                 state.agent.lastFileModTurn = (typeof state.agent._streamTurn === 'number') ? state.agent._streamTurn : 0;
               }
@@ -9260,7 +9654,7 @@ function ensureAgent(pSessionId) {
         }
       }
       if (done) {
-        // 对齐 TrieCode：代码块自动创建文件到中间编辑器，AI 面板只显示文字分析
+        // 对齐参考基线：代码块自动创建文件到中间编辑器，AI 面板只显示文字分析
         const createdFiles = autoApplyCodeBlocks(currentAIStream);
         // ===== 流式写码轮结束：关闭 'stream' turn（完成 turn 级记录，供撤销/重做）=====
         fileChangeTracker.endTurn('stream');
@@ -9299,9 +9693,11 @@ function ensureAgent(pSessionId) {
     },
     // ===== 工具面板 Flow：写文件/命令时右侧自动切换显示对应面板 =====
     onToolFlow: (data) => {
+      // 本轮工具步数（用于助手消息折叠头「N 步」，对齐 ChipCode）
+      if (data && data.status === 'running') window.__aiTurnToolSteps = (window.__aiTurnToolSteps || 0) + 1;
       updateToolFlowPanel(data);
     },
-    // ===== 工作状态条：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文（对齐 TrieCode）=====
+    // ===== 工作状态条：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文（对齐参考基线）=====
     onWorkStatus: (data) => {
       updateWorkStatusBar(data);
     },
@@ -9343,15 +9739,14 @@ async function handleAISend() {
   if (!text && !pendingImages.length) return;
   const finalText = text || '请分析我发送的图片';
 
-  // 1:1 对齐 TrieCode：发送消息后隐藏欢迎页，输入框/项目栏移回面板底部
+  // 1:1 对齐参考基线：发送消息后隐藏欢迎页，输入框/项目栏移回面板底部
   const welcome = document.getElementById('ai-welcome');
   if (welcome) {
     const panel = document.getElementById('ai-panel');
     const inputContainer = document.getElementById('ai-input-container');
-    const projectBar = document.getElementById('ai-project-bar');
+    // 项目栏已并入输入卡外框（对齐 ChipCode），整体迁移输入容器即可；置于免表声明行之前
     if (inputContainer && inputContainer.parentNode === welcome) {
-      panel.appendChild(inputContainer);
-      panel.appendChild(projectBar);
+      panel.insertBefore(inputContainer, panel.querySelector('.ai-disclaimer'));
     }
     welcome.style.display = 'none';
   }
@@ -9414,11 +9809,24 @@ async function handleAISend() {
     bgBtn.onclick = function() { showToast('AI 已在后台继续生成，可切换会话查看', 'info'); bgBtn.remove(); };
     document.body.appendChild(bgBtn);
   }
+  // 对齐 ChipCode：记录本轮起始用量与积分，结束后写入助手消息的头部/用量 meta
+  window.__aiTurnToolSteps = 0;
+  const _u0 = (agent.ai && agent.ai.usageAcc) ? { p: agent.ai.usageAcc.promptTokens || 0, c: agent.ai.usageAcc.completionTokens || 0 } : null;
+  const _cr0 = agent.creditsUsed || 0;
   try {
     await agent.run(finalText);
   } finally {
     if (bgBtn && bgBtn.parentNode) bgBtn.remove();
     if (state.currentSessionId !== bgSessionId) showToast('已转入后台运行', 'info');
+    try {
+      const _u1 = (agent.ai && agent.ai.usageAcc) ? { p: agent.ai.usageAcc.promptTokens || 0, c: agent.ai.usageAcc.completionTokens || 0 } : null;
+      finalizeAiTurn({
+        steps: window.__aiTurnToolSteps || 0,
+        inTok: (_u1 && _u0) ? Math.max(0, _u1.p - _u0.p) : 0,
+        outTok: (_u1 && _u0) ? Math.max(0, _u1.c - _u0.c) : 0,
+        credits: Math.max(0, (agent.creditsUsed || 0) - _cr0)
+      });
+    } catch (e) {}
   }
   
   // 任务完成后，延迟隐藏计划进度面板
@@ -9451,10 +9859,9 @@ async function autoDiagnoseWithAI({ phase, error, output, file }) {
     if (welcome && welcome.style.display !== 'none') {
       const panel = document.getElementById('ai-panel');
       const inputContainer = document.getElementById('ai-input-container');
-      const projectBar = document.getElementById('ai-project-bar');
+      // 项目栏已并入输入卡外框（对齐 ChipCode）；置于免表声明行之前
       if (inputContainer && inputContainer.parentNode === welcome) {
-        panel.appendChild(inputContainer);
-        if (projectBar) panel.appendChild(projectBar);
+        panel.insertBefore(inputContainer, panel.querySelector('.ai-disclaimer'));
       }
       welcome.style.display = 'none';
     }
@@ -9569,6 +9976,12 @@ function handleMenuAction(action) {
     case 'new-project':
       showToast('新建项目', 'info');
       showNewProjectModal();
+      break;
+    case 'new-product-project':
+      // 产品工厂入口：已从「文件」侧栏欢迎态移入「文件」下拉菜单（侧栏空态对齐原品仅 3 按钮）
+      if (window.ProductFactory && typeof window.ProductFactory.createProject === 'function') {
+        window.ProductFactory.createProject();
+      }
       break;
     case 'open-project':
       showToast('打开项目', 'info');
@@ -10549,7 +10962,7 @@ function bindEvents() {
       item.classList.add('active');
       const panel = item.dataset.panel;
       const toolchain = item.dataset.toolchain;
-      // 状态栏工具链段：对齐 TrieCode（点击工具链活动栏项时同步显示当前工具链名称）
+      // 状态栏工具链段：对齐参考基线（点击工具链活动栏项时同步显示当前工具链名称）
       if (toolchain) {
         const tcEl = document.getElementById('status-toolchain');
         if (tcEl) tcEl.textContent = item.title || toolchain;
@@ -10558,8 +10971,9 @@ function bindEvents() {
       if (gcView) gcView.style.display = 'none';
       const wfView = document.getElementById('workflow-view');
       if (wfView) wfView.style.display = 'none';
-      const pfView = document.getElementById('product-factory-view');
-      if (pfView) pfView.style.display = 'none';
+      // #product-factory-view 已移入「文件」侧栏，其显隐由 product-factory.js 的 syncVisibility 管理
+      const agentsView = document.getElementById('agents-panel');
+      if (agentsView) agentsView.style.display = 'none';
       const mcpPanel = document.getElementById('mcp-panel');
       stopDeviceRefresh();
       if (mcpPanel) mcpPanel.style.display = 'none';
@@ -10576,12 +10990,20 @@ function bindEvents() {
       const devicePanel = document.getElementById('device-panel');
       const gitPanel = document.getElementById('git-panel');
       const sidebarHeader = sidebar ? sidebar.querySelector('.sidebar-header') : null;
-      // 对齐 ChipCode 插件面板宽度：336px（此前 400px 比参照页宽约 60px）；其他面板恢复默认窄栏
+      // 对齐参考基线 插件面板宽度：351px（实测对齐 ChipCode 原品插件侧栏宽度）；其他面板恢复默认窄栏
+      // 必须用 !important 内联，否则会被 body.app-welcome 的 .left-column { width:26% !important } 覆盖
       const leftCol = sidebar ? sidebar.closest('.left-column') : null;
       const setLeftColWidth = (w) => {
         if (!leftCol) return;
-        if (w) { leftCol.style.width = w; leftCol.style.minWidth = w; leftCol.style.maxWidth = w; }
-        else { leftCol.style.width = ''; leftCol.style.minWidth = ''; leftCol.style.maxWidth = ''; }
+        if (w) {
+          leftCol.style.setProperty('width', w, 'important');
+          leftCol.style.setProperty('min-width', w, 'important');
+          leftCol.style.setProperty('max-width', w, 'important');
+        } else {
+          leftCol.style.removeProperty('width');
+          leftCol.style.removeProperty('min-width');
+          leftCol.style.removeProperty('max-width');
+        }
       };
       setLeftColWidth(null);
       if (panel === 'explorer') {
@@ -10603,6 +11025,19 @@ function bindEvents() {
           if (hasOpenFile) { mainWelcome.style.display = 'none'; mainEditor.style.display = 'flex'; }
           else { mainEditor.style.display = 'none'; mainWelcome.style.display = 'flex'; }
         }
+      } else if (panel === 'product-factory') {
+        // 产品工厂独立入口（对齐 ChipCode 活动栏第 2 项）：侧栏复用 #product-factory-view。
+        // 该视图显隐由 product-factory.js 的 syncVisibility 按「活动栏激活态」判定，
+        // 此处只负责侧栏容器互斥与数据刷新。
+        sidebar.style.display = 'flex';
+        if (fileTree) fileTree.style.display = 'none';
+        if (welcomePanel) welcomePanel.style.display = 'none';
+        if (pluginsPanel) pluginsPanel.style.display = 'none';
+        if (devicePanel) devicePanel.style.display = 'none';
+        if (gitPanel) gitPanel.style.display = 'none';
+        if (mcpPanel) mcpPanel.style.display = 'none';
+        if (sidebarHeader) sidebarHeader.style.display = 'none';
+        if (window.ProductFactory && typeof window.ProductFactory.refresh === 'function') window.ProductFactory.refresh();
       } else if (panel === 'git') {
         sidebar.style.display = 'flex';
         if (fileTree) fileTree.style.display = 'none';
@@ -10619,7 +11054,7 @@ function bindEvents() {
         if (pluginsPanel) pluginsPanel.style.display = 'flex';
         if (devicePanel) devicePanel.style.display = 'none';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
-        setLeftColWidth('336px');   // 对齐 ChipCode 插件面板宽度
+        setLeftColWidth('351px');   // 对齐 ChipCode 原品插件侧栏宽度（实测渲染≈351）
         // 若此前从「AI 模型」入口停在 models tab，插件按钮回到官方市场，避免两个入口显示相同内容
         if (currentPluginsTab === 'models') {
           currentPluginsTab = 'market';
@@ -10628,7 +11063,7 @@ function bindEvents() {
         // 恢复插件市场 chrome（从 AI 模型视图切回时）
         document.querySelectorAll('.plugins-tab').forEach(t => t.style.display = '');
         ['plugins-install-dir', 'plugins-install-zip'].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = ''; });
-        const ptP = document.getElementById('plugins-title'); if (ptP) ptP.textContent = '插件市场';
+        const ptP = document.getElementById('plugins-title'); if (ptP) ptP.textContent = '插件';
         renderPluginsList();
       } else if (panel === 'models') {
         // AI 模型独立入口：复用插件面板，直接渲染模型视图（模型已从 tab 条移除，单独管理）
@@ -10638,14 +11073,14 @@ function bindEvents() {
         if (pluginsPanel) pluginsPanel.style.display = 'flex';
         if (devicePanel) devicePanel.style.display = 'none';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
-        setLeftColWidth('336px');   // 对齐 ChipCode 插件面板宽度
+        setLeftColWidth('351px');   // 对齐 ChipCode 原品插件侧栏宽度（实测渲染≈351）
         currentPluginsTab = 'models';
         // 模型是独立视图：清除插件 tab 高亮，避免残留"官方市场"激活态
         document.querySelectorAll('.plugins-tab').forEach(t => t.classList.remove('active'));
-        // 防串台：模型视图专属 chrome——隐藏插件市场 tab 条与"文件夹/ZIP"上传按钮，标题改为 AI 模型
+        // 防串台：模型视图专属 chrome——隐藏插件市场 tab 条与"文件夹/ZIP"上传按钮，标题与左侧活动栏图标一致为「本地模型」
         document.querySelectorAll('.plugins-tab').forEach(t => t.style.display = 'none');
         ['plugins-install-dir', 'plugins-install-zip'].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = 'none'; });
-        const ptM = document.getElementById('plugins-title'); if (ptM) ptM.textContent = 'AI 模型';
+        const ptM = document.getElementById('plugins-title'); if (ptM) ptM.textContent = '本地模型';
         renderPluginsList();
       } else if (panel === 'device') {
         sidebar.style.display = 'flex';
@@ -10693,7 +11128,6 @@ function bindEvents() {
         if (mcpPanel) mcpPanel.style.display = 'none';
         const wokwiPanelCtx = document.getElementById('wokwi-panel'); if (wokwiPanelCtx) wokwiPanelCtx.style.display = 'none';
         var _schedP = document.getElementById('schedule-panel'); if (_schedP) _schedP.style.display = 'none';
-        var _pfP = document.getElementById('product-factory-view'); if (_pfP) _pfP.style.display = 'none';
         const ctxPanel = document.getElementById('context-panel');
         if (ctxPanel) ctxPanel.style.display = 'flex';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
@@ -10717,24 +11151,32 @@ function bindEvents() {
         sidebar.style.display = 'none';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
         wfShowView();
-      } else if (panel === 'product-factory') {
-        // Phase D · 五阶段产品工厂（新模块自管 DOM 与刷新；旧「AI 硬件拆解工坊」插件门槛已解耦）
-        sidebar.style.display = 'none';
+      } else if (panel === 'agents') {
+        // 智能体面板（对齐参考基线「后台智能体」：最近完成任务列表，点击载入会话）
+        sidebar.style.display = 'flex';
+        if (fileTree) fileTree.style.display = 'none';
+        if (welcomePanel) welcomePanel.style.display = 'none';
+        if (pluginsPanel) pluginsPanel.style.display = 'none';
+        if (devicePanel) devicePanel.style.display = 'none';
+        if (gitPanel) gitPanel.style.display = 'none';
+        if (mcpPanel) mcpPanel.style.display = 'none';
+        const wokwiPanelAg = document.getElementById('wokwi-panel'); if (wokwiPanelAg) wokwiPanelAg.style.display = 'none';
+        var _schedAg = document.getElementById('schedule-panel'); if (_schedAg) _schedAg.style.display = 'none';
+        const agPanel = document.getElementById('agents-panel');
+        if (agPanel) agPanel.style.display = 'flex';
         if (sidebarHeader) sidebarHeader.style.display = 'none';
-        const pf = document.getElementById('product-factory-view');
-        if (pf) {
-          pf.style.display = 'flex';
-          if (window.ProductFactory && typeof window.ProductFactory.refresh === 'function') {
-            window.ProductFactory.refresh();
-          }
-        }
+        if (window.BubaiCodeUI && typeof window.BubaiCodeUI.renderAgentsPanel === 'function') window.BubaiCodeUI.renderAgentsPanel();
       } else {
         // settings 等其他按钮
         sidebar.style.display = 'none';
       }
+      // 五阶段导航（已并入文件侧栏）：切到「文件」时才显示，切到其它项时隐藏
+      if (window.ProductFactory && typeof window.ProductFactory.syncVisibility === 'function') {
+        window.ProductFactory.syncVisibility();
+      }
 
   // ===== 已安装插件动态活动栏入口（对齐 VSCode：装带视图的插件→左侧出现图标，卸载即移除）=====
-  // 对齐 ChipCode「活动栏插件图标 → 左侧栏 plugin:<id> 聚合面板」：
+  // 对齐参考基线「活动栏插件图标 → 左侧栏 plugin:<id> 聚合面板」：
   // 我方插件大多只声明 tools、没有 views，因此入口按「已安装且启用的白名单插件」生成，
   // 点开后落到该插件的详情/工具面板（有 webview 视图的仍走 iframe）。
   function renderPluginActivityButtons() {
@@ -11103,6 +11545,7 @@ function bindEvents() {
 
   document.querySelectorAll('.bottom-tab').forEach(tab => {
     tab.addEventListener('click', () => {
+      if (tab.classList.contains('bottom-close')) return; // ✕ 关闭按钮非 tab
       document.querySelectorAll('.bottom-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.bottom-panel-content').forEach(v => v.classList.remove('active'));
       tab.classList.add('active');
@@ -11140,7 +11583,7 @@ function bindEvents() {
     { id: 'ai-hardware-lab', name: 'AI 硬件拆解工坊', description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览/模块选型/接线示意/示例代码/组装步骤/避坑提示；安装后活动栏出现「AI 硬件拆解工坊」入口，可随时卸载', version: '1.0.0', author: 'BubaiCode', icon: '🤖', category: 'tool', channels: ['internal'], capabilities: ['hwlab', 'ai'] }
   ];
 
-  // ===== 官方市场 = ChipCode/TrieCode 官网真实插件（https://www.chipcode.cn/api/plugins）=====
+  // ===== 官方市场 = 参考基线官网真实插件（https://www.chipcode.cn/api/plugins）=====
   // 9 个功能插件 id / 版本 / 名称与官网清单一致，安装时从官网 /api/plugins/download/<id>.zip 真实下载。
   // 第 10 个「AI 硬件拆解工坊」是本地真插件（有 manifest 工具 + 宿主服务 + 面板）。
   // 自有官网（codelab-site）默认域名；可在 config.json 的 pluginMarketURL 覆盖
@@ -11206,8 +11649,8 @@ function bindEvents() {
     'ai-hardware-lab': {
       id: 'ai-hardware-lab', name: 'AI 硬件拆解工坊', version: '1.0.0', icon: '🤖', category: 'tool',
       description: '一句话描述想做的设备，AI 拆解为可落地手搓方案：方案概览/模块选型/接线示意/示例代码/组装步骤/避坑提示',
-      // 插件提供的宿主专有面板：安装后活动栏出现入口，卸载即消失；面板能力走下面 dissect_hardware_idea 工具
-      activityPanel: 'product-factory',
+      // 产品工厂五阶段导航已并入「文件」侧栏；本插件能力仅通过下面的工具提供
+      activityPanel: 'explorer',
       tools: [
         { name: 'dissect_hardware_idea', description: '把设备想法拆解为可落地的手搓方案（六段结构化输出）', parameters: { type: 'object', properties: { idea: { type: 'string', description: '一句话描述想做的设备，如：做一辆能沿黑线自动行驶的循迹小车，速度可调' } }, required: ['idea'] }, category: 'query', transport: 'internal', internal: { service: 'hwlab', method: 'dissect' } }
       ],
@@ -11306,7 +11749,7 @@ function bindEvents() {
     marketFailAt = Date.now();
   }
 
-  // ===== 自有官网插件市场（参考 ChipCode 官网 API 形态，在 codelab-site 部署）=====
+  // ===== 自有官网插件市场（参考基线 API 形态，在站点服务部署）=====
   // 市场源走可配置的 pluginMarketURL（config.json），默认 https://bluebubai.work；
   // 部署到自己的域名后只需在配置里改 pluginMarketURL，客户端即连自己的官网。
   async function fetchOwnMarketPlugins() {
@@ -11332,7 +11775,7 @@ function bindEvents() {
 
   async function fetchRemotePlugins() {
     if (marketShouldSkip()) { remotePlugins = []; remoteMarketOnline = false; return; }
-    const chipcode = await fetchOwnMarketPlugins();
+    const ownMarketPlugins = await fetchOwnMarketPlugins();
     let gateway = [];
     let hidden = [];
     try {
@@ -11358,11 +11801,11 @@ function bindEvents() {
       hidden = Array.isArray(data.hidden) ? data.hidden : [];
     } catch (e) { marketMarkFailed(e.message); }
     // 官网真实插件优先覆盖同名网关条目；AI 模型等其它条目保留
-    remotePlugins = gateway.filter(p => !chipcode.some(c => c.id === p.id)).concat(chipcode);
+    remotePlugins = gateway.filter(p => !ownMarketPlugins.some(c => c.id === p.id)).concat(ownMarketPlugins);
     remoteMarketOnline = remotePlugins.length > 0;
     remoteHiddenIds = hidden;
     try { localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify({ plugins: remotePlugins, hidden: hidden })); } catch (e) { /* 忽略配额 */ }
-    console.log('[插件市场] 官网 ' + chipcode.length + ' 个真实插件 + 网关 ' + gateway.length + ' 个条目');
+    console.log('[插件市场] 官网 ' + ownMarketPlugins.length + ' 个真实插件 + 网关 ' + gateway.length + ' 个条目');
   }
 
   // ============ 社区插件（GitHub `bubaicode-plugin` topic 去中心化发现）============
@@ -11372,41 +11815,28 @@ function bindEvents() {
 
   async function fetchCommunityPlugins() {
     if (marketShouldSkip()) { communityPlugins = []; communityOnline = false; return; }
+    // 社区发现完全去中心化、不依赖网关服务器（契合"插件生态全 GitHub"的分发架构）。
+    // 直连 GitHub 搜索 bubaicode-plugin topic；不再请求网关 /api/plugins/community——
+    // 该端点当前线上未部署，每次启动/刷新都会产生一条浏览器 404 噪声与一次浪费的调用。
     try {
-      const url = await getPluginMarketURL();
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch(url + '/api/plugins/community', { signal: controller.signal, cache: 'no-store' });
-      clearTimeout(timer);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      communityPlugins = Array.isArray(data.plugins) ? data.plugins : [];
-      communitySource = data.source || 'github';
-      communityOnline = data.source !== 'error';
-      console.log('[社区插件] 已拉取 ' + communityPlugins.length + ' 个（来源 ' + communitySource + '）');
-    } catch (e) {
-      // 网关社区端点不可用（404/超时）→ 直连 GitHub 搜索 bubaicode-plugin topic（api.github.com 支持 CORS）。
-      // 社区发现不依赖服务器，契合"插件生态全 GitHub"的分发架构。
-      try {
-        const ghRes = await fetch('https://api.github.com/search/repositories?q=topic:bubaicode-plugin&sort=updated&per_page=30', { cache: 'no-store' });
-        if (!ghRes.ok) throw new Error('GitHub HTTP ' + ghRes.status);
-        const gh = await ghRes.json();
-        communityPlugins = (gh.items || []).map(r => ({
-          name: r.name,
-          description: r.description || '',
-          developer: (r.owner && r.owner.login) || '',
-          githubUrl: r.html_url,
-          stars: r.stargazers_count || 0,
-          updatedAt: r.pushed_at ? String(r.pushed_at).slice(0, 10) : ''
-        }));
-        communitySource = 'github-direct';
-        communityOnline = true;
-        console.log('[社区插件] 网关不可用（' + e.message + '），已直连 GitHub 拉取 ' + communityPlugins.length + ' 个');
-      } catch (e2) {
-        communityPlugins = [];
-        communityOnline = false;
-        marketMarkFailed('网关: ' + e.message + ' / GitHub直连: ' + e2.message);
-      }
+      const ghRes = await fetch('https://api.github.com/search/repositories?q=topic:bubaicode-plugin&sort=updated&per_page=30', { cache: 'no-store' });
+      if (!ghRes.ok) throw new Error('GitHub HTTP ' + ghRes.status);
+      const gh = await ghRes.json();
+      communityPlugins = (gh.items || []).map(r => ({
+        name: r.name,
+        description: r.description || '',
+        developer: (r.owner && r.owner.login) || '',
+        githubUrl: r.html_url,
+        stars: r.stargazers_count || 0,
+        updatedAt: r.pushed_at ? String(r.pushed_at).slice(0, 10) : ''
+      }));
+      communitySource = 'github-direct';
+      communityOnline = true;
+      console.log('[社区插件] 已直连 GitHub 拉取 ' + communityPlugins.length + ' 个');
+    } catch (e2) {
+      communityPlugins = [];
+      communityOnline = false;
+      marketMarkFailed('GitHub直连: ' + e2.message);
     }
   }
 
@@ -11419,7 +11849,7 @@ function bindEvents() {
     // 服务端下架（listed:false）：在线时以服务端为准，把内置目录里的同名模型也一并抹掉
     const hidden = remotePlugins.length ? remoteHiddenIds : cachedHiddenIds;
     hidden.forEach(id => map.delete(id));
-    // 1:1 对齐 ChipCode：市场只保留白名单 10 个功能 + AI 模型（模型 tab）；其余内置/远程/缓存条目全部不显示
+    // 1:1 对齐参考基线：市场只保留白名单 10 个功能 + AI 模型（模型 tab）；其余内置/远程/缓存条目全部不显示
     const list = Array.from(map.values())
       .filter(p => p.category === 'ai-model' || MARKET_IDS.has(p.id))
       // 服务端清单为权威：本地 MARKET_CATALOG 只兜底缺失字段，避免本地旧版本号覆盖线上新版本
@@ -11428,13 +11858,13 @@ function bindEvents() {
     Object.keys(MARKET_CATALOG).forEach(id => {
       if (!list.some(p => p.id === id)) {
         list.push({
-          id: id, ...MARKET_CATALOG[id], author: 'TrieCode', channels: ['http'], capabilities: [],
+          id: id, ...MARKET_CATALOG[id], author: 'BubaiCode', channels: ['http'], capabilities: [],
           source: id === 'ai-hardware-lab' ? 'builtin' : 'own-site',
           downloadUrl: OWN_MARKET_ORIGIN + '/api/plugins/download/' + id + '.zip'
         });
       }
     });
-    // 保持 ChipCode 截图的展示顺序（AI 模型仍归「模型」tab，排在最后）
+    // 保持 参考基线 截图的展示顺序（AI 模型仍归「模型」tab，排在最后）
     const order = Object.keys(MARKET_CATALOG);
     list.sort(function(a, b){
       const am = a.category === 'ai-model' ? 1 : 0, bm = b.category === 'ai-model' ? 1 : 0;
@@ -11451,11 +11881,11 @@ function bindEvents() {
 
   // 首次启动自动安装核心插件（编译/串口/绘图仪），对标内置工具链开箱即用
   // 大模型运行时与模型插件仍由用户在插件市场自行安装
-  // 对齐 ChipCode 市场后不再自动安装任何插件（此前会自动装 arduino/串口监视器/绘图仪，导致卸载后又冒出来）
+  // 对齐参考基线 市场后不再自动安装任何插件（此前会自动装 arduino/串口监视器/绘图仪，导致卸载后又冒出来）
   const CORE_PLUGIN_IDS = [];
 
   // ===== 活动栏插件入口渲染（模块级全局，供启动 / 安装 / 卸载 / 列表刷新共用）=====
-  // 对齐 ChipCode「活动栏插件图标 → 插件面板」。此前该函数定义在活动栏点击回调的局部作用域内，
+  // 对齐参考基线「活动栏插件图标 → 插件面板」。此前该函数定义在活动栏点击回调的局部作用域内，
   // 外部调用会抛 ReferenceError（整个插件列表渲染失败），故提升到全局并只保留一处实现。
   // 我方插件多为纯工具型（views=0），因此按「已安装且启用的白名单插件」生成入口。
   window.__bubaiRenderPluginActivityButtons = function () {
@@ -11495,7 +11925,7 @@ function bindEvents() {
     });
   };
 
-  // ===== 内置插件 internal services（TrieCode 式宿主服务注册：manifest.tools → dispatchTool → 这里）=====
+  // ===== 内置插件 internal services（基线式宿主服务注册：manifest.tools → dispatchTool → 这里）=====
   if (window.PluginSystem && window.PluginSystem.registerInternalService) {
     window.PluginSystem.registerInternalService('git', {
       status: async (a) => window.BubaiCode.git.status((a && a.cwd) || state.projectPath),
@@ -11870,7 +12300,7 @@ function bindEvents() {
     return SUPERSEDE_RE.some(re => re.test(hay));
   }
 
-  // 品牌图标映射（参考 TrieCode 已安装卡片：工具链/知名插件用品牌 SVG，其余 emoji）
+  // 品牌图标映射（参考基线 已安装卡片：工具链/知名插件用品牌 SVG，其余 emoji）
   const BRAND_ICONS = [
     { test: /arduino/i, sym: 'brand-arduino' },
     { test: /esp-?idf|espressif/i, sym: 'brand-espidf' },
@@ -11890,7 +12320,7 @@ function bindEvents() {
   }
 
   // ===== 插件运行时依赖状态（主进程扫 tools[].cli.command → where 探测 PATH）=====
-  // 对齐 ChipCode 卡片上的 depsReady 状态点：缺本机工具链时明确提示，而不是点工具才看到 ENOENT。
+  // 对齐参考基线 卡片上的 depsReady 状态点：缺本机工具链时明确提示，而不是点工具才看到 ENOENT。
   let pluginRuntimeProbe = {};   // pluginId -> { exes:[{name,found}], ready:bool }
   let pluginRuntimeProbedAt = 0;
   async function refreshPluginRuntimeProbe(force) {
@@ -11912,7 +12342,7 @@ function bindEvents() {
     };
   }
 
-  // ===== 插件详情页（对齐 ChipCode 点击卡片进 ROe 详情：工具 / 依赖 / 状态 / 操作）=====
+  // ===== 插件详情页（对齐参考基线 点击卡片进 ROe 详情：工具 / 依赖 / 状态 / 操作）=====
   async function showPluginDetail(pluginId) {
     const ps = window.PluginSystem;
     if (!ps) return;
@@ -11944,7 +12374,7 @@ function bindEvents() {
     } else {
       body += '<div style="margin-bottom:12px;font-size:11px;color:var(--text-secondary);">该插件通过宿主内部服务 / MCP 工作，无需本机命令行工具。</div>';
     }
-    // 工具清单（对齐 ChipCode plugin.panel 命令按钮：用户可主动运行插件工具）
+    // 工具清单（对齐参考基线 plugin.panel 命令按钮：用户可主动运行插件工具）
     body += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin:10px 0 6px;">工具 ' + tools.length + ' <span style="font-weight:400;color:var(--text-tertiary);font-size:10.5px;">· 点「运行」可直接使用</span></div>';
     body += tools.length
       ? '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;">' + tools.map((t, ti) => {
@@ -12022,7 +12452,7 @@ function bindEvents() {
     wrap.querySelector('#plgd-close').addEventListener('click', close);
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     wrap.querySelector('#plgd-reprobe').addEventListener('click', async () => { await refreshPluginRuntimeProbe(true); close(); showPluginDetail(pluginId); renderPluginsList(); });
-    // 工具运行（对齐 ChipCode plugin.panel 命令按钮 → command:invoke）
+    // 工具运行（对齐参考基线 plugin.panel 命令按钮 → command:invoke）
     const showResult = (name, text, ok) => {
       const boxEl = wrap.querySelector('#plgd-result');
       const nm = wrap.querySelector('#plgd-result-name');
@@ -12121,6 +12551,69 @@ function bindEvents() {
     });
   }
 
+  // 选用某个本地模型：写配置 + 重载 AI 客户端 + 重启本地引擎 + 立即重渲染选中态
+  async function useLocalModelFile(file) {
+    if (!file) return;
+    // 未下载的模型不能设为当前：否则引擎启动失败、AI 不可用
+    try {
+      const rt = await window.BubaiCode.system.checkLLMRuntime();
+      const has = ((rt && rt.models) || []).some(m => m.file === file);
+      if (!has) {
+        showToast('该模型尚未下载，请先点「安装」下载后再选用', 'warn');
+        return;
+      }
+    } catch (e) {}
+    try {
+      await window.BubaiCode.config.set('ai.provider', 'local');
+      await window.BubaiCode.config.set('ai.model', file);
+      const nameEl = document.getElementById('current-model-name');
+      if (nameEl) nameEl.textContent = (file.replace(/\.gguf$/i, '')) + ' (本地)';
+      if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
+        await state.agent.ai._loadConfig();
+      }
+      showToast('已选用 ' + file.replace(/\.gguf$/i, '') + '，正在加载', 'success');
+      if (window.BubaiCode.system && window.BubaiCode.system.startLLMEngine) {
+        try { await window.BubaiCode.system.startLLMEngine({ modelFile: file }); } catch (e) {}
+      }
+      if (typeof refreshLocalModelsInSelector === 'function') { try { refreshLocalModelsInSelector(); } catch (e) {} }
+      renderPluginsList();
+    } catch (err) {
+      showToast('选用失败：' + (err.message || err), 'error');
+    }
+  }
+
+  // 左侧「本地模型」列表：给当前使用的模型行加视觉区别（蓝色边框 + ✓ 使用中徽章）。
+  // 只读配置，不等 checkLLMRuntime 扫盘（慢），保证打开面板即刻看到高亮；
+  // 「选用」按钮已在 renderPluginsList 生成，无需在此补。
+  function markCurrentModelInPluginList() {
+    const listEl = document.getElementById('plugins-list');
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll('.plg-row[data-model-file]');
+    if (!rows.length) return;
+    (async () => {
+      let cur = '', provider = '';
+      try {
+        const c = await window.BubaiCode.config.get();
+        cur = (c && c.ai && c.ai.model) || '';
+        provider = (c && c.ai && c.ai.provider) || '';
+      } catch (e) {}
+      rows.forEach(row => {
+        const f = row.dataset.modelFile || '';
+        const isCur = (provider === 'local' || provider === 'ollama') && !!cur && !!f && cur === f;
+        row.classList.toggle('is-current-model', isCur);
+        const top = row.querySelector('.plg-row-top');
+        if (!top) return;
+        let tag = top.querySelector('.plg-current-tag');
+        if (isCur && !tag) {
+          tag = document.createElement('span');
+          tag.className = 'plg-current-tag';
+          tag.textContent = '✓ 使用中';
+          top.appendChild(tag);
+        } else if (!isCur && tag) tag.remove();
+      });
+    })();
+  }
+
   function renderPluginsList() {
     const listEl = document.getElementById('plugins-list');
     if (!listEl) return;
@@ -12133,10 +12626,10 @@ function bindEvents() {
 
     // 分类标签
     let html = '';
-    // 远程市场状态条：仅未连接时显示告警（TrieCode 式干净列表，连上时不占位）
+    // 远程市场状态条：仅未连接时显示告警（基线式干净列表，连上时不占位）
     if (currentPluginsTab !== 'models' && !remoteMarketOnline) {
       html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size: 10.5px;color:var(--text-secondary);">';
-      html += '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;"></span><span>官方市场未连接，展示内置目录（可点击右上角刷新重试）</span>';
+      html += '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;"></span><span>官方市场未连接，展示内置目录</span>';
       html += '</div>';
     }
 
@@ -12158,7 +12651,7 @@ function bindEvents() {
       html += '</div></div>';
     }
 
-    // 硬件检测 + 推荐：仅模型 tab（选模型要看硬件/显存），官方市场保持 TrieCode 式纯列表
+    // 硬件检测 + 推荐：仅模型 tab（选模型要看硬件/显存），官方市场保持 基线式纯列表
     if (currentPluginsTab === 'models') {
       const rec = getModelRecommendation();
       html += '<div style="padding:10px 12px;margin-bottom:10px;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(16,185,129,0.08));border:1px solid rgba(59,130,246,0.2);border-radius:8px;">';
@@ -12203,7 +12696,7 @@ function bindEvents() {
       try {
         const extraIds = new Set(plugins.map(p => p.id));
         (window.PluginSystem.listPlugins ? window.PluginSystem.listPlugins() : []).forEach(p => {
-          // 仅补入白名单内的磁盘插件（其余目录插件不在 ChipCode 清单里，不显示也不留入口）
+          // 仅补入白名单内的磁盘插件（其余目录插件不在 参考基线 清单里，不显示也不留入口）
           if (!extraIds.has(p.id) && p.category !== 'ai-model' && MARKET_IDS.has(p.id)) {
             plugins.push({ id: p.id, name: p.name, version: p.version, description: p.description || '', category: p.category || 'tool', icon: p.icon || '', source: 'dir' });
           }
@@ -12237,46 +12730,47 @@ function bindEvents() {
       const installed = isPluginInstalled(p.id);
       const isModelsTab = currentPluginsTab === 'models';
       const catNames = { compiler: '编译器', runtime: '运行时', tool: '工具', theme: '主题', 'ai-model': 'AI 模型' };
-      // 行式布局（对齐 TrieCode）：图标 + 顶部行 + 一行描述(截断) + 右侧状态/操作
+      // 行式布局（对齐参考基线）：图标 + 顶部行 + 一行描述(截断) + 右侧状态/操作
+      // 模型视图：所有模型卡都有「选用」按钮（选中某个 → 视觉区别）；未下载的点了会提示先安装
+      const useBtn = (currentPluginsTab === 'models' && (p.ggufFile || p.modelName))
+        ? '<button class="plg-use-btn" data-action="use-model" data-id="' + p.id + '" data-file="' + escapeHtml(p.ggufFile || p.modelName) + '" title="选用此模型为当前模型">选用</button>'
+        : '';
       let actions;
       if (!installed) {
-        actions = '<button class="btn btn-primary btn-sm" data-action="install" data-id="' + p.id + '">安装</button>';
+        actions = useBtn + '<button class="btn btn-primary btn-sm" data-action="install" data-id="' + p.id + '">安装</button>';
       } else if (currentPluginsTab === 'installed' || currentPluginsTab === 'models') {
-        // TrieCode 式图标操作区：⚙设置 + toggle 启用开关 + 🗑卸载
-        actions = '<button class="btn btn-secondary btn-sm" data-action="detail" data-id="' + p.id + '" style="padding:3px 8px;margin-right:3px;">详情</button>' +
-          '<button class="plg-ic-btn" data-action="settings" data-id="' + p.id + '" title="打开该插件的设置面板"><svg class="icon"><use href="#icon-settings"></use></svg></button>' +
+        // 基线式图标操作区（对齐 ChipCode）：⚙设置 + toggle 启用开关 + 🗑卸载（详情走整行点击）
+        actions = useBtn + '<button class="plg-ic-btn" data-action="settings" data-id="' + p.id + '" title="打开该插件的设置面板"><svg class="icon"><use href="#icon-settings"></use></svg></button>' +
           (pluginRegistered(p.id)
             ? '<button class="plg-toggle' + (pluginActive(p.id) ? ' on' : '') + '" data-action="toggle" data-id="' + p.id + '" title="' + (pluginActive(p.id) ? '已启用，点击禁用' : '已禁用，点击启用') + '" aria-pressed="' + pluginActive(p.id) + '"></button>'
             : '') +
           '<button class="plg-ic-btn danger" data-action="uninstall" data-id="' + p.id + '" title="卸载"><svg class="icon"><use href="#icon-trash"></use></svg></button>';
       } else {
-        // 对齐 ChipCode：已安装卡片也要能点开（详情/工具/依赖/操作），不能是只读文本
-        actions = '<button class="btn btn-secondary btn-sm" data-action="detail" data-id="' + p.id + '" style="padding:3px 8px;">详情</button>' +
-          '<span class="plg-installed">已安装</span>';
+        // 对齐 ChipCode：市场已安装卡右侧只有绿色「已安装」文本，详情走整行点击
+        actions = '<span class="plg-installed">已安装</span>';
       }
-      // 「查看源码 →」仅官方市场卡显示（对齐 TrieCode 已安装卡：只有 齿轮/toggle/垃圾桶）
-      const srcUrl = p.sourceUrl || ('https://github.com/' + (p.githubRepo || OFFICIAL_PLUGIN_REPO) + '/tree/main/' + (GH_PLUGIN_ID_MAP[p.id] || p.id));
-      const srcLink = (currentPluginsTab === 'market' && p.category !== 'ai-model')
-        ? '<a class="plg-src" data-action="source" data-url="' + escapeHtml(srcUrl) + '">源码 →</a>'
-        : '';
-      // TrieCode 卡片：品牌/emoji 图标 + [绿点(已注册且启用)] + 名称 + 版本号 + 一行截断描述
+      // 「查看源码 →」已删除（对齐 ChipCode：卡片右侧只有状态/操作，源码入口在详情弹窗内）
+      // 参考基线 卡片：品牌/emoji 图标 + [绿点(已注册且启用)] + 名称 + 版本号 + 一行截断描述
       const runDot = (installed && pluginRegistered(p.id) && pluginActive(p.id)) ? '<span class="plg-dot" title="运行中"></span>' : '';
-      // 本机依赖缺失：橙色警示点（对齐 ChipCode depsReady 状态点），hover 提示缺什么
+      // 本机依赖缺失：橙色警示点（对齐参考基线 depsReady 状态点），hover 提示缺什么
       const dh = installed ? pluginDepsHint(p.id) : null;
       const depDot = (dh && !dh.ready)
         ? '<span class="plg-dep-miss" title="本机缺少：' + escapeHtml(dh.missing.join('、')) + ' — 点击卡片查看安装引导">!</span>'
         : '';
       const topLine = runDot + depDot + '<span class="plg-name">' + p.name + '</span><span class="plg-ver">v' + p.version + '</span>';
-      return '<div class="plg-row plg-row-clickable" data-plugin-id="' + escapeHtml(p.id) + '" title="点击查看插件详情">' +
+      // 模型视图给行挂 gguf 文件名，供 markCurrentModelInPluginList 按 ai.model 匹配高亮
+      const modelFileAttr = (isModelsTab && (p.ggufFile || p.modelName))
+        ? ' data-model-file="' + escapeHtml(p.ggufFile || p.modelName) + '"' : '';
+      return '<div class="plg-row plg-row-clickable"' + modelFileAttr + ' data-plugin-id="' + escapeHtml(p.id) + '" title="点击查看插件详情">' +
         '<div class="plg-row-ic">' + brandIconHtml(p) + '</div>' +
         '<div class="plg-row-body">' +
           '<div class="plg-row-top">' + topLine + '</div>' +
           '<div class="plg-desc">' + (p.description || '') + '</div>' +
         '</div>' +
-        '<div class="plg-row-act">' + srcLink + actions + '</div>' +
+        '<div class="plg-row-act">' + actions + '</div>' +
       '</div>';
     }).join('');
-    // 对齐 ChipCode：官方市场底部不再挂「社区插件·GitHub」推广块（清单只保留 10 个白名单插件）
+    // 对齐参考基线：官方市场底部不再挂「社区插件·GitHub」推广块（清单只保留 10 个白名单插件）
     listEl.innerHTML = html;
 
     // 模型视图：本地上传为主入口（用户上传 .gguf → 复制进模型目录）
@@ -12284,6 +12778,7 @@ function bindEvents() {
       html = '<div style="display:flex;gap:8px;align-items:center;padding:0 0 10px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" id="model-import-btn">📥 导入本地模型（.gguf）</button><span style="font-size: 10.5px;color:var(--text-secondary);">导入后即可被引擎扫描并直接使用</span></div>' + html;
     }
     listEl.innerHTML = html;
+    if (currentPluginsTab === 'models') markCurrentModelInPluginList();
     if (currentPluginsTab === 'models') {
       const ib = document.getElementById('model-import-btn');
       if (ib) ib.addEventListener('click', async () => {
@@ -12303,10 +12798,16 @@ function bindEvents() {
     listEl.querySelectorAll('.plugin-cat-btn').forEach(btn => {
       btn.addEventListener('click', () => { currentPluginCategory = btn.dataset.cat; renderPluginsList(); });
     });
-    // 整行点击进详情（对齐 ChipCode 卡片 onClick → ROe 详情页）；按钮/链接点击不冒泡触发
+    // 整行点击进详情（对齐参考基线 卡片 onClick → ROe 详情页）；按钮/链接点击不冒泡触发
     listEl.querySelectorAll('.plg-row-clickable').forEach(row => {
       row.addEventListener('click', (ev) => {
         if (ev.target.closest('button, a, .plg-toggle')) return;
+        // 模型视图：整行点击 = 单选高亮（选中某个要有区别），不再跳插件详情
+        if (currentPluginsTab === 'models' && row.dataset.modelFile) {
+          listEl.querySelectorAll('.plg-row.is-selected').forEach(r2 => r2.classList.remove('is-selected'));
+          row.classList.add('is-selected');
+          return;
+        }
         showPluginDetail(row.dataset.pluginId);
       });
     });
@@ -12314,13 +12815,25 @@ function bindEvents() {
     listEl.querySelectorAll('[data-action="install"]').forEach(btn => {
       btn.addEventListener('click', () => installPlugin(btn.dataset.id));
     });
+    // 模型视图「选用」：统一走 useLocalModelFile（写配置+重载+重启引擎+刷新选中态）
+    listEl.querySelectorAll('[data-action="use-model"]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const row = btn.closest('.plg-row');
+        if (row) {
+          listEl.querySelectorAll('.plg-row.is-selected').forEach(r2 => r2.classList.remove('is-selected'));
+          row.classList.add('is-selected');
+        }
+        useLocalModelFile(btn.dataset.file || '');
+      });
+    });
     listEl.querySelectorAll('[data-action="detail"]').forEach(btn => {
       btn.addEventListener('click', (ev) => { ev.stopPropagation(); showPluginDetail(btn.dataset.id); });
     });
     listEl.querySelectorAll('[data-action="uninstall"]').forEach(btn => {
       btn.addEventListener('click', () => uninstallPlugin(btn.dataset.id));
     });
-    // 绑定「设置」按钮（对标 TrieCode 卡片「打开该插件的设置面板」）
+    // 绑定「设置」按钮（对标 参考基线 卡片「打开该插件的设置面板」）
     listEl.querySelectorAll('[data-action="settings"]').forEach(btn => {
       btn.addEventListener('click', () => showPluginSettingsModal(btn.dataset.id));
     });
@@ -12333,7 +12846,7 @@ function bindEvents() {
         else window.open(u, '_blank');
       });
     });
-    // 插件自定义面板入口已上移到活动栏动态按钮（对齐 TrieCode：列表保持纯卡片）
+    // 插件自定义面板入口已上移到活动栏动态按钮（对齐参考基线：列表保持纯卡片）
     // 仍保留 views 型插件的「插件面板(N)」快捷块（此前该函数只有定义、无调用点）
     try { renderPluginViews(listEl); } catch (e) { /* views 型插件为空时无副作用 */ }
     refreshPluginActivityButtons();
@@ -12355,7 +12868,7 @@ function bindEvents() {
     }
   }
 
-  // ============ 插件设置面板（对标 TrieCode 卡片「打开该插件的设置面板」）============
+  // ============ 插件设置面板（对标 参考基线 卡片「打开该插件的设置面板」）============
   async function showPluginSettingsModal(pluginId) {
     const ps = window.PluginSystem;
     if (!ps) { showToast('插件系统未就绪', 'error'); return; }
@@ -12726,7 +13239,7 @@ function bindEvents() {
     if (modal) modal.style.display = 'none';
     hidePluginProgress();
   }
-  // ============ 插件面板内嵌安装进度条（TrieCode 式：tab 下方 "安装 <id> · <名称> XX%"）============
+  // ============ 插件面板内嵌安装进度条（基线式：tab 下方 "安装 <id> · <名称> XX%"）============
   // 进度全部来自真实文件大小轮询；pct<0 表示总大小未知 → 流动条 + 只显示已下载量，不造假百分比
   let pluginProgressTimer = null;
   function showPluginProgress(plugin) {
@@ -12756,7 +13269,7 @@ function bindEvents() {
     const box = document.getElementById('plugins-install-progress');
     if (box) box.style.display = 'none';
   }
-  // 安装完成「是否立即启用」对话框（对齐 TrieCode）：立即启用=true / 暂不=false
+  // 安装完成「是否立即启用」对话框（对齐参考基线）：立即启用=true / 暂不=false
   function showEnablePrompt(plugin) {
     return new Promise(resolve => {
       const modal = document.getElementById('plugin-enable-modal');
@@ -12858,7 +13371,7 @@ function bindEvents() {
         if (fsCheckOut.includes('EXISTS')) {
           addOutputLog('模型已存在（' + fsCheckOut.replace('EXISTS ', '') + ' GB），跳过下载', 'success');
         } else {
-          // 弹出安装进度窗（对齐 Qwen 安装界面）+ 面板内嵌进度条（TrieCode 式）
+          // 弹出安装进度窗（对齐 Qwen 安装界面）+ 面板内嵌进度条（基线式）
           showInstallModal(plugin.name);
           showPluginProgress(plugin);
           const expectedGB = plugin.minDiskGB || 0;
@@ -12912,14 +13425,14 @@ function bindEvents() {
       }
     }
 
-    // 远程插件包：官方市场 zip → 失败回退 GitHub 插件仓库（triecode-dev/triecode-plugins，
-    // 插件与 TrieCode 同渠道发布，每插件一个目录含 plugin.json）。任一渠道失败则中止，不标记已安装。
+    // 远程插件包：官方市场 zip → 失败回退 GitHub 插件仓库（官方插件仓库，
+    // 插件与 参考基线 同渠道发布，每插件一个目录含 plugin.json）。任一渠道失败则中止，不标记已安装。
     // 复用共享 installFromZipball 链路（与社区插件同一套下载/校验/解压/进度逻辑）。
     // 远程插件包：统一从 GitHub 下载安装（插件生态发布/分发全部走 GitHub；网关仅作目录/元数据来源）。
     // 优先 GitHub 仓库（main/master 自动回退）；个别不在 GitHub 的插件（如 hello-market / llama-runtime）再回退网关 zip。
     // 复用共享 installFromZipball 链路（与社区插件同一套下载/校验/解压/进度逻辑）。
     let remoteInstall = null;
-    // 官网真实插件：直接下载 ChipCode/TrieCode 官方 zip（完整 plugin.json + ui/），不走 GitHub 试探
+    // 官网真实插件：直接下载 参考基线/参考基线 官方 zip（完整 plugin.json + ui/），不走 GitHub 试探
     if (plugin.source === 'own-site' && plugin.downloadUrl && plugin.category !== 'ai-model') {
       try {
         // label 会拼进临时 zip 文件名，必须用 ASCII（中文路径在终端编码下会下载失败）
@@ -13012,7 +13525,7 @@ function bindEvents() {
     await new Promise(r => setTimeout(r, 800));
     hideInstallModal();
     showToast(plugin.name + ' 安装成功（' + installedTools + ' 个工具）', 'success');
-    // TrieCode 式：装完询问是否立即启用（暂不 → 保持禁用，稍后可在插件列表手动开启）
+    // 基线式：装完询问是否立即启用（暂不 → 保持禁用，稍后可在插件列表手动开启）
     if (hasManifest && plugin.category !== 'ai-model') {
       const enableNow = await showEnablePrompt(plugin);
       if (!enableNow && window.PluginSystem && typeof window.PluginSystem.setActive === 'function') {
@@ -13057,12 +13570,10 @@ function bindEvents() {
       if (!btn) return;
       btn.style.display = (isPluginInstalled(instId) || isPluginInstalled(btnTc)) ? '' : 'none';
     });
-    // Wokwi 模拟器：对齐 ChipCode——可安装/卸载插件，未安装不显示活动栏入口
+    // Wokwi 模拟器：对齐参考基线——可安装/卸载插件，未安装不显示活动栏入口
     const wokwiBtn = document.querySelector('.activity-btn[data-panel="wokwi"]');
     if (wokwiBtn) wokwiBtn.style.display = isPluginInstalled('wokwi-simulator') ? '' : 'none';
-    // Phase D：产品工厂改为内置五阶段视图，不再依赖 ai-hardware-lab 插件（该插件的命令面板入口仍保留）
-    const pfBtn = document.querySelector('.activity-btn[data-panel="product-factory"]');
-    if (pfBtn) pfBtn.style.display = '';
+    // 产品工厂五阶段导航已并入「文件」侧栏，无独立活动栏入口
   }
 
   // ============ 暴露插件 API 给 AI 工具（agent 自主插件管理）============
@@ -13203,7 +13714,7 @@ function bindEvents() {
     saveInstalledPlugins();
   }
 
-  // ============ 活动栏动态插件入口（对齐 TrieCode：安装插件即出现在侧栏）============
+  // ============ 活动栏动态插件入口（对齐参考基线：安装插件即出现在侧栏）============
   // 直接调用模块级全局实现，不依赖任何局部作用域/事件监听器。
   function refreshPluginActivityButtons() {
     try { if (window.__bubaiRenderPluginActivityButtons) window.__bubaiRenderPluginActivityButtons(); } catch (e) {}
@@ -13231,7 +13742,7 @@ function bindEvents() {
     });
   }
 
-  // 立创EDA：对标 TrieCode——编辑器无法内嵌（反嵌入），改做「状态 / 扩展导入向导」面板，而非白屏 iframe
+  // 立创EDA：对标 参考基线——编辑器无法内嵌（反嵌入），改做「状态 / 扩展导入向导」面板，而非白屏 iframe
   function showLcedaPanel() {
     const old = document.getElementById('plugin-view-modal');
     if (old) old.remove();
@@ -13341,7 +13852,7 @@ function bindEvents() {
     setTimeout(checkBlank, 6000);
   }
 
-  // 设备 tab 切换（1:1 对齐 TrieCode）
+  // 设备 tab 切换（1:1 对齐参考基线）
   document.querySelectorAll('.device-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.device-tab').forEach(t => t.classList.remove('active'));
@@ -13478,7 +13989,7 @@ function bindEvents() {
     showToast((MODE_DESC[state.mode] || MODE_DESC.default)[isPanel ? 'panel' : 'plain'], 'info');
     addOutputLog(`切换到 ${state.mode} 模式${isPanel ? '（AI 面板）' : ''}`, 'info');
     syncSafetyModeUI();
-    // 对齐 ChipCode ai:setAgentMode：把选择持久化到 config.agentMode（默认 'default'）。
+    // 对齐参考基线 ai:setAgentMode：把选择持久化到 config.agentMode（默认 'default'）。
     if (window.__persistAgentMode) window.__persistAgentMode(state.mode);
   });
 
@@ -13493,9 +14004,98 @@ function bindEvents() {
       b.classList.toggle('active', b.dataset.mode === activeMode);
     });
     const mEl = document.getElementById('status-mode');
-    if (mEl) mEl.textContent = '模式：' + ({ auto: '自动', default: '默认', plan: '计划' }[activeMode] || '默认');
+    if (mEl) mEl.textContent = ({ auto: '自动', default: '自动', plan: '计划' }[activeMode] || '自动');
+    // 对齐 ChipCode 原品：工具栏模式下拉标签联动
+    const tbLabel = document.getElementById('tb-mode-label');
+    if (tbLabel) tbLabel.textContent = ({ auto: '自动', default: '默认', plan: '计划' }[activeMode] || '自动');
+    const tbEmoji = document.getElementById('tb-mode-emoji');
+    if (tbEmoji) tbEmoji.textContent = ({ auto: '⚡', default: '🛡️', plan: '📋' }[activeMode] || '⚡');
   }
+
+  // 对齐 ChipCode 原品：工具栏「⚡ 模式 ▾」下拉开关（菜单项为 .safety-mode-btn，走上方统一委托切换）
+  // 稳健性：全部走 document 事件委托、每次按 id 现取节点 —— 工具栏区被异步重渲染也不会失效或状态漂移。
+  (function initToolbarMode() {
+    if (window.__tbModeBound) return;   // 幂等：避免重复注册造成一次点击 toggle 两次
+    window.__tbModeBound = true;
+    const getBtn = () => document.getElementById('tb-mode-btn');
+    const getMenu = () => document.getElementById('tb-mode-menu');
+    const isOpen = () => { const m = getMenu(); return !!m && m.style.display !== 'none'; };
+    const setOpen = (open) => { const m = getMenu(); if (m) m.style.display = open ? 'block' : 'none'; };
+
+    // 打开/关闭按钮 + 选中菜单项后立即关闭（菜单项的模式切换仍由上方 13707 委托完成）
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#tb-mode-btn')) { e.stopPropagation(); setOpen(!isOpen()); return; }
+      if (t.closest('#tb-mode-menu')) { setOpen(false); return; }
+    });
+    // 点击外部关闭：pointerdown 捕获阶段，不与页面其它 click 阶段逻辑互相干扰
+    document.addEventListener('pointerdown', (e) => {
+      if (!isOpen()) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#tb-mode-btn') || t.closest('#tb-mode-menu')) return;
+      setOpen(false);
+    }, true);
+  })();
   // 注意：.safety-mode-btn 的点击已并入上方 document 事件委托
+
+  // 对齐 ChipCode 原品：工具栏「思考强度」下拉（复用 thinkingManager 四档，选择持久化到 config.ai.thinkingLevel）
+  (function initToolbarThinking() {
+    if (window.__tbThinkBound) return;
+    window.__tbThinkBound = true;
+    const getBtn = () => document.getElementById('tb-think-btn');
+    const getMenu = () => document.getElementById('tb-think-menu');
+    const isOpen = () => { const m = getMenu(); return !!m && m.style.display !== 'none'; };
+    const setOpen = (open) => { const m = getMenu(); if (m) m.style.display = open ? 'block' : 'none'; };
+    const NAMES = { fast: '快速思考', light: '轻度思考', standard: '标准思考', deep: '深度思考' };
+
+    function syncTitle(level) {
+      const b = getBtn();
+      if (b) b.title = '思考强度：' + (NAMES[level] || NAMES.standard);
+      const s = document.getElementById('status-think');
+      if (s) s.textContent = '思考强度：' + (NAMES[level] || NAMES.standard);
+      const m = getMenu();
+      if (m) m.querySelectorAll('.tb-think-item').forEach(it => {
+        it.style.fontWeight = it.dataset.level === level ? '700' : '';
+      });
+    }
+
+    // 启动时从 config 恢复
+    try {
+      if (window.BubaiCode && window.BubaiCode.config) {
+        window.BubaiCode.config.get().then(cfg => {
+          const lv = cfg && cfg.ai && cfg.ai.thinkingLevel;
+          if (lv && THINKING_LEVELS[lv]) { thinkingManager.setLevel(lv); syncTitle(lv); }
+        }).catch(() => {});
+      }
+    } catch (e) { /* 配置不可用时保持默认标准 */ }
+
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#tb-think-btn')) { e.stopPropagation(); setOpen(!isOpen()); return; }
+      const item = t.closest('#tb-think-menu .tb-think-item');
+      if (item) {
+        const lv = item.dataset.level;
+        if (THINKING_LEVELS[lv]) {
+          thinkingManager.setLevel(lv);
+          syncTitle(lv);
+          try { if (window.BubaiCode && window.BubaiCode.config) window.BubaiCode.config.set('ai.thinkingLevel', lv); } catch (e2) {}
+          if (typeof showToast === 'function') showToast('思考强度：' + (NAMES[lv] || lv), 'info');
+        }
+        setOpen(false);
+        return;
+      }
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!isOpen()) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#tb-think-btn') || t.closest('#tb-think-menu')) return;
+      setOpen(false);
+    }, true);
+  })();
 
   syncSafetyModeUI();
 
@@ -13504,13 +14104,13 @@ function bindEvents() {
   aiInput.addEventListener('input', () => {
     aiInput.style.height = 'auto';
     aiInput.style.height = Math.min(aiInput.scrollHeight, 120) + 'px';
-    // 对齐 TrieCode：空态灰色发送按钮，有内容变蓝
+    // 对齐参考基线：空态灰色发送按钮，有内容变蓝
     const sendBtn = document.getElementById('ai-send-btn');
     if (sendBtn) sendBtn.classList.toggle('active', aiInput.value.trim().length > 0);
   });
   document.getElementById('ai-send-btn').addEventListener('click', handleAISend);
 
-  // 1:1 对齐 TrieCode：快捷按钮点击
+  // 1:1 对齐参考基线：快捷按钮点击
   document.querySelectorAll('.ai-quick-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const text = btn.querySelector('.ai-quick-text').textContent;
@@ -13519,7 +14119,7 @@ function bindEvents() {
     });
   });
 
-  // ===== 会话历史持久化（对齐 TrieCode 历史会话）=====
+  // ===== 会话历史持久化（对齐参考基线 历史会话）=====
   // ===== Phase B：会话保存统一走 window.SessionStore（磁盘权威 + 同步内存镜像，单一写者）=====
   function saveCurrentSessionToHistory() {
     // Phase B+：会话级收敛点（新对话 / 打开历史面板都经过），排队自动提炼记忆
@@ -13558,10 +14158,9 @@ function bindEvents() {
         // 对齐发送消息逻辑：欢迎页隐藏前把输入框/项目栏移回面板底部（否则输入框随欢迎页一起消失）
         const panel = document.getElementById('ai-panel');
         const inputContainer = document.getElementById('ai-input-container');
-        const projectBar = document.getElementById('ai-project-bar');
+        // 项目栏已并入输入卡外框（对齐 ChipCode）；置于免表声明行之前
         if (panel && inputContainer && inputContainer.parentNode === welcome) {
-          panel.appendChild(inputContainer);
-          panel.appendChild(projectBar);
+          panel.insertBefore(inputContainer, panel.querySelector('.ai-disclaimer'));
         }
         welcome.style.display = 'none';
       }
@@ -13716,7 +14315,7 @@ function bindEvents() {
   function resetChat() {
     // 先保存当前会话到历史（避免丢失），再清空
     saveCurrentSessionToHistory();
-    // 1:1 对齐 TrieCode：清空消息但保留欢迎页容器
+    // 1:1 对齐参考基线：清空消息但保留欢迎页容器
     const area = document.getElementById('ai-chat-area');
     Array.from(area.children).forEach(function(child) {
       if (child.id !== 'ai-welcome') child.remove();
@@ -13734,12 +14333,11 @@ function bindEvents() {
       welcome.style.display = 'flex';
       // 把输入框和项目栏移回欢迎组件（整体居中）
       const inputContainer = document.getElementById('ai-input-container');
-      const projectBar = document.getElementById('ai-project-bar');
+      // 项目栏已并入输入卡外框（对齐 ChipCode）
       if (inputContainer && inputContainer.parentNode !== welcome) {
         welcome.appendChild(inputContainer);
-        welcome.appendChild(projectBar);
       }
-      // 对齐 ChipCode：快捷建议保持在最末（输入框/项目栏之后）并刷新最近会话列表
+      // 对齐参考基线：快捷建议保持在最末（输入框/项目栏之后）并刷新最近会话列表
       const quickActions = welcome.querySelector('.ai-quick-actions');
       if (quickActions) welcome.appendChild(quickActions);
       if (typeof window.renderWelcomeHistory === 'function') window.renderWelcomeHistory('');
@@ -13757,11 +14355,11 @@ function bindEvents() {
     if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
     showToast('已开始新对话', 'info');
   }
-  // 新对话按钮绑定（对齐 TrieCode：点击后回到欢迎页）
+  // 新对话按钮绑定（对齐参考基线：点击后回到欢迎页）
   const newChatBtn = document.getElementById('ai-new-chat-btn');
   if (newChatBtn) newChatBtn.addEventListener('click', resetChat);
 
-  // AI 头部：撤销上一轮（含文件回滚）/ 重做 / 历史会话 —— 对齐 TrieCode 会话管理
+  // AI 头部：撤销上一轮（含文件回滚）/ 重做 / 历史会话 —— 对齐参考基线 会话管理
   const aiUndoBtn = document.getElementById('ai-undo-btn');
   if (aiUndoBtn) aiUndoBtn.addEventListener('click', () => undoLastAgentTurn());
   const aiRedoBtn = document.getElementById('ai-redo-btn');
@@ -13802,7 +14400,124 @@ function bindEvents() {
   const aiHistoryBtn = document.getElementById('ai-history-btn');
   if (aiHistoryBtn) aiHistoryBtn.addEventListener('click', openHistoryPanel);
 
-  // ===== 对齐 ChipCode：欢迎页顶部常驻历史搜索 + 最近会话（复用同一存储 bubaicode.chatSessions）=====
+  // ===== 对齐参考基线：在当前对话中查找（Ctrl+F） =====
+  const aiFindBtn = document.getElementById('ai-find-btn');
+  if (aiFindBtn) aiFindBtn.addEventListener('click', toggleFindBar);
+  function toggleFindBar() {
+    let bar = document.getElementById('ai-find-bar');
+    const area = document.getElementById('ai-chat-area');
+    if (bar) { bar.remove(); clearFindMarks(); return; }
+    if (!area) return;
+    bar = document.createElement('div');
+    bar.id = 'ai-find-bar';
+    bar.style.cssText = 'position:fixed;top:54px;right:18px;z-index:60;background:var(--surface-1);border:1px solid var(--border-color);border-radius:8px;padding:6px 8px;display:flex;gap:6px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.35);';
+    bar.innerHTML = '<input id="ai-find-input" placeholder="查找当前对话…" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px;width:170px;outline:none;" />' +
+      '<span id="ai-find-count" style="font-size:11px;color:var(--text-secondary);min-width:34px;text-align:center;"></span>' +
+      '<button id="ai-find-prev" title="上一个" style="background:var(--surface-3);border:1px solid var(--border-color);color:var(--text);border-radius:5px;width:24px;height:24px;cursor:pointer;">↑</button>' +
+      '<button id="ai-find-next" title="下一个" style="background:var(--surface-3);border:1px solid var(--border-color);color:var(--text);border-radius:5px;width:24px;height:24px;cursor:pointer;">↓</button>' +
+      '<button id="ai-find-close" title="关闭" style="background:transparent;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer;line-height:1;">×</button>';
+    document.body.appendChild(bar);
+    const input = bar.querySelector('#ai-find-input');
+    const count = bar.querySelector('#ai-find-count');
+    let marks = [];
+    let cur = -1;
+    function clearFindMarks() {
+      if (!area) return;
+      area.querySelectorAll('mark.ai-find-mark').forEach(m => {
+        const t = document.createTextNode(m.textContent);
+        m.parentNode.replaceChild(t, m);
+        m.parentNode.normalize();
+      });
+    }
+    function doFind() {
+      clearFindMarks();
+      marks = []; cur = -1;
+      const kw = input.value.trim();
+      if (!kw) { count.textContent = ''; return; }
+      const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          const p = n.parentNode;
+          if (p && (p.tagName === 'INPUT' || p.tagName === 'TEXTAREA' || p.tagName === 'SCRIPT' || p.tagName === 'STYLE')) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      const targets = [];
+      let nd; while ((nd = walker.nextNode())) targets.push(nd);
+      targets.forEach(node => {
+        let rem = node.nodeValue;
+        const frag = document.createDocumentFragment();
+        let i;
+        while ((i = rem.toLowerCase().indexOf(kw.toLowerCase())) >= 0) {
+          if (i > 0) frag.appendChild(document.createTextNode(rem.slice(0, i)));
+          const mark = document.createElement('mark');
+          mark.className = 'ai-find-mark';
+          mark.style.cssText = 'background:#ffd54a;color:#1a1a1a;border-radius:2px;';
+          mark.textContent = rem.slice(i, i + kw.length);
+          frag.appendChild(mark);
+          rem = rem.slice(i + kw.length);
+        }
+        if (rem) frag.appendChild(document.createTextNode(rem));
+        node.parentNode.replaceChild(frag, node);
+      });
+      marks = Array.from(area.querySelectorAll('mark.ai-find-mark'));
+      if (marks.length) {
+        cur = 0;
+        marks[0].scrollIntoView({ block: 'center' });
+        marks[0].style.outline = '2px solid #f59e0b';
+        count.textContent = '1/' + marks.length;
+      } else {
+        count.textContent = '0';
+      }
+    }
+    function jump(d) {
+      if (!marks.length) return;
+      if (marks[cur]) marks[cur].style.outline = 'none';
+      cur = (cur + d + marks.length) % marks.length;
+      marks[cur].scrollIntoView({ block: 'center' });
+      marks[cur].style.outline = '2px solid #f59e0b';
+      count.textContent = (cur + 1) + '/' + marks.length;
+    }
+    input.addEventListener('input', doFind);
+    bar.querySelector('#ai-find-next').addEventListener('click', () => jump(1));
+    bar.querySelector('#ai-find-prev').addEventListener('click', () => jump(-1));
+    bar.querySelector('#ai-find-close').addEventListener('click', () => { bar.remove(); clearFindMarks(); });
+    input.focus();
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { bar.remove(); clearFindMarks(); document.removeEventListener('keydown', esc); } });
+  }
+
+  // ===== 对齐参考基线：优化提示词（使用当前模型；本地预处理 + 可选接模型） =====
+  const aiOptimizeBtn = document.getElementById('ai-optimize-btn');
+  if (aiOptimizeBtn) aiOptimizeBtn.addEventListener('click', optimizeCurrentPrompt);
+  async function optimizeCurrentPrompt() {
+    const input = document.getElementById('ai-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) { showToast('请先在输入框输入要优化的提示词', 'info'); return; }
+    try {
+      if (typeof window.optimizePromptWithModel === 'function') {
+        const out = await window.optimizePromptWithModel(text);
+        if (out) { input.value = out; input.dispatchEvent(new Event('input')); showToast('已用模型优化提示词', 'success'); return; }
+      }
+    } catch (e) { /* 落到本地优化 */ }
+    const cleaned = text.replace(/[ \t]{2,}/g, ' ').replace(/\s*\n\s*\n\s*/g, '\n\n').replace(/[ \t]+$/gm, '').trim();
+    input.value = cleaned;
+    input.dispatchEvent(new Event('input'));
+    showToast('已本地预处理提示词', 'info');
+  }
+
+  // ===== 对齐参考基线：优化提示词——接入真实模型（优先 qwen3-8b / 硅基流动等当前模型）=====
+  window.optimizePromptWithModel = async function (text) {
+    try {
+      if (!window.BubaiCode || !window.BubaiCode.ai || typeof window.BubaiCode.ai.chat !== 'function') return null;
+      const sys = '你是一个提示词优化专家。请将用户的原始提示词优化为更清晰、具体、可执行的版本，保留原意与语言，只返回优化后的提示词本身（不要任何解释、不要 ``` 代码块标记、不要前后多余文字）。';
+      const r = await window.BubaiCode.ai.chat({ messages: [{ role: 'system', content: sys }, { role: 'user', content: text }], temperature: 0.3, maxTokens: 2048 });
+      if (r && r.success && r.content) return String(r.content).trim();
+      return null;
+    } catch (e) { return null; }
+  };
+
+  // ===== 对齐参考基线：欢迎页顶部常驻历史搜索 + 最近会话（复用同一存储 bubaicode.chatSessions）=====
   function renderWelcomeHistory(q) {
     try {
       const listEl = document.getElementById('welcome-history-list');
@@ -13856,24 +14571,143 @@ function bindEvents() {
       renderWelcomeHistory(whs ? whs.value : '');
     });
   }
-  // pill：写代码 → 聚焦输入框；做产品 → 打开产品工厂
+  // 对齐参考基线：欢迎语与建议卡片每次启动随机（原品行为：欢迎语池随机取 1，卡片池 5 张随机出 4 张并乱序）
+  (function alignWelcomeRandom(){
+    try {
+      var greetings = ['你说，我来做。', '随时可以开始。', '今天想聊些什么？', '来一场头脑风暴吧！', '今天有什么安排？', '我们要一起做些什么？', '我们从哪里开始？', '工作辛苦了。'];
+      var t = document.getElementById('ai-welcome-title');
+      if (t) t.textContent = greetings[Math.floor(Math.random() * greetings.length)];
+      var box = document.querySelector('.ai-quick-actions');
+      if (box) {
+        var cards = Array.prototype.slice.call(box.querySelectorAll('.ai-quick-btn'));
+        for (var i = cards.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var tmp = cards[i]; cards[i] = cards[j]; cards[j] = tmp;
+        }
+        cards.forEach(function (c, idx) {
+          box.appendChild(c);
+          c.style.display = idx < 4 ? '' : 'none';
+        });
+      }
+      // 对齐参考基线：示波器时基在 2.5ms / 2 Sec 间随机（原品两种均出现过）
+      var scopeTags = document.querySelectorAll('.sim-tag');
+      if (scopeTags.length >= 2) {
+        scopeTags[1].textContent = Math.random() < 0.7 ? '2.5ms' : '2 Sec';
+      }
+    } catch (e) { /* 随机化失败不影响主流程 */ }
+  })();
+  // ===== 智能体面板（对齐参考基线「后台智能体」：最近完成的智能体任务列表）=====
+  function escAgents(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  // 对齐 ChipCode 原品：近期用「N分钟前/N小时前」相对时间，较早用「项目名 · MM/DD HH:mm」
+  function agentsMetaText(s) {
+    const pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    const ts = s.updatedAt || s.ts || Date.now();
+    const diff = Date.now() - ts;
+    if (diff >= 0 && diff < 24 * 3600 * 1000) {
+      if (diff < 3600 * 1000) return Math.max(1, Math.floor(diff / 60000)) + '分钟前';
+      return Math.floor(diff / 3600000) + '小时前';
+    }
+    const proj = s.projectPath ? String(s.projectPath).split(/[\\/]/).pop() : '';
+    const d = new Date(ts);
+    const when = pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    return proj ? proj + ' · ' + when : when;
+  }
+  function renderAgentsPanel() {
+    const listEl = document.getElementById('agents-list');
+    const countEl = document.getElementById('agents-count');
+    if (!listEl) return;
+    let list = [];
+    try { list = (window.SessionStore ? window.SessionStore.all() : []).slice(); } catch (e) { list = []; }
+    list.sort(function (a, b) { return (b.updatedAt || b.ts || 0) - (a.updatedAt || a.ts || 0); });
+    if (countEl) countEl.textContent = String(list.length);
+    if (!list.length) {
+      listEl.innerHTML = '<div class="agents-empty">暂无已完成的智能体任务</div>';
+      return;
+    }
+    listEl.innerHTML = list.slice(0, 30).map(function (s) {
+      const msgs = (s.messages || []);
+      const firstUser = msgs.map(function (m) { return m && m.content ? String(m.content) : ''; }).find(function (c) { return c.trim(); });
+      const title = s.title || firstUser || '未命名任务';
+      return '<div class="agents-row agents-row--removable" data-session-id="' + escAgents(s.id || '') + '" data-run-id="">' +
+        '<button type="button" class="agents-row__button" title="' + escAgents(String(title).slice(0, 80)) + '">' +
+          '<span class="agents-row__dot agents-row__dot--neutral"></span>' +
+          '<span class="agents-row__content">' +
+            '<span class="agents-row__title">' + escAgents(String(title).slice(0, 80)) + '</span>' +
+            '<span class="agents-row__meta">' + escAgents(agentsMetaText(s)) + '</span>' +
+            '<span class="agents-row__detail">' + msgs.length + ' 条消息</span>' +
+          '</span>' +
+          '<span class="ui-badge ui-badge--neutral ui-badge--dot agents-row__badge">已保存</span>' +
+        '</button>' +
+        '<button type="button" class="agents-row__remove" title="移除" aria-label="移除"><svg class="icon"><use href="#icon-x"></use></svg></button>' +
+      '</div>';
+    }).join('');
+    listEl.querySelectorAll('.agents-row__button').forEach(function (el) {
+      el.addEventListener('click', function () {
+        const id = el.parentElement.getAttribute('data-session-id');
+        if (id && typeof loadSession === 'function') { try { loadSession(id); } catch (e) {} }
+      });
+    });
+    listEl.querySelectorAll('.agents-row__remove').forEach(function (el) {
+      el.addEventListener('click', function () {
+        const id = el.parentElement.getAttribute('data-session-id');
+        if (id && window.SessionStore) { try { window.SessionStore.remove(id); } catch (e) {} }
+        renderAgentsPanel();
+      });
+    });
+  }
+  window.BubaiCodeUI = window.BubaiCodeUI || {};
+  window.BubaiCodeUI.renderAgentsPanel = renderAgentsPanel;
+  // 智能体面板头部/底部动作（对齐 ChipCode：后台任务 / 刷新 / 定时任务设置）
+  (function wireAgentsPanelActions() {
+    const newBtn = document.getElementById('agents-new-task-btn');
+    if (newBtn) newBtn.addEventListener('click', function () {
+      const input = document.getElementById('ai-input');
+      if (input) { try { input.focus(); } catch (e) {} }
+    });
+    const refreshBtn = document.getElementById('agents-refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', function () { renderAgentsPanel(); });
+    const footBtn = document.getElementById('agents-footer-settings');
+    if (footBtn) footBtn.addEventListener('click', function () {
+      try {
+        if (typeof openSettingsModal === 'function') openSettingsModal();
+        setTimeout(function () {
+          const nav = document.querySelector('.settings-nav-item[data-target="panel-schedule"]');
+          if (nav) nav.click();
+        }, 0);
+      } catch (e) { if (window.showToast) showToast('定时任务设置暂不可用', 'info'); }
+    });
+  })();
+  // pill：写代码 → 聚焦输入框；做产品 → 打开产品工厂（对齐 ChipCode：分段控件高亮当前模式）
+  function setWelcomeMode(activeId) {
+    const codes = document.getElementById('welcome-pill-code');
+    const product = document.getElementById('welcome-pill-product');
+    if (codes) codes.classList.toggle('is-active', activeId === 'code');
+    if (product) product.classList.toggle('is-active', activeId === 'product');
+  }
   const welcomePillCode = document.getElementById('welcome-pill-code');
   if (welcomePillCode) welcomePillCode.addEventListener('click', function(){
+    setWelcomeMode('code');
     const input = document.getElementById('ai-input');
     if (input) { input.focus(); }
   });
   const welcomePillProduct = document.getElementById('welcome-pill-product');
   if (welcomePillProduct) welcomePillProduct.addEventListener('click', function(){
-    // Phase D：产品工厂已内置，不再要求安装 ai-hardware-lab 插件
-    const pfBtn = document.querySelector('.activity-btn[data-panel="product-factory"]');
-    if (!pfBtn) { showToast('产品工厂入口不可用', 'warning'); return; }
-    pfBtn.click();
+    setWelcomeMode('product');
+    // 产品工厂已并入「文件」侧栏：「做产品」直接走新建产品项目
+    if (window.ProductFactory && typeof window.ProductFactory.createProject === 'function') {
+      window.ProductFactory.createProject();
+    } else {
+      const di = document.querySelector('.dropdown-item[data-action="new-product-project"]');
+      if (di) di.click();
+    }
   });
 
   // 上下文占用环：初始渲染 + 模型切换跟随（占用环显示当前模型窗口用量）
   if (typeof scheduleCtxRing === 'function') scheduleCtxRing();
 
-  // ===== 语音输入 STT（对齐 TrieCode ai:transcribe：录音→16kHz WAV→主进程转写→文字进输入框）=====
+  // ===== 语音输入 STT（对齐参考基线 ai:transcribe：录音→16kHz WAV→主进程转写→文字进输入框）=====
   window.__sttState = { recording: false, stream: null, ctx: null, proc: null, chunks: [], startedAt: 0 };
   function sttResampleTo16k(f32, fromRate) {
     if (!f32 || !f32.length || fromRate === 16000) return f32 || new Float32Array(0);
@@ -14090,6 +14924,17 @@ function bindEvents() {
     });
   });
 
+  // 对齐 ChipCode：侧栏项目行「保存」图标（真实写盘：复用编辑器保存按钮逻辑）
+  const projSaveBtn = document.getElementById('proj-save-btn');
+  if (projSaveBtn) projSaveBtn.addEventListener('click', () => {
+    const saveBtn = document.getElementById('editor-save-btn');
+    if (saveBtn) saveBtn.click();
+    else if (typeof saveCurrentFile === 'function') saveCurrentFile();
+  });
+  // 对齐 ChipCode：侧栏项目行 × 关闭项目
+  const projCloseBtn = document.getElementById('proj-close-btn');
+  if (projCloseBtn) projCloseBtn.addEventListener('click', () => { if (typeof closeProject === 'function') closeProject(); });
+
   // 欢迎面板按钮（已移至下方统一处理）
   const welcomeOpenProject = document.getElementById('welcome-open-project');
   if (welcomeOpenProject) {
@@ -14114,7 +14959,7 @@ function bindEvents() {
   }
 
   // ============ 新建项目弹窗绑定 ============
-  // 类型列表选择（TrieCode 风格左侧列表）
+  // 类型列表选择（参考基线 风格左侧列表）
   document.querySelectorAll('#project-type-list .project-type-item').forEach(item => {
     item.addEventListener('click', () => {
       document.querySelectorAll('#project-type-list .project-type-item').forEach(i => i.classList.remove('active'));
@@ -14182,7 +15027,7 @@ function bindEvents() {
       updateProjectPreview(getSelectedProjectType());
     });
   }
-  // 项目类型搜索过滤（对齐 TrieCode「搜索项目类型…」）
+  // 项目类型搜索过滤（对齐参考基线「搜索项目类型…」）
   const npSearch = document.getElementById('project-type-search');
   if (npSearch) {
     npSearch.addEventListener('input', () => {
@@ -14214,7 +15059,8 @@ function bindEvents() {
           'web-game': '帮我写一个网页小游戏',
           'ide-intro': '介绍一下这个 IDE 能帮我做什么',
           'todo-tool': '帮我写一个待办清单小工具',
-          'python-project': '帮我创建一个 Python 项目，画个太阳系'
+          'python-project': '帮我创建一个 Python 项目，画个太阳系',
+          'arduino-led': '帮我点亮一块开发板上的 LED（Arduino）'
         };
         aiInput.value = actionMap[action] || btn.textContent.trim();
         aiInput.focus();
@@ -14320,7 +15166,7 @@ function bindEvents() {
               } catch (e) {}
             }
             document.getElementById('current-model-name').textContent = friendly + ' (本地)';
-            // 同步欢迎页模型状态显示（对齐 TrieCode 欢迎区）
+            // 同步欢迎页模型状态显示（对齐参考基线 欢迎区）
             const ws = document.querySelector('.model-status-text');
             if (ws) ws.textContent = `当前模型：${friendly} (本地)`;
             // 高亮下拉里对应的本机模型条目（本地模型条目是动态生成的，此处按文件名匹配）
@@ -14569,11 +15415,10 @@ function bindEvents() {
     document.querySelectorAll('.model-option').forEach(option => {
       option.addEventListener('click', async () => {
         const modelKey = option.dataset.model;
-        // 「安装 / 配置 AI…」→ 跳到 AI 能力安装口（内置云端 / 自带 Key / 本地模型都在那）
-        if (modelKey === '__ai_hub__') {
+        // 「安装 / 配置 AI…」「⬇ 下载本地模型」→ 打开 AI 模型视图（模型卡片 / 安装 / 导入 .gguf）
+        if (modelKey === '__ai_hub__' || modelKey === '__download_local__') {
           modelDropdown.style.display = 'none';
-          const hubBtn = document.querySelector('.activity-btn[data-panel="models"]');
-          if (hubBtn) hubBtn.click();
+          openAiModelsView();
           return;
         }
         const mapping = MODEL_MAP[modelKey];
@@ -14819,8 +15664,7 @@ function bindEvents() {
         hint.addEventListener('click', (e) => {
           if (e.target.closest('.model-info-btn')) return;   // 点 ⓘ 只开说明，不跳转
           modelDropdown.style.display = 'none';
-          const btn = document.querySelector('.activity-btn[data-panel="models"]');
-          if (btn) btn.click();
+          openAiModelsView();
         });
         group.appendChild(hint);
       }
@@ -14828,7 +15672,9 @@ function bindEvents() {
       // 插在下拉最前面（本地模型是用户自己装的东西，排最前最直观）
       dropdown.insertBefore(group, dropdown.firstChild);
 
-      // 「＋ 添加模型」入口保持在末尾，供下载本地模型
+      // 「⬇ 下载本地模型」「＋ 添加模型」入口保持在末尾（本地模型组总是插到最前，需重新 append 两个入口）
+      const dlEntry = document.getElementById('model-download-entry');
+      if (dlEntry) dropdown.appendChild(dlEntry);
       const addEntry = document.getElementById('model-add-entry');
       if (addEntry) dropdown.appendChild(addEntry);
 
@@ -14874,7 +15720,7 @@ function bindEvents() {
   function stopDeviceRefresh() {
     if (deviceRefreshTimer) { clearInterval(deviceRefreshTimer); deviceRefreshTimer = null; }
   }
-  // ============ Wokwi 模拟器面板（对标 TrieCode：状态/设置，检测 wokwi-cli）============
+  // ============ Wokwi 模拟器面板（对标 参考基线：状态/设置，检测 wokwi-cli）============
   function initWokwiPanel() {
     const panel = document.getElementById('wokwi-panel');
     if (!panel || panel.dataset.bound) return;
@@ -14921,7 +15767,7 @@ function bindEvents() {
     setTimeout(() => { if (!done) finish(false); }, 6500);
   }
 
-  // ============ ESP-IDF 工具链视图（对标 TrieCode：设备/目标与工具链/配置）============
+  // ============ ESP-IDF 工具链视图（对标 参考基线：设备/目标与工具链/配置）============
   // Arduino 视图: 设备/平台管理/库管理/设置；ESP-IDF 视图: 设备/目标与工具链/配置/设置
   function applyToolchainView(tc) {
     const isEsp = tc === 'esp-idf-toolchain';
@@ -14998,7 +15844,7 @@ function bindEvents() {
     }, 5000);
   }
 
-  // ============ 设备面板真实数据（对齐 TrieCode）============
+  // ============ 设备面板真实数据（对齐参考基线）============
   async function initDevicePanel() {
     // ESP-IDF / Arduino 工具链视图初始化（早于 compile 依赖的早退分支，保证视图总能就位）
     bindEspIdfControls();
@@ -15053,7 +15899,7 @@ function bindEvents() {
       return;
     }
     await Promise.all([refreshBoards(), refreshPorts(), refreshCores()]);
-    // 设备面板对齐 ChipCode board:attach：重新打开工程时恢复上次选择的板卡/端口
+    // 设备面板对齐参考基线 board:attach：重新打开工程时恢复上次选择的板卡/端口
     try {
       if (state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.load) {
         const saved = await window.BubaiCode.board.load({ projectPath: state.projectPath });
@@ -15307,7 +16153,7 @@ function bindEvents() {
   if (boardSel) boardSel.addEventListener('change', () => {
     state.compileFqbn = boardSel.value || 'esp32:esp32:esp32c3';
     state.arduinoFqbn = boardSel.value;
-    // 对齐 ChipCode board:attach：选好板卡即持久化到项目配置
+    // 对齐参考基线 board:attach：选好板卡即持久化到项目配置
     if (boardSel.value && state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.attach) {
       window.BubaiCode.board.attach({ projectPath: state.projectPath, fqbn: boardSel.value }).catch(() => {});
     }
@@ -15317,7 +16163,7 @@ function bindEvents() {
   if (portSel) portSel.addEventListener('change', () => {
     state.compilePort = portSel.value;
     state.arduinoPort = portSel.value;
-    // 对齐 ChipCode board:attach：选好端口即持久化到项目配置
+    // 对齐参考基线 board:attach：选好端口即持久化到项目配置
     if (portSel.value && state.projectPath && window.BubaiCode && window.BubaiCode.board && window.BubaiCode.board.attach) {
       window.BubaiCode.board.attach({ projectPath: state.projectPath, port: portSel.value }).catch(() => {});
     }
@@ -15760,6 +16606,35 @@ function bindEvents() {
       }
     }
     drawPlotter();
+    // ===== 对齐参考基线：状态栏 CH1 显示示波器首个通道实时电压 + 真实采样间隔（数据源 = 串口绘图仪实时采样）=====
+    try {
+      if (plotterChannels.length) {
+        const ch0 = plotterChannels[0];
+        const arr = plotterSeries[ch0] || [];
+        if (arr.length) {
+          const v = arr[arr.length - 1];
+          const el = document.getElementById('status-scope');
+          if (el) {
+            const absv = Math.abs(v);
+            const disp = absv >= 1 ? v.toFixed(2) : (v * 1000).toFixed(0);
+            const unit = absv >= 1 ? 'V' : 'mV';
+            // 真实采样间隔：测量相邻两次绘图仪数据到达的时间差，低通平滑（避免抖动）
+            const now = Date.now();
+            const last = window.__lastPlotterFeedTs || 0;
+            if (last && now > last) {
+              const dt = now - last;
+              if (dt > 0 && dt < 60000) {
+                window.__sampleIntervalMs = window.__sampleIntervalMs ? (window.__sampleIntervalMs * 0.8 + dt * 0.2) : dt;
+              }
+            }
+            window.__lastPlotterFeedTs = now;
+            const tbase = window.__sampleIntervalMs ? (Math.round(window.__sampleIntervalMs) + 'ms') : '2.5ms';
+            el.textContent = 'CH1 ' + disp + unit + ' ' + tbase;
+            el.title = '示波器 CH1 · 实时电压来自串口绘图仪「' + ch0 + '」通道 · 时基 ' + tbase + '（真实采样间隔）';
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   // 串口数据同时喂给绘图仪
@@ -15770,6 +16645,8 @@ function bindEvents() {
     plotterClearBtn.addEventListener('click', () => {
       plotterSeries = {};
       plotterChannels = [];
+      window.__lastPlotterFeedTs = 0;
+      window.__sampleIntervalMs = 0;
       drawPlotter();
     });
   }
@@ -16193,7 +17070,7 @@ function bindEvents() {
     });
   }
 
-  // ===== Git 进行中操作横幅（1:1 仿写 ChipCode detectPendingOp/finishOp + git.panel.pendingOp.*） =====
+  // ===== Git 进行中操作横幅（1:1 仿写 参考基线 detectPendingOp/finishOp + git.panel.pendingOp.*） =====
   async function renderGitPendingOp(cwd) {
     const box = document.getElementById('git-pending');
     if (!box) return;
@@ -16231,7 +17108,7 @@ function bindEvents() {
     if (op.abortLabel) mk(op.abortLabel, 'abort', 'warn');
   }
 
-  // ===== 合并冲突区块（1:1 仿写 ChipCode git.conflict.*：列出冲突文件 + 逐文件 AI 合并） =====
+  // ===== 合并冲突区块（1:1 仿写 参考基线 git.conflict.*：列出冲突文件 + 逐文件 AI 合并） =====
   async function renderGitConflicts(cwd) {
     const box = document.getElementById('git-conflicts');
     const list = document.getElementById('git-conflicts-list');
@@ -16272,7 +17149,7 @@ function bindEvents() {
     });
   }
 
-  // ===== 仓库 Issues 列表（1:1 仿写 ChipCode git:issues:list：列出上游仓库 open issues；需 git 凭据 PAT） =====
+  // ===== 仓库 Issues 列表（1:1 仿写 参考基线 git:issues:list：列出上游仓库 open issues；需 git 凭据 PAT） =====
   async function renderGitIssues(cwd) {
     const box = document.getElementById('git-issues');
     const list = document.getElementById('git-issues-list');
@@ -16328,6 +17205,24 @@ function bindEvents() {
   }
 
   // ===== Git 面板 =====
+  // 状态栏分支段（对齐 ChipCode：master •N，N=未提交变更数；非仓库时隐藏）
+  async function updateStatusBranch() {
+    try {
+      const el = document.getElementById('status-branch');
+      if (!el) return;
+      const cwd = state.projectPath;
+      if (!cwd || !window.BubaiCode || !window.BubaiCode.git) { el.style.display = 'none'; return; }
+      const r = await window.BubaiCode.git.status(cwd);
+      if (r && r.success && r.branch) {
+        const short = String(r.branch).replace(/^No commits yet on /, '');
+        el.textContent = short + (Array.isArray(r.files) && r.files.length ? ' •' + r.files.length : '');
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    } catch (e) { /* 非 git 目录静默 */ }
+  }
+  window.__updateStatusBranch = updateStatusBranch;
   async function refreshGitStatus() {
     const cwd = state.projectPath;
     const statusEl = document.getElementById('git-status');
@@ -16357,8 +17252,9 @@ function bindEvents() {
     renderGitIssues(cwd);
     if (typeof window.renderGitRemoteStatus === 'function') window.renderGitRemoteStatus(cwd);
     const r = await window.BubaiCode.git.status(cwd);
+    try { updateStatusBranch(); } catch (e) {}
     if (!r.success) {
-      // TrieCode 式空态：不是仓库时给「在此初始化仓库」真实入口
+      // 基线式空态：不是仓库时给「在此初始化仓库」真实入口
       if (statusEl) statusEl.textContent = '不是 git 仓库';
       if (filesEl) {
         filesEl.innerHTML = '<div style="padding:10px 8px;"><button id="git-init-btn" class="btn btn-secondary btn-sm" style="width:100%;">在此初始化仓库</button></div>';
@@ -16374,11 +17270,11 @@ function bindEvents() {
       return;
     }
 
-    // 远程关联状态（对齐 TrieCode：无 origin 时面板内显示关联引导区）
+    // 远程关联状态（对齐参考基线：无 origin 时面板内显示关联引导区）
     let remoteUrl = null;
     try { const rr = await window.BubaiCode.git.remoteUrl(cwd); if (rr && rr.success) remoteUrl = rr.url; } catch (e) {}
 
-    // 分支选择器（分支数≤1 时隐藏——对齐 TrieCode：单分支不显示切换器）
+    // 分支选择器（分支数≤1 时隐藏——对齐参考基线：单分支不显示切换器）
     let branchHtml = '';
     try {
       const br = await window.BubaiCode.git.branches(cwd);
@@ -16390,7 +17286,7 @@ function bindEvents() {
       }
     } catch (e) {}
 
-    // TrieCode 式分支行：⎇ master + 未提交计数徽章 + 领先/落后（无提交时去掉 git 原生长前缀）
+    // 基线式分支行：⎇ master + 未提交计数徽章 + 领先/落后（无提交时去掉 git 原生长前缀）
     const shortBranch = String(r.branch || '').replace(/^No commits yet on /, '');
     if (statusEl) statusEl.innerHTML = '<span style="font-size:12px;">⎇ <b>' + escapeHtml(shortBranch) + '</b></span>' +
       (r.files.length ? ' <span style="background:var(--primary);color:#fff;border-radius:999px;font-size:10px;padding:0 6px;font-weight:700;">' + r.files.length + '</span>' : '') +
@@ -16398,7 +17294,7 @@ function bindEvents() {
       (r.behind ? ' <span style="color:#f59e0b;font-size:11px;">↓' + r.behind + '</span>' : '') +
       (/^No commits yet/.test(r.branch || '') ? ' <span style="font-size:10.5px;color:var(--text-tertiary);">尚无提交</span>' : '');
     if (filesEl) {
-      // TrieCode 式远程关联引导区：无 origin 时显示（说明+URL 输入+关联+令牌小字）
+      // 基线式远程关联引导区：无 origin 时显示（说明+URL 输入+关联+令牌小字）
       const remoteGuide = (remoteUrl === null) ? '<div style="margin:6px 8px;padding:8px 6px;">' +
         '<div style="font-size:11px;color:var(--text-secondary);line-height:1.7;">还没有关联远程仓库，推送、建 PR 需要先关联一个——在 GitHub / Gitee 上新建一个空的仓库，把它的地址粘贴下面即可（本地提交不受影响）。</div>' +
         '<div style="display:flex;gap:6px;margin-top:6px;">' +
@@ -16422,7 +17318,7 @@ function bindEvents() {
           }).join('');
         }
         if (unstaged.length) {
-          // TrieCode 式组头：未跟踪/未暂存 + 右侧全部暂存
+          // 基线式组头：未跟踪/未暂存 + 右侧全部暂存
           const allUntracked = unstaged.every(f => f.status[1] === '?' || f.status[0] === '?');
           html += '<div style="padding:4px 8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size: 10.5px;color:var(--text-tertiary);">' + (allUntracked ? '未跟踪 ' + unstaged.length : '未暂存 ' + unstaged.length) + '</span><span style="font-size:10.5px;color:var(--primary);cursor:pointer;"><span onclick="gitStageAllVisible()" title="全部暂存">全部暂存</span><span style="margin-left:8px;" onclick="gitReviewChanges()" title="AI 逐文件审阅改动，挑选保留后暂存">AI 审阅</span></span></div>';
           html += unstaged.map(f => {
@@ -16446,7 +17342,7 @@ function bindEvents() {
         if (r2.success) { showToast('切换到 ' + sel.value, 'success'); refreshGitStatus(); }
         else showToast('切换失败: ' + (r2.error || ''), 'error');
       };
-      // 远程关联按钮（TrieCode 式：面板内粘贴 URL 即关联 origin）
+      // 远程关联按钮（基线式：面板内粘贴 URL 即关联 origin）
       const ra = document.getElementById('git-remote-add-btn');
       if (ra) ra.onclick = async () => {
         const inp = document.getElementById('git-remote-url-input');
@@ -16456,7 +17352,7 @@ function bindEvents() {
         if (r3 && r3.success) { showToast('已关联 origin → ' + u, 'success'); refreshGitStatus(); }
         else showToast('关联失败: ' + ((r3 && r3.error) || ''), 'error');
       };
-      // 暂存状态文字（TrieCode 式：生成按钮旁实时提示）
+      // 暂存状态文字（基线式：生成按钮旁实时提示）
       const ss = document.getElementById('git-stage-state');
       if (ss) ss.textContent = (r.files.filter(f => f.status[0] !== ' ' && f.status[0] !== '?').length ? '已暂存 ' + r.files.filter(f => f.status[0] !== ' ' && f.status[0] !== '?').length + ' 项' : '没有已暂存的内容');
     }, 50);
@@ -16465,7 +17361,7 @@ function bindEvents() {
     await window.BubaiCode.git.add(state.projectPath, [path]);
     refreshGitStatus();
   };
-  // 未跟踪组头「全部暂存」行内入口（复用主按钮逻辑，TrieCode 式）
+  // 未跟踪组头「全部暂存」行内入口（复用主按钮逻辑，基线式）
   window.gitStageAllVisible = async () => {
     const b = document.getElementById('git-stage-all-btn');
     if (b) b.click();
@@ -16479,7 +17375,7 @@ function bindEvents() {
     if (r.success) { showToast('已丢弃 ' + path, 'success'); refreshGitStatus(); }
     else showToast('丢弃失败: ' + (r.error || ''), 'error');
   };
-  // ===== GitReview：AI 逐文件审阅未暂存改动（对齐 ChipCode git.review.*） =====
+  // ===== GitReview：AI 逐文件审阅未暂存改动（对齐参考基线 git.review.*） =====
   // 场景：AI 助手帮你改了一堆文件后，你逐文件看 AI 给的审阅意见，勾选要保留的再暂存。
   window.gitReviewChanges = async () => {
     const cwd = state.projectPath;
@@ -16585,7 +17481,7 @@ function bindEvents() {
     else showToast('暂存失败: ' + (r.error || ''), 'error');
   });
 
-  // ============ 从 Git 克隆项目（对标 TrieCode「从 Git 克隆项目…」）============
+  // ============ 从 Git 克隆项目（对标 参考基线「从 Git 克隆项目…」）============
   function showGitCloneModal() {
     const old = document.getElementById('git-clone-modal');
     if (old) old.remove();
@@ -16676,12 +17572,12 @@ function bindEvents() {
     else showToast('创建失败: ' + (r.error || ''), 'error');
   });
 
-  // ===== Git AI 增强（对齐 TrieCode AI 提交信息 / 冲突解决 / PR 描述）=====
+  // ===== Git AI 增强（对齐参考基线 AI 提交信息 / 冲突解决 / PR 描述）=====
   const gitAiMsgBtn = document.getElementById('git-ai-commit-msg-btn');
   if (gitAiMsgBtn) gitAiMsgBtn.addEventListener('click', async () => {
     const cwd = state.projectPath;
     if (!cwd) { showToast('请先打开项目', 'warn'); return; }
-    // 1:1 仿写 ChipCode：只根据「已暂存」改动生成，无暂存时拒绝（git.commitMessage.nothingStaged）
+    // 1:1 仿写 参考基线：只根据「已暂存」改动生成，无暂存时拒绝（git.commitMessage.nothingStaged）
     let hasStaged = false;
     try {
       const st = await window.BubaiCode.git.status(cwd);
@@ -16812,14 +17708,25 @@ function bindEvents() {
     finally { gitPrSubmitBtn.disabled = false; }
   });
 
-  // ===== capabilities 路由:UI 按钮统一入口(对齐 TrieCode runCapability)=====
+  // ===== capabilities 路由:UI 按钮统一入口(对齐参考基线 runCapability)=====
   // 编译/烧录/串口监视等不再直调插件工具或硬编码 terminal 命令,
   // 一律经 runCapability(cap) → 项目绑定的主动工具链 → transport 分发。
   async function runCapBtn(cap, params, opt) {
     opt = opt || {};
     let r;
     try {
-      r = await window.PluginSystem.runCapability(cap, params || {});
+      if (cap === 'compile' && typeof ARDUINO_TOOL_IMPLS !== 'undefined' && ARDUINO_TOOL_IMPLS.compile) {
+        // 走宿主内置 arduinoCli.compile：已处理 .ino 定位、FQBN 解析、中文路径(bubaicode_build 暂存)与 asciiCwd。
+        // 市场插件 plugin_arduino-cli-toolchain 的 compile 工具用 {sketch}/{fqbn} 占位符，
+        // UI 未传参会导致占位符残留字面量（如 D:\work\tmp\{sketch}），编译必败。故此处直接走内置实现。
+        const txt = await ARDUINO_TOOL_IMPLS.compile();
+        r = { ok: /COMPILE OK/i.test(txt), text: txt };
+      } else if (cap === 'upload' && typeof ARDUINO_TOOL_IMPLS !== 'undefined' && ARDUINO_TOOL_IMPLS.upload) {
+        const txt = await ARDUINO_TOOL_IMPLS.upload(params || {});
+        r = { ok: !/FAIL|错误|error:/i.test(txt), text: txt };
+      } else {
+        r = await window.PluginSystem.runCapability(cap, params || {});
+      }
     } catch (e) {
       r = { ok: false, error: '能力路由异常: ' + e.message };
     }
@@ -16860,7 +17767,7 @@ function bindEvents() {
     if (r.ok) showToast('串口监视已打开 ' + port, 'success');
     else showToast(String(r.text || r.error || '串口监视打开失败'), 'error');
   });
-  // 顶栏「串口监视器」常驻入口（对标 TrieCode 顶栏 ui-toolbar__btn 串口监视器）
+  // 顶栏「串口监视器」常驻入口（对标 参考基线 顶栏 ui-toolbar__btn 串口监视器）
   const serialToggleBtn = document.getElementById('serial-toggle-btn');
   if (serialToggleBtn) serialToggleBtn.addEventListener('click', () => {
     if (typeof showBottomPanel === 'function') showBottomPanel('serial');
@@ -16947,7 +17854,7 @@ function bindEvents() {
   const editorExportBtn = document.getElementById('editor-export-btn');
   if (editorExportBtn) editorExportBtn.addEventListener('click', runExportBinary);
 
-  // ===== Wokwi 仿真运行（对齐 TrieCode Wokwi 工具链：编译产物 → wokwi-cli → 串口回传）=====
+  // ===== Wokwi 仿真运行（对齐参考基线 Wokwi 工具链：编译产物 → wokwi-cli → 串口回传）=====
   async function runWokwiSim() {
     const projectPath = state.projectPath;
     if (!projectPath) { showToast('请先打开 Wokwi 项目（含 diagram.json）', 'warn'); return; }
@@ -16974,7 +17881,7 @@ function bindEvents() {
     }
   }
 
-  // ===== 命令面板（对齐 TrieCode command.invoke）=====
+  // ===== 命令面板（对齐参考基线 command.invoke）=====
   const COMMANDS = [
     { id: 'new-project', title: '新建项目', group: '项目', keywords: 'new project 新建 工程', run: () => { if (typeof showNewProjectModal === 'function') showNewProjectModal(); } },
     { id: 'open-project', title: '打开项目', group: '项目', keywords: 'open 打开', run: () => { const b = document.getElementById('welcome-open-project'); if (b) b.click(); } },
@@ -17116,7 +18023,7 @@ function bindEvents() {
     // 已移除 3 条指向不存在活动栏面板的死命令（panel-models / 重复的 panel-mcp / panel-dashboard）；
     // MCP 服务由上方 id:panel-mcp 的 window.openMcpModal() 正常提供。
     { id: 'search', title: '搜索', group: '视图', keywords: 'search 搜索', run: () => { const b = document.getElementById('search-btn'); if (b) b.click(); } },
-    // 对齐 TrieCode 命令面板默认项（顶部常显导航快捷）：显示所有命令 / 转到文件 / 切换终端 / 打开设置 / 开始调试
+    // 对齐参考基线 命令面板默认项（顶部常显导航快捷）：显示所有命令 / 转到文件 / 切换终端 / 打开设置 / 开始调试
     { id: 'show-all-commands', title: '显示所有命令', group: '命令', keywords: 'command 命令 显示所有 all', run: () => {} },
     { id: 'goto-file', title: '转到文件…', group: '导航', keywords: 'go to file 转到文件 打开文件 Ctrl+P', run: async () => { try { if (window.BubaiCode && window.BubaiCode.dialog) { const p = await window.BubaiCode.dialog.openFile(); if (p) openFile(p); } } catch (e) {} } },
     { id: 'toggle-terminal', title: '切换终端', group: '导航', keywords: 'terminal 终端 切换 Ctrl+`', run: () => switchPanel('terminal', 'bottom') },
@@ -17185,6 +18092,22 @@ function bindEvents() {
   if (editorCompileBtn) editorCompileBtn.addEventListener('click', async () => {
     showToast('编译中…', 'info');
     await runCapBtn('compile', {}, { okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
+  });
+  // ===== 顶部工具栏 ▶编译 / ⬆上传（对齐 ChipCode：菜单右侧编译/上传图标）=====
+  const toolbarCompileBtn = document.getElementById('toolbar-compile-btn');
+  if (toolbarCompileBtn) toolbarCompileBtn.addEventListener('click', async () => {
+    showToast('编译中…', 'info');
+    await runCapBtn('compile', {}, { okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
+  });
+  const toolbarUploadBtn = document.getElementById('toolbar-upload-btn');
+  if (toolbarUploadBtn) toolbarUploadBtn.addEventListener('click', async () => {
+    await runCapBtn('upload', {}, { okText: '上传成功', failText: '上传失败', logTag: '上传', openPanel: 'bottom-panel', openTab: 'output' });
+  });
+  // ===== 底部面板 × 关闭（对齐 ChipCode tabs 右侧 ✕）=====
+  const bottomCloseBtn = document.getElementById('bottom-close-btn');
+  if (bottomCloseBtn) bottomCloseBtn.addEventListener('click', () => {
+    const bp = document.getElementById('bottom-panel');
+    if (bp) bp.style.display = 'none';
   });
   const editorUploadBtn = document.getElementById('editor-upload-btn');
   if (editorUploadBtn) editorUploadBtn.addEventListener('click', async () => {
@@ -17307,7 +18230,7 @@ function bindEvents() {
     });
   }
 
-  // 无项目态「刷新」按钮（对齐 ChipCode 源代码管理面板）：重新同步欢迎态布局
+  // 无项目态「刷新」按钮（对齐参考基线 源代码管理面板）：重新同步欢迎态布局
   const scmRefreshBtn = document.getElementById('scm-refresh-btn');
   if (scmRefreshBtn) {
     scmRefreshBtn.addEventListener('click', () => { try { syncWelcomePanel(); } catch (e) {} });
@@ -17336,7 +18259,7 @@ function bindEvents() {
     });
   }
 
-  // 通知下拉面板（参考 TrieCode 通知中心：点击铃铛弹出面板；BubaiCode 暂无真实通知，展示空态）
+  // 通知下拉面板（参考基线 通知中心：点击铃铛弹出面板；BubaiCode 暂无真实通知，展示空态）
   if (!document.getElementById('notification-panel-style')) {
     const st = document.createElement('style');
     st.id = 'notification-panel-style';
@@ -17387,7 +18310,7 @@ function bindEvents() {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && notifPanelOpen) closeNotifPanel(); });
 
-  // 账号按钮（参考 TrieCode：未登录先弹 popover「登录 AI 账号」，已登录→账号区块）
+  // 账号按钮（参考基线：未登录先弹 popover「登录 AI 账号」，已登录→账号区块）
   if (!document.getElementById('user-popover-style')) {
     const st = document.createElement('style');
     st.id = 'user-popover-style';
@@ -17442,7 +18365,7 @@ function bindEvents() {
       openAccountPopover();
     }
   };
-  // 账号入口（顶栏用户头像已撤除，对齐 TrieCode ① ⚙ 布局）：积分徽章 + 状态栏账号均可打开
+  // 账号入口（顶栏用户头像已撤除，对齐参考基线 ① ⚙ 布局）：积分徽章 + 状态栏账号均可打开
   const userBtn = document.getElementById('credits-pill');
   if (userBtn) userBtn.addEventListener('click', accountEntryHandler);
   const acctStatusEntry = document.getElementById('user-account-status');
@@ -17452,7 +18375,7 @@ function bindEvents() {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && userPopoverOpen) closeUserPopover(); });
 
-  // 账号下拉卡（参考 TrieCode 已登录态：环形用量 + 账号 + 积分 + 设置/退出登录）
+  // 账号下拉卡（参考基线 已登录态：环形用量 + 账号 + 积分 + 设置/退出登录）
   if (!document.getElementById('account-popover-style')) {
     const ast = document.createElement('style');
     ast.id = 'account-popover-style';
@@ -17606,7 +18529,7 @@ function bindEvents() {
     });
   }
 
-  // 顶栏撤销（对齐 TrieCode 顶栏按钮组）
+  // 顶栏撤销（对齐参考基线 顶栏按钮组）
   const topUndoBtn = document.getElementById('undo-btn');
   if (topUndoBtn) {
     topUndoBtn.addEventListener('click', () => {
@@ -17666,7 +18589,7 @@ function bindEvents() {
     });
   }
 
-  // 搜索按钮 → 真实代码符号搜索浮层（对齐 ChipCode；命令面板 search 项 .click() 也自动走这里）
+  // 搜索按钮 → 真实代码符号搜索浮层（对齐参考基线；命令面板 search 项 .click() 也自动走这里）
   const searchBtn = document.getElementById('search-btn');
   if (searchBtn) {
     searchBtn.addEventListener('click', () => {
@@ -17743,7 +18666,7 @@ function bindEvents() {
     document.getElementById('ai-test-result').textContent = '';
     updateAiSettingsVisibility();
     renderAgentMarket();
-    // 常规（对齐 TrieCode 常规页）：关闭窗口时 / 默认工作空间 / 代理模式
+    // 常规（对齐参考基线 常规页）：关闭窗口时 / 默认工作空间 / 代理模式
     try {
       const gen = cfg.general || {};
       const gca = document.getElementById('general-close-action');
@@ -17760,7 +18683,7 @@ function bindEvents() {
       refreshProxyDetected();
     } catch (err) { /* 常规面板填充失败不阻塞 */ }
 
-    // 外观 / 语音 / 补全 / 编辑器（对齐 TrieCode 个人·AI·开发 设置）
+    // 外观 / 语音 / 补全 / 编辑器（对齐参考基线 个人·AI·开发 设置）
     try {
       const appearanceTheme = document.getElementById('appearance-theme');
       if (appearanceTheme) appearanceTheme.value = (cfg.ui && cfg.ui.theme) || 'light';
@@ -17851,7 +18774,7 @@ function bindEvents() {
           updateCreditsBadge(r.user.email);
           // 上限 = 剩余 + 已用（服务端额度可调，不写死）
           updateDailyCredits(r.user.dailyRemaining, (r.user.dailyRemaining || 0) + (r.user.dailyUsed || 0));
-          // 顶栏数字徽章（对齐 TrieCode ①）：显示真实今日剩余
+          // 顶栏数字徽章（对齐参考基线 ①）：显示真实今日剩余
           setPill(r.user.dailyRemaining != null ? r.user.dailyRemaining : '–');
         } else {
           updateCreditsBadge(null);
@@ -17865,7 +18788,7 @@ function bindEvents() {
   // （这正是历史上"积分暂不展示"的根因，之前那句 refreshCreditsBadge() 一直是静默失败）
   try { window.__labCreditsRefresh = refreshCreditsBadge; } catch (e) {}
 
-  // 徽标点击 → 未登录弹登录卡片（对齐 TrieCode 可选登录）；已登录打开设置面板
+  // 徽标点击 → 未登录弹登录卡片（对齐参考基线 可选登录）；已登录打开设置面板
   document.addEventListener('click', (e) => {
     const badge = document.getElementById('gw-credits-badge');
     if (badge && e.target === badge) {
@@ -17883,7 +18806,7 @@ function bindEvents() {
     }
   });
 
-  // 账户权益渲染（对齐 TrieCode 账户页：头像+账号名+邮箱+套餐徽章+积分进度+其他积分+升级按钮）
+  // 账户权益渲染（对齐参考基线 账户页：头像+账号名+邮箱+套餐徽章+积分进度+其他积分+升级按钮）
   function renderGwEntitlement(u) {
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     const email = u.email || '';
@@ -17909,7 +18832,7 @@ function bindEvents() {
     if (legacy) legacy.style.display = 'none';
   }
 
-  // 升级套餐 / 账户中心（对齐 TrieCode 账户页按钮组）
+  // 升级套餐 / 账户中心（对齐参考基线 账户页按钮组）
   (function bindGwAccountActions() {
     const open = (u) => { try { if (window.BubaiCode && window.BubaiCode.shell) window.BubaiCode.shell.openExternal(u); } catch (e) {} };
     const ub = document.getElementById('gw-upgrade-btn');
@@ -17963,12 +18886,12 @@ function bindEvents() {
     }
   }
 
-  // 对齐 TrieCode getProfile 轮询：60s + 窗口聚焦时刷新账户权益
+  // 对齐参考基线 getProfile 轮询：60s + 窗口聚焦时刷新账户权益
   setInterval(() => { try { refreshGatewayUI(); refreshCreditsBadge(); } catch (e) {} }, 60000);
   window.addEventListener('focus', () => { try { refreshGatewayUI(); refreshCreditsBadge(); } catch (e) {} });
   try { window.__labGwRefresh = refreshGatewayUI; } catch (e) {}
 
-  // 网关登录 / 注册（对齐 TrieCode：tab 切换 + 邀请码选填 + 忘记密码）
+  // 网关登录 / 注册（对齐参考基线：tab 切换 + 邀请码选填 + 忘记密码）
   async function gatewayAuth(action) {
     const msg = document.getElementById('gw-msg');
     let email, password, inviteCode = '', code = '';
@@ -18075,14 +18998,7 @@ function bindEvents() {
     if (msg) msg.textContent = '';
   }
 
-  // 忘记密码（网关暂未提供找回接口，引导至官网）
-  async function gwForgot() {
-    if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) {
-      await window.BubaiCode.shell.openExternal('https://bluebubai.work/forgot-password');
-    } else {
-      showToast('请前往 bluebubai.work 找回密码', 'info');
-    }
-  }
+  // 忘记密码已改为应用内找回面板（首屏登录遮罩 __showGwForgot），不再跳官网死链
 
   // 设置页内网关登录态（决定云端模型「未配置 Key」横幅是否显示：已登录账号可走内置模型池）
   let aiSettingsGwLoggedIn = false;
@@ -18108,7 +19024,7 @@ function bindEvents() {
   const settingsModal = document.getElementById('settings-modal');
   if (settingsModal) {
     document.getElementById('settings-close').addEventListener('click', () => { settingsModal.style.display = 'none'; });
-    // 设置侧栏：分类导航 + 搜索过滤 + 面板切换（对齐 TrieCode 设置布局）
+    // 设置侧栏：分类导航 + 搜索过滤 + 面板切换（对齐参考基线 设置布局）
     const sNavItems = settingsModal.querySelectorAll('.settings-nav-item');
     sNavItems.forEach((it) => {
       it.addEventListener('click', () => {
@@ -18127,7 +19043,7 @@ function bindEvents() {
         it.style.display = (!q || t.indexOf(q) !== -1) ? '' : 'none';
       });
     });
-    // 常规面板（对齐 TrieCode 常规页）：浏览目录 / 代理模式切换 / 检测刷新
+    // 常规面板（对齐参考基线 常规页）：浏览目录 / 代理模式切换 / 检测刷新
     const gpBrowse = document.getElementById('general-workspace-browse');
     if (gpBrowse) gpBrowse.addEventListener('click', async () => {
       try {
@@ -18144,7 +19060,7 @@ function bindEvents() {
     const gpRefresh = document.getElementById('general-proxy-refresh');
     if (gpRefresh) gpRefresh.addEventListener('click', refreshProxyDetected);
 
-    // ===== 外观 / 语音 / 补全 / 编辑器 / 记忆 / 跳转（对齐 TrieCode 分组设置）=====
+    // ===== 外观 / 语音 / 补全 / 编辑器 / 记忆 / 跳转（对齐参考基线 分组设置）=====
     const apTheme = document.getElementById('appearance-theme');
     if (apTheme) apTheme.addEventListener('change', async () => {
       try { await applyTheme(apTheme.value, true); showToast('主题已切换为' + (apTheme.value === 'light' ? '浅色' : '深色'), 'success'); } catch (e) {}
@@ -18266,7 +19182,7 @@ function bindEvents() {
       await window.BubaiCode.config.set('ai.localToolGrammar', document.getElementById('ai-local-tool-grammar').value || 'auto');
       const loraEl = document.getElementById('ai-local-lora');
       if (loraEl) await window.BubaiCode.config.set('ai.localLora', loraEl.value || 'auto');
-      // 常规 + 代理（对齐 TrieCode 常规页）
+      // 常规 + 代理（对齐参考基线 常规页）
       const gca = document.getElementById('general-close-action');
       const gws = document.getElementById('general-workspace');
       const gpm = document.getElementById('general-proxy-mode');
@@ -18283,7 +19199,7 @@ function bindEvents() {
           await window.BubaiCode.proxy.set({ mode: gpm ? gpm.value : 'system', host: gph ? gph.value.trim() : '', port: gpp ? gpp.value.trim() : '' });
         }
       } catch (err) { /* 代理应用失败不阻塞保存 */ }
-      // 外观 / 语音 / 补全 / 编辑器（对齐 TrieCode 个人·AI·开发 设置）
+      // 外观 / 语音 / 补全 / 编辑器（对齐参考基线 个人·AI·开发 设置）
       const aTheme = document.getElementById('appearance-theme');
       const aFont = document.getElementById('appearance-font-family');
       const vRate = document.getElementById('voice-rate');
@@ -18665,8 +19581,12 @@ function bindEvents() {
     if (gwLoginBtn) gwLoginBtn.addEventListener('click', () => gatewayAuth('login'));
     const gwRegisterBtn = document.getElementById('gw-register-btn');
     if (gwRegisterBtn) gwRegisterBtn.addEventListener('click', () => gatewayAuth('register'));
-    const gwForgot = document.getElementById('gw-forgot');
-    if (gwForgot) gwForgot.addEventListener('click', gwForgot);
+    // 修复既有 bug：原写法 `addEventListener('click', gwForgot)` 把 DOM 元素当回调（且 const 遮蔽同名函数），点击必抛错
+    const gwForgotBtn = document.getElementById('gw-forgot');
+    if (gwForgotBtn) gwForgotBtn.addEventListener('click', () => {
+      if (typeof window.__showGwForgot === 'function') window.__showGwForgot();
+      else if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) window.BubaiCode.shell.openExternal('https://bluebubai.work/forgot-password');
+    });
     const gwRefreshBtn = document.getElementById('gw-refresh-btn');
     if (gwRefreshBtn) gwRefreshBtn.addEventListener('click', () => { refreshGatewayUI(); });
     const gwLogoutBtn = document.getElementById('gw-logout-btn');
@@ -18686,11 +19606,11 @@ function bindEvents() {
     });
   }
 
-  // ============ 首屏登录遮罩（对齐 TrieCode 显眼登录入口）============
+  // ============ 首屏登录遮罩（对齐参考基线 显眼登录入口）============
   __onDCL( () => {
     const ov = document.getElementById('gw-login-overlay');
     if (!ov) return;
-    // 嵌入主区（对齐 TrieCode：登录卡在编辑器区域居中，侧栏照常可见）
+    // 嵌入主区（对齐参考基线：登录卡在编辑器区域居中，侧栏照常可见）
     const ecHost = document.querySelector('.editor-container');
     if (ecHost) ecHost.appendChild(ov);
     const showLoginOverlay = () => { ov.style.display = 'flex'; document.body.classList.add('logged-out'); };
@@ -18698,11 +19618,16 @@ function bindEvents() {
     const switchGwOvTab = (tab) => {
       const lt = document.getElementById('gw-ov-tab-login'), rt = document.getElementById('gw-ov-tab-register');
       const lp = document.getElementById('gw-ov-login-panel'), rp = document.getElementById('gw-ov-register-panel');
+      const fp = document.getElementById('gw-ov-forgot-panel');
+      const tabs = document.querySelector('#gw-login-overlay .gwl-tabs');
       if (!lt || !rt) return;
+      // 找回密码面板：隐藏登录/注册 tab，避免用户误以为第三态是 tab
+      if (tabs) tabs.style.display = tab === 'reset' ? 'none' : '';
       lt.classList.toggle('active', tab === 'login');
       rt.classList.toggle('active', tab === 'register');
       if (lp) lp.style.display = tab === 'login' ? 'flex' : 'none';
       if (rp) rp.style.display = tab === 'register' ? 'flex' : 'none';
+      if (fp) fp.style.display = tab === 'reset' ? 'flex' : 'none';
       const m = document.getElementById('gw-ov-msg'); if (m) { m.textContent = ''; m.classList.remove('ok', 'err'); }
     };
     const gatewayAuthOverlay = async (action) => {
@@ -18745,11 +19670,93 @@ function bindEvents() {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = action === 'login' ? '登录' : '注册'; }
       }
     };
-    const gwForgotOverlay = async () => {
-      if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.openExternal) {
-        await window.BubaiCode.shell.openExternal('https://bluebubai.work/forgot-password');
-      } else {
-        showToast('请前往 bluebubai.work 找回密码', 'info');
+    // 对齐原品两步骤找回：1=邮箱+发码，2=验证码+新密码
+    const showResetStep = (n) => {
+      const s1 = document.getElementById('gw-ov-reset-step1'), s2 = document.getElementById('gw-ov-reset-step2');
+      if (s1) s1.style.display = n === 1 ? 'block' : 'none';
+      if (s2) s2.style.display = n === 2 ? 'block' : 'none';
+      const emailEl = document.getElementById('gw-ov-reset-email');
+      if (emailEl) emailEl.readOnly = n === 2;
+      if (n === 2) { const c = document.getElementById('gw-ov-reset-code'); if (c) c.focus(); }
+    };
+    // 忘记密码 → 打开应用内找回面板（原先跳官网 /forgot-password 是 SPA fallback 死链）
+    const gwForgotOverlay = () => {
+      const loginAccount = document.getElementById('gw-ov-login-account');
+      const resetEmail = document.getElementById('gw-ov-reset-email');
+      // 把已填的登录邮箱带过去，少输一次
+      if (loginAccount && resetEmail && loginAccount.value.trim()) resetEmail.value = loginAccount.value.trim();
+      switchGwOvTab('reset');
+      showResetStep(1);
+    };
+    // 找回密码：发送专用重置验证码（网关 /api/auth/send-reset-code，60s 限流）
+    // 不能用注册的 send-code —— 后端对已注册邮箱直接 409「请直接登录」，找回流程会卡死
+    const sendGwResetCode = async () => {
+      const msg = document.getElementById('gw-ov-msg');
+      const btn = document.getElementById('gw-ov-reset-send-btn');
+      const emailEl = document.getElementById('gw-ov-reset-email');
+      const email = emailEl ? emailEl.value.trim() : '';
+      const setMsg = (text, kind) => { if (!msg) return; msg.textContent = text; msg.classList.remove('ok', 'err'); if (kind) msg.classList.add(kind); };
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg('请输入正确的注册邮箱', 'err'); return; }
+      if (btn) { btn.disabled = true; btn.textContent = '发送中...'; }
+      setMsg('验证码发送中...');
+      try {
+        const r = (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth)
+          ? await window.BubaiCode.ai.gatewayAuth({ action: 'send-reset-code', email }) : null;
+        if (r && r.success) {
+          setMsg(r.devCode ? `✓ 验证码已发送（开发模式：${r.devCode}）` : '✓ 验证码已发送，请查收邮箱', 'ok');
+          // 对齐原品两步式：发码成功后进入第 2 步（邮箱锁定、显示验证码/新密码）
+          showResetStep(2);
+          let left = 60;
+          if (btn) btn.textContent = `${left}s 后重发`;
+          const timer = setInterval(() => {
+            left -= 1;
+            if (left <= 0) { clearInterval(timer); if (btn) { btn.disabled = false; btn.textContent = '获取验证码'; } }
+            else if (btn) btn.textContent = `${left}s 后重发`;
+          }, 1000);
+        } else {
+          setMsg((r && r.error) || '验证码发送失败', 'err');
+          if (btn) { btn.disabled = false; btn.textContent = '获取验证码'; }
+        }
+      } catch (e) {
+        setMsg('验证码发送失败：' + (e.message || ''), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = '获取验证码'; }
+      }
+    };
+    // 找回密码：重置并登录
+    const gwResetPassword = async () => {
+      const msg = document.getElementById('gw-ov-msg');
+      const btn = document.getElementById('gw-ov-reset-btn');
+      const setMsg = (text, kind) => { if (!msg) return; msg.textContent = text; msg.classList.remove('ok', 'err'); if (kind) msg.classList.add(kind); };
+      const email = (document.getElementById('gw-ov-reset-email').value || '').trim();
+      const code = (document.getElementById('gw-ov-reset-code').value || '').trim();
+      const pw = (document.getElementById('gw-ov-reset-password').value || '').trim();
+      const pw2 = (document.getElementById('gw-ov-reset-password2').value || '').trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg('请输入正确的注册邮箱', 'err'); return; }
+      if (!code) { setMsg('请输入邮箱验证码', 'err'); return; }
+      if (pw.length < 6) { setMsg('新密码至少 6 位', 'err'); return; }
+      if (pw !== pw2) { setMsg('两次输入的新密码不一致', 'err'); return; }
+      setMsg('正在重置密码...');
+      if (btn) { btn.disabled = true; btn.textContent = '请稍候...'; }
+      try {
+        const r = (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.gatewayAuth)
+          ? await window.BubaiCode.ai.gatewayAuth({ action: 'reset-password', email, code, password: pw }) : null;
+        if (r && r.success) {
+          setMsg('✓ 密码已重置，请用新密码登录', 'ok');
+          const la = document.getElementById('gw-ov-login-account');
+          const lpw = document.getElementById('gw-ov-login-password');
+          if (la) la.value = email;
+          if (lpw) lpw.value = '';
+          ['gw-ov-reset-code', 'gw-ov-reset-password', 'gw-ov-reset-password2'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+          showResetStep(1);
+          switchGwOvTab('login');
+          const nameEl = document.getElementById('gw-ov-msg'); if (nameEl) { nameEl.textContent = '✓ 密码已重置，请用新密码登录'; nameEl.classList.add('ok'); }
+        } else {
+          setMsg((r && r.error) || '重置失败', 'err');
+        }
+      } catch (e) {
+        setMsg('重置失败：' + (e.message || ''), 'err');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '重置密码并登录'; }
       }
     };
     const t1 = document.getElementById('gw-ov-tab-login'); if (t1) t1.addEventListener('click', () => switchGwOvTab('login'));
@@ -18759,7 +19766,22 @@ function bindEvents() {
     const sb = document.getElementById('gw-ov-register-send-btn'); if (sb) sb.addEventListener('click', () => sendGwCode(true));
     const sb2 = document.getElementById('gw-register-send-btn'); if (sb2) sb2.addEventListener('click', () => sendGwCode(false));
     const fo = document.getElementById('gw-ov-forgot'); if (fo) fo.addEventListener('click', gwForgotOverlay);
+    const rback = document.getElementById('gw-ov-reset-back'); if (rback) rback.addEventListener('click', () => { showResetStep(1); switchGwOvTab('login'); });
+    const rsend = document.getElementById('gw-ov-reset-send-btn'); if (rsend) rsend.addEventListener('click', sendGwResetCode);
+    const rnext = document.getElementById('gw-ov-reset-next-btn');
+    if (rnext) rnext.addEventListener('click', () => {
+      const msg = document.getElementById('gw-ov-msg');
+      const emailEl = document.getElementById('gw-ov-reset-email');
+      const email = emailEl ? emailEl.value.trim() : '';
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (msg) { msg.textContent = '请输入邮箱地址'; msg.classList.remove('ok'); msg.classList.add('err'); }
+        return;
+      }
+      showResetStep(2);   // 原品：点「下一步」进入验证码/新密码，不强制先发码
+    });
+    const rsubmit = document.getElementById('gw-ov-reset-btn'); if (rsubmit) rsubmit.addEventListener('click', gwResetPassword);
     window.__showGwLoginOverlay = showLoginOverlay;
+    window.__showGwForgot = () => { showLoginOverlay(); gwForgotOverlay(); };
     // 启动检查：登录门禁
     // 前提：**云端模型必须登录才能用**（登录即赠免费额度，见商业化规划）。
     // 只对云端通道强制登录；本地模型 / Ollama / 自带 Key 不拦。
@@ -18925,7 +19947,7 @@ function bindEvents() {
     });
   }
 
-  // 粘贴截图直接附加（对齐 TrieCode 图片输入习惯）
+  // 粘贴截图直接附加（对齐参考基线 图片输入习惯）
   const aiPasteInput = document.getElementById('ai-input');
   if (aiPasteInput) {
     aiPasteInput.addEventListener('paste', (e) => {
@@ -18964,22 +19986,9 @@ function bindEvents() {
     });
   }
 
-  // AI 技能按钮
-  const aiSkillBtn = document.getElementById('ai-skill-btn');
-  if (aiSkillBtn) {
-    aiSkillBtn.addEventListener('click', () => {
-      // 切换技能面板显示/隐藏
-      const skillPanel = document.getElementById('ai-skill-panel');
-      if (skillPanel) {
-        renderSkillPanel();
-        skillPanel.style.display = skillPanel.style.display === 'none' ? 'block' : 'none';
-      } else {
-        showToast('技能面板不可用', 'error');
-      }
-    });
-  }
+  // 「技能」工具栏按钮已按对齐要求删除（原品无此项）；技能面板仍可通过输入框 "/" 快捷唤起（renderSkillPanel 见下）。
 
-  // ===== 自研本体 P0-3：技能面板渲染 + 占位符注入（对齐 TrieCode / 技能菜单）=====
+  // ===== 自研本体 P0-3：技能面板渲染 + 占位符注入（对齐参考基线 / 技能菜单）=====
   // 技能模板含 {sketchName} {port} {projectPath} 等占位符，插入时按当前项目自动填充
   function buildSkillPrompt(skill) {
     const sketchName = (state.projectPath || '').split(/[\\/]/).pop() || 'sketch';
@@ -19025,7 +20034,7 @@ function bindEvents() {
       });
     });
   }
-  // 输入框输入 / 时弹出技能面板（对齐 TrieCode）
+  // 输入框输入 / 时弹出技能面板（对齐参考基线）
   const aiInputForSkill = document.getElementById('ai-input');
   if (aiInputForSkill) {
     aiInputForSkill.addEventListener('keydown', (e) => {
@@ -19138,7 +20147,7 @@ function bindEvents() {
     });
   }
 
-  // 欢迎面板：克隆项目（对齐 TrieCode 的「克隆项目」入口）
+  // 欢迎面板：克隆项目（对齐参考基线 的「克隆项目」入口）
   const welcomeCloneProject = document.getElementById('welcome-clone-project');
   if (welcomeCloneProject) {
     // 复用 Git 面板头部的完善克隆模态（Electron 下 window.prompt 不可靠，自制模态支持选位置/URL 校验/真实 clone/自动打开）
@@ -19148,7 +20157,7 @@ function bindEvents() {
     });
   }
 
-  // Git 面板无项目空态按钮：复用打开项目/克隆入口（1:1 对齐 ChipCode 源代码管理空状态）
+  // Git 面板无项目空态按钮：复用打开项目/克隆入口（1:1 对齐参考基线 源代码管理空状态）
   const gitEmptyOpen = document.getElementById('git-empty-open');
   if (gitEmptyOpen) gitEmptyOpen.addEventListener('click', () => { const b = document.getElementById('welcome-open-project'); if (b) b.click(); });
   const gitEmptyClone = document.getElementById('git-empty-clone');
@@ -19161,7 +20170,7 @@ function bindEvents() {
   const statusToolchain = document.getElementById('status-toolchain');
   if (statusToolchain) statusToolchain.addEventListener('click', openDevicePanel);
 
-  // 移除失效的最近项目（仿写 ChipCode 的 project.removeRecent）
+  // 移除失效的最近项目（仿写 参考基线 的 project.removeRecent）
   async function removeRecentProject(projectPath) {
     try {
       if (!window.BubaiCode || !window.BubaiCode.config) return;
@@ -19171,7 +20180,7 @@ function bindEvents() {
     } catch (e) { console.warn('移除最近项目失败:', e); }
   }
 
-  // 最近打开：从配置持久化读取并渲染（对齐 TrieCode 真实历史，替换原写死列表）
+  // 最近打开：从配置持久化读取并渲染（对齐参考基线 真实历史，替换原写死列表）
   async function renderRecentProjects() {
     const recentList = document.getElementById('recent-list');
     if (!recentList) return;
@@ -19185,11 +20194,11 @@ function bindEvents() {
       recentList.innerHTML = '<div class="recent-item-empty" style="color:var(--text-muted);cursor:default;">（暂无最近打开）</div>';
       return;
     }
-    // 1:1 仿写 ChipCode：只显示前 5 个最近项目（bundle @500186 的 i.slice(0,5)）
+    // 1:1 仿写 参考基线：只显示前 5 个最近项目（bundle @500186 的 i.slice(0,5)）
     recents.slice(0, 5).forEach(p => {
       const item = document.createElement('div');
       item.className = 'recent-item';
-      // ChipCode 用 a.name，缺失时回退到路径 basename
+      // 参考基线 用 a.name，缺失时回退到路径 basename
       const name = p.name || String(p.path || '').split(/[\\/]/).pop() || p.path || '未命名';
       // 名称来自本机配置，用 textContent 避免 HTML 注入
       item.innerHTML = '<svg class="icon icon-xs"><use href="#icon-folder"></use></svg><span></span>';
@@ -19198,7 +20207,7 @@ function bindEvents() {
       item.title = p.path || '';
       item.style.cursor = 'pointer';
       item.addEventListener('click', async () => {
-        // 1:1 仿写 ChipCode @505482：先检查路径是否存在，失效则提示「项目已被删除或移动」并自动移除
+        // 1:1 仿写 参考基线 @505482：先检查路径是否存在，失效则提示「项目已被删除或移动」并自动移除
         try {
           const exists = (window.BubaiCode && window.BubaiCode.fs && window.BubaiCode.fs.exists)
             ? await window.BubaiCode.fs.exists(p.path) : null;
@@ -19503,7 +20512,7 @@ function initUsageInterceptor() {
 
 function init() {
   try {
-    // 1:1 对齐 TrieCode：默认无打开文件，AI 面板占满主区域
+    // 1:1 对齐参考基线：默认无打开文件，AI 面板占满主区域
     initTheme();
     usageLoad().then(() => { initUsagePanel(); initUsageInterceptor(); usageRender(); });
     initScheduledWorkflow();
@@ -19532,7 +20541,7 @@ function init() {
   } catch(e) { console.error('plugin view close btn:', e); }
   // 加载 MCP 工具并合并进 AI 工具注册表（stdio 接入）
   setTimeout(() => { loadMcpTools(); }, 2500);
-  // ============ 插件 manifest 系统（对齐 TrieCode）============
+  // ============ 插件 manifest 系统（对齐参考基线）============
   setTimeout(async () => {
     try {
       if (!window.PluginSystem) return;
@@ -19544,7 +20553,63 @@ function init() {
       // Arduino CLI 工具链（迁移自硬编码 TOOL_DEFS）
       window.PluginSystem.registerInternalService('arduinoCli', ARDUINO_TOOL_IMPLS);
 
-      // 串口日志服务（对齐 TrieCode serialLog）
+      // ===== 参考基线 对齐：宿主补充工具声明 =====
+      // 官网市场下发的 arduino-cli-toolchain/plugin.json 只声明了 4 个工具
+      // （compile / upload / board_list / lib_install），而宿主已实现更多能力
+      // （select_board / list_platforms / search_boards / get_board_info / set_board_option /
+      //   list_ports / select_port）—— 这些实现此前对 AI 不可见（manifest 未声明 ⇒ 无工具定义）。
+      // 规则：manifest 声明优先；宿主补充只在 manifest 未声明同名时生效（见 plugin-loader 的
+      // registerHostExtraTools / HOST_EXTRA_TOOLS）。
+      if (typeof window.PluginSystem.registerHostExtraTools === 'function') {
+        try {
+          window.PluginSystem.registerHostExtraTools('arduino-cli-toolchain', [
+            {
+              name: 'select_board',
+              description: '按名称搜索并选择开发板（FQBN），如 "uno" / "Arduino Uno"。选择后 compile/upload 使用该板卡。',
+              parameters: { type: 'object', properties: { query: { type: 'string', description: '开发板名称或 FQBN 关键词，如 uno' } }, required: ['query'] },
+              category: 'modify', transport: 'internal', internal: { service: 'arduinoCli', method: 'select_board' },
+            },
+            {
+              name: 'list_platforms',
+              description: '列出已安装的 arduino-cli 平台（core）',
+              parameters: { type: 'object', properties: {} },
+              category: 'query', transport: 'internal', internal: { service: 'arduinoCli', method: 'list_platforms' },
+            },
+            {
+              name: 'search_boards',
+              description: '按关键词搜索可用开发板（如 uno / nano / esp32）',
+              parameters: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词' } }, required: ['query'] },
+              category: 'query', transport: 'internal', internal: { service: 'arduinoCli', method: 'search_boards' },
+            },
+            {
+              name: 'get_board_info',
+              description: '获取当前选中开发板的详细信息（FQBN / 可配置选项）',
+              parameters: { type: 'object', properties: { fqbn: { type: 'string', description: 'FQBN（省略则用当前选中板卡）' } } },
+              category: 'query', transport: 'internal', internal: { service: 'arduinoCli', method: 'get_board_info' },
+            },
+            {
+              name: 'set_board_option',
+              description: '设置开发板选项（如 upload.speed=115200），追加到当前 FQBN',
+              parameters: { type: 'object', properties: { name: { type: 'string' }, value: { type: 'string' } }, required: ['name', 'value'] },
+              category: 'modify', transport: 'internal', internal: { service: 'arduinoCli', method: 'set_board_option' },
+            },
+            {
+              name: 'list_ports',
+              description: '列出当前可用串口（含设备名与 VID/PID），用于 upload / 串口监视前选择端口',
+              parameters: { type: 'object', properties: {} },
+              category: 'query', transport: 'internal', internal: { service: 'arduinoCli', method: 'list_ports' },
+            },
+            {
+              name: 'select_port',
+              description: '选择串口（如 COM3）。选择后 upload 与串口监视将使用该端口，状态栏同步显示。',
+              parameters: { type: 'object', properties: { query: { type: 'string', description: '串口号或设备名关键词，如 COM3' } }, required: ['query'] },
+              category: 'modify', transport: 'internal', internal: { service: 'serialport', method: 'select' },
+            },
+          ]);
+        } catch (e) { /* 补充声明失败不影响插件加载 */ }
+      }
+
+      // 串口日志服务（对齐参考基线 serialLog）
       window.PluginSystem.registerInternalService('serialLog', {
         open: async (a) => {
           if (!window.BubaiCode.serial) return '串口桥不可用';
@@ -19576,14 +20641,52 @@ function init() {
       window.PluginSystem.registerInternalService('serialport', {
         list: async () => {
           const r = await window.BubaiCode.serial.list();
-          return r.ports ? JSON.stringify(r.ports) : '无串口';
+          if (!r || !r.ports || !r.ports.length) return '无可用串口';
+          const lines = r.ports.map((p, i) => {
+            const vid = p.vendorId ? ' VID:' + p.vendorId : '';
+            const pid = p.productId ? ' PID:' + p.productId : '';
+            return `${i + 1}. ${p.port} — ${p.board || p.friendlyName || '未知设备'}${vid}${pid}`;
+          });
+          return '可用串口:\n' + lines.join('\n');
         },
         select: async (a) => {
-          // 简化：返回匹配的端口
+          // 参考基线 对齐：按 query 精确匹配串口，并把选中态写入真实状态
+          // （state.compilePort 供烧录按钮读；state.arduinoPort 供提示词/设备面板读）
           const r = await window.BubaiCode.serial.list();
-          if (!r.ports || !r.ports.length) return '无可用串口';
-          const found = r.ports.find(p => p.port.toLowerCase().includes((a.query || '').toLowerCase()));
-          return found ? '已选择 ' + found.port : '未找到匹配端口';
+          if (!r || !r.ports || !r.ports.length) return '无可用串口';
+          const q = String((a && (a.query || a.port)) || '').trim().toLowerCase();
+          if (!q) return 'Error: 缺少 query 参数（串口号，如 COM3）';
+          const ports = r.ports;
+          // 先精确匹配端口号，再匹配设备名/VID/PID
+          let found = ports.find(p => String(p.port).toLowerCase() === q);
+          if (!found) found = ports.find(p => String(p.port).toLowerCase().includes(q));
+          if (!found) found = ports.find(p => {
+            const hay = [p.board, p.friendlyName, p.manufacturer, p.vendorId, p.productId, p.pnpId]
+              .filter(Boolean).join(' ').toLowerCase();
+            return hay.includes(q);
+          });
+          if (!found) {
+            const avail = ports.map(p => p.port).join(', ');
+            return `未找到匹配「${q}」的串口。当前可用: ${avail || '(无)'}`;
+          }
+          state.compilePort = found.port;
+          state.arduinoPort = found.port;
+          // 同步设备面板端口下拉与状态栏端口段（对齐 select_board 的做法）
+          try {
+            const pSel = document.getElementById('port-select');
+            if (pSel) {
+              if (![...pSel.options].some(o => o.value === found.port)) {
+                const opt = document.createElement('option');
+                opt.value = found.port; opt.textContent = found.port;
+                pSel.appendChild(opt);
+              }
+              pSel.value = found.port;
+            }
+            const portEl = document.getElementById('status-port');
+            if (portEl) portEl.textContent = found.port;
+          } catch (e) { /* UI 未就绪不影响选端口 */ }
+          const dev = found.board || found.friendlyName || '';
+          return `已选择串口: ${found.port}${dev ? '（' + dev + '）' : ''}（后续 upload/串口监视将使用该端口）`;
         }
       });
       // 工程统计服务（project-stats 插件用）：真扫目录，不算行数骗人
@@ -19891,9 +20994,9 @@ function init() {
   // }, 1500);
 }
 
-// 启动即同步欢迎态布局（对齐 TrieCode：无项目时 AI 欢迎区占满中央）
+// 启动即同步欢迎态布局（对齐参考基线：无项目时 AI 欢迎区占满中央）
 __onDCL(() => { try { syncWelcomePanel(); } catch (e) {} });
-// 插件加载完成后刷新活动栏动态入口（TrieCode 式：装了就显示）+ 静态工具链按钮同步
+// 插件加载完成后刷新活动栏动态入口（基线式：装了就显示）+ 静态工具链按钮同步
 // 二次兜底：磁盘插件加载可能晚于 1.5s，3.5s 再同步一次，避免重启后已装插件的入口不出现
 __onDCL(() => {
   [1500, 3500].forEach(ms => setTimeout(() => {
@@ -19952,7 +21055,7 @@ function normProgress(d) {
 })();
 
 
-// ============ DAP 调试器（对齐 TrieCode 路线图：DAP 调试器与断点）============
+// ============ DAP 调试器（对齐参考基线 路线图：DAP 调试器与断点）============
 (function() {
   const dbgState = { breakpoints: new Map(), sessionId: null, stoppedThreadId: null, currentFrameId: null };
 
@@ -20211,7 +21314,7 @@ function normProgress(d) {
 })();
 
 
-// ============ provider 注册表统一管理 UI（参考 TrieCode settings-providers）============
+// ============ provider 注册表统一管理 UI（参考基线 settings-providers）============
 function pmEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 async function refreshProviders() {
   try { const r = await window.BubaiCode.ai.providers(); window.__providerList = (r && r.providers) || []; }
@@ -20241,7 +21344,7 @@ async function renderProviderManager() {
     if (isCustom) html += '<div style="margin-top:6px;display:flex;gap:6px;"><input class="device-input pm-url" data-pid="' + pmEsc(p.id) + '" placeholder="Base URL" value="' + pmEsc(baseUrls[p.id] || p.baseURL || '') + '" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><input class="device-input pm-model" data-pid="' + pmEsc(p.id) + '" placeholder="默认模型" value="' + pmEsc(p.defaultModel || '') + '" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"></div>';
     html += '</div>';
   }
-  // 语音识别（STT）配置卡（对齐 TrieCode 语音输入：自带 Key 的 OpenAI 兼容 /audio/transcriptions 或百炼协议）
+  // 语音识别（STT）配置卡（对齐参考基线 语音输入：自带 Key 的 OpenAI 兼容 /audio/transcriptions 或百炼协议）
   const sttCfg0 = ai.stt || {};
   html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
   html += '<div style="font-size: 11.5px;color:#e0e0e0;margin-bottom:6px;">语音识别（STT）· AI 输入框麦克风按钮使用</div>';
@@ -20255,7 +21358,7 @@ async function renderProviderManager() {
   html += '</div>';
   html += '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;"><button id="stt-save-btn" style="background:#3a6ea5;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size: 10.5px;cursor:pointer;">保存语音识别配置</button><span style="font-size:10px;color:#888;">录音 16kHz WAV 仅上传至你填写的端点，本机不落盘、不记录内容。</span></div>';
   html += '</div>';
-  // Git 凭据卡（insteadOf 注入；明文存储——与 TrieCode 同策略+同警告）
+  // Git 凭据卡（insteadOf 注入；明文存储——与 参考基线 同策略+同警告）
   let creds = [];
   try { const cr = await window.BubaiCode.git.credentials.list(); if (cr && cr.success) creds = cr.credentials || []; } catch (e) {}
   html += '<div style="background:#181818;border:1px solid #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
@@ -20300,7 +21403,7 @@ async function renderProviderManager() {
   html += '</div><div id="upd-result" style="font-size:10.5px;color:#ccc;margin-top:6px;"></div></div>';
   html += '<div style="background:#181818;border:1px dashed #3c3c3c;border-radius:6px;padding:10px;margin-bottom:8px;">';
   html += '<div style="font-size: 11.5px;color:#e0e0e0;margin-bottom:6px;">添加自定义供应商</div>';
-  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;"><input id="pm-add-id" placeholder="id (如 groq)" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><input id="pm-add-name" placeholder="名称" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><select id="pm-add-type" style="background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><option value="openai">openai</option><option value="local">local</option><option value="ollama">ollama</option><option value="gateway">gateway</option></select></div>';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;"><input id="pm-add-id" placeholder="id (如 groq)" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><input id="pm-add-name" placeholder="名称" style="flex:1;min-width:90px;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><select id="pm-add-type" style="background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><option value="openai">openai</option><option value="local">local</option><option value="ollama">ollama</option><option value="gateway">gateway</option><option value="claude">claude</option></select></div>';
   html += '<div style="display:flex;gap:6px;margin-top:6px;"><input id="pm-add-url" placeholder="Base URL (openai 必填)" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"><input id="pm-add-model" placeholder="默认模型" style="flex:1;background:#111;border:1px solid #3c3c3c;color:#e0e0e0;border-radius:4px;padding:5px 8px;font-size: 10.5px;"></div>';
   html += '<button id="pm-add-btn" style="margin-top:6px;background:#2d5a27;color:#fff;border:1px solid #3f7a36;border-radius:4px;padding:5px 12px;font-size: 10.5px;cursor:pointer;">添加</button>';
   html += '</div>';
@@ -20454,7 +21557,7 @@ async function saveProviderManager() {
   else { if (hint) { hint.textContent = '失败: ' + ((r && r.error) || '未知'); hint.style.color = '#ef4444'; } }
 }
 
-// ============ Agent 护栏（TrieCode 式）设置面板 ============
+// ============ Agent 护栏（基线式）设置面板 ============
 // 四项护栏开关写入 config.ai.guardrails，AgentRunner.run() 启动时读取（下次任务生效）。
 // 模块级护栏状态：供「每次工具执行」都跑的全局 toolPipeline pre-hook 同步读取（避免每次工具调 config）。
 const GUARDRAILS = { summaryCompression: false, alwaysVerify: false, loopTimeoutMsMin: 0, strictPlanGate: true };
@@ -20474,7 +21577,7 @@ async function renderGuardrailSettings() {
   const alwaysVerify = !!g.alwaysVerify;
   const loopTimeoutMin = Number(g.loopTimeoutMsMin) || 0;
   const strictPlanGate = g.strictPlanGate !== false;
-  let html = '<div class="device-section-title" style="margin-top:0;">Agent 护栏（TrieCode 式）</div>';
+  let html = '<div class="device-section-title" style="margin-top:0;">Agent 护栏</div>';
   html += '<div style="font-size: 10.5px;color:#888;margin-bottom:8px;">控制 agent 循环的健壮性护栏；改动在「下一次任务」生效。B2 默认开启。</div>';
   const row = (id, label, checked, type, extra) => {
     if (type === 'checkbox') {
