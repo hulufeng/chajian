@@ -68,6 +68,19 @@ test('流式残留裸围栏气泡在轮次结束时统一补渲染', () => {
   assert.match(APP, /list\.forEach\(\(m\) => \{[\s\S]{0,400}renderChatMarkdown\(b, b\.textContent/, '需扫描所有未 done 的 AI 气泡');
 });
 
+test('CodeBuddy 风格主题层：令牌驱动、可回退', () => {
+  assert.ok(CSS.includes('CodeBuddy 风格 AI 面板'), 'style.css 需含主题层');
+  assert.match(CSS, /--cb-bg:\s*var\(--surface-1/, '颜色须走主题令牌，不能写死浅色');
+  assert.match(CSS, /--cb-border:\s*var\(--border/, '边框须走主题令牌');
+  assert.match(CSS, /body\.cb-compact \.chat-message\.user\s*\{[^}]*background:\s*var\(--cb-surface\)/, '用户消息应为浅底卡片而非蓝气泡');
+  assert.match(CSS, /body\.cb-compact \.work-status-msg \.work-status-bubble\s*\{[^}]*background:\s*none/, '状态条应去掉绿紫大色块');
+  assert.match(CSS, /body\.cb-compact \.ai-input-box\s*\{[^}]*border:\s*1px solid/, '输入框应为独立带边框容器');
+  assert.match(CSS, /body\.cb-compact \.ai-tool-flow-body\s*\{[^}]*max-height/, '过程性工具流应收拢');
+  assert.match(APP, /__bubaiClassicUI/, '需提供回退开关');
+  assert.match(APP, /__bubaiCompactUI/, '需提供恢复开关');
+  assert.match(APP, /__onDCL\(\(\) => \{[\s\S]{0,240}cb-compact/, '类添加须在 DOM 就绪后');
+});
+
 test('输入框 placeholder 缩短避免换行', () => {
   const m = HTML.match(/id="ai-input"[\s\S]{0,240}?placeholder="([^"]+)"/);
   assert.ok(m, '应能找到输入框 placeholder');

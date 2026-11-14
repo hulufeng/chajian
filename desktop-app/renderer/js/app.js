@@ -8,6 +8,23 @@ function __onDCL(cb) {
   else queueMicrotask(cb);
 }
 
+// 2026-11-14：CodeBuddy 风格 AI 面板主题层（style.css 末尾 body.cb-compact 段）。
+// 默认开启；如需回退到旧的「蓝色气泡」风格，控制台执行 window.__bubaiClassicUI()。
+// 偏好持久化到 localStorage，重启后保持用户选择。
+window.__bubaiClassicUI = function () {
+  if (document.body) document.body.classList.remove('cb-compact');
+  try { localStorage.setItem('bubai-ui-classic', '1'); } catch (e) {}
+};
+window.__bubaiCompactUI = function () {
+  if (document.body) document.body.classList.add('cb-compact');
+  try { localStorage.removeItem('bubai-ui-classic'); } catch (e) {}
+};
+__onDCL(() => {
+  try {
+    if (localStorage.getItem('bubai-ui-classic') !== '1') document.body.classList.add('cb-compact');
+  } catch (e) { document.body.classList.add('cb-compact'); }
+});
+
 // ============ 记忆持久化（对齐参考基线 memory/ 目录）============
 async function saveMemoriesToDisk(memories) {
   if (!isElectron || !window.BubaiCode || !window.BubaiCode.fs) return;

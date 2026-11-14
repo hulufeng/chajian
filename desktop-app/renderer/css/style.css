@@ -6831,3 +6831,84 @@ body.pf-in-explorer #product-factory-view .pf-nav { padding: 10px !important; }
 .work-status-line { font-size: 11.5px; }
 /* AI 消息头像已隐藏；用户头像在窄面板会被气泡挤出裁切（显示成半个字），一并隐藏 */
 .chat-message.user .chat-avatar { display: none !important; }
+
+/* ===== 2026-11-14 CodeBuddy 风格 AI 面板（用户「还是丑，可以参考 codebuddy」） =====
+   依据：CodeBuddy CN 的 workbench.desktop.main.css 中 .interactive-item-container(全宽消息行,
+   padding 12px 16px) / .interactive-request(border-left 3px 强调) / .chat-input-container
+   (独立带边框输入框) 与实机界面（低饱和、过程信息可折叠、内容为主）。
+   与 BubaiCode 原「蓝色气泡 + 绿色状态块 + 一堆卡片药丸」的差异是风格性的，故做整体重皮。
+   全部颜色走现有 --surface-*/--border/--text-* 令牌，浅色与暗色主题自动适配。
+   开关：body.cb-compact（默认由 app.js 启动时添加；移除该 class 即回退到旧气泡风格）。 */
+/* 变量挂在 body.cb-compact 而非 :root：随开关一起生效，且可被后代继承。
+   每个 var() 都带 fallback，即使主题令牌缺失也不会退化成透明。 */
+body.cb-compact {
+  --cb-bg: var(--surface-1, #ffffff);
+  --cb-surface: var(--surface-2, #f7f8fa);
+  --cb-border: var(--border, #e5e7eb);
+  --cb-fg: var(--text-primary, #24292f);
+  --cb-muted: var(--text-secondary, #6b7280);
+  --cb-faint: var(--text-tertiary, #9ca3af);
+  --cb-accent: var(--primary, #2563eb);
+}
+
+body.cb-compact .ai-panel { background: var(--cb-bg) !important; border-left: 1px solid var(--cb-border) !important; }
+body.cb-compact .ai-top-bar { background: var(--cb-bg) !important; border-bottom: 1px solid var(--cb-border) !important; }
+body.cb-compact .ai-messages { background: var(--cb-bg) !important; padding: 14px 16px !important; }
+
+/* 全宽消息行：用户请求用浅底细边框卡片，AI 回复无底色 */
+body.cb-compact .chat-message { background: none !important; border: 0 !important; box-shadow: none !important; margin: 0 0 2px !important; padding: 0 !important; max-width: 100% !important; }
+body.cb-compact .chat-message.user { padding: 10px 12px !important; background: var(--cb-surface) !important; border-radius: 8px !important; border: 1px solid var(--cb-border) !important; margin-bottom: 12px !important; }
+body.cb-compact .chat-message.user .chat-bubble { background: none !important; color: var(--cb-fg) !important; padding: 0 !important; border: 0 !important; font-size: 12.5px !important; line-height: 1.65 !important; }
+body.cb-compact .chat-message .chat-avatar { display: none !important; }
+body.cb-compact .chat-message.ai { border-bottom: 1px solid var(--cb-border) !important; padding: 4px 0 12px !important; margin-bottom: 10px !important; }
+body.cb-compact .chat-message.ai .chat-bubble { background: none !important; color: var(--cb-fg) !important; padding: 0 !important; font-size: 12.5px !important; line-height: 1.7 !important; }
+body.cb-compact .chat-bubble p { margin: 0 0 8px !important; }
+
+/* 代码块：细边框浅底，无重色 */
+body.cb-compact .chat-bubble pre { background: var(--cb-surface) !important; border: 1px solid var(--cb-border) !important; border-radius: 6px !important; padding: 9px 11px !important; font-size: 11.5px !important; margin: 8px 0 !important; }
+body.cb-compact .chat-bubble code { background: var(--cb-surface) !important; border-radius: 3px !important; font-size: 11.5px !important; }
+
+/* 折叠头 / 状态条：细灰元信息，去掉绿紫大色块 */
+body.cb-compact .chat-ai-head { background: none !important; border: 0 !important; padding: 0 0 4px !important; margin: 0 0 4px !important; }
+body.cb-compact .chat-ai-head__btn { background: none !important; border: 0 !important; box-shadow: none !important; }
+body.cb-compact .chat-ai-head__time,
+body.cb-compact .chat-ai-head__steps { color: var(--cb-faint) !important; font-size: 11px !important; font-weight: 400 !important; }
+body.cb-compact .chat-ai-actions { opacity: .55; }
+body.cb-compact .chat-ai-meta { color: var(--cb-faint) !important; font-size: 10.5px !important; }
+body.cb-compact .work-status-msg { margin-bottom: 4px !important; }
+body.cb-compact .work-status-msg .work-status-bubble { background: none !important; border: 0 !important; border-left: 2px solid var(--cb-border) !important; border-radius: 0 !important; padding: 2px 0 2px 10px !important; }
+body.cb-compact .work-status-done .work-status-bubble { border-left-color: #86cf9a !important; }
+body.cb-compact .work-status-line { color: var(--cb-muted) !important; font-size: 11px !important; font-weight: 400 !important; }
+body.cb-compact .work-status-meta { color: var(--cb-faint) !important; font-size: 10.5px !important; }
+
+/* 过程性信息收敛：变更验收 / 工具流变细边框紧凑行（CodeBuddy 式可折叠过程） */
+body.cb-compact .diff-summary-card { background: var(--cb-bg) !important; border: 1px solid var(--cb-border) !important; border-radius: 8px !important; box-shadow: none !important; margin: 4px 0 0 !important; }
+body.cb-compact .diff-summary-header { background: var(--cb-surface) !important; border-bottom: 1px solid var(--cb-border) !important; font-size: 11px !important; padding: 6px 9px !important; }
+body.cb-compact .diff-file-row { background: var(--cb-bg) !important; font-size: 11px !important; padding: 4px 9px !important; }
+body.cb-compact #ai-tool-flow-panel,
+body.cb-compact .ai-tool-flow { background: var(--cb-bg) !important; border: 1px solid var(--cb-border) !important; border-radius: 8px !important; box-shadow: none !important; }
+body.cb-compact .ai-tool-flow-header,
+body.cb-compact .tool-flow-head { background: var(--cb-surface) !important; border-bottom: 1px solid var(--cb-border) !important; font-size: 11px !important; color: var(--cb-muted) !important; }
+body.cb-compact .ai-tool-flow-body { max-height: 132px !important; overflow: auto !important; }
+body.cb-compact .tool-flow-item { background: none !important; border: 0 !important; border-bottom: 1px solid var(--cb-border) !important; border-radius: 0 !important; padding: 5px 8px !important; font-size: 11px !important; }
+body.cb-compact .tool-flow-code { font-size: 10.5px !important; color: var(--cb-muted) !important; }
+body.cb-compact .ai-verdict-badge { border: 0 !important; background: none !important; color: var(--cb-faint) !important; padding: 0 !important; font-size: 10.5px !important; font-weight: 400 !important; text-align: left !important; margin: 2px 0 6px !important; }
+
+/* 输入区：独立圆角容器（对齐 .chat-input-container），工具栏轻量化 */
+body.cb-compact .ai-input-container { background: var(--cb-bg) !important; border-top: 1px solid var(--cb-border) !important; padding: 12px 14px 8px !important; }
+body.cb-compact .ai-input-box { background: var(--cb-bg) !important; border: 1px solid var(--cb-border) !important; border-radius: 10px !important; box-shadow: 0 1px 3px rgba(16, 24, 40, .04) !important; }
+body.cb-compact textarea.ai-input-textarea { font-size: 12.5px !important; color: var(--cb-fg) !important; }
+body.cb-compact .ai-input-toolbar { border: 0 !important; padding: 6px 8px !important; }
+body.cb-compact .ai-input-tool-btn,
+body.cb-compact .model-select-btn,
+body.cb-compact .safety-mode-btn { background: none !important; border: 0 !important; color: var(--cb-muted) !important; }
+body.cb-compact .ai-send-btn { background: var(--cb-accent) !important; border-radius: 8px !important; width: 30px !important; height: 30px !important; }
+body.cb-compact .ai-project-bar { background: none !important; border: 0 !important; padding: 4px 14px 0 !important; }
+body.cb-compact .ai-project-btn { background: var(--cb-surface) !important; border: 1px solid var(--cb-border) !important; border-radius: 6px !important; }
+body.cb-compact .ai-disclaimer { color: var(--cb-faint) !important; font-size: 10.5px !important; background: none !important; }
+
+/* 欢迎态：去装饰图与大标题，收敛为轻量引导 */
+body.cb-compact .ai-welcome-title { font-size: 15px !important; font-weight: 500 !important; color: var(--cb-muted) !important; margin: 6px 0 14px !important; }
+body.cb-compact .ai-welcome-sim { display: none !important; }
+body.cb-compact .ai-welcome-pill,
+body.cb-compact .ai-quick-btn { background: var(--cb-bg) !important; border: 1px solid var(--cb-border) !important; border-radius: 6px !important; color: var(--cb-muted) !important; font-size: 11.5px !important; box-shadow: none !important; }
