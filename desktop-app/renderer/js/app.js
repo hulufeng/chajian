@@ -8311,8 +8311,17 @@ function renderChatMarkdown(bubble, text) {
 function tickAiWork(el) {
   const t = setInterval(() => {
     if (!el.isConnected || el.dataset.done === '1') { clearInterval(t); return; }
+    const sec = Math.max(1, Math.round((Date.now() - Number(el.dataset.t0)) / 1000));
+    // 2026-11-14：计时封顶 30 分钟——异常路径未 finalize 的消息计时器会一直跑，
+    // 出现「已工作 2284s」这类离谱数值；超时自动定格并停表。
+    if (sec > 1800) {
+      clearInterval(t); el.dataset.done = '1';
+      const sp = el.querySelector('.chat-ai-head__time');
+      if (sp) sp.textContent = '已工作 ' + sec + 's';
+      return;
+    }
     const span = el.querySelector('.chat-ai-head__time');
-    if (span) span.textContent = '已工作 ' + Math.max(1, Math.round((Date.now() - Number(el.dataset.t0)) / 1000)) + 's';
+    if (span) span.textContent = '已工作 ' + sec + 's';
   }, 1000);
   el._workTick = t;
 }
@@ -8326,6 +8335,14 @@ function finalizeAiTurn({ steps, inTok, outTok, credits } = {}) {
   if (!msg || msg.dataset.done === '1') return;
   msg.dataset.done = '1';
   if (msg._workTick) clearInterval(msg._workTick);
+  // 2026-11-14：兜底渲染——流式/异常中断路径可能漏掉 Markdown 渲染，导致裸 ``` 代码
+  // 围栏直接回显（截图 bug）。标记 done 时若气泡仍含未渲染围栏，统一补渲染。
+  try {
+    const fb = msg.querySelector('.chat-bubble');
+    if (fb && !fb.querySelector('pre') && /```/.test(fb.textContent || '')) {
+      renderChatMarkdown(fb, fb.textContent || '');
+    }
+  } catch (e) {}
   const sec = Math.max(1, Math.round((Date.now() - Number(msg.dataset.t0 || Date.now())) / 1000));
   const tEl = msg.querySelector('.chat-ai-head__time');
   if (tEl) tEl.textContent = '已工作 ' + sec + 's';
@@ -9750,6 +9767,17 @@ async function handleAISend() {
     }
     welcome.style.display = 'none';
   }
+
+  // 2026-11-14：发送新消息前清掉滞留的引导卡（BYOK / 插件安装）——它们是上一轮
+  // 降级时的一次性 append，会滞留在对话中间（夹在真实消息之间），观感极差。
+  try {
+    const _area = document.getElementById('ai-chat-area');
+    if (_area) {
+      _area.querySelectorAll('.chat-message.ai').forEach((c) => {
+        if (c.querySelector('#byok-cta-btn') || c.querySelector('[data-pi-btn]')) c.remove();
+      });
+    }
+  } catch (e) {}
 
   addChatMessage('user', finalText);
   // 用户气泡里回显所附图片
