@@ -45,7 +45,7 @@ function getDefaultConfig() {
       model: 'deepseek-v4',
       apiKey: '',
       thinkingLevel: 'standard',
-      agentMode: 'default'
+      agentMode: 'auto'
     },
     proxy: {
       mode: 'system',

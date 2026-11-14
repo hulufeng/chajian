@@ -1,6 +1,6 @@
 {
   "name": "BubaiCode",
-  "version": "1.2.31",
+  "version": "1.2.33",
   "description": "BubaiCode —— 用 AI 打通「从引脚到固件」的嵌入式开发全流程。",
   "main": "main/index.js",
   "author": {
@@ -50,7 +50,7 @@
     "productName": "BubaiCode",
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "dist168"
+      "output": "dist179"
     },
     "publish": [
       {

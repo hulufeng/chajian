@@ -1,4 +1,4 @@
-// Phase D · 产品工厂主进程服务（对齐 ChipCode product-state.js / main:1185-1186,1344,1362-1368）
+// Phase D · 产品工厂主进程服务（对齐参考基线 product-state.js / main:1185-1186,1344,1362-1368）
 // 磁盘文件是阶段状态的唯一真相；渲染层只消费 computeState() 的结果。
 const fs = require('fs');
 const path = require('path');
@@ -72,7 +72,7 @@ function listDir(root, rel) {
   } catch (e) { return []; }
 }
 
-/** 判定产品项目：.triecode.json 或 .bubaicode.json 的 projectType === 'product' */
+/** 判定产品项目：配置文件的 projectType === 'product' */
 function isProductProject(root) {
   if (!root || !fs.existsSync(root)) return false;
   const a = readJson(root, '.triecode.json', null);
@@ -91,7 +91,7 @@ function effectiveEvidence(root) {
 }
 
 /**
- * computeStages：从磁盘计算五阶段状态（对齐 ChipCode product-state.js:300-386）
+ * computeStages：从磁盘计算五阶段状态（对齐参考基线 product-state.js:300-386）
  * 规则：blocked 优先于 done；对话里说完成不算完成，只认文件与证据。
  */
 function computeStages(root) {
@@ -192,12 +192,21 @@ function computeStages(root) {
   };
 }
 
-/** 新建产品项目脚手架（对齐 ChipCode main:1185-1186） */
+/** 新建产品项目脚手架（对齐参考基线 main:1185-1186）
+ *  root 是用户选择的「父目录」，项目建在 root/<产品名>/ 下——此前直接铺进 root，
+ *  会用 writeFileSync 静默覆盖用户已有的 spec.md / bom.json / .triecode.json 等文件。
+ */
 function createScaffold(root, name) {
   if (!root || typeof root !== 'string') return { success: false, error: '缺少目录' };
-  const base = path.resolve(root);
+  const parent = path.resolve(root);
   const projectName = String(name || '未命名产品').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+  const base = path.join(parent, projectName);
   try {
+    // 防覆盖：目标子目录已存在且非空时拒绝创建，避免破坏用户数据
+    if (fs.existsSync(base)) {
+      const existing = fs.readdirSync(base);
+      if (existing.length > 0) return { success: false, error: '目录已存在且非空：' + base };
+    }
     fs.mkdirSync(path.join(base, 'firmware'), { recursive: true });
     fs.mkdirSync(path.join(base, 'design', 'views'), { recursive: true });
     fs.mkdirSync(path.join(base, 'hardware-package'), { recursive: true });
@@ -217,7 +226,7 @@ function createScaffold(root, name) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-/** 生成产品包（对齐 ChipCode main:1362-1368），导出到 hardware-package/ 目录 */
+/** 生成产品包（对齐参考基线 main:1362-1368），导出到 hardware-package/ 目录 */
 function buildPackage(root) {
   if (!isProductProject(root)) return { success: false, error: '当前不是产品项目' };
   const st = computeStages(root);

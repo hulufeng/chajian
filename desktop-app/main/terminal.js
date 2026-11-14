@@ -69,7 +69,7 @@ class TerminalService {
       ...options.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      // 中文 Windows 乱码治本：子进程强制 UTF-8（对齐 TrieCode terminal-exec UTF8_CHILD_ENV）
+      // 中文 Windows 乱码治本：子进程强制 UTF-8（对齐参考基线 terminal-exec UTF8_CHILD_ENV）
       PYTHONUTF8: '1',
       PYTHONIOENCODING: 'utf-8'
     };
@@ -330,7 +330,7 @@ class TerminalService {
   async executeCommand(command, cwd = process.cwd(), timeout = 30000, opts = {}) {
     const { exec } = require('child_process');
 
-    // ===== 安全护栏（对齐 TrieCode terminal-exec 三层防线，2026-09-13）=====
+    // ===== 安全护栏（对齐参考基线 terminal-exec 三层防线，2026-09-13）=====
     const verdict = guard.checkCommand(command);
     if (verdict.verdict === 'deny') {
       const msg = `危险命令已被安全策略拦截：${verdict.reason}（命令未执行）`;

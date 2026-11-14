@@ -1,5 +1,5 @@
 // ============ BubaiCode agent 循环编排（packages/engine，纯 CommonJS，零 Electron）============
-// 参考 TrieCode engine 包：仅负责通用骨架——轮次预算、无菌检测、压缩触发、plan 门控、验证钩子、整体超时。
+// 参考基线 engine 包：仅负责通用骨架——轮次预算、无菌检测、压缩触发、plan 门控、验证钩子、整体超时。
 // 所有副作用（模型调用、工具执行、UI、产品专属兜底启发式）通过回调注入，保证本文件可独立 node 单测。
 // app.js 的 AgentRunner.run 循环体原样保留，只消费这里提供的护栏原语。
 
@@ -100,7 +100,7 @@ async function runLoop(opts) {
   }
 }
 
-// plan 门控决策（参考 TrieCode）：当处于 PLAN 模式且计划未批准时，拒绝写/执行类工具。
+// plan 门控决策（参考基线）：当处于 PLAN 模式且计划未批准时，拒绝写/执行类工具。
 function enforcePlanGate(toolName, args, planApproved, isPlanGated) {
   return isPlanGated ? isPlanGated(toolName, args, planApproved) : false;
 }

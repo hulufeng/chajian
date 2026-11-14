@@ -33,6 +33,11 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     search: (query, opts) => ipcRenderer.invoke('sessions:search', query, opts)
   },
 
+  // 参考基线 对齐：Agent 注入埋点（append-only JSONL，主进程 512KB 轮转）
+  log: {
+    append: (name, record) => ipcRenderer.invoke('log:append', name, record)
+  },
+
   // 对话框
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
@@ -62,7 +67,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     cliCall: (opts) => ipcRenderer.invoke('plugin:cliCall', opts),
     unzip: (opts) => ipcRenderer.invoke('plugin:unzip', opts)
   },
-  // 插件管理（对齐 ChipCode plugins:* 主进程通道；管理逻辑主进程侧，渲染层经此桥接 + 监听 changed/progress 推送）
+  // 插件管理（对齐参考基线 plugins:* 主进程通道；管理逻辑主进程侧，渲染层经此桥接 + 监听 changed/progress 推送）
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),
     probeRuntime: () => ipcRenderer.invoke('plugins:probeRuntime'),
@@ -310,7 +315,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     probe: (cwd, host) => ipcRenderer.invoke('git:probe', cwd, host)
   },
 
-  // 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:*）
+  // 开发板核心与库管理器（对齐参考基线 board:*/core:*/lib:*）
   board: {
     coreList: () => ipcRenderer.invoke('core:list'),
     coreSearch: (query) => ipcRenderer.invoke('core:search', query),
@@ -426,15 +431,25 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     }
   },
 
-  // Agent 引擎（packages/engine，纯模块；护栏原语 + 规范化循环，对齐 TrieCode engine）
+  // Agent 引擎（packages/engine，纯模块；护栏原语 + 规范化循环，对齐参考基线 engine）
   engine: (() => {
     const engineLoop = require('../packages/engine/loop');
     const compression = require('../packages/engine/compression');
+    // 参考基线 对齐：上下文压缩三级降级策略（replay → text → 启发式）
+    const compPolicy = require('../packages/engine/context-compression-policy.cjs');
     return {
       // 规范化 agent 循环（通用骨架，回调注入；可作未来单一循环驱动）
       runLoop: (opts) => engineLoop.runLoop(opts),
       // 上下文 LLM 摘要压缩（B1）
       summarizeOldTurns: (callModel, messages, opts) => compression.summarizeOldTurns(callModel, messages, opts),
+      // 压缩三级降级：编排（compressWithFallback）必须留在渲染层（要调渲染层的 AI 客户端），
+      // 这里只暴露纯函数决策与重组。
+      compressionPolicy: compPolicy,
+      decideCompressionTier: (est, act, budget, hasLLM) => compPolicy.decideTier(est, act, budget, hasLLM),
+      heuristicSummary: (old, opts) => compPolicy.heuristicSummary(old, opts),
+      rebuildCompressedMessages: (o) => compPolicy.rebuildMessages(o),
+      splitByProtectTurns: (messages, protectTurns) => compPolicy.splitByProtectTurns(messages, protectTurns),
+      buildCompressionTranscript: (old, opts) => compPolicy.buildTranscript(old, opts),
       // plan 门控决策（B2）
       enforcePlanGate: (toolName, args, planApproved, isPlanGated) => engineLoop.enforcePlanGate(toolName, args, planApproved, isPlanGated),
       // 是否应触发验证（B3）
@@ -457,7 +472,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     cliExists: () => ipcRenderer.invoke('compile:cli-exists')
   },
 
-  // Wokwi 仿真（对齐 TrieCode Wokwi 工具链）
+  // Wokwi 仿真（对齐参考基线 Wokwi 工具链）
   wokwi: {
     run: (options) => ipcRenderer.invoke('wokwi:run', options)
   },
@@ -526,7 +541,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     discardPatch: (opts) => ipcRenderer.invoke('schedule:discardPatch', opts),
     submitPatch: (opts) => ipcRenderer.invoke('schedule:patch:submit', opts),
     listNotifications: () => ipcRenderer.invoke('schedule:listNotifications'),
-    // 补齐的 CRUD（对齐 ChipCode schedule 域）：取单条 / 编辑 / 删除 / 启停
+    // 补齐的 CRUD（对齐参考基线 schedule 域）：取单条 / 编辑 / 删除 / 启停
     getTask: (opts) => ipcRenderer.invoke('schedule:getTask', opts),
     update: (opts) => ipcRenderer.invoke('schedule:update', opts),
     remove: (opts) => ipcRenderer.invoke('schedule:delete', opts),

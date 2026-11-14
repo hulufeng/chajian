@@ -1,5 +1,5 @@
 // 会话全文检索：中文 3-gram + BM25 式排序（零依赖）
-// 对齐 ChipCode indexer-worker.js 的 FTS5/bm25/中文 3-gram 语义，但用内存索引实现，
+// 对齐参考基线 indexer-worker.js 的 FTS5/bm25/中文 3-gram 语义，但用内存索引实现，
 // 因为 Electron 28 内置 Node 18 不支持 node:sqlite / FTS5。
 // 索引以 id + updatedAt 为键惰性失效，save/revise/delete 后自动重建对应条目。
 
@@ -88,7 +88,13 @@ function search(sessions, query, opts) {
     docs.push({ s, kind: 'title', seq: -1, text: titleText, tokens: tokenize(titleText) });
     const msgs = Array.isArray(s.messages) ? s.messages : [];
     msgs.forEach((m, i) => {
-      const text = String((m && m.content) || '');
+      // 参考基线 对齐「FTS 索引 / 权威历史」双通道：
+      // 这里只读 content（模型可见的截断版），绝不读 _fullContent（完整原文只留在会话 JSON 里）。
+      // 再加一层上限保护，避免单条超长消息把 BM25 文档长度与内存拉爆。
+      const FTS_TOOL_MAX = 2000;
+      const FTS_OTHER_MAX = 20000;
+      const cap = (m && m.role === 'tool') ? FTS_TOOL_MAX : FTS_OTHER_MAX;
+      const text = String((m && m.content) || '').slice(0, cap);
       if (text) docs.push({ s, kind: 'message', seq: i, text, tokens: tokenize(text) });
     });
   }

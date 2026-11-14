@@ -1,7 +1,7 @@
-// ============ BubaiCode AI provider 注册表（单一数据源，参考 TrieCode provider-registry）============
+// ============ BubaiCode AI provider 注册表（单一数据源，参考基线 provider-registry）============
 // 合并三层：本地内置(builtin) + 用户自定义(config.ai.customProviders) + 未来云端(setCloud，云端优先覆盖同名)
 // main 用 toAiProviders() 派生旧版 AI_PROVIDERS 形状，渲染端用 getProviders() 拿完整元数据做统一注册 UI。
-// 本文件从 main/ 迁入 packages/engine，作为零 Electron 依赖的纯模块，可 headless/CLI 复用（对齐 TrieCode engine 包）。
+// 本文件从 main/ 迁入 packages/engine，作为零 Electron 依赖的纯模块，可 headless/CLI 复用（对齐参考基线 engine 包）。
 
 const BUILTIN = [
   { id: 'gateway', name: 'BubaiCode 云端', type: 'gateway', baseURL: 'https://bluebubai.work', defaultModel: 'qwen3-8b', builtin: true, enabled: true, needsApiKey: false, description: '登录后使用的云端模型（积分扣费）' },
@@ -10,7 +10,11 @@ const BUILTIN = [
   { id: 'openai', name: 'OpenAI', type: 'openai', baseURL: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini', builtin: true, enabled: true, needsApiKey: true, description: 'OpenAI 官方 API' },
   { id: 'ollama', name: 'Ollama', type: 'ollama', baseURL: 'http://localhost:11434/v1', defaultModel: 'llama3', builtin: true, enabled: true, needsApiKey: false, description: '本机 Ollama' },
   { id: 'local', name: '本地模型 (llama.cpp)', type: 'local', baseURL: 'http://127.0.0.1:8080/v1', defaultModel: 'qwen2.5-coder-7b-instruct-q4_k_m.gguf', builtin: true, enabled: true, needsApiKey: false, description: '本机 llama.cpp 引擎' },
-  { id: 'custom', name: '自定义 OpenAI 兼容', type: 'openai', baseURL: '', defaultModel: '', builtin: true, enabled: true, needsApiKey: false, custom: true, description: '任意 OpenAI 兼容端点' }
+  { id: 'custom', name: '自定义 OpenAI 兼容', type: 'openai', baseURL: '', defaultModel: '', builtin: true, enabled: true, needsApiKey: false, custom: true, description: '任意 OpenAI 兼容端点' },
+  // 参考基线 对齐：Anthropic 原生协议（/v1/messages）。
+  // type='claude' 是主进程唯一的「协议类型」判定依据；baseURL 不含 /v1（拼接时补）。
+  // 之所以原生支持：Anthropic 支持 cache_control 前缀缓存断点（OpenAI 兼容端只能靠前缀不变隐式命中）。
+  { id: 'claude', name: 'Anthropic Claude', type: 'claude', baseURL: 'https://api.anthropic.com', defaultModel: 'claude-sonnet-4-5', builtin: true, enabled: true, needsApiKey: true, description: 'Anthropic 官方 API（/v1/messages 原生协议 + 前缀缓存断点）' }
 ];
 
 class ProviderRegistry {

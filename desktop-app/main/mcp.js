@@ -1,4 +1,4 @@
-// ============ BubaiCode MCP 客户端管理器（参考 TrieCode mcp-manager）============
+// ============ BubaiCode MCP 客户端管理器（参考基线 mcp-manager）============
 // 支持三种 transport：stdio / http(StreamableHTTP) / sse(SSE)
 // 能力：配置归一化(normalizeMCPServerConfig)、SSRF 校验、并行连接(connectAll)、
 //       失败冷却(15s)、配置变更重连、toolRules(allow/ask/deny)、OAuth(PKCE) 脚手架
@@ -38,7 +38,7 @@ function getMcpService() {
   return instance;
 }
 
-// ============ MCP env 黑名单（对齐 TrieCode mcp-manager 的 env sanitize）============
+// ============ MCP env 黑名单（对齐参考基线 mcp-manager 的 env sanitize）============
 // 插件/服务器配置的 env 不允许覆盖这些变量：它们能让子进程在启动前加载任意代码、
 // 劫持命令解释器或运行时。Windows 环境变量名不区分大小写，统一大写比对。
 // PATH 有意不列入：便携运行时（deps:install 装的工具链）合法需要它；
@@ -105,7 +105,7 @@ function normalizeMCPServerConfig(raw) {
 
 // ============ SSRF 基础校验 ============
 // 桌面端用户自配 MCP 服务器，主要防范最危险的云元数据端点与 0.0.0.0/8；
-// 不阻断 127.0.0.1 / 局域网（本地与 LAN 开发场景常见，符合 TrieCode 取舍）。
+// 不阻断 127.0.0.1 / 局域网（本地与 LAN 开发场景常见，符合参考基线 取舍）。
 function ssrfCheck(targetUrl) {
   let u;
   try { u = new URL(targetUrl); } catch (e) { return { ok: false, reason: 'url 解析失败' }; }
