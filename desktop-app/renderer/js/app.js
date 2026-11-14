@@ -7318,9 +7318,19 @@ class AgentRunner {
               try {
                 const badge = document.createElement('div');
                 const conf = (verdict.confidence || 'none');
-                const color = conf === 'high' ? '#52C41A' : conf === 'medium' ? '#FAAD14' : conf === 'low' ? '#EA6668' : '#8C8C8C';
                 const label = { high: '高', medium: '中', low: '低', none: '无' }[conf] || '无';
-                badge.style.cssText = 'display:inline-block;margin:6px 0;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;color:#fff;background:' + color + ';';
+                // 2026-11-14：徽章颜色按「结论」而非置信度——原来 high 置信度一律亮绿，
+                // 出现「验证结论: FAIL · 置信度: 高」却是绿底，语义矛盾且刺眼。
+                // 改为 PASS 绿 / FAIL 红 / 其它灰，并用低饱和配色与描边，避免大块高亮。
+                const level = String(verdict.level || '').toUpperCase();
+                const tone = level === 'PASS'
+                  ? { bg: '#e8f5e9', fg: '#2e7d32', bd: '#a5d6a7' }
+                  : level === 'FAIL'
+                    ? { bg: '#fdecea', fg: '#c62828', bd: '#f5c6c2' }
+                    : { bg: '#f4f5f7', fg: '#5f6368', bd: '#e0e2e6' };
+                badge.className = 'ai-verdict-badge';
+                badge.style.cssText = 'display:inline-block;margin:6px 0;padding:3px 10px;border-radius:12px;font-size:11.5px;font-weight:600;'
+                  + 'color:' + tone.fg + ';background:' + tone.bg + ';border:1px solid ' + tone.bd + ';';
                 badge.textContent = '验证结论: ' + verdict.level + ' · 置信度: ' + label;
                 const area = document.getElementById('ai-chat-area');
                 if (area) { area.appendChild(badge); area.scrollTop = area.scrollHeight; }
@@ -8306,22 +8316,55 @@ function renderChatMarkdown(bubble, text) {
   bubble.innerHTML = chatMarkdownToHtml(text);
   bubble.style.whiteSpace = 'normal';
 }
+// 2026-11-14：流式上屏。生成中的文本用 textContent（避免逐 token 重排），
+// 但一旦出现「成对闭合」的代码围栏就切到 Markdown 渲染，避免用户看到
+// ```py / print("hello") / ``` 散落成行（右侧界面截图里的丑点）。
+// 围栏未闭合时保持纯文本，防止半截代码块闪烁重排。
+function renderStreamBubble(bubble, text) {
+  if (!bubble) return;
+  const fences = (String(text).match(/```/g) || []).length;
+  if (fences >= 2 && fences % 2 === 0) {
+    renderChatMarkdown(bubble, text);
+  } else {
+    bubble.textContent = text;
+    bubble.style.whiteSpace = 'pre-wrap';
+  }
+}
 
 // 助手消息「已工作 Ns」实时计时（每 1s 刷新，消息被移除 / 标记 done 后自停）
+// 2026-11-14：把 .gguf 文件名转成可读短名，避免模型按钮显示
+// 「qwen2.5-coder-7b-instruct-q4_k_m」被 27px 宽度裁成碎字。
+function friendlyModelLabel(file) {
+  const s = String(file || '').replace(/\.gguf$/i, '');
+  // 已是可读短名（含空格，如「Qwen2.5-Coder 7B」）则原样返回，避免二次截断
+  if (/\s/.test(s)) return s;
+  const m = s.match(/qwen2\.5-coder-(\d+)b/i);
+  if (m) return 'Qwen2.5-Coder ' + m[1] + 'B';
+  const q = s.match(/qwen3\.5-(\d+)b/i);
+  if (q) return 'Qwen3.5 ' + q[1] + 'B';
+  return s.length > 24 ? s.slice(0, 22) + '…' : s;
+}
+
+// 2026-11-14：计时显示统一为「已工作 Ns / 已工作 Mm Ss」，封顶 30 分钟。
+// 避免异常/长时间未 finalize 的消息出现「已工作 2284s」这类离谱数值。
+function formatWorkSec(sec) {
+  const s = Math.max(1, Math.min(1800, Math.round(Number(sec) || 1)));
+  if (s < 60) return '已工作 ' + s + 's';
+  return '已工作 ' + Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
 function tickAiWork(el) {
   const t = setInterval(() => {
     if (!el.isConnected || el.dataset.done === '1') { clearInterval(t); return; }
     const sec = Math.max(1, Math.round((Date.now() - Number(el.dataset.t0)) / 1000));
-    // 2026-11-14：计时封顶 30 分钟——异常路径未 finalize 的消息计时器会一直跑，
-    // 出现「已工作 2284s」这类离谱数值；超时自动定格并停表。
+    // 超时自动定格并停表。
     if (sec > 1800) {
       clearInterval(t); el.dataset.done = '1';
       const sp = el.querySelector('.chat-ai-head__time');
-      if (sp) sp.textContent = '已工作 ' + sec + 's';
+      if (sp) sp.textContent = formatWorkSec(1800);
       return;
     }
     const span = el.querySelector('.chat-ai-head__time');
-    if (span) span.textContent = '已工作 ' + sec + 's';
+    if (span) span.textContent = formatWorkSec(sec);
   }, 1000);
   el._workTick = t;
 }
@@ -8331,21 +8374,25 @@ function finalizeAiTurn({ steps, inTok, outTok, credits } = {}) {
   const area = document.getElementById('ai-chat-area');
   if (!area) return;
   const list = area.querySelectorAll('.chat-message.ai');
+  // 2026-11-14：兜底渲染——自动修复轮次会插入新 AI 消息并替换 currentAIBubble，
+  // 旧气泡可能停留在流式裸文本状态（``` 围栏与语言标记散落成行）。
+  // 每轮结束扫描所有未 done 的 AI 气泡，含未渲染围栏的统一补渲染。
+  try {
+    list.forEach((m) => {
+      if (m.dataset.done === '1') return;
+      const b = m.querySelector('.chat-bubble');
+      if (b && !b.querySelector('pre') && /```/.test(b.textContent || '')) {
+        renderChatMarkdown(b, b.textContent || '');
+      }
+    });
+  } catch (e) {}
   const msg = list[list.length - 1];
   if (!msg || msg.dataset.done === '1') return;
   msg.dataset.done = '1';
   if (msg._workTick) clearInterval(msg._workTick);
-  // 2026-11-14：兜底渲染——流式/异常中断路径可能漏掉 Markdown 渲染，导致裸 ``` 代码
-  // 围栏直接回显（截图 bug）。标记 done 时若气泡仍含未渲染围栏，统一补渲染。
-  try {
-    const fb = msg.querySelector('.chat-bubble');
-    if (fb && !fb.querySelector('pre') && /```/.test(fb.textContent || '')) {
-      renderChatMarkdown(fb, fb.textContent || '');
-    }
-  } catch (e) {}
   const sec = Math.max(1, Math.round((Date.now() - Number(msg.dataset.t0 || Date.now())) / 1000));
   const tEl = msg.querySelector('.chat-ai-head__time');
-  if (tEl) tEl.textContent = '已工作 ' + sec + 's';
+  if (tEl) tEl.textContent = formatWorkSec(sec);
   const sEl = msg.querySelector('.chat-ai-head__steps');
   if (sEl) sEl.textContent = Number(steps) > 0 ? Number(steps) + ' 步' : '';
   const meta = msg.querySelector('.chat-ai-meta');
@@ -9547,8 +9594,7 @@ function ensureAgent(pSessionId) {
       }
       if (content) {
         currentAIStream = content;
-        currentAIBubble.textContent = content;
-        currentAIBubble.style.whiteSpace = 'pre-wrap';
+        renderStreamBubble(currentAIBubble, content);
         
         // ===== 实时检测代码块并更新编辑器（对齐 trae：边生成边展示）=====
         const codeLangs = ['cpp', 'c', 'c++', 'python', 'py', 'ino', 'javascript', 'js', 'typescript', 'ts', 'java', 'go', 'rust', 'rs', 'html', 'css', 'arduino', 'markdown', 'md', 'json', 'yaml', 'yml', 'sh', 'bash'];
@@ -9832,7 +9878,12 @@ async function handleAISend() {
   if (!bgBtn) {
     bgBtn = document.createElement('div');
     bgBtn.id = 'bg-run-btn';
-    bgBtn.style.cssText = 'position:fixed;right:18px;bottom:80px;z-index:9999;background:var(--primary);color:#fff;padding:8px 14px;border-radius:20px;cursor:pointer;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+    // 2026-11-14：原为 bottom:80px 的大蓝实心胶囊，生成期间压住输入框/项目栏/状态栏（右侧界面显乱）。
+    // 改为低饱和小提示并上移到消息区下沿，避免遮挡任何可交互区域。
+    bgBtn.style.cssText = 'position:fixed;right:20px;bottom:250px;z-index:9999;'
+      + 'background:rgba(255,255,255,.96);color:var(--text-secondary, #5f6368);'
+      + 'padding:4px 10px;border:1px solid var(--border-light, #e0e2e6);border-radius:14px;'
+      + 'cursor:pointer;font-size:10.5px;box-shadow:0 1px 6px rgba(0,0,0,.08);';
     bgBtn.textContent = 'AI 生成中 · 点此转入后台';
     bgBtn.onclick = function() { showToast('AI 已在后台继续生成，可切换会话查看', 'info'); bgBtn.remove(); };
     document.body.appendChild(bgBtn);
@@ -9929,8 +9980,7 @@ ${outText || errText}
         }
         if (content) {
           currentAIStream = content;
-          currentAIBubble.textContent = content;
-          currentAIBubble.style.whiteSpace = 'pre-wrap';
+          renderStreamBubble(currentAIBubble, content);
         }
         if (done) {
           // 诊断修复场景：修复代码块优先写回当前文件（而非新建 main.py）
@@ -12595,7 +12645,8 @@ function bindEvents() {
       await window.BubaiCode.config.set('ai.provider', 'local');
       await window.BubaiCode.config.set('ai.model', file);
       const nameEl = document.getElementById('current-model-name');
-      if (nameEl) nameEl.textContent = (file.replace(/\.gguf$/i, '')) + ' (本地)';
+      // 2026-11-14：按钮宽度有限，显示完整 .gguf 文件名会被裁成碎字；改为可读短名
+      if (nameEl) nameEl.textContent = friendlyModelLabel(file) + ' (本地)';
       if (state.agent && state.agent.ai && typeof state.agent.ai._loadConfig === 'function') {
         await state.agent.ai._loadConfig();
       }
@@ -15184,7 +15235,7 @@ function bindEvents() {
             const wsGw = document.querySelector('.model-status-text');
             if (wsGw) wsGw.textContent = `当前模型：${gwLabel}（云端）`;
           } else if ((ai.provider === 'ollama' || ai.provider === 'local') && ai.model) {
-            let friendly = (ai.model.replace(/\.gguf$/i, '')).replace('Qwen_Qwen3.5-9B-Q4_K_M', 'Qwen3.5-9B (Q4_K_M)');
+            let friendly = friendlyModelLabel(ai.model);
             if (ai.provider === 'local') {
               // 用扫描到的可读名（Qwen2.5-Coder 3B），而不是难读的 .gguf 文件名
               try {
@@ -15322,7 +15373,7 @@ function bindEvents() {
           nameEl.textContent = st.ollama.ok ? 'Ollama 本地模型' : 'Ollama 本地模型（' + st.ollama.text + '）';
         } else if (a.provider === 'local' && a.model) {
           // 用扫描到的可读名（Qwen2.5-Coder 7B），不要显示难读的 .gguf 文件名
-          let friendly = (a.model.replace(/\.gguf$/i, '')).replace('Qwen_Qwen3.5-9B-Q4_K_M', 'Qwen3.5-9B (Q4_K_M)');
+          let friendly = friendlyModelLabel(a.model);
           try {
             const hit = (st.localModels || []).find(m => m.file === a.model);
             if (hit && hit.name) friendly = hit.name;
@@ -15715,7 +15766,7 @@ function bindEvents() {
           const ai = cfg?.ai || {};
           if (ai.provider === 'local' && ai.model) {
             const hit = modelList.find(m => m.file === ai.model);
-            const nm = hit ? hit.name : ai.model.replace(/\.gguf$/i, '');
+            const nm = hit && hit.name ? friendlyModelLabel(hit.name) : friendlyModelLabel(ai.model);
             document.getElementById('current-model-name').textContent = nm + ' (本地)';
           } else if (ai.provider === 'ollama' && ai.model) {
             document.getElementById('current-model-name').textContent = ai.model + ' (本地)';

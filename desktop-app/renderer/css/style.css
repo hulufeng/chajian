@@ -6805,3 +6805,29 @@ body.pf-in-explorer #product-factory-view .pf-nav { padding: 10px !important; }
   margin-left: 4px;
   vertical-align: middle;
 }
+
+/* ===== 2026-11-14 右侧 AI 面板排版修复（用户反馈「太丑」）=====
+   根因：面板固定 340px + 6162 段强制 nowrap，把 .model-selector 压到 27px（完整模型名被裁成碎字）、
+   #tb-mode-btn 压到 22px（「⚡ 自动」竖排）、状态条留白过大、用户头像被气泡挤出裁切。
+   修复：面板放宽到 400px（窄窗仍可收缩）、工具栏允许换行、隐藏与下方项目栏重复的项目药丸、
+   模型名给可收缩省略号、模式按钮按内容自适应、状态条紧凑化、用户头像隐藏。
+   已在 dist183 安装版（9226）以 CDP 注入实测：模型按钮 27→143px、模式按钮无裁切、输入区无溢出。 */
+.ai-panel { flex: 0 1 400px !important; width: 400px; min-width: 360px !important; }
+/* 6164 行的 `.ai-input-side .ai-input-toolbar` 特异性 (0,2,0) 高于单类选择器，
+   同为 !important 时它会赢；这里用同等特异性 + 靠后位置确保 wrap 真正生效 */
+.ai-panel .ai-input-toolbar,
+.ai-panel.ai-input-side .ai-input-toolbar { flex-wrap: wrap !important; gap: 6px; row-gap: 6px; }
+.ai-input-toolbar { flex-wrap: wrap !important; gap: 6px; row-gap: 6px; }
+.ai-input-left { flex: 0 1 auto !important; min-width: 0; }
+.ai-input-right { flex: 1 1 auto !important; min-width: 0; justify-content: flex-end; }
+/* 项目状态药丸与下方 .ai-project-bar（完整路径 + 选择工作空间）重复，隐藏以腾出宽度 */
+.ai-input-box #project-status { display: none !important; }
+.model-selector { min-width: 120px !important; max-width: 190px; flex: 1 1 auto !important; }
+.model-select-btn { max-width: 100% !important; min-width: 0; }
+.model-name { display: block; min-width: 0; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap; }
+.ai-input-container #tb-mode-btn { width: auto !important; min-width: 52px; white-space: nowrap !important; flex-shrink: 0 !important; }
+.ai-input-container #tb-mode-btn .icon { width: 10px; height: 10px; }
+.work-status-msg .work-status-bubble { padding: 6px 10px; }
+.work-status-line { font-size: 11.5px; }
+/* AI 消息头像已隐藏；用户头像在窄面板会被气泡挤出裁切（显示成半个字），一并隐藏 */
+.chat-message.user .chat-avatar { display: none !important; }
