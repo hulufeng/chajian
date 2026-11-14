@@ -1,125 +1,278 @@
-// ⚠️ 已知失效的历史测试（2026-11-14 标注），默认不纳入 `npm test`；用 `npm run test:legacy` 单独运行。
-// 失效原因（两条，均与依赖无关）：
-//   1) 本文件用硬编码行号 slice(8424, 8603) 从 app.js 抽代码；app.js 迭代后该区间已变成
-//      inferProjectType 等无关代码，工作流模块现位于 ~L10460+，故 new Function 抛 SyntaxError。
-//   2) 断言依赖的 wfExport / wfImport 独立函数已被移除，改为 wf-export / wf-import 按钮的
-//      内联事件处理（renderer/js/app.js ~L10718+）；wfRun 也新增了 route/loop/agent/approval 语义。
-// 修复方向：改为按函数边界动态抽取 + 用按钮 click 驱动导出/导入，并补齐新 mock；需单独安排。
+// 工作流引擎集成测试：用 jsdom 真实 DOM + mock BubaiCode 驱动 app.js 中的真实工作流模块。
+// 适配「多 Agent 工作流引擎」：data.status 状态机 / route=success|loop 边 / 审批门 / 环检测 /
+// 按钮内联的导入导出 / ai 配置临时切换与恢复。
 //
-// 集成测试：抽离 app.js 中的「工作流模块」(8425-8603 行)，在真实 DOM(jsdom) + mock BubaiCode 下运行，
-// 驱动真实的 wfRun / wfExport / wfImport，验证本次改动（工具节点接终端、条件分支、导入导出、运行态）。
-const fs = require('fs');
-const path = require('path');
+// 关键设计：按源码标记动态抽取模块（不再用硬编码行号 slice，避免 app.js 迭代后再次失效），
+// 抽取边界由 extractBlock() 校验；若标记或关键函数改名，测试会给出明确的失败提示而非语法错误。
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const APP = path.join(__dirname, '..', 'renderer', 'js', 'app.js');
-const lines = fs.readFileSync(APP, 'utf8').split('\n');
-// 1-indexed 8425..8603 -> 0-indexed slice(8424, 8603)
-const block = lines.slice(8424, 8603).join('\n');
+const START = '// ============ 工作流 / 可视化编排';
+const END = '// ============ Agent Manager';
 
-// 真实 DOM（仅工作流用到的几个元素）
-const dom = new JSDOM('<!DOCTYPE html><html><body>' +
-  '<div id="wf-nodes"></div><div id="wf-edges"></div><div id="wf-props"></div>' +
-  '</body></html>');
-const document = dom.window.document;
+function extractBlock() {
+  const src = fs.readFileSync(APP, 'utf8');
+  assert.equal(src.split(START).length, 2, '工作流模块起始标记应唯一（app.js 结构可能已变更）');
+  const s = src.indexOf(START);
+  const e = src.indexOf(END, s);
+  assert.ok(s >= 0 && e > s, '找不到工作流模块结束标记，请更新 START/END 标记');
+  const block = src.slice(s, e);
+  for (const sym of ['async function wfRun()', 'function wfShowView()', 'function wfDetectCycle()', "getElementById('wf-export')"]) {
+    assert.ok(block.includes(sym), `抽取块缺少「${sym}」，工作流模块结构可能已变更`);
+  }
+  return block;
+}
 
-// Mock BubaiCode（覆盖工作流用到的所有 IPC）
-const store = {};
-const BubaiCode = {
-  // AI 节点：把 prompt 回声，便于条件分支断言
-  ai: { chat: async (opts) => ({ success: true, content: 'AI_RESULT:' + (opts && opts.messages && opts.messages[0] && opts.messages[0].content || '') }) },
-  // 工具节点：真实终端的返回结构
-  terminal: { execute: async (cmd) => ({ success: true, stdout: 'OUT:' + cmd, stderr: '', exitCode: 0 }) },
-  config: { get: async () => null, set: async () => ({}) },
-  dialog: { saveFile: async () => '/tmp/wf.json', openFile: async () => '/tmp/wf.json' },
-  fs: { writeFile: async (p, c) => { store[p] = c; }, readFile: async (p) => store[p] || '' },
-  on: () => {}, removeListener: () => {}
-};
-const window = { BubaiCode };
-const state = { projectPath: '/tmp/proj' };
-const toasts = [];
-const showToast = (m) => { toasts.push(m); };
+const BLOCK = extractBlock();
 
-const api = new Function('window', 'document', 'showToast', 'state',
-  block + '\nreturn { wfAddNode, wfRun, wfExport, wfImport, getNodes: () => wfNodes, getEdges: () => wfEdges, setGraph: (n, e) => { wfNodes = n; wfEdges = e; } };'
-)(window, document, showToast, state);
+function mkNode(id, type, data = {}) {
+  return {
+    id, type, x: 10, y: 10,
+    data: { label: '', prompt: '', cmd: '', result: '', agent: 'BubaiCode（内置）', approval: false, status: 'idle', ...data }
+  };
+}
 
-let pass = 0, fail = 0;
-function check(name, cond) { if (cond) { pass++; console.log('  ✓ ' + name); } else { fail++; console.log('  ✗ ' + name); } }
-const find = (g, id) => g.find(n => n.id === id);
+async function waitFor(fn, ms = 3000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const v = fn();
+    if (v) return v;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error('waitFor 超时：' + fn.toString().slice(0, 120));
+}
 
-(async () => {
-  // 1) AI 节点真实调用
-  console.log('Test 1: AI 节点（真实 ai.chat）');
-  api.setGraph([], []);
-  api.wfAddNode('ai');
-  api.getNodes()[0].data.prompt = 'hello';
-  await api.wfRun();
-  let n = api.getNodes()[0];
-  check('结果含 AI 回声', n.data.result === 'AI_RESULT:hello');
-  check('状态 done', n._state === 'done');
+// 每个用例构建一份全新环境（模块状态是函数内闭包，天然隔离）。
+function makeEnv(opts = {}) {
+  const dom = new JSDOM('<!DOCTYPE html><html><body>' +
+    '<div id="workflow-view" style="display:none"></div>' +
+    '<div id="wf-nodes"></div><svg id="wf-edges"></svg><div id="wf-props"></div>' +
+    '<button id="wf-new"></button><button id="wf-export"></button><button id="wf-import"></button>' +
+    '<button id="wf-save"></button><button id="wf-run"></button>' +
+    '<div class="wf-palette-item" data-type="ai"></div>' +
+    '</body></html>', { url: 'http://localhost/' });
+  const { window } = dom;
+  const document = window.document;
 
-  // 2) 工具(终端)节点真实调用
-  console.log('Test 2: 工具节点（真实 terminal.execute）');
-  api.setGraph([], []);
-  api.wfAddNode('tool');
-  api.getNodes()[0].data.cmd = 'echo hi';
-  await api.wfRun();
-  n = api.getNodes()[0];
-  check('结果含 stdout', n.data.result.includes('OUT:echo hi'));
-  check('结果含退出码', n.data.result.includes('退出码 0'));
-  check('状态 done', n._state === 'done');
+  const inputs = [], anchors = [], blobs = [];
+  // jsdom 不实现 blob: 导航与文件选择框，桩掉并捕获创建的元素/对象
+  window.HTMLInputElement.prototype.click = function () { inputs.push(this); };
+  window.HTMLAnchorElement.prototype.click = function () { anchors.push(this); };
+  const FakeURL = {
+    createObjectURL(b) { blobs.push(b); return 'blob:test/' + blobs.length; },
+    revokeObjectURL() {}
+  };
+  class FakeBlob {
+    constructor(parts, o) { this.parts = parts; this.type = o && o.type; }
+  }
 
-  // 3) 条件分支：真分支走通、假分支跳过
-  console.log('Test 3: 条件分支（真）');
-  api.setGraph([
-    { id: 'r', type: 'ai', x: 0, y: 0, data: { prompt: 'x', label: '', cmd: '', result: '' }, _state: 'idle' },
-    { id: 'c', type: 'cond', x: 0, y: 0, data: { prompt: "prev.includes('AI_RESULT')", label: '', cmd: '', result: '' }, _state: 'idle' },
-    { id: 't', type: 'tool', x: 0, y: 0, data: { prompt: '', label: '', cmd: 'true-cmd', result: '' }, _state: 'idle' },
-    { id: 'f', type: 'tool', x: 0, y: 0, data: { prompt: '', label: '', cmd: 'false-cmd', result: '' }, _state: 'idle' }
-  ], [
-    { from: 'r', to: 'c' }, { from: 'c', to: 't' }, { from: 'c', to: 'f' }
-  ]);
-  await api.wfRun();
-  let g = api.getNodes();
-  check('cond 执行', find(g, 'c')._state === 'done');
-  check('真分支(t) 执行', find(g, 't')._state === 'done');
-  check('假分支(f) 被跳过', find(g, 'f')._state === 'skipped');
+  const toasts = [];
+  const showToast = (m, kind) => toasts.push({ m, kind });
+  const state = { projectPath: '/tmp/proj' };
+  const initialAi = { provider: 'local', model: 'qwen7b', apiKey: 'KEY', baseURL: 'http://127.0.0.1:8080', thinkingLevel: 'fast' };
+  const setCalls = [], chatCalls = [], termCalls = [], savedWorkflows = [];
+  const BubaiCode = {
+    config: {
+      get: async () => ({ ai: { ...initialAi } }),
+      set: async (k, v) => { setCalls.push([k, v]); if (k === 'ai.workflow') savedWorkflows.push(v); return {}; }
+    },
+    ai: {
+      chat: async (o) => {
+        chatCalls.push(o);
+        return opts.chat ? opts.chat(o) : { success: true, content: 'AI_RESULT:' + o.messages[0].content };
+      }
+    },
+    terminal: {
+      execute: async (...a) => {
+        termCalls.push(a);
+        return opts.terminal ? opts.terminal(a) : { success: true, stdout: 'OUT:' + a[0], stderr: '', exitCode: 0 };
+      }
+    },
+    on: () => {}, removeListener: () => {}
+  };
+  window.BubaiCode = BubaiCode;
+  const presets = {
+    'BubaiCode（内置）': { provider: 'gateway', model: 'qwen3-8b', thinking: 'standard' },
+    'CLI助手': { provider: 'cli' }
+  };
+  window.__AGENT_PRESETS = presets;
+  const runCliAgent = async () => { throw new Error('CLI 分支不应在默认用例中触发'); };
+  const wfAgentsShow = () => {};
 
-  // 3b) 条件分支：假
-  console.log('Test 3b: 条件分支（假）');
-  api.setGraph([
-    { id: 'r', type: 'ai', x: 0, y: 0, data: { prompt: 'x', label: '', cmd: '', result: '' }, _state: 'idle' },
-    { id: 'c', type: 'cond', x: 0, y: 0, data: { prompt: "prev.includes('NOPE')", label: '', cmd: '', result: '' }, _state: 'idle' },
-    { id: 't', type: 'tool', x: 0, y: 0, data: { prompt: '', label: '', cmd: 'true-cmd', result: '' }, _state: 'idle' },
-    { id: 'f', type: 'tool', x: 0, y: 0, data: { prompt: '', label: '', cmd: 'false-cmd', result: '' }, _state: 'idle' }
-  ], [
-    { from: 'r', to: 'c' }, { from: 'c', to: 't' }, { from: 'c', to: 'f' }
-  ]);
-  await api.wfRun();
-  g = api.getNodes();
-  check('真分支(t) 被跳过', find(g, 't')._state === 'skipped');
-  check('假分支(f) 执行', find(g, 'f')._state === 'done');
+  const factory = new Function(
+    'window', 'document', 'showToast', 'state', 'AGENT_PRESETS', 'runCliAgent',
+    'wfAgentsShow', 'URL', 'Blob', 'FileReader',
+    BLOCK + '\nreturn {' +
+      'wfShowView, wfAddNode, wfRun, wfDetectCycle, wfRenderNodes, wfRenderProps, wfSave, wfLoad,' +
+      'getNodes: () => wfNodes, getEdges: () => wfEdges,' +
+      'setGraph: (n, e) => { wfNodes = n; wfEdges = e || []; },' +
+      'isRunning: () => wfRunning };'
+  );
+  const api = factory(window, document, showToast, state, presets, runCliAgent, wfAgentsShow,
+    FakeURL, FakeBlob, window.FileReader);
 
-  // 4) 导出 / 导入 往返
-  console.log('Test 4: 导出 / 导入 往返');
-  api.setGraph([{ id: 'a', type: 'ai', x: 10, y: 10, data: { prompt: 'p', label: 'L', cmd: '', result: 'R' }, _state: 'idle' }], []);
-  await api.wfExport();
-  check('导出写入 store', typeof store['/tmp/wf.json'] === 'string' && store['/tmp/wf.json'].includes('"id"'));
-  check('导出剥离 _state', !store['/tmp/wf.json'].includes('_state'));
-  api.getNodes()[0].data.prompt = 'changed';
-  await api.wfImport();
-  n = api.getNodes()[0];
-  check('导入恢复 prompt', n.data.prompt === 'p');
-  check('导入重置 _state', n._state === 'idle');
+  return { api, dom, window, document, toasts, setCalls, chatCalls, termCalls, savedWorkflows,
+    inputs, anchors, blobs, initialAi, state };
+}
 
-  // 5) 空画布不崩溃
-  console.log('Test 5: 空画布');
-  api.setGraph([], []);
-  let threw = false; try { await api.wfRun(); } catch (e) { threw = true; }
-  check('空画布不抛异常', !threw);
-  check('空画布提示', toasts.some(m => m.includes('画布为空')));
+async function ready(opts) {
+  const e = makeEnv(opts);
+  e.api.wfShowView();                       // 绑定按钮事件（导出/导入/运行）
+  await new Promise((r) => setImmediate(r)); // 让 wfLoad().then() 完成，避免异步重置画布
+  return e;
+}
 
-  console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');
-  process.exit(fail ? 1 : 0);
-})();
+test('抽取与绑定：模块按标记抽取成功，wfShowView 绑定后视图可见', async () => {
+  const e = await ready();
+  assert.equal(e.document.getElementById('workflow-view').style.display, 'flex');
+  assert.equal(typeof e.api.wfRun, 'function');
+  assert.equal(typeof e.api.wfDetectCycle, 'function');
+});
+
+test('AI 节点：真实调用 ai.chat，写入结果并恢复临时切换的 ai 配置', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('a', 'ai', { prompt: 'hello' })], []);
+  await e.api.wfRun();
+  const n = e.api.getNodes()[0];
+  assert.equal(n.data.status, 'completed');
+  assert.match(n.data.result, /AI_RESULT:hello/);
+  assert.equal(e.chatCalls.length, 1);
+  assert.equal(e.chatCalls[0].messages[0].content, 'hello');
+  const providerSets = e.setCalls.filter((c) => c[0] === 'ai.provider').map((c) => c[1]);
+  assert.equal(providerSets[0], 'gateway', '运行前应临时切到 Agent 绑定的 provider');
+  assert.equal(providerSets.at(-1), e.initialAi.provider, 'finally 应恢复原 provider');
+  assert.ok(e.savedWorkflows.length > 0, '运行结束应 wfSave 持久化');
+});
+
+test('工具节点：调用 terminal.execute（携带 cwd/超时），写入 stdout 与退出码', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('t', 'tool', { cmd: 'echo hi' })], []);
+  await e.api.wfRun();
+  const n = e.api.getNodes()[0];
+  assert.equal(n.data.status, 'completed');
+  assert.match(n.data.result, /OUT:echo hi/);
+  assert.match(n.data.result, /\(退出码 0\)/);
+  assert.equal(e.termCalls.length, 1);
+  assert.equal(e.termCalls[0][0], 'echo hi');
+  assert.equal(e.termCalls[0][1], '/tmp/proj');
+  assert.equal(e.termCalls[0][2], 60000);
+});
+
+test('危险命令：terminal 硬拦截时标记 failed 并停止后续节点', async () => {
+  const e = await ready({ terminal: () => ({ blocked: 'deny', error: '危险命令' }) });
+  e.api.setGraph([mkNode('t', 'tool', { cmd: 'rm -rf /' }), mkNode('n', 'tool', { cmd: 'next' })],
+    [{ from: 't', to: 'n', route: 'success' }]);
+  await e.api.wfRun();
+  assert.equal(e.api.getNodes()[0].data.status, 'failed');
+  assert.match(e.api.getNodes()[0].data.result, /\[已拦截\]/);
+  assert.equal(e.termCalls.length, 1, '失败后应停止，后续节点不再执行');
+  assert.ok(e.toasts.some((t) => t.kind === 'error' && /已停止/.test(t.m)));
+});
+
+test('条件节点：默认透传成功路由', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('c', 'cond', { prompt: "prev.includes('x')" })], []);
+  await e.api.wfRun();
+  const n = e.api.getNodes()[0];
+  assert.equal(n.data.status, 'completed');
+  assert.match(n.data.result, /条件节点，默认透传成功路由/);
+});
+
+test('前置失败：上游 AI 调用失败时终止，下游不执行', async () => {
+  const e = await ready({ chat: () => ({ success: false, error: '余额不足' }) });
+  e.api.setGraph([mkNode('a', 'ai', { prompt: 'x' }), mkNode('t', 'tool', { cmd: 'echo' })],
+    [{ from: 'a', to: 't', route: 'success' }]);
+  await e.api.wfRun();
+  assert.equal(e.api.getNodes()[0].data.status, 'failed');
+  assert.match(e.api.getNodes()[0].data.result, /余额不足/);
+  assert.equal(e.termCalls.length, 0);
+});
+
+test('loop 边：迭代受 MAX_LOOP 保护，环检测识别出环内节点', { timeout: 15000 }, async () => {
+  const e = await ready();
+  e.api.setGraph(
+    [mkNode('s', 'cond'), mkNode('a', 'ai', { prompt: 'p' }), mkNode('b', 'cond')],
+    [{ from: 's', to: 'a', route: 'success' }, { from: 'a', to: 'b', route: 'success' },
+      { from: 'b', to: 'a', route: 'loop' }]
+  );
+  assert.equal(e.api.wfDetectCycle().size, 2, 'a、b 构成环');
+  await e.api.wfRun();
+  assert.equal(e.chatCalls.length, 6, '入口 1 轮 + 最多 5 轮回跳，AI 节点共执行 6 次');
+  assert.ok(e.toasts.some((t) => t.kind === 'warn' && /成环/.test(t.m)));
+  assert.equal(e.api.isRunning(), false, 'finally 应复位运行标志');
+});
+
+test('审批门：批准 → completed；拒绝 → failed 且清理弹窗', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('a', 'ai', { prompt: 'p', approval: true })], []);
+  const p1 = e.api.wfRun();
+  const box1 = await waitFor(() => e.document.querySelector('.wf-approval-box'));
+  assert.match(box1.textContent, /审批门/);
+  box1.querySelector('#wf-ap-approve').click();
+  await p1;
+  assert.equal(e.api.getNodes()[0].data.status, 'completed');
+  assert.equal(e.document.querySelector('.wf-approval-box'), null);
+
+  e.api.setGraph([mkNode('b', 'ai', { prompt: 'q', approval: true })], []);
+  const p2 = e.api.wfRun();
+  const box2 = await waitFor(() => e.document.querySelector('.wf-approval-box'));
+  box2.querySelector('#wf-ap-reject').click();
+  await p2;
+  assert.equal(e.api.getNodes()[0].data.status, 'failed');
+  assert.match(e.api.getNodes()[0].data.result, /审批被拒绝/);
+  assert.equal(e.document.querySelector('.wf-approval-box'), null);
+});
+
+test('导入 / 导出：按钮 click 驱动，导出 JSON 完整，导入补齐默认 route', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('a', 'ai', { prompt: 'p', label: 'L' })], []);
+  e.document.getElementById('wf-export').click();
+  assert.equal(e.blobs.length, 1);
+  assert.equal(e.anchors.length, 1);
+  const payload = JSON.parse(e.blobs[0].parts.join(''));
+  assert.equal(payload.version, 1);
+  assert.equal(payload.nodes.length, 1);
+  assert.equal(payload.nodes[0].data.prompt, 'p');
+  assert.ok(e.toasts.some((t) => /已导出 1 个节点/.test(t.m)));
+
+  const imported = {
+    version: 1,
+    nodes: [mkNode('z', 'tool', { cmd: 'ls' })],
+    edges: [{ from: 'z', to: 'z' }] // 旧文件无 route
+  };
+  e.api.getNodes()[0].data.prompt = 'changed';
+  e.document.getElementById('wf-import').click();
+  const input = e.inputs.at(-1);
+  assert.ok(input, '导入应创建 file input');
+  const file = new e.window.File([JSON.stringify(imported)], 'wf.json', { type: 'application/json' });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.onchange();
+  await waitFor(() => e.api.getNodes().some((n) => n.id === 'z'));
+  assert.equal(e.api.getNodes()[0].id, 'z');
+  assert.equal(e.api.getEdges()[0].route, 'success', '兼容旧文件：无 route 补默认 success');
+  assert.ok(e.toasts.some((t) => /已导入 1 个节点/.test(t.m)));
+});
+
+test('空画布：不抛异常并提示缺少入口节点', async () => {
+  const e = await ready();
+  e.api.setGraph([], []);
+  await e.api.wfRun();
+  assert.equal(e.api.isRunning(), false);
+  assert.ok(e.toasts.some((t) => t.kind === 'error' && /缺少入口节点/.test(t.m)));
+});
+
+test('渲染：环内节点高亮 .cyclic，状态色映射到 data.status', async () => {
+  const e = await ready();
+  e.api.setGraph([mkNode('a', 'cond'), mkNode('b', 'cond')],
+    [{ from: 'a', to: 'b', route: 'success' }, { from: 'b', to: 'a', route: 'loop' }]);
+  e.api.wfRenderNodes();
+  const els = e.document.querySelectorAll('#wf-nodes .wf-node');
+  assert.equal(els.length, 2);
+  assert.equal(e.document.querySelectorAll('#wf-nodes .wf-node.cyclic').length, 2);
+  assert.equal(e.document.querySelectorAll('#wf-edges line').length, 2);
+  assert.ok(e.document.querySelector('#wf-edges line[data-route="loop"]'), 'loop 边应有独立标记');
+});
