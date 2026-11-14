@@ -97,7 +97,7 @@
 - **429 韧性复核（已决策：保持观察）**：熔断、`BLOCK_PAID_MODELS`、模型池、`available` 判定与 `[relay]` 日志**全在生产** `root@bluebubai.work:/var/www/codelab-ai-gateway/`（pm2 `codelab`），本仓库只有调用方（`main/index.js:3241-3289` 的 `gatewayStatus`、L2563 的 `GW_AVAILABLE_MODELS`）。**补正**：`packages/ai/src/error-classification.js` 与 `app.js:3249` 的 `AIErrorClassifier` 经全仓核查均为**死代码（0 调用）**，改它们对 429 无效，故不做无效改动。优先级：**③ 观察（零改动，执行）＞ ② 优化熔断 ＞ ① 加免费 fallback**；②① 均需 SSH 动生产并需用户单独授权。
 - **UI 优化（已实施，见 §十二）**：`context` 空态与 `device` 常显均已落地源码；验收时「可见 5 项 / device 隐藏 / context 近乎空白」是**当时快照**，第二/四/七节原始观察保留不改（证据真实性），改后状态以 §十二 为准。
 - **网关只读排查**：`ssh root@bluebubai.work:22`（key `C:\Users\Administrator\.ssh\id_ed25519`）；读 Key 用 `python3` 解析 `/var/www/codelab-ai-gateway/config/secrets.json`（**勿打印明文**，遮罩前 4 位即可）；日志 `pm2 logs codelab`；服务目录 `/var/www/codelab-ai-gateway/`，进程名 `codelab`。
-- **一句话结论（2026-11-08 当时快照，已被 §二十一 推翻）**：BubaiCode 功能域 100% 落地、GUI 可交互、AI 端到端链路完整（发送→通道→请求→状态/错误渲染全通），与 ChipCode UI 高度对齐、logo 回归交付包几何规避侵权；唯一实机阻断当时记为上游硅基流动临时 429 熔断。**⚠️ 2026-11-13 复核：云端 AI 实为上游余额耗尽（402），非已自愈，详见 §二十一。**
+- **一句话结论（2026-11-08 当时快照，已被 §二十一 推翻）**：BubaiCode 功能域 100% 落地、GUI 可交互、AI 端到端链路完整（发送→通道→请求→状态/错误渲染全通），与 ChipCode UI 高度对齐、logo 回归交付包几何规避侵权；唯一实机阻断当时记为上游硅基流动临时 429 熔断。**⚠️ 2026-11-13 复核：云端 AI 实为上游余额耗尽（402），非已自愈，详见 §二十一。⚠️ 2026-11-14 晚再复测：云端已恢复可用，详见 §三十（最终结论）。**
 
 ---
 
@@ -351,7 +351,8 @@
 - **全局单工作区约束**：文件/编辑器/验证均为全局单实例，真正并发后台写文件不可行（与 ChipCode 同）；对话转入后台的务实形态 = 后台生成对话文本+持久化（不自动写文件），切回前台后手动/重触发应用代码块。
 
 ## 二十一、云端 AI 真实状态修正（2026-11-13 复核，推翻 11-08 结论）
-> ⚠️ **重要更正**：§十/§十一 的"429 已恢复、Key 额度正常、非缺陷"结论**不成立**，经 11-13 实机 + 网关独立探测已推翻。当前云端 AI 通道**真实不可用**，根因是上游硅基流动账户**余额不足（402）**，不是临时熔断。
+> ⚠️ **本章为 11-13 当时的快照，已被 §三十 推翻**：2026-11-14 晚复测证明云端 AI **已恢复可用**（§三十）。
+> 11-13 当时的更正：§十/§十一 的"429 已恢复、Key 额度正常、非缺陷"结论**不成立**，经 11-13 实机 + 网关独立探测已推翻。当时云端 AI 通道**真实不可用**，根因是上游硅基流动账户**余额不足（402）**，不是临时熔断。
 
 ### 21.1 11-13 实机证据（调试实例，独立 user-data-dir，已注入发布版 gatewayToken）
 - 直接调 `window.BubaiCode.ai.chat({messages:[{role:'user',content:'...'}],...})`（绕过 UI 工作空间守卫），连跑 3 次：
@@ -395,9 +396,10 @@
 - 直接调 `window.BubaiCode.ai.chat({messages:[{role:'user',content:'用一句话说明什么是ESP32'}],...})` → **`success:true`**，`model:qwen2.5-coder-3b-instruct-q4_k_m.gguf`，返回 `{"tool":"none","arguments":{}}`（本地模型首轮 GBNF 工具决策，符合设计；"none"=无需工具，真实文本在后续轮次流式生成）。**证明本地推理链路（请求→llama-server→3B 模型→响应）端到端通畅**。
 
 ### 22.3 结论
-- **云端 AI（网关/硅基流动）**：仍 402 余额不足 → 不可用（见 §二十一）。
-- **本地 AI（内置 llama.cpp + 3B/7B 模型）**：开箱即用、已验证可推理 → **这是当前唯一可用的 AI 通道**。
-- 给用户的实操建议：设置 → AI 模型来源 → 选「本地模型」（默认即本地），无需联网/花钱即可对话、写代码、跑 agent。云端恢复需先给硅基流动账户充值。
+> ⚠️ **状态已由 §三十 更正（2026-11-14 晚）**：云端 AI 复测**已恢复可用**，`/api/me`=200、`chat`/`chatStream` 均成功。本节「唯一可用通道 / 需充值」为当时快照，不再成立。
+- **云端 AI（网关/硅基流动）**：当时记 402 余额不足 → 不可用（见 §二十一）。
+- **本地 AI（内置 llama.cpp + 3B/7B 模型）**：开箱即用、已验证可推理 → 当时记为唯一可用通道。
+- 当时的实操建议：设置 → AI 模型来源 → 选「本地模型」（默认即本地），无需联网/花钱即可对话、写代码、跑 agent。
 
 ## 二十三、本地模型操作级验收（2026-11-14，9223 构建版实例）
 > 用 9223 构建版（`dist180/win-unpacked`，独立 userData）实机驱动本地模型完整对话链路。
@@ -422,6 +424,7 @@
 ### 23.4 建议
 - **默认模型应从 3B 改为 7B**（或检测 3B 畸形输出时自动回退/提示换 7B），否则默认本地体验是"乱码"。
 - 云端恢复前，本地 7B 是唯一可用 AI 通道，应在 UI/文档明确推荐 7B。
+  - ⚠️ **状态已由 §三十 更正**：2026-11-14 晚云端复测已恢复可用，云端 + 本地 7B 双通道均可用；本节"唯一可用"为当时快照。
 
 ## 二十四、模型默认 3B→7B 修复 + GitReview 验证（2026-11-14）
 > 用户要求：①把默认模型 3B 改 7B（含 3B 畸形检测回退）；②实测 GitReview；③关 9222。
@@ -545,7 +548,7 @@
 | 构建产物 | **已由 §二十九 取代**：当前仅 `dist188/`（含 §26/§28/§29 全部 UI 修复） |
 | 安装版 | **已由 §二十九 取代**：`C:\BubaiCodeTest` = dist188 修复版（9232 调试端口）；发布版 177 已关闭 |
 | 模型 | `C:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf`（4.36GB） |
-| 云端 AI | 仍 402 余额不足不可用（§二十一）；本地 7B 为唯一可用 AI 通道 |
+| 云端 AI | **已由 §三十 更正**：2026-11-14 晚复测云端已恢复可用；云端 + 本地 7B 双通道均可用 |
 | 文档口径 | `docs/开发文档-BubaiCode对齐ChipCode.md` §5 已同步为 `npm test` / `dist179` / jsdom 已列入（同批修正） |
 
 ### 27.6 仍待办（非阻断）
@@ -635,9 +638,53 @@
 | 安装版 | `C:\BubaiCodeTest` = dist188 修复版（9232 调试端口，Normal 窗口）；发布版 177 关闭 |
 | 风格开关 | `window.__bubaiClassicUI()` 回退 / `__bubaiCompactUI()` 恢复 |
 | 模型 | `C:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf`（4.36GB） |
-| 云端 AI | 仍 402 余额不足（§二十一）；本地 7B 为唯一可用通道 |
+| 云端 AI | **2026-11-14 复测已恢复可用**（§三十，推翻 §二十一）；云端 + 本地 7B 双通道均可用 |
 
 ### 29.7 仍待办（非阻断，沿用 §27.6）
 - 4 项半成品边界（feature flag 默认关、`loop.js` 未接线、插件依赖自动下载未闭环、部分 GUI 未逐点实测）。
 - `build-win.ps1/.bat` 旧路径与未调 `electron-rebuild` / `inject-gateway`。
 - CodeBuddy 风格层目前只覆盖 `.ai-panel`；左侧文件树 / 编辑器 / 底部面板仍是原风格，若用户要求全站统一需另做一轮。
+
+## 三十、云端 AI 能力复测（2026-11-14 晚，推翻 §二十一）
+> 用户要求「测试云端能力」。**结论：云端 AI 已恢复可用，§二十一的「402 余额不足、通道不可用」结论已失效。** 本次仅做只读验证与临时配置切换，未改产品代码、未改发布版配置。
+
+### 30.1 测试环境与关键前提（重要）
+- 实例：dist188 安装版 `C:\BubaiCodeTest`（9232 调试端口，userData `C:\bubai-vis-9232`）。
+- ⚠️ **测试实例的 `ai.gatewayToken` 与发布版不同且已失效**：直接 `checkConnection({provider:'gateway'})` 返回 **401「网关登录失效，请重新登录」**；`gatewayStatus` 返回 `available:true, valid:false, loggedIn:true, creditsLeft:null`。
+  - 源码语义（`main/index.js:3455`）：`available` = 本地有 token 候选、`loggedIn` = 本地有 `gatewayToken` 字段、**`valid` = 用该 token 打 `/api/me` 是否 2xx**。三者含义不同，`available:true` 不等于云端可用。
+  - 打包时 `prebuild` 已移除内置兜底凭据，`gatewayAuthCandidates()`（`index.js:468`）**只取用户自己的 `ai.gatewayToken`**，无后端回退。
+- **发布版**（`C:\Users\Administrator\AppData\Roaming\BubaiCode\config.json`）的 token 是有效 JWT（3 段、`exp=1794987890` → 2026-11-18 07:44），`gatewayUrl=https://bluebubai.work`。独立 `curl /api/me` → **200**，`totalCredits=94 / dailyRemaining=3`。
+- 因此正确测法：临时把发布版有效 token 注入测试实例配置 → 测完**逐字段还原**（脚本 `window.__cloudSaved` 快照）。发布版配置全程未改动，token 临时文件用完即删。
+
+### 30.2 实机结果（全部通过）
+| 项目 | 结果 |
+|---|---|
+| `gatewayStatus`（注入有效 token 后） | `valid:true, creditsLeft:94, dailyRemaining:3, email=17862856107@163.com` |
+| `checkConnection({provider:'gateway',model:'qwen3-8b'})` | `success:true, gateway:true, creditsLeft:94` |
+| **非流式真实对话** `ai.chat` | **`success:true`**，回复「ESP32是一款集成了Wi-Fi和蓝牙功能的低成本、高性能的微控制器开发平台，常用于物联网设备开发。」，`creditsLeft:93, dailyRemaining:2, cost:1, totalTokens:52, model:qwen3-8b` |
+| **流式真实对话** `ai.chatStream` | **`success:true`**，收到 **38 个流式事件**，末条 `done` 内容「当前云端流式通道已恢复可用…」+ `usage` + `credits{used:1,remaining:92,dailyRemaining:1}` |
+| 额度一致性 | 起始 94 → 3 次调用后 `/api/me` = **91**，`dailyUsed=3, dailyRemaining=0`，与逐次 `creditsLeft/dailyRemaining` 完全对应 |
+
+### 30.3 新发现：`normalizeGwModel` 静默降级付费模型
+- `gatewayModels()` 返回 6 个模型，**5 个付费模型 `available:false`**，仅 `qwen3-8b`（免费）`available:true`。
+- 但请求 `model:'deepseek-flash'` 仍 **`success:true`** 且拿到真实回复，返回体里 **`model` 却是 `qwen3-8b`**（非请求值）。
+- 原因：`ai:chat` 网关分支调用 `normalizeGwModel(useModel)`（`index.js:2694`）把不可用模型校正回 `qwen3-8b`。
+- ⚠️ **产品语义问题**：用户在 UI 选了 DeepSeek PRO（标灰不可用）却实际走免费模型，且返回不告知，属误导性降级。若要做付费模型，需网关侧开通并把 `available` 置 true；或在请求处显式拒绝并提示，而不是静默替换。
+
+### 30.4 与历史结论对照
+| 项 | 11-08 | 11-13（§二十一） | **11-14 复测（本章）** |
+|---|---|---|---|
+| 上游/网关 | 429 临时熔断，已自愈 | 402 余额不足，通道不可用 | **云端全通**，`/api/me` 200、chat/chatStream 均成功 |
+| 账户 | Key 额度正常 | 余额耗尽需充值 | `totalCredits=94→91`，每日 3 次免费额度已用尽 |
+| 阻断根因 | 环境限制 | 账户余额 | 当时是**上游临时状态**；本次测试实例 401 只是**本地 token 失效**，换有效 token 即通 |
+| 唯一可用通道 | 云端 | 本地 7B | **云端 + 本地 7B 均可用** |
+
+### 30.5 给用户的实操提示
+- 云端要用**已登录账号的 token**；新装/全新 userData 的实例未登录时 `checkConnection` 会 401，需先在设置里登录（或复用已登录 userData）。
+- 每日免费额度 3 次（`dailyRemaining`），用尽后 `qwen3-8b` 是否仍可用取决于网关策略，本次未测到用尽后的下一次请求。
+- 剩余 `totalCredits=91` 为积分余额，与每日次数是两套计数，不要混淆（§二十一曾把「今日剩余 3 次」误当额度证据）。
+
+### 30.6 状态
+- 测试实例 9232 配置已还原为 `local / qwen2.5-coder-7b-instruct-q4_k_m.gguf`；发布版配置未改动。
+- 临时 token 文件、CDP 探测脚本均已清理；工作树干净。
+- 本轮**无产品代码改动**，仅文档修正（本章 + §二十一 抬头更正）。
