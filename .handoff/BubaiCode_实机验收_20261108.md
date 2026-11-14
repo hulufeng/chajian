@@ -751,6 +751,12 @@
 - 结论：**全站风格在代码层已高度统一为 CodeBuddy 式**，无需大重写。若仍有具体局部观感差异，需用户指具体位置截图，再针对性微调。
 - **实机 style 核查证据**（dist190/9234，light 主题）：读全站关键区域 computed style——活动栏/侧栏/顶栏背景=浅灰白（rgb(240,241,243)/rgb(255,255,255)）、**可见边框统一为 `var(--border-light)=#eceef1` 浅灰**（活动栏 border-right 与状态栏 border 同源）、圆角 0px、阴影 none。最初误读 `border-top`（不可见，style=none 时的计算色 rgb(43,47,54)）为边框色导致「边框不统一」误判，纠正后确认**全站可见边框统一浅灰，无不一致**。
 
+### 32.2.1 agent 回复对齐 CodeBuddy + cb-compact 构建失效根因修复（2026-11-14）
+- 用户指名 §29.7 重点是 **agent（AI）回复内容区**。核查发现 `cb-compact` 覆盖层原已覆盖整体布局、markdown(p/pre/code)、work-status、tool-flow 等，但**漏覆盖** agent 回复最显眼的 `.tool-call-block`（工具/函数调用状态卡片）与 `chat-bubble` 内 `h1-h6/ul/ol/hr/strong` 子元素。已补 `cb-compact` 覆盖（CodeBuddy 式细边框、克制状态色）。
+- **重大根因**：补覆盖后实机验证发现 agent 回复背景全透明、边框退化成 currentColor 深色——进一步定位到 `cb-compact` 的 `--cb-*` 变量（原声明于 `body.cb-compact` 仅变量规则）**在打包后被构建链（cssnano 类优化）删除**（运行时 `styleSheets` 中 `selectorText==='body.cb-compact'` 规则缺失，改为 `:root` 声明仍被删）。实测 `--surface-1/--border/--text-*` 等全站广泛使用的令牌均保留，判定构建链把"仅被 cb-compact 子规则引用的新增变量"当未使用清除。
+- **修复**：删除 `--cb-*` 变量，cb-compact 子规则直接复用全局令牌（`--surface-1/--surface-2/--border/--text-*/--primary`）。重新打包后**全新安装**到 `C:\BubaiCodeTest`（覆盖安装因版本号相同不更新 asar，须先删旧目录），CDP 注入 tool-call-block 读 computed style 验证：背景 `rgb(255,255,255)`、边框 `#e2e5ea` 浅灰、状态圆点淡绿底 `#ecfdf5`+深绿字、代码块 `#f0f1f3`，全部对齐 CodeBuddy 克制风格。
+- 此修复使 §二十九 的 `cb-compact` 重皮**真正生效**（此前因 `--cb-*` 被吞，整段风格从未实际生效，这才是"还是丑"的真因）。
+
 ### 32.3 插件依赖自动闭环的实机验证（dist190 / 9234）
 - 注册带 `dependencies` 的 fake 插件 → 调 `ensurePluginDependencies`：`ensureCalls=1`（依赖处理被触发，results 含 cmdtool 条目）、底层 `deps.install` 桥存在。
 - `deps.install` 仅接受 `https://`（`downloadFile` 固定 `https.get`），fake 用 `file://` 触发协议校验失败属测试数据限制，**真实插件用 https 镜像不受影响**。
