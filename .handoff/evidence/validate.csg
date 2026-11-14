@@ -1,0 +1,4 @@
+group() {
+	cube(size = [40, 20, 10], center = true);
+}
+
