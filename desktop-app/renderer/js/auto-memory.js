@@ -1,4 +1,4 @@
-// Phase B+ · 会话结束自动提炼长期记忆（对齐 ChipCode auto-memory.js / ai:extractMemory）
+// Phase B+ · 会话结束自动提炼长期记忆（对齐参考基线 auto-memory.js / ai:extractMemory）
 // 约束：只在 LLM 成功返回且结果通过白名单校验时写入；网络失败静默跳过，绝不写推测内容。
 // fire-and-forget，不阻塞 UI；同一会话内容用指纹去重，避免重复提炼。
 (function () {

@@ -1,5 +1,5 @@
 // ============================================================
-// 插件系统（对齐 TrieCode manifest 架构）
+// 插件系统（对齐参考基线 manifest 架构）
 // ------------------------------------------------------------
 // 一个插件 = 一个目录，目录里有 plugin.json：
 //   {
@@ -27,7 +27,7 @@
 //   主进程 deps:install 惰性下载（已装则秒回 cached），并把 {<name>}/{deps.<name>}
 //   占位符替换为实际 exe 绝对路径。见 ensurePluginDependencies。
 //
-// transport 路线图（对齐 TrieCode 7 通道）：
+// transport 路线图（对齐参考基线 7 通道）：
 //   ✅ internal —— 调用宿主预注册的 service 函数（本阶段实现）
 //   🔜 cli      —— spawn 外部命令，占位符 {argName}/{settings.x}/{projectPath}/{deps.<name>}
 //   🔜 http     —— REST fetch
@@ -44,6 +44,24 @@
 const INTERNAL_SERVICES = new Map();
 function registerInternalService(name, methods) {
   INTERNAL_SERVICES.set(name, methods || {});
+}
+
+// ============================================================
+// 宿主补充工具声明（manifest 之外的"宿主已实现但 manifest 未声明"的工具）
+// ------------------------------------------------------------
+// 场景：官网市场下发的插件 manifest 可能只声明部分工具，而宿主已实现更多能力
+//      （如 arduino-cli-toolchain 只声明 compile/upload/board_list/lib_install，
+//        而宿主还实现了 select_board/list_platforms/search_boards/get_board_info/
+//        set_board_option/list_ports/select_port）。
+// 规则：manifest 声明优先；宿主补充只在 manifest 未声明同名时生效。
+// ============================================================
+const HOST_EXTRA_TOOLS = new Map();
+function registerHostExtraTools(pluginId, decls) {
+  const id = String(pluginId || '').trim();
+  if (!id) return 0;
+  const list = Array.isArray(decls) ? decls.filter(d => d && d.name) : [];
+  HOST_EXTRA_TOOLS.set(id, list);
+  return list.length;
 }
 
 /**
@@ -72,7 +90,61 @@ const PLUGIN_DEPENDENCIES = new Map();  // pluginId -> normalized dep[]
 const PLUGIN_DEP_PATHS = new Map();     // "pluginId:depName" -> exePath
 const PLUGIN_DEP_INFLIGHT = new Map();  // "pluginId:depName" -> Promise
 
-/** 把 manifest 简写补成 deps:install 的 opts（主进程强制要求 name/url/exeRelPath） */
+// ============================================================
+// 参考基线 对齐：manifest.installer → dependencies 声明
+// ------------------------------------------------------------
+// 语义：{ url: 目录或文件地址, fileName: 文件名（支持 * 通配）, depName: 依赖名 }
+// 规范化后与 dependencies 同构，走同一条 deps:install 惰性下载链路。
+// fileName 通配时主进程会先探测目录列表解析真实文件名，避免 404 静默失败。
+// （本文件是纯浏览器脚本，不能 require packages/，故此处内联最小实现；
+//   主进程侧同语义实现见 packages/engine/plugin-installer-spec.cjs）
+// ============================================================
+function normalizePluginInstaller(installer) {
+  const out = { ops: [], errors: [] };
+  const list = Array.isArray(installer) ? installer : (installer ? [installer] : []);
+  for (const inst of list) {
+    if (!inst || typeof inst !== 'object') continue;
+    const depName = String(inst.depName || inst.name || '').trim();
+    if (!depName) { out.errors.push('installer 条目缺 depName，已跳过'); continue; }
+    const baseUrl = String(inst.url || '').trim();
+    if (!baseUrl) { out.errors.push('installer[' + depName + '] 缺 url，已跳过'); continue; }
+    const fileName = String(inst.fileName || '').trim();
+    const isFileUrl = (() => {
+      try { const p = new URL(baseUrl); const last = p.pathname.split('/').filter(Boolean).pop() || ''; return /\.(zip|tar\.gz|tgz|exe|dmg|7z|bin)$/i.test(last); }
+      catch (e) { return /\.(zip|tar\.gz|tgz|exe|dmg|7z|bin)$/i.test(baseUrl); }
+    })();
+    const join = (b, f) => {
+      if (!b) return '';
+      if (!f) return b;
+      if (isFileUrl) return b;
+      return b.replace(/\/+$/, '') + '/' + f.replace(/^\/+/, '');
+    };
+    let fileNamePattern = null;
+    if (fileName.includes('*')) {
+      const parts = fileName.split('*');
+      fileNamePattern = { prefix: parts[0], suffix: parts.length > 1 ? parts[parts.length - 1] : '', raw: fileName };
+    }
+    const mirrors = Array.isArray(inst.mirrors) ? inst.mirrors.map(m => join(String(m || ''), fileName)).filter(Boolean) : [];
+    const primary = join(baseUrl, fileName);
+    out.ops.push({
+      name: depName,
+      url: primary,
+      exeRelPath: '', // 缺省 → 主进程装完自动探测可执行文件
+      sha256: String(inst.sha256 || ''),
+      // 候选源：url 首选，mirrors 为回退
+      mirrors: mirrors,
+      archive: inst.archive === 'tar.gz' ? 'tar.gz' : 'zip',
+      flatten: inst.flatten !== undefined ? !!inst.flatten : true,
+      minBytes: Number(inst.minBytes) || 1000000,
+      destDir: String(inst.destDir || ''),
+      fileName: fileName.includes('*') ? '' : fileName,
+      fileNamePattern,
+    });
+  }
+  return out;
+}
+
+/** 把 manifest 简写补成 deps:install 的 opts（主进程要求 name/url；exeRelPath 可缺省 → 装完自动探测） */
 function normalizePluginDependency(d) {
   if (!d || typeof d !== 'object') return null;
   const name = String(d.name || '').trim();
@@ -81,13 +153,17 @@ function normalizePluginDependency(d) {
     name,
     url: String(d.url || ''),
     // Windows 发布物：默认同目录 <name>.exe；可携子目录（如 "bin/node.exe"）
-    exeRelPath: String(d.exeRelPath || (name + '.exe')),
+    // exeRelPath 显式给空串时表示「装完自动探测可执行文件」（installer 场景）
+    exeRelPath: d.exeRelPath === '' ? '' : String(d.exeRelPath || (name + '.exe')),
     sha256: String(d.sha256 || ''),
     mirrors: Array.isArray(d.mirrors) ? d.mirrors.slice() : [],
     archive: d.archive === 'tar.gz' ? 'tar.gz' : 'zip',
     flatten: !!d.flatten,
     minBytes: d.minBytes || 1000000,
-    destDir: String(d.destDir || '')
+    destDir: String(d.destDir || ''),
+    // 参考基线 对齐：installer 语义字段（fileName / fileName 通配预检）
+    fileName: String(d.fileName || ''),
+    fileNamePattern: d.fileNamePattern || null
   };
 }
 
@@ -155,7 +231,7 @@ function getPluginDependencies(pluginId) {
 
 // ============================================================
 // transport 分发（plugin 工具 execute 与 capabilities 路由共用）
-// 对齐 TrieCode createPluginToolExecutor.dispatchTool：一个执行体，两个入口
+// 对齐参考基线 createPluginToolExecutor.dispatchTool：一个执行体，两个入口
 // ============================================================
 async function dispatchTool(t, id, autoName, args) {
   const a = args || {};
@@ -337,11 +413,11 @@ async function dispatchTool(t, id, autoName, args) {
 }
 
 // ============================================================
-// capabilities 路由（对齐 TrieCode runCapability）
+// capabilities 路由（对齐参考基线 runCapability）
 // UI 按钮 / 菜单 / AI 都经 runCapability(cap) 一个入口，
 // 由它按「项目绑定的主动工具链」解析到具体插件的具体 transport。
 // ============================================================
-/** 能力 id 词汇表（宿主 UI 契约；BubaiCode 在 TrieCode 集基础上扩展 monitor/plot） */
+/** 能力 id 词汇表（宿主 UI 契约；BubaiCode 在 参考基线 集基础上扩展 monitor/plot） */
 const CAPABILITY_IDS = [
   'compile', 'upload', 'flash', 'debug',
   'board-manage', 'board-select', 'library-manage', 'library-install',
@@ -539,13 +615,40 @@ function loadPluginManifestUnsafe(manifest) {
     if (n) depNorm.push(n);
     else errors.push('dependencies 条目缺 name，已跳过');
   }
+  // ---- 参考基线 对齐：manifest.installer → 自动转成 dependencies 声明 ----
+  // 语义：安装插件时按 {url 目录 + fileName} 下载并解压依赖（fileName 支持通配 + HEAD 预检）。
+  if (manifest.installer) {
+    try {
+      const spec = normalizePluginInstaller(manifest.installer);
+      for (const op of spec.ops) {
+        // installer 生成的依赖不覆盖同名的显式 dependencies 声明
+        if (depNorm.some(x => x.name === op.name)) continue;
+        depNorm.push(normalizePluginDependency(op));
+      }
+      for (const e of spec.errors) errors.push('installer: ' + e);
+    } catch (e) {
+      errors.push('installer 解析失败：' + (e && e.message ? e.message : String(e)));
+    }
+  }
   if (depNorm.length) PLUGIN_DEPENDENCIES.set(id, depNorm);
 
   // ---- tools ----
   const tools = Array.isArray(manifest.tools) ? manifest.tools : [];
-  for (const t of tools) {
+  // 参考基线 对齐：宿主补充声明。
+  // 背景：宿主已实现 select_board / list_platforms / search_boards / get_board_info /
+  // set_board_option / list_ports / select_port（app.js ARDUINO_TOOL_IMPLS + serialport service），
+  // 但官网市场下发的 arduino-cli-toolchain/plugin.json 只声明了 4 个工具
+  // （compile / upload / board_list / lib_install）⇒ 这些实现对 AI 不可见。
+  // 宿主在 manifest 加载后按「manifest 未声明同名」的规则补齐（manifest 优先，不覆盖）。
+  const declaredNames = new Set(tools.map(t => t && t.name).filter(Boolean));
+  const extraDecls = Array.isArray(HOST_EXTRA_TOOLS.get(id)) ? HOST_EXTRA_TOOLS.get(id) : [];
+  const allToolDecls = tools.slice();
+  for (const d of extraDecls) {
+    if (d && d.name && !declaredNames.has(d.name)) { allToolDecls.push(d); declaredNames.add(d.name); }
+  }
+  for (const t of allToolDecls) {
     try {
-      // 工具名自动加 plugin_<id>_ 前缀，对齐 TrieCode
+      // 工具名自动加 plugin_<id>_ 前缀，对齐参考基线
       const autoName = t.name && !t.name.startsWith('plugin_' + id + '_')
         ? `plugin_${id}_${t.name}`
         : (t.name || `plugin_${id}_tool`);
@@ -557,7 +660,7 @@ function loadPluginManifestUnsafe(manifest) {
         category: t.category || 'query',
         _pluginId: id,
         _decl: t,
-        // transport 分发统一走 dispatchTool（capabilities 路由复用同一执行体，对齐 TrieCode）
+        // transport 分发统一走 dispatchTool（capabilities 路由复用同一执行体，对齐参考基线）
         execute: (args) => dispatchTool(t, id, autoName, args)
       };
       PLUGIN_TOOL_DEFS.push(toolDef);
@@ -845,6 +948,8 @@ function isActive(id) {
 // 暴露到 window 供 app.js 调用
 window.PluginSystem = {
   registerInternalService,
+  // 参考基线 对齐：宿主补充工具声明（manifest 未声明同名时才注入）
+  registerHostExtraTools,
   // 方案 D 收尾：让 UI（如「生成工程统计报告」命令）能取到已注册的内部服务实例
   getInternalService: (name) => INTERNAL_SERVICES.get(name),
   loadPluginManifest,
@@ -883,7 +988,7 @@ window.PluginSystem = {
   listPlugins: () => Array.from(PLUGIN_REGISTRY.values()).map(p => Object.assign({}, p, { active: !PLUGIN_DISABLED.has(p.id) })),
   listViews: () => Array.from(PLUGIN_VIEWS.values()),
   getView: (key) => PLUGIN_VIEWS.get(key),
-  // ---- capabilities 路由（UI 按钮/AI 共用；对齐 TrieCode runCapability）----
+  // ---- capabilities 路由（UI 按钮/AI 共用；对齐参考基线 runCapability）----
   CAPABILITY_IDS,
   CAPABILITY_TOOL_FALLBACK,
   resolveActiveToolchain,
@@ -899,7 +1004,7 @@ window.PluginSystem = {
     const extra = Object.keys(CAPABILITY_TOOL_FALLBACK).filter(c => declared.indexOf(c) < 0 && resolveCapabilityBinding(m, c));
     return declared.concat(extra);
   },
-  // 2026-09-15 对齐 TrieCode settings：插件声明 settings 项 → UI 自动渲染
+  // 2026-09-15 对齐参考基线 settings：插件声明 settings 项 → UI 自动渲染
   getSettings: (pluginId) => {
     const p = PLUGIN_REGISTRY.get(pluginId);
     return p?.settings || [];

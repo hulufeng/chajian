@@ -1,5 +1,5 @@
 // git-probe.js — Git 凭据连通性探测 UI
-// 对齐 ChipCode git:probe 的「连接性预检」语义：在添加/选择 git 凭据后，或尝试 Issues/PR 前，
+// 对齐参考基线 git:probe 的「连接性预检」语义：在添加/选择 git 凭据后，或尝试 Issues/PR 前，
 // 验证该 host 的 PAT 能否真正访问对应平台 API（GitHub / Gitee / GitLab 的 /user 端点）。
 (function () {
   'use strict';

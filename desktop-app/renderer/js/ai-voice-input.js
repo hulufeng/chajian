@@ -1,4 +1,4 @@
-// AI 语音输入（STT）——对齐 ChipCode transcribe/cancelTranscribe。
+// AI 语音输入（STT）——对齐参考基线 transcribe/cancelTranscribe。
 // 现有 #voice-btn 按钮此前未接线（注释：「功能未实现，点了没反应」），本模块补齐：
 // 点击开始/停止录音，使用 Web Speech API(SpeechRecognition/webkitSpeechRecognition)，
 // 实时把识别文本填入当前可见的 AI 输入框，并标记录音态（红色 + 脉冲）。

@@ -1,4 +1,4 @@
-// 批量 rewind 控制条（变更批次历史 + 恢复至此 / 截断此后，对齐 ChipCode rewindCode）
+// 批量 rewind 控制条（变更批次历史 + 恢复至此 / 截断此后，对齐参考基线 rewindCode）
 // 复用现有 fileChangeTracker（undoLastTurn 已具备安全回滚：不覆盖用户改动）。
 (function () {
   var bar = null;

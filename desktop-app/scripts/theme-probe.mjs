@@ -1,6 +1,6 @@
 // BubaiCode JS 应用主题探针
 // 解析 desktop-app/renderer/css/style.css 的 :root(暗) 与 [data-theme="light"](亮)，
-// 解析 var() 链，核对是否全量对齐 TrieCode v1.3.1 的目标数值。
+// 解析 var() 链，核对是否全量对齐参考基线 v1.3.1 的目标数值。
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -43,7 +43,7 @@ function resolve(name, ctx, seen = new Set()) {
 
 const norm = (v) => (v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-// TrieCode v1.3.1 目标数值（明暗两套）
+// 参考基线 v1.3.1 目标数值（明暗两套）
 const expected = {
   dark: {
     '--accent': '#3b82f6',
@@ -77,7 +77,7 @@ let ok = true;
 for (const theme of ['dark', 'light']) {
   const ctx = theme === 'dark' ? root : light;
   const exp = expected[theme];
-  console.log(`\n=== ${theme.toUpperCase()} (比对 TrieCode v1.3.1) ===`);
+  console.log(`\n=== ${theme.toUpperCase()} (比对 BubaiCode v1.3.1) ===`);
   for (const [token, want] of Object.entries(exp)) {
     const got = norm(resolve(token, ctx));
     const pass = got === want;
@@ -94,9 +94,9 @@ for (const theme of ['dark', 'light']) {
 }
 
 if (ok) {
-  console.log('\n[PASS] JS 应用主题已全量对齐 TrieCode v1.3.1（明暗数值一致，缺失 token 已补齐）。');
+  console.log('\n[PASS] JS 应用主题已全量对齐 BubaiCode v1.3.1（明暗数值一致，缺失 token 已补齐）。');
   process.exit(0);
 } else {
-  console.error('\n[FAIL] 存在与 TrieCode 不一致的 token。');
+  console.error('\n[FAIL] 存在与 BubaiCode 不一致的 token。');
   process.exit(1);
 }

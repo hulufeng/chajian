@@ -1,10 +1,10 @@
-// Phase B：完整会话 store（对齐 ChipCode session-store.js）
+// Phase B：完整会话 store（对齐参考基线 session-store.js）
 // 设计要点：
 //  1) 单一数据源：把此前互不相通的两套持久化（localStorage['bubaicode.chatSessions'] UI 列表
 //     与 main/userData/sessions/<id>.json 富会话）合并为一份内存镜像，磁盘为权威。
 //  2) 同步内存镜像 + 异步防抖落盘：现有 6 处同步 UI 代码无需改成 async。
 //  3) 单一写者：AgentRunner._persistSession 与 UI 保存都经本模块，消除双写 id/字段分裂。
-//  4) 消息带稳定 id/ts，display 展示字段原样保留（对齐 ChipCode session_message.display）。
+//  4) 消息带稳定 id/ts，display 展示字段原样保留（对齐参考基线 session_message.display）。
 //  5) load / save / revise / search 四级能力，revise 的 ops 语义与 main/index.js 完全一致。
 (function () {
   var LEGACY_KEY = 'bubaicode.chatSessions';
@@ -53,7 +53,9 @@
       usage: s.usage || null,
       // Phase B+：turn 批次快照与 todo 清单随会话持久化（跨重启/切换恢复）
       turns: s.turns || null,
-      todoList: Array.isArray(s.todoList) ? s.todoList : []
+      todoList: Array.isArray(s.todoList) ? s.todoList : [],
+      // 参考基线 对齐：积分消耗随会话落盘（原来只刷 UI）
+      creditsUsed: Number(s.creditsUsed) || 0
     };
   }
 
@@ -269,6 +271,22 @@
       var nodes = document.querySelectorAll('#ai-chat-area .chat-message');
       for (var i = 0; i < nodes.length; i++) if (i >= from) nodes[i].remove();
       // 文件变更 turn 与消息 seq 不同坐标系，不在此联动（避免误回滚用户文件）
+      emit('change');
+      return true;
+    },
+
+    // 删除单条消息：store / 可见日志 / agent 上下文 / DOM 四处同步（对齐 ChipCode「删除该消息」）
+    deleteAt: function (seq) {
+      var s = Store.get(currentId);
+      if (!s) return false;
+      var at = Number(seq);
+      if (!(at >= 0) || at >= s.messages.length) return false;
+      Store.revise(s.id, [{ type: 'delete_range', fromSeq: at, toSeq: at }]);
+      if (window._chatLog && at < window._chatLog.length) window._chatLog.splice(at, 1);
+      var st = window.BubaiCodeUI && window.BubaiCodeUI.state;
+      if (st && st.agent && Array.isArray(st.agent.messages)) st.agent.messages.splice(at, 1);
+      var nodes = document.querySelectorAll('#ai-chat-area .chat-message');
+      if (nodes[at]) nodes[at].remove();
       emit('change');
       return true;
     },

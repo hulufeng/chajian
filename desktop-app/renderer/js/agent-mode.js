@@ -1,4 +1,4 @@
-// ============ BubaiCode Agent 模式选择器（对齐 ChipCode ai:setAgentMode）============
+// ============ BubaiCode Agent 模式选择器（对齐参考基线 ai:setAgentMode）============
 // 复用既有 UI：AI 面板顶部的 .safety-mode-btn 与底部的 .mode-btn（data-mode = auto|default|plan）。
 // 本文件只负责把「模式选择」与 config.agentMode 打通：
 //   ① 启动时从 config.agentMode 恢复当前选中态（覆盖默认 'default'）；

@@ -1,4 +1,4 @@
-// 记忆库侧栏（列出 / 删除长期记忆，对齐 ChipCode memory）
+// 记忆库侧栏（列出 / 删除长期记忆，对齐参考基线 memory）
 // 复用现有 state.memories + saveMemoriesToDisk（后端 remember/forget 工具已存在）。
 (function () {
   function S() { return window.BubaiCodeUI && window.BubaiCodeUI.state; }

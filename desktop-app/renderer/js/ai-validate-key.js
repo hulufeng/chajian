@@ -1,4 +1,4 @@
-// AI 供应商 API Key 内联校验（对齐 ChipCode validateKey）
+// AI 供应商 API Key 内联校验（对齐参考基线 validateKey）
 // 复用现有 window.BubaiCode.ai.checkConnection（main 侧真实打端点验证 Key），前端加绿/红反馈。
 (function () {
   function debounce(fn, ms) {

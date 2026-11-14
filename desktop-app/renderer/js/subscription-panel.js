@@ -1,5 +1,5 @@
-// Phase C · 账户订阅 / 套餐面板（对齐 ChipCode 设置 → 账户与计费 + payment.getPlans + 外部购买入口）
-// 桌面端不做本地 checkout / 订单 / 订阅状态机（ChipCode 同样如此），只展示套餐与权益并跳转账户页。
+// Phase C · 账户订阅 / 套餐面板（对齐参考基线 设置 → 账户与计费 + payment.getPlans + 外部购买入口）
+// 桌面端不做本地 checkout / 订单 / 订阅状态机（参考基线 同样如此），只展示套餐与权益并跳转账户页。
 (function () {
   function api() { return window.BubaiCode && window.BubaiCode.payment; }
   function $(id) { return document.getElementById(id); }

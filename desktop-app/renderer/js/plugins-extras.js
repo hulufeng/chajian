@@ -1,5 +1,5 @@
 // ============================================================
-// 插件管理增强（对齐 ChipCode plugins:* 主进程通道的渲染层桥接）
+// 插件管理增强（对齐参考基线 plugins:* 主进程通道的渲染层桥接）
 // ------------------------------------------------------------
 // 主进程现提供 plugins:* 通道（list/getManifest/getSettings/setSettings/setActive/
 // uninstall/installFromPath/retryDeps/marketList/marketInstall）并广播 plugins:changed
@@ -27,7 +27,7 @@
   };
   window.BubaiCodePluginsExtras = PluginsExtras;
 
-  // 主进程 plugins:* 变更广播 → 渲染层注册表重载（对齐 TrieCode：主进程装/卸/启停后推送 changed）
+  // 主进程 plugins:* 变更广播 → 渲染层注册表重载（对齐参考基线：主进程装/卸/启停后推送 changed）
   async function reconcilePlugins(changed) {
     const PS = window.PluginSystem;
     if (!PS) return;

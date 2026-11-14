@@ -1,4 +1,4 @@
-// ghost-completion.js — Monaco ghost 内联补全（对齐 TrieCode ai:getCompletion）
+// ghost-completion.js — Monaco ghost 内联补全（对齐参考基线 ai:getCompletion）
 (function () {
   'use strict';
   const BubaiCodeUI = (window.BubaiCodeUI = window.BubaiCodeUI || {});

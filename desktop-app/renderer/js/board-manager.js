@@ -1,4 +1,4 @@
-// 开发板核心与库管理器（对齐 ChipCode board:*/core:*/lib:* 通道）
+// 开发板核心与库管理器（对齐参考基线 board:*/core:*/lib:* 通道）
 // 入口按钮：index.html 的 #board-manager-btn；通道：window.BubaiCode.board.*
 (function () {
   'use strict';

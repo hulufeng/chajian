@@ -1,5 +1,5 @@
 // ===== Git 远程通道 UI（git:fetch / git:pullRebase / git:remoteStatus）=====
-// 独立文件，避免与 app.js 等共享文件整文件覆盖冲突（对齐 chipcode-align 并行纪律）
+// 独立文件，避免与 app.js 等共享文件整文件覆盖冲突（保持独立文件以避免并行覆盖冲突）
 (function () {
   'use strict';
 

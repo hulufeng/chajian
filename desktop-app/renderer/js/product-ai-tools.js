@@ -1,4 +1,4 @@
-// Phase D · 产品工厂 5 个 AI 工具（对齐 ChipCode propose_criteria / propose_shape / propose_bom /
+// Phase D · 产品工厂 5 个 AI 工具（对齐参考基线 propose_criteria / propose_shape / propose_bom /
 // record_evidence / build_package）。以数组形式挂到 window，由 app.js 追加进 TOOL_DEFS。
 // 关键约束：只认磁盘文件与证据，禁止「对话里说完成」被当作阶段完成。
 (function () {

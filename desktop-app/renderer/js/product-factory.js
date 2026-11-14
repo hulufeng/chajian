@@ -1,5 +1,8 @@
-// Phase D · 产品工厂（对齐 ChipCode 侧栏 LOe() / 五阶段导航 / 产品包）
-// 复用 #product-factory-view 容器与活动栏 data-panel 切换；磁盘状态由主进程 product:state 计算。
+// Phase D · 产品工厂（五阶段导航 / 产品包）
+// #product-factory-view 位于「文件」侧栏内，两种入口：
+//   ①「文件」活动栏激活且打开的是产品项目 → 内嵌显示五阶段导航；
+//   ②「产品工厂」活动栏独立项（对齐 ChipCode 第 2 项）激活 → 始终显示该视图。
+// 无产品项目时另有「新建产品项目」入口（文件下拉菜单 / 视图内空态按钮）。磁盘状态由主进程 product:state 计算。
 (function () {
   function api() { return window.BubaiCode && window.BubaiCode.product; }
   function root() {
@@ -45,18 +48,19 @@
       '<div class="pf-body" id="pf-body"></div>';
     document.getElementById('pf-new').addEventListener('click', createProject);
     document.getElementById('pf-open').addEventListener('click', openProject);
-    ensureActivityTab();
+    // 活动栏入口为 index.html 静态按钮 [data-panel="product-factory"]（app.js switchPanel 处理），不再动态注入
   }
 
-  function ensureActivityTab() {
-    const bar = document.querySelector('.activity-bar') || document.querySelector('.activity-btns');
-    if (!bar || bar.querySelector('[data-panel="product-factory"]')) return;
-    const btn = document.createElement('button');
-    btn.className = 'activity-btn';
-    btn.dataset.panel = 'product-factory';
-    btn.title = '产品工厂';
-    btn.innerHTML = '<svg class="icon"><use href="#icon-box"></use></svg><span class="activity-label">产品工厂</span>';
-    bar.appendChild(btn);
+  // 侧栏容器显隐：两种入口——①「文件」活动栏激活且当前是产品项目（嵌入五阶段导航）；
+  // ②「产品工厂」活动栏项激活（独立入口，始终展示五阶段视图）
+  function syncVisibility() {
+    if (!view) return;
+    const explorerActive = !!document.querySelector('.activity-btn.active[data-panel="explorer"]');
+    const pfActive = !!document.querySelector('.activity-btn.active[data-panel="product-factory"]');
+    const isProduct = !!snapshot && !!snapshot.isProduct && !viewClosed;
+    const show = (explorerActive && isProduct) || pfActive;
+    view.style.display = show ? 'flex' : 'none';
+    document.body.classList.toggle('pf-in-explorer', explorerActive && isProduct);
   }
 
   // 产品名称输入模态（Electron 不支持 window.prompt，自制模态对齐克隆流程做法；返回 Promise，取消/关闭安全收尾）
@@ -71,7 +75,8 @@
       wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
       wrap.innerHTML =
         '<div style="width:440px;background:var(--bg-color);border:1px solid var(--border-color);border-radius:10px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);">' +
-          '<div style="font-size: 13px;font-weight:600;color:var(--text-color);margin-bottom:12px;">新建产品项目</div>' +
+          '<div style="font-size: 13px;font-weight:600;color:var(--text-color);margin-bottom:6px;">新建产品项目</div>' +
+          '<div style="font-size: 11px;color:var(--text-tertiary);margin-bottom:12px;">将在所选目录下创建同名子文件夹</div>' +
           '<label style="display:block;font-size: 11.5px;color:var(--text-secondary);margin-bottom:6px;">产品名称</label>' +
           '<input id="pf-name-input" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-elevated);color:var(--text-color);font-size: 12.5px;outline:none;" />' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
@@ -129,7 +134,7 @@
   async function exportPackage() {
     const a = api(); if (!a) return;
     if (!snapshot || !snapshot.isProduct) return toast('请先打开一个产品项目', 'warn');
-    // 1:1 仿写 ChipCode：产品包已生成时点击在文件管理器打开，未生成时才导出
+    // 1:1 仿写 参考基线：产品包已生成时点击在文件管理器打开，未生成时才导出
     if (snapshot.package && snapshot.package.built) {
       try {
         if (window.BubaiCode && window.BubaiCode.shell && window.BubaiCode.shell.showItemInFolder) {
@@ -150,10 +155,13 @@
       : '先新建或打开一个产品项目，才会出现五阶段导航。';
     return '<div class="pf-nav__empty">' +
       '<div class="pf-nav__empty-ico"><svg class="icon" style="width:28px;height:28px;"><use href="#icon-box"></use></svg></div>' +
-      '<div class="pf-nav__empty-title">当前不是产品项目</div>' +
+      '<div class="pf-nav__empty-title">当前不是产品项目' +
+        '<span class="pf-nav__empty-help" title="产品工厂需要新建或打开一个产品项目，才会出现五阶段导航">?</span></div>' +
       '<div class="pf-nav__empty-hint">' + hint + '</div>' +
-      '<button class="pf-btn primary" id="pf-empty-new">+ 新建产品项目</button>' +
-      '<button class="pf-btn outline" id="pf-empty-open">打开已有项目</button>' +
+      '<button class="pf-btn primary pf-btn-dark" id="pf-empty-new">+ 新建产品项目</button>' +
+      '<button class="pf-btn outline pf-btn-wide" id="pf-empty-open">' +
+        '<svg class="icon icon-xs"><use href="#icon-folder-open"></use></svg>打开已有项目' +
+        '<span class="pf-btn-arrow">›</span></button>' +
       '</div>';
   }
 
@@ -213,16 +221,18 @@
     const body = document.getElementById('pf-body');
     if (!body) return;
     if (viewClosed || !snapshot || !snapshot.isProduct) {
-      body.innerHTML = emptyHtml(viewClosed ? '' : (root() ? String(root()).split(/[\\/]/).pop() : ''));
+      // 非产品项目：五阶段导航不占用侧栏；入口由文件欢迎面板的「新建产品项目」按钮提供
+      body.innerHTML = emptyHtml('');
       const n = document.getElementById('pf-empty-new');
       const o = document.getElementById('pf-empty-open');
       if (n) n.addEventListener('click', createProject);
       if (o) o.addEventListener('click', openProject);
+      syncVisibility();
       return;
     }
     const m = snapshot.meter;
     const pct = Math.round((m.total ? m.hit / m.total : 0) * 100);
-    // 1:1 仿写 ChipCode pf-export：产品包已生成/过期三态 + 文件数徽标
+    // 1:1 仿写 参考基线 pf-export：产品包已生成/过期三态 + 文件数徽标
     const pkg = snapshot.package || {};
     const pkgCount = pkg.fileCount || 0;
     const exportLabel = pkgCount ? (pkg.stale ? '产品包 · 已过期' : '产品包') : '生成产品包';
@@ -272,6 +282,7 @@
         }
       } catch (e) {}
     });
+    syncVisibility();
   }
 
   async function refresh(force) {
@@ -301,12 +312,13 @@
     build();
     const a = api();
     if (a && a.onFilesChanged) a.onFilesChanged(function () { scheduleRefresh(); });
-    // 视图被打开时刷新（活动栏 click 与欢迎页 pill 都会触发）
+    // 「新建产品项目」入口已移入「文件」下拉菜单（data-action="new-product-project"，见 app.js handleMenuAction）
+    // 活动栏切换后同步侧栏显隐（切到「文件」且为产品项目、或切到「产品工厂」项时展示五阶段导航）
     document.addEventListener('click', function (e) {
       const t = e.target;
-      if (!t) return;
-      const act = t.closest ? t.closest('.activity-btn[data-panel="product-factory"], #welcome-pill-product') : null;
-      if (act) setTimeout(function () { refresh(); }, 60);
+      if (!t || !t.closest) return;
+      if (t.closest('.activity-btn')) setTimeout(syncVisibility, 30);
+      if (t.closest('#welcome-pill-product')) setTimeout(function () { refresh(); }, 60);
     });
     refresh();
   }
@@ -316,6 +328,9 @@
     get snapshot() { return snapshot; },
     root: root,
     refresh: refresh,
+    syncVisibility: syncVisibility,
+    createProject: createProject,
+    openProject: openProject,
     onStageChange: function (fn) { if (listeners.indexOf(fn) < 0) listeners.push(fn); },
     writeFile: async function (rel, content) {
       const a = api(); if (!a) return { success: false, error: '仅桌面版' };

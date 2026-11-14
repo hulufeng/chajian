@@ -1,4 +1,4 @@
-// git-review.js —— 审阅本轮 AI 改动（对齐 ChipCode git:review / git:applyAndStage）
+// git-review.js —— 审阅本轮 AI 改动（对齐参考基线 git:review / git:applyAndStage）
 // 由渲染层从 window.BubaiCodeUI.fileTracker 取本轮 AI 文件变更，交给主进程拆 hunk，
 // 用户逐 hunk 接受/拒绝后，主进程回写磁盘并 git add 暂存。
 (function () {

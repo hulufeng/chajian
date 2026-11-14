@@ -1,5 +1,5 @@
 /* ============================================
-   BubaiCode - Design Tokens（全量对齐 TrieCode v1.3.1）
+   BubaiCode - Design Tokens（全量对齐 BubaiCode v1.3.1）
    暗色：brand #3b82f6 / surface-0 #0d1117 / surface-1 #131820
    亮色：brand #2563eb / surface-0 #f5f6f8 / surface-1 #ffffff
    仅改下方两个块即可换肤，业务 CSS 不动。
@@ -30,7 +30,7 @@
 
 /* CSS 变量 */
 :root {
-  /* ① 强调与交互（对齐 TrieCode brand #3b82f6 / #2563eb） */
+  /* ① 强调与交互（对齐参考基线 brand #3b82f6 / #2563eb） */
   --primary: #3b82f6;
   --primary-hover: #60a5fa;
   --primary-active: #2563eb;
@@ -40,7 +40,7 @@
   /* 品牌 logo 专用色（回归 BubaiCode 交付包官方资产：亮 #1a1a2e 墨黑 / 暗 -reversed- 纯白） */
   --brand-ink: #ffffff;
 
-  /* ② 中性骨架：界面每一层背景（对齐 TrieCode --surface-0..3） */
+  /* ② 中性骨架：界面每一层背景（对齐参考基线 --surface-0..3） */
   --surface-0: #0d1117;        /* canvas / 最底 */
   --surface-1: #131820;        /* 主面板 */
   --surface-2: #1a212b;        /* 次级面板 */
@@ -49,21 +49,21 @@
   --surface-active: rgba(255, 255, 255, .11);
 
   --bg-primary: var(--surface-1);
-  /* 背景层级对齐 ChipCode：secondary=surface-2 / tertiary=surface-3 */
+  /* 背景层级对齐参考基线：secondary=surface-2 / tertiary=surface-3 */
   --bg-secondary: var(--surface-2);
   --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
   --bg-selected: rgba(59, 130, 246, .14);
   --bg-active: var(--surface-active);            /* 组件引用但未定义，补齐 */
 
-  /* ③ 边框（对齐 TrieCode --border / -strong / -weak） */
+  /* ③ 边框（对齐参考基线 --border / -strong / -weak） */
   --border: #2b333d;
   --border-light: #20262e;
   --border-medium: #2b333d;
   --border-dark: #3a4450;
   --border-color: var(--border);                  /* 组件引用但未定义，补齐 */
 
-  /* ④ 文字：ChipCode --text/-2/-3/-strong 为一等公民字面量；
+  /* ④ 文字：参考基线 --text/-2/-3/-strong 为一等公民字面量；
      BubaiCode 历史名 --text-primary/secondary/tertiary/muted 改为 var() 别名（自动跟随主题，避免两套值漂移） */
   --text: #e6edf3;
   --text-2: #9da7b3;
@@ -76,7 +76,7 @@
   --text-quaternary: #8b949e;
   --text-inverse: #0d1117;
 
-  /* ⑤ 状态语义（对齐 TrieCode） */
+  /* ⑤ 状态语义（对齐参考基线） */
   --success: #4ade80;
   --success-bg: rgba(74, 222, 128, .12);
   --error: #f87171;
@@ -85,7 +85,7 @@
   --warning-bg: rgba(251, 191, 36, .12);
   --info: #60a5fa;
   --info-bg: rgba(96, 165, 250, .16);
-  /* ChipCode 兼容色 token（暗色，0 引用，供后续组件安全使用） */
+  /* 参考基线 兼容色 token（暗色，0 引用，供后续组件安全使用） */
   --ai-color: var(--accent);
   --ai-hover: var(--primary-hover);
   --ai-soft: var(--primary-light);
@@ -95,35 +95,35 @@
   --warning-soft: rgba(251, 191, 36, .12);
   --error-soft: rgba(248, 113, 113, .12);
 
-  /* ⑥ 结构尺寸（对齐 TrieCode --toolbar-height: 36px） */
+  /* ⑥ 结构尺寸（对齐参考基线 --toolbar-height: 36px） */
   --titlebar-height: 36px;
   --toolbar-height: 36px;
-  --activity-bar-width: 32px;
+  --activity-bar-width: 36px;
   --sidebar-width: 380px;
   --statusbar-height: 24px;
   --bottom-panel-height: 200px;
 
-  /* ⑦ 圆角 / 阴影 / 字体（取值 1:1 对齐 ChipCode 设计 token） */
+  /* ⑦ 圆角 / 阴影 / 字体（取值 1:1 对齐参考基线 设计 token） */
   --radius-2xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-full: 9999px;
-  /* 字号阶梯（对齐 ChipCode --text-xs/sm/md/lg/xl） */
+  /* 字号阶梯（对齐参考基线 --text-xs/sm/md/lg/xl） */
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
   --text-lg: 15px;
   --text-xl: 18px;
-  /* ChipCode --shadow-1/2/3（暗色）；既有的 --shadow-sm/md/lg 为兼容别名保留 */
+  /* 参考基线 --shadow-1/2/3（暗色）；既有的 --shadow-sm/md/lg 为兼容别名保留 */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
   --shadow-3: 0 12px 32px rgba(0, 0, 0, .55);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, .45);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, .55);
-  /* ChipCode 动效与控制尺寸 token */
+  /* 参考基线 动效与控制尺寸 token */
   --control-height-sm: 26px;
   --control-height-md: 32px;
   --control-height-lg: 40px;
@@ -136,18 +136,18 @@
   --font-family: 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system, BlinkMacSystemFont, 'Source Han Sans SC', '思源黑体', sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
 
-  /* 兼容别名：历史 UI（插件/设备等面板）引用了 TrieCode 风格 token 名但主题从未定义，导致大面积颜色跑偏；此处映射到真实 token（var 动态解析，自动适配深浅色） */
+  /* 兼容别名：历史 UI（插件/设备等面板）引用了 参考基线 风格 token 名但主题从未定义，导致大面积颜色跑偏；此处映射到真实 token（var 动态解析，自动适配深浅色） */
   --card-color: var(--surface-1);
   --bg-color: var(--surface-1);
   --bg-elevated: var(--surface-2);
   --text-color: var(--text-primary);
   --radius: 8px;
-  /* --text-strong 已在 ④ 按 ChipCode 定义，勿在此覆盖 */
+  /* --text-strong 已在 ④ 按 参考基线 定义，勿在此覆盖 */
   --accent-color: var(--accent);
-  /* --text-2/-3/-muted 已在 ④ 作为 ChipCode 一等公民/别名定义，勿在此反向覆盖（会循环引用） */
+  /* --text-2/-3/-muted 已在 ④ 作为 参考基线 一等公民/别名定义，勿在此反向覆盖（会循环引用） */
 }
 
-/* 浅色主题（对齐 TrieCode 浅色界面） */
+/* 浅色主题（对齐参考基线 浅色界面） */
 [data-theme="light"] {
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
@@ -163,7 +163,7 @@
   --surface-active: rgba(15, 23, 42, .09);
 
   --bg-primary: var(--surface-1);
-  /* 背景层级对齐 ChipCode（与暗色同构） */
+  /* 背景层级对齐参考基线（与暗色同构） */
   --bg-secondary: var(--surface-2);
   --bg-tertiary: var(--surface-3);
   --bg-hover: var(--surface-hover);
@@ -176,7 +176,7 @@
   --border-dark: #cfd4db;
   --border-color: var(--border);
 
-  /* ④ 文字：与 :root 同构，ChipCode 一等公民字面量 + 历史名别名 */
+  /* ④ 文字：与 :root 同构，参考基线 一等公民字面量 + 历史名别名 */
   --text: #2b2f36;
   --text-2: #5b6470;
   --text-3: #9aa2ad;
@@ -197,7 +197,7 @@
   --warning-bg: rgba(217, 119, 6, .1);
   --info: #2563eb;
   --info-bg: rgba(37, 99, 235, .1);
-  /* ChipCode 兼容色 token（亮色） */
+  /* 参考基线 兼容色 token（亮色） */
   --ai-color: var(--accent);
   --ai-hover: var(--primary-hover);
   --ai-soft: var(--primary-light);
@@ -208,7 +208,7 @@
   --error-soft: rgba(220, 38, 38, .1);
 
   --toolbar-height: 36px;
-  /* ChipCode --shadow-1/2/3（亮色） */
+  /* 参考基线 --shadow-1/2/3（亮色） */
   --shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
   --shadow-2: 0 4px 14px rgba(16, 24, 40, .1);
   --shadow-3: 0 12px 32px rgba(16, 24, 40, .16);
@@ -991,7 +991,7 @@ input, textarea {
 }
 
 /* ============================================
-   欢迎面板（1:1 复刻 ChipCode「源代码管理」无项目空状态）
+   欢迎面板（1:1 复刻 BubaiCode「源代码管理」无项目空状态）
    ============================================ */
 .welcome-panel {
   flex: 1;
@@ -1158,7 +1158,7 @@ input, textarea {
   text-align: center;
 }
 
-/* 空状态图标（对齐 TrieCode 简洁风格） */
+/* 空状态图标（对齐参考基线 简洁风格） */
 .welcome-empty-icon {
   width: 48px;
   height: 48px;
@@ -1183,7 +1183,7 @@ input, textarea {
   margin: 0 0 32px 0;
 }
 
-/* 欢迎页快捷操作（水平排列，对齐 TrieCode） */
+/* 欢迎页快捷操作（水平排列，对齐参考基线） */
 .welcome-actions {
   display: flex;
   flex-direction: row;
@@ -1268,26 +1268,43 @@ input, textarea {
   text-overflow: ellipsis;
 }
 
-/* ===== 文件 tab 无项目态：1:1 对齐 ChipCode「开始你的开发」欢迎页 ===== */
-.welcome-start { width: 100%; max-width: 320px; margin: 0 auto; }
-/* 对齐 ChipCode 文件树空态：52×52 圆形 + --accent-soft 柔和底 + 24px 亮色图标 */
+/* ===== 文件 tab 无项目态：1:1 对齐参考基线「开始你的开发」欢迎页 ===== */
+/* 对齐 ChipCode 原品（2026-11-13 几何复测）：内容列实测 240px 居中（原品 x97 宽 240 / 侧栏 349） */
+.welcome-start { width: 100%; max-width: 240px; margin: 0 auto; padding: 0 8px; box-sizing: border-box; }
+/* 图标徽章：对齐 ChipCode 实测——40×40 / 圆角 12px / 中性 8% 底 / 18px folder-open / 下间距 10px */
 .welcome-panel-icon {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: var(--primary-light);          /* = ChipCode --accent-soft：暗 rgba(59,130,246,.14) / 亮 rgba(37,99,235,.1) */
-  color: var(--brand-ink);                   /* BubaiCode 官方品牌色，随主题切换墨黑/反白 */
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--surface-hover);          /* 参考基线为中性叠加色 rgba(17,17,17,.08)，暗色对应白 7% 叠加 */
+  color: var(--text-primary);
   display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 12px;
+  margin: 0 auto 10px;
 }
-.welcome-panel-icon .icon { width: 24px; height: 24px; }
-.welcome-panel-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; line-height: 1.4; }
-.welcome-panel-desc { font-size: 12px; color: var(--text-tertiary); line-height: 1.7; margin: 0 0 18px; max-width: 220px; }
+.welcome-panel-icon .icon { width: 18px; height: 18px; }
+/* 标题：对齐 ChipCode 实测（15px / 600 / 下间距 16px） */
+.welcome-panel-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0 0 16px; line-height: 1.4; text-align: center; }
+/* 描述段：ChipCode 无可见描述（该文案仅存在于「?」的悬浮提示），隐藏以保持一致 */
+.welcome-panel-desc { display: none; }
 .welcome-panel-actions { display: flex; flex-direction: column; gap: 8px; }
 .welcome-panel-actions .btn-full {
-  width: 100%; height: 30px; justify-content: center;
-  display: inline-flex; align-items: center; gap: 6px;
-  border-radius: 6px; font-size: 12.5px;
+  width: 100%; height: 40px; border-radius: 6px;
+  display: inline-flex; align-items: center;
 }
-.welcome-panel-actions .btn-full .icon { width: 14px; height: 14px; }
+.welcome-panel-actions .btn-full .icon { margin-right: 0; }
+/* 主按钮「新建项目」：对齐 ChipCode 实测——居中 / gap 6 / 14px 500 / padding 0 20px / 图标 15px */
+.welcome-panel-actions .btn-full.btn-primary { justify-content: center; padding: 0 20px; gap: 6px; font-size: 14px; font-weight: 500; }
+.welcome-panel-actions .btn-full.btn-primary .icon { width: 15px; height: 15px; }
+/* 次按钮「打开/克隆」：对齐 ChipCode 实测——左对齐 / gap 10 / 13px / padding 0 12px / 图标 16px / 尾部 chevron 14px */
+.welcome-panel-actions .btn-full.wp-btn-row { justify-content: flex-start; padding: 0 12px; gap: 10px; font-size: 13px; font-weight: 400; }
+.welcome-panel-actions .btn-full.wp-btn-row .icon { width: 16px; height: 16px; }
+.welcome-panel-actions .btn-full.wp-btn-row .wp-btn-chev { width: 14px; height: 14px; margin-left: auto; color: var(--text-3); }
+/* 信息指示符：对齐 ChipCode 实测——13×13 圆环 / 9px 700 / 灰 */
+.welcome-panel-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 1px solid var(--border-dark);
+  font-size: 9px; font-weight: 700; line-height: 9px;
+  color: var(--text-3); cursor: help; vertical-align: middle; margin-left: 4px;
+}
 .welcome-panel-actions-row { display: flex; gap: 8px; width: 100%; }
 .welcome-panel-actions .btn-half {
   flex: 1; min-width: 0; overflow: hidden; height: 30px;
@@ -1311,7 +1328,7 @@ input, textarea {
 #recent-list .recent-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 #recent-list .recent-item .icon { width: 13px; height: 13px; color: var(--text-tertiary); flex-shrink: 0; }
 
-/* ===== 代码符号搜索浮层（1:1 仿写 ChipCode：遮罩 z90 / 卡片 z91 / 宽540 / top52 / inline 输入框） ===== */
+/* ===== 代码符号搜索浮层（1:1 仿写 参考基线：遮罩 z90 / 卡片 z91 / 宽540 / top52 / inline 输入框） ===== */
 .symbol-search-overlay { position: fixed; inset: 0; z-index: 10001; }
 .symbol-search-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 90; }
 .symbol-search-card {
@@ -1344,14 +1361,14 @@ input, textarea {
 .symbol-search-empty { padding: 12px 16px; color: var(--text-tertiary); font-size: 12.5px; }
 .symbol-search-hint { padding: 6px 14px; border-top: 1px solid var(--border-color); font-size: 10.5px; color: var(--text-tertiary); }
 
-/* ===== Git 进行中操作横幅（仿写 ChipCode git.panel.pendingOp） ===== */
+/* ===== Git 进行中操作横幅（仿写 参考基线 git.panel.pendingOp） ===== */
 .git-pending-label { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 .git-pending-hint { font-size: 10.5px; color: var(--text-tertiary); line-height: 1.6; margin-bottom: 8px; }
 .git-pending-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .git-pending-actions .pf-btn { font-size: 11px; padding: 4px 8px; }
 .git-pending-actions .pf-btn.warn { background: transparent; border-color: var(--border-color); color: var(--text-secondary); }
 
-/* ===== 合并冲突区块（仿写 ChipCode git.conflict.*） ===== */
+/* ===== 合并冲突区块（仿写 参考基线 git.conflict.*） ===== */
 .git-conflicts-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .git-conflicts-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
 .git-conflicts-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
@@ -1422,31 +1439,47 @@ input, textarea {
   box-sizing: border-box;
 }
 
-/* 1:1 对齐 TrieCode：AI 面板顶部操作栏 */
+/* 1:1 对齐参考基线：AI 面板顶部操作栏
+   实测 ChipCode：高 36 / padding 0 12 / 背景 surface-1 / 内容右对齐 / 左侧无图标 */
 .ai-top-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--border-light);
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: var(--surface-1);
   flex-shrink: 0;
-  height: 40px;
+  height: 36px;
   box-sizing: border-box;
 }
-.ai-top-left { display: flex; align-items: center; }
-.ai-top-icon { color: var(--primary); display: flex; }
-.ai-top-icon .icon { width: 20px; height: 20px; }
-.ai-top-right { display: flex; align-items: center; gap: 4px; }
+.ai-top-right { display: flex; align-items: center; gap: 2px; }
 .ai-top-btn {
-  width: 28px; height: 28px;
+  width: 25px; height: 25px;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; border-radius: var(--radius-sm);
-  color: var(--text-tertiary); cursor: pointer;
+  color: var(--text-secondary); cursor: pointer;
 }
 .ai-top-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.ai-top-btn .icon { width: 16px; height: 16px; }
+.ai-top-btn .icon { width: 15px; height: 15px; }
+/* 撤销上一轮 / 选择撤销范围 / 重做 在原品中无间隙成组（撤销范围是紧贴撤销按钮右侧的 15px 小箭头） */
+#ai-undo-range-btn, #ai-redo-btn { margin-left: -2px; }
+#ai-undo-range-btn { width: 15px; padding: 0; }
 
-/* 自研本体 P0-2：安全模式三按钮（⚡自动 / 🛡️默认 / 📋计划）——1:1 对齐 TrieCode：顶部不显示，移至设置 */
+/* ===== 对齐 ChipCode 原品：AI 顶栏恒为 6 个会话级图标（欢迎态/会话态一致） =====
+   实测 ChipCode 欢迎态与会话进行中态顶栏按钮完全相同 = 撤销上一轮 / 选择撤销范围 /
+   重做 / 新对话 / 在当前对话中查找 / 历史会话（共 6 个，原品不存在更多按钮）。
+   本产品自有的 用量统计 / 优化提示词 / 记忆库 / 时间旅行 属额外能力，两态均不显示
+   （DOM 保留，仅隐藏，避免运行时脚本报错）。 */
+#ai-usage-btn, #ai-optimize-btn, #ai-memory-btn, #ai-rewind-btn { display: none; }
+
+/* 欢迎态：原品将 撤销上一轮 / 选择撤销范围 / 重做 置灰（disabled，opacity .4 且不可点）；
+   新对话 / 在当前对话中查找 / 历史会话 保持正常可用。 */
+#ai-panel:has(#ai-welcome:not([style*="display: none"])) .ai-top-right #ai-undo-btn,
+#ai-panel:has(#ai-welcome:not([style*="display: none"])) .ai-top-right #ai-undo-range-btn,
+#ai-panel:has(#ai-welcome:not([style*="display: none"])) .ai-top-right #ai-redo-btn {
+  opacity: .4; pointer-events: none; cursor: default;
+}
+
+/* 自研本体 P0-2：安全模式三按钮（⚡自动 / 🛡️默认 / 📋计划）——1:1 对齐参考基线：顶部不显示，移至设置 */
 .safety-mode-group {
   display: none;
 }
@@ -1475,7 +1508,7 @@ input, textarea {
 }
 /* 特性：收敛为一行轻量提示 */
 .ai-welcome-features {
-  /* 对齐 TrieCode：欢迎页仅标题+副标题+快捷片，特性列表不展示 */
+  /* 对齐参考基线：欢迎页仅标题+副标题+快捷片，特性列表不展示 */
   display: none;
   align-items: center;
   justify-content: center;
@@ -1506,7 +1539,7 @@ input, textarea {
   color: var(--text-tertiary);
   opacity: .45;
 }
-/* ===== 对齐 ChipCode：欢迎页顶部历史搜索 + 最近会话 ===== */
+/* ===== 对齐参考基线：欢迎页顶部历史搜索 + 最近会话 ===== */
 .ai-welcome-history {
   width: 100%;
   max-width: 460px;
@@ -1567,7 +1600,7 @@ input, textarea {
 }
 .ai-welcome-hist-del:hover { opacity: 1; color: #ef4444; }
 .ai-welcome-hist-empty { font-size: 12px; color: var(--text-tertiary); padding: 6px 2px; }
-/* ===== 对齐 ChipCode：标题下「写代码 / 做产品」pill ===== */
+/* ===== 对齐参考基线：标题下「写代码 / 做产品」pill ===== */
 .ai-welcome-pills {
   display: flex;
   gap: 10px;
@@ -1589,7 +1622,7 @@ input, textarea {
 }
 .ai-welcome-pill:hover { background: var(--surface-2, rgba(127,127,127,.1)); border-color: var(--primary, #3b82f6); }
 .ai-welcome-pill .icon { color: var(--primary, #3b82f6); }
-/* ===== 对齐 ChipCode：欢迎页硬件模拟器预览卡片 ===== */
+/* ===== 对齐参考基线：欢迎页硬件模拟器预览卡片 ===== */
 .ai-welcome-sim {
   display: flex;
   align-items: center;
@@ -1691,7 +1724,7 @@ input, textarea {
   text-overflow: ellipsis;
 }
 
-/* 1:1 对齐 TrieCode：项目路径栏 */
+/* 1:1 对齐参考基线：项目路径栏 */
 .ai-project-bar {
   display: flex;
   align-items: center;
@@ -1872,7 +1905,7 @@ input, textarea {
   color: var(--text-secondary);
 }
 
-/* 语音输入按钮录音态（对齐 ChipCode transcribe 红点脉冲） */
+/* 语音输入按钮录音态（对齐参考基线 transcribe 红点脉冲） */
 .ai-input-tool-btn.recording {
   background: #ef4444 !important;
   color: #fff !important;
@@ -1883,7 +1916,7 @@ input, textarea {
   50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 }
 
-/* ===== 上下文用量 / 压缩预览面板（对齐 ChipCode contextUsage / compactPreview） ===== */
+/* ===== 上下文用量 / 压缩预览面板（对齐参考基线 contextUsage / compactPreview） ===== */
 .context-panel {
   display: flex;
   flex-direction: column;
@@ -2175,12 +2208,12 @@ input, textarea {
   flex-direction: column;
 }
 
-/* 1:1 对齐 TrieCode：无打开文件时，保持三栏布局——中间编辑器显示空状态提示，右侧 AI 面板固定宽 */
+/* 1:1 对齐参考基线：无打开文件时，保持三栏布局——中间编辑器显示空状态提示，右侧 AI 面板固定宽 */
 body.no-open-file .editor-container {
   display: flex;
 }
 body.no-open-file .ai-panel {
-  flex: 0 0 600px;
+  flex: 0 0 340px;
   min-width: 0;
   border-left: 1px solid var(--border-light);
 }
@@ -2222,7 +2255,7 @@ body.no-open-file .ai-panel {
   position: relative;
 }
 
-/* ↓ 回到底部（对齐 TrieCode：工作流滚动时悬浮一键回底） */
+/* ↓ 回到底部（对齐参考基线：工作流滚动时悬浮一键回底） */
 .chat-scroll-bottom {
   position: sticky;
   bottom: 14px;
@@ -2245,7 +2278,7 @@ body.no-open-file .ai-panel {
 }
 .chat-scroll-bottom:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0, .16); }
 
-/* 工作状态条（对齐 TrieCode：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文） */
+/* 工作状态条（对齐参考基线：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文） */
 .work-status-msg .work-status-bubble {
   background: linear-gradient(135deg, rgba(99,102,241, .08), rgba(139,92,246, .14));
   border: 0.5px solid rgba(99,102,241, .22);
@@ -2362,9 +2395,16 @@ body.no-open-file .ai-panel {
   padding: 0 12px;
   gap: 4px;
   border-bottom: 1px solid var(--border-light);
+  flex-wrap: nowrap;        /* 窄窗口下单行 + 横向滚动，不换行竖排 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.bottom-tabs::-webkit-scrollbar { display: none; }
 
 .bottom-tab {
+  white-space: nowrap;
+  flex-shrink: 0;
   padding: 4px 12px;
   font-size: 11.5px;
   color: var(--text-tertiary);
@@ -2698,31 +2738,70 @@ body.no-open-file .ai-panel {
   overflow-y: auto;
 }
 
-/* ===== 新建项目弹窗 ===== */
-/* 新建项目对话框 - TrieCode 风格左右两栏 */
+/* ===== 新建项目弹窗（对齐 ChipCode 原品：680px 宽，上部左右两栏 + 中部字段并排 + 底部按钮靠右） ===== */
+.np-modal { width: 680px !important; max-width: 92vw !important; height: 652px !important; }
+#new-project-modal .modal-header { padding: 13px 18px !important; }
+#new-project-modal .modal-header h3 { font-size: 14px; line-height: 26px; }
+#new-project-modal .modal-body { padding: 18px !important; }
+#new-project-modal .modal-footer { padding: 12px 18px !important; }
+#new-project-modal .modal-footer .btn { height: 26px; padding: 0 12px; font-size: 12px; }
 .new-project-layout {
   display: flex;
-  gap: 0;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  margin-bottom: 16px;
-  height: 280px;
+  gap: 12px;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  margin-bottom: 12px;
+  height: 424px;
 }
-
+/* 左栏：搜索框在上、类型列表在下（此前三者被 flex 横向并排，导致搜索框被拉成竖条、预览压成 32px） */
+.new-project-types {
+  width: 264px;
+  min-width: 264px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+#new-project-modal #project-type-search { flex: 0 0 auto; height: 26px; padding: 4px 10px !important; font-size: 11.5px !important; }
 .project-type-list {
-  width: 200px;
-  min-width: 200px;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border-light);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
   overflow-y: auto;
 }
+/* 右栏：预览 */
+#new-project-modal .project-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 14px;
+  overflow-y: auto;
+}
+/* 中部：项目名称 + 创建位置并排一行 */
+.np-fields-row { display: flex; gap: 12px; margin-bottom: 8px; }
+.np-field { min-width: 0; }
+.np-field-name { flex: 0 0 210px; }
+.np-field-location { flex: 1 1 auto; }
+#new-project-modal .np-field label { margin-bottom: 5px; }
+#new-project-modal .np-field input[type="text"] { height: 26px; padding: 4px 8px; font-size: 12px; }
+#new-project-modal .project-location-row { display: flex; gap: 8px; }
+#new-project-modal .project-location-row input[type="text"] { flex: 1 1 auto; min-width: 0; }
+#new-project-modal .project-location-row .btn { height: 26px; flex: 0 0 auto; padding: 0 12px; font-size: 11.5px; }
+#new-project-modal .modal-footer { justify-content: flex-end; }
 
 .project-type-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 6px 10px;
+  min-height: 31px;
+  box-sizing: border-box;
   cursor: pointer;
   transition: background 0.15s;
   border-left: 3px solid transparent;
@@ -2738,8 +2817,10 @@ body.no-open-file .ai-panel {
 }
 
 .project-type-item .project-type-icon {
-  font-size: 16px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
+  stroke-width: 2;
 }
 
 .project-type-info {
@@ -2780,26 +2861,28 @@ body.no-open-file .ai-panel {
   margin-bottom: 16px;
 }
 
+/* 对齐 ChipCode 原品：文件列表为纯文本树（├─ / └─），无底色块 */
 .project-preview-files-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
 }
 
 .project-preview-files {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: block;
+  font-family: 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
 }
 
 .preview-file {
   font-size: 11.5px;
   color: var(--text-secondary);
-  padding: 6px 10px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  font-family: 'Consolas', 'Monaco', monospace;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-family: inherit;
 }
 
 .project-location-row {
@@ -3117,7 +3200,7 @@ body.no-open-file .ai-panel {
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
 }
-/* 对齐 TrieCode：无打开文件时隐藏编辑器工具栏（欢迎/未开文件态中央仅品牌空态卡，避免 TrieCode 没有的编译/烧录/AI修复 工具栏堆叠） */
+/* 对齐参考基线：无打开文件时隐藏编辑器工具栏（欢迎/未开文件态中央仅品牌空态卡，避免 参考基线 没有的编译/烧录/AI修复 工具栏堆叠） */
 body.no-open-file .editor-toolbar { display: none !important; }
 
 .editor-toolbar-left,
@@ -3331,7 +3414,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
 
 /* ============ 模型安装进度弹窗 END ============ */
 
-/* AI 输入框发送按钮（对齐 TrieCode：空态灰色，输入后变品牌蓝） */
+/* AI 输入框发送按钮（对齐参考基线：空态灰色，输入后变品牌蓝） */
 .ai-send-btn {
   display: flex;
   align-items: center;
@@ -3824,7 +3907,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
 }
 
 /* ============ 计划进度面板 ============ */
-/* 自研本体 P0-3：技能面板（对齐 TrieCode / 技能菜单） */
+/* 自研本体 P0-3：技能面板（对齐参考基线 / 技能菜单） */
 .ai-skill-panel {
   border-top: 1px solid var(--border-light);
   background: var(--bg-secondary);
@@ -4393,7 +4476,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   border-color: #d97706;
 }
 
-/* ============ AI 对话消息 - 对齐 TrieCode ============ */
+/* ============ AI 对话消息 - 对齐参考基线 ============ */
 .chat-message {
   display: flex;
   gap: 10px;
@@ -4423,7 +4506,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   flex-shrink: 0;
 }
 
-/* TrieCode AI 消息无头像 */
+/* 参考基线 AI 消息无头像 */
 .chat-message.ai .chat-avatar {
   display: none;
 }
@@ -4540,7 +4623,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   display: block;
 }
 
-/* 工具调用卡片 - 对齐 TrieCode */
+/* 工具调用卡片 - 对齐参考基线 */
 .tool-call-block {
   margin: 4px 0;
   border: 1px solid #e5e7eb;
@@ -4690,7 +4773,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   color: #065f46;
 }
 
-/* 计划进度 - 对齐 TrieCode（方形复选框） */
+/* 计划进度 - 对齐参考基线（方形复选框） */
 .plan-progress-panel {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
@@ -4762,7 +4845,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   background: #eff6ff;
 }
 
-/* TrieCode 方形复选框 */
+/* 参考基线 方形复选框 */
 .plan-progress-step-checkbox {
   display: flex;
   align-items: center;
@@ -4819,7 +4902,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   flex-shrink: 0;
 }
 
-/* 内联权限确认卡片 - 对齐 TrieCode */
+/* 内联权限确认卡片 - 对齐参考基线 */
 .inline-permission-card {
   border: 1px solid #fde68a;
   border-left: 3px solid #f59e0b;
@@ -4940,7 +5023,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   background: #fef2f2;
 }
 
-/* AI 询问用户选项卡片 - 对齐 TrieCode「AI 需要你的选择」 */
+/* AI 询问用户选项卡片 - 对齐参考基线「AI 需要你的选择」 */
 .ask-user-card {
   border: 1px solid #e5e7eb;
   border-left: 3px solid #2563eb;
@@ -5071,7 +5154,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   cursor: not-allowed;
 }
 
-/* 需求澄清卡片（多组选项，对齐 TrieCode 开发框架+项目功能） */
+/* 需求澄清卡片（多组选项，对齐参考基线 开发框架+项目功能） */
 .clarify-card .ask-user-options {
   display: none;
 }
@@ -5178,18 +5261,18 @@ body.no-open-file .editor-toolbar { display: none !important; }
 }
 
 /* ============ 插件市场 ============ */
-/* TrieCode 式分段tab：灰底圆角容器，激活段白底浮起 */
+/* 基线式分段tab：灰底圆角容器，激活段白底浮起 */
 .plugins-tabs {
   display: flex;
   gap: 4px;
   background: var(--surface-2, #edeef0);
   border-radius: 12px;
-  padding: 4px;
+  padding: 3px;
   margin: 10px 12px 6px;
 }
 .plugins-tab {
   flex: 1;
-  padding: 9px 2px;
+  padding: 6px 2px;
   background: transparent;
   border: none;
   border-radius: 9px;
@@ -5216,12 +5299,15 @@ body.no-open-file .editor-toolbar { display: none !important; }
   border-color: var(--accent, #007acc) !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, .1);
 }
-/* 插件管理（对齐 TrieCode 卡片式：白底圆角卡、品牌图标、齿轮/toggle/垃圾桶、绿色运行点） */
-.plg-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--surface-1); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 1px 2px rgba(16,24,40,.04); transition: box-shadow .15s, border-color .15s; }
+/* 插件管理（对齐参考基线 卡片式：白底圆角卡、品牌图标、齿轮/toggle/垃圾桶、绿色运行点） */
+.plg-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin-bottom: 8px; background: var(--surface-1); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 1px 2px rgba(16,24,40,.04); transition: box-shadow .15s, border-color .15s; }
 .plg-row:hover { border-color: var(--border-dark); box-shadow: 0 3px 10px rgba(16,24,40,.08); }
-.plg-row-ic { width: 22px; height: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; background: transparent; border-radius: 6px; }
-.plg-row-ic .brand-ic { width: 22px; height: 22px; }
-/* ===== 插件市场字体统一 12px（对齐 ChipCode 页面；此前 10~13px 七种混用） ===== */
+.plg-row-ic { width: 26px; height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; background: transparent; border-radius: 6px; }
+.plg-row-ic .brand-ic { width: 24px; height: 24px; }
+/* 对齐 ChipCode：卡片内主按钮为深黑色（原品「安装」为黑底白字） */
+#plugins-panel .plg-row .btn-primary { background: #1f2328; border-color: #1f2328; }
+#plugins-panel .plg-row .btn-primary:hover { background: #3a4046; border-color: #3a4046; }
+/* ===== 插件市场字体统一 12px（对齐参考基线 页面；此前 10~13px 七种混用） ===== */
 #plugins-panel .plugins-tab,
 #plugins-panel .plg-row,
 #plugins-panel .plg-name,
@@ -5244,15 +5330,16 @@ body.no-open-file .editor-toolbar { display: none !important; }
 /* 面板标题与安装进度条文字也统一 12px */
 #plugins-panel #plugins-title,
 #plugins-panel #pip-text { font-size: 12px; }
-/* 卡片整行可点进详情（对齐 ChipCode 卡片 onClick → 详情页） */
+/* 卡片整行可点进详情（对齐参考基线 卡片 onClick → 详情页） */
 .plg-row-clickable { cursor: pointer; }
 .plg-row-clickable:hover .plg-name { color: var(--accent, #007acc); }
-/* 本机依赖缺失警示点（对齐 ChipCode depsReady 状态点） */
+/* 本机依赖缺失警示点（对齐参考基线 depsReady 状态点） */
 .plg-dep-miss { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #d97706; color: #fff; font-size: 8px; line-height: 7px; text-align: center; font-weight: 700; cursor: help; }
 /* 「源码 →」保留为可用外链（此前被隐藏，导致卡片上唯一入口不可见） */
 #plugins-panel #plugins-list .plg-src { display: inline; }
-/* ChipCode 层次：名称 12px，版本/描述/源码等辅助信息小一号灰字 */
+/* 参考基线 层次：名称 12px，版本/描述/源码等辅助信息小一号灰字 */
 #plugins-panel #plugins-list .plg-ver { font-size: 10px !important; }
+#plugins-panel #plugins-list .plg-installed { font-size: 11px !important; }
 #plugins-panel #plugins-list .plg-desc,
 #plugins-panel #plugins-list .plg-row-desc,
 #plugins-panel #plugins-list .plg-src { font-size: 11px !important; }
@@ -5271,21 +5358,21 @@ body.no-open-file .editor-toolbar { display: none !important; }
 .plg-installed { font-size: 12px; color: #22c55e; padding-right: 4px; }
 .plg-src { font-size: 11px; color: var(--text-secondary); text-decoration: none; cursor: pointer; white-space: nowrap; }
 .plg-src:hover { color: var(--accent, #007acc); text-decoration: underline; }
-/* tab 下方本地安装按钮行（对齐 TrieCode：文件夹=次级 / ZIP=主级，各占一半） */
+/* tab 下方本地安装按钮行（对齐参考基线：文件夹=次级 / ZIP=主级，各占一半） */
 .plg-local-actions { display: flex; gap: 10px; padding: 10px 12px; }
 .plg-local-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 10px; font-size: 12px; font-weight: 600; border-radius: 9px; cursor: pointer; border: 1px solid var(--border-color); background: var(--surface-1); color: var(--text-primary); transition: filter .15s; }
 .plg-local-btn .icon { width: 15px; height: 15px; }
 .plg-local-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .plg-local-btn:hover { filter: brightness(.96); }
 .plg-local-btn.primary:hover { filter: brightness(1.08); }
-/* 安装进度条（TrieCode 式内嵌：tab 下方一行文字 + 蓝色细进度条） */
+/* 安装进度条（基线式内嵌：tab 下方一行文字 + 蓝色细进度条） */
 .plugins-install-progress { padding: 8px 16px 6px; }
 .pip-text { font-size: 11px; color: var(--text-primary); margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pip-bar { height: 4px; background: var(--surface-3, #e5e7eb); border-radius: 2px; overflow: hidden; }
 .pip-fill { height: 100%; width: 0%; background: #2563eb; border-radius: 2px; transition: width .3s ease; }
 .pip-fill.pip-indet { width: 30% !important; background: linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #2563eb 100%); background-size: 200% 100%; animation: pipSlide 1.2s linear infinite; }
 @keyframes pipSlide { from { background-position: 0 0; } to { background-position: -200% 0; } }
-/* 安装完成「立即启用」对话框（TrieCode 式白色卡片） */
+/* 安装完成「立即启用」对话框（基线式白色卡片） */
 .pem-card { background: var(--card-color, #fff); border-radius: 12px; padding: 22px 24px; width: 420px; max-width: 90vw; box-shadow: 0 12px 40px rgba(0,0,0,.18); }
 .pem-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
 .pem-body { font-size: 12px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 18px; }
@@ -5307,7 +5394,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
 .plg-cat.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .plg-empty { padding: 30px 16px; border: 1.5px dashed var(--border-dark); border-radius: 12px; text-align: center; color: var(--text-tertiary); font-size: 11.5px; }
 
-/* 设备面板样式（1:1 对齐 TrieCode） */
+/* 设备面板样式（1:1 对齐参考基线） */
 .device-tabs {
   display: flex;
   border-bottom: 1px solid var(--border-color);
@@ -5495,7 +5582,7 @@ body.no-open-file .editor-toolbar { display: none !important; }
   accent-color: var(--accent, #007acc);
 }
 
-/* ========== 全局可交互元素悬停小手（对齐 TrieCode/Trae 体验） ========== */
+/* ========== 全局可交互元素悬停小手（对齐参考基线/Trae 体验） ========== */
 button,
 [role="button"],
 [role="tab"],
@@ -5593,7 +5680,7 @@ button:disabled,
   cursor: not-allowed !important;
 }
 
-/* ===== TrieCode 三栏布局：左=侧栏（文件树，全高），中=编辑器，右=AI 对话 ===== */
+/* ===== 参考基线 三栏布局：左=侧栏（文件树，全高），中=编辑器，右=AI 对话 ===== */
 .left-column {
   width: 260px;
   min-width: 220px;
@@ -5617,19 +5704,22 @@ button:disabled,
 .editor-container {
   order: 1;
   flex: 1 !important;
-  min-width: 0;
+  min-width: 340px; /* 编辑器保底宽度：窄窗口下不再被压成细条（对齐 ChipCode/VS Code 行为） */
 }
+/* 底部面板已移出 editor-container，作为 main-container 全宽兄弟节点（对齐 ChipCode：底栏跨全宽） */
+.main-container { flex-wrap: wrap; align-content: stretch; }
+.bottom-panel { flex: 0 0 100%; min-height: 200px; order: 99; }
 /* AI 面板 DOM 在编辑器之前，用 order 排到最右 */
 .ai-panel {
   order: 2;
-  flex: 0 0 600px !important;
-  width: 600px;
-  min-width: 0 !important;
+  flex: 0 1 340px !important; /* 340px 基准（对齐 ChipCode 实拍 ~260-300px 面板宽）且允许收缩 */
+  width: 340px;
+  min-width: 300px !important;
   border-left: 1px solid var(--border-light) !important;
   border-right: none !important;
 }
-body.no-open-file .editor-container { flex: 1 1 auto !important; min-width: 0 !important; }
-/* 无项目态对齐 TrieCode 实测截图：主区中央显示品牌空态卡(⚡BubaiCode+打开或新建项目开始编程)，
+body.no-open-file .editor-container { flex: 1 1 auto !important; min-width: 340px !important; }
+/* 无项目态对齐参考基线 实测截图：主区中央显示品牌空态卡(⚡BubaiCode+打开或新建项目开始编程)，
    AI 面板保持右侧固定宽——不再让 AI 欢迎区占满中央(旧设计已废弃，app-welcome 类保留仅为兼容、无 CSS 效果) */
 /* 无项目时中央卡极简化：藏按钮（操作入口在左侧欢迎面板：新建/打开/克隆项目，消除语义重复）；
    有项目无文件时左侧是文件树、中央卡按钮是唯一入口，此时显示 */
@@ -5637,7 +5727,7 @@ body.app-welcome .welcome-actions { display: none !important; }
 body.app-welcome .welcome-screen { cursor: pointer; }
 body.app-welcome .welcome-screen:hover .welcome-empty-title { color: var(--primary); }
 
-/* ===== 全局字体对齐 TrieCode 基准（Segoe UI / 14px）===== */
+/* ===== 全局字体对齐参考基线 基准（Segoe UI / 14px）===== */
 body { font-size: 13px; }
 .chat-message .chat-bubble { font-size: 12px; }
 
@@ -5662,7 +5752,7 @@ body { font-size: 13px; }
   border: 1px solid var(--border-color); border-radius: 6px;
   font-size: 12px; color: var(--text-color);
 }
-/* ===== 未登录首屏（对齐 TrieCode）：主区居中登录卡，左侧欢迎面板全高 ===== */
+/* ===== 未登录首屏（对齐参考基线）：主区居中登录卡，左侧欢迎面板全高 ===== */
 .editor-container { position: relative; min-height: 0; /* 允许收缩到 main-container 行高，避免内容撑高整页（编辑器区域出现大量留白） */ }
 body.logged-out .ai-panel { display: none !important; }
 body.logged-out .editor-toolbar { display: none !important; }
@@ -5696,7 +5786,7 @@ body.logged-out .editor-container, body.logged-out .editor-wrapper { background:
   --text-primary: #e8edf3;
   --text-secondary: #9aa7b5;
   --text-tertiary: #7c8896;
-  /* 对齐 TrieCode 品牌蓝：暗色同样用 #2563eb 族，与亮色/原生一致 */
+  /* 对齐参考基线 品牌蓝：暗色同样用 #2563eb 族，与亮色/原生一致 */
   --primary: #2563eb;
   --primary-hover: #3b82f6;
   --primary-active: #1d4ed8;
@@ -5805,8 +5895,9 @@ select:focus,
   border-left: 2px solid transparent;
 }
 
-/* 活动栏 1:1 对齐 ChipCode：纯图标窄栏（≈32px），不常显文字标签（名称由 title hover 提示） */
-.activity-bar { width: 32px !important; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+/* 活动栏 1:1 对齐 ChipCode 原品：纯图标窄栏（36px），延伸全高（覆盖底部面板区域） */
+.activity-bar { width: 36px !important; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; position: absolute !important; left: 0; top: 0; bottom: 0; z-index: 10; height: 100% !important; }
+.main-container { position: relative; padding-left: 36px; }
 .activity-bar::-webkit-scrollbar { display: none; }
 .activity-btn {
   flex-direction: column;
@@ -5844,6 +5935,397 @@ select:focus,
   border-top: 1px solid var(--border-light);
   font-size: 10.5px;
 }
+/* 对齐 ChipCode 实拍（2026-11-13 复测）：状态栏左段显示 工具链/开发板/分支；串口与主题/思考强度/示波器指示原品不展示，保持隐藏 */
+#status-port,
+#status-theme,
+#status-think,
+#status-scope { display: none !important; }
+/* 对齐 ChipCode 欢迎态：状态栏仅显示右侧项（后端/语言/行列/编码/模式/账号），左侧工具链/开发板在无项目时隐藏 */
+body.app-welcome .statusbar-left { display: none !important; }
+/* 对齐 ChipCode 原品（2026-11-13 DOM 复测）：侧栏「开始你的开发」显示说明段落
+   （原品实测为 title + ? 图标 + 说明文字 + 按钮），故不再隐藏 */
+/* 对齐 ChipCode 原品实拍（文件·无项目态）：主区为两栏——侧栏 + AI 欢迎页占满剩余宽度；
+   原品主区一级块只有 ai-panel（实测宽 1000px），没有中央编辑器空态卡。
+   仅在 app-welcome（无项目）且非登录态生效：有项目/未登录时布局保持不变 */
+body.app-welcome:not(.logged-out) .editor-container { display: none !important; }
+/* 对齐 ChipCode 原品（2026-11-13 几何复测）：原品底部面板挂在 0 宽编辑器列内 → 欢迎态实际不可见，
+   故其 ai-panel 占满主区整高（实测 ≈1000×840）。BubaiCode 底部面板是主区整宽兄弟节点，
+   需显式隐藏，否则会以 200px 整宽带挤压 AI 面板（实测仅 637 高） */
+body.app-welcome:not(.logged-out) .bottom-panel { display: none !important; }
+body.app-welcome:not(.logged-out) .ai-panel {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+/* 原品侧栏为响应式（实测 1080 宽≈280px / 1402 宽≈364px，约 26%），BubaiCode 原固定 260px */
+body.app-welcome:not(.logged-out) .left-column {
+  width: 26% !important;
+  min-width: 260px !important;
+  max-width: 380px !important;
+}
+
+/* ===== 对齐 ChipCode 原品「AI 欢迎页」：主区内 800px 内容列 =====
+   规格来自 ChipCode 原品 CSS（app.asar → packages/renderer/dist/assets/index-*.css）：
+   .ai-empty__column{width:calc(100% - 24px); max-width:800px; margin:auto; padding:24px 0; column flex}
+   .ai-empty__title{32px/600; lh1.22; letter-spacing -.015em; color #111; 居中; mb28}
+   .ai-empty__examples{justify-content:center; mb26} → .ai-empty-modes{gap2; padding3; bg surface-0(#f7f7f5); border 1px #e2e2df; r9999}
+      .ai-empty-mode{h28; padding 0 14; gap5; fs13; lh1; color #5c5c5c}  .is-active{bg #fff; color #2b2b2b; 600; shadow1}
+   .ai-empty__scope{justify-content:flex-start; mb18} → .ai-scope-housing{200px; padding 6 7 5; border 1px #e2e2df; r9; 渐变白底; shadow}
+      .ai-scope__btn{12×5 r1.5 渐变} .ai-scope__led{5×5 #4fd08a glow} .ai-scope__legend{mt5; gap5; fs8; mono}
+   .ai-empty__composer 外层{bg surface-0; border 1px #e2e2df; r12} 内层 .input-card{bg白; border-bottom 1px #e2e2df; shadow}
+      .chat-input{padding 14 16 12; min-height 96(欢迎)/68(会话); fs14; lh1.6; r12 12 0 0}
+      工具栏行{padding 5 16 7; min-height 32; gap8}   项目行{padding 6 12; fs13}
+   .ai-empty-suggestions{grid 2 列; gap 10 14; mt30} → .ai-suggestion-chip{padding 7 14; gap8; min-h36; border 1px #ececea; r12; color #5c5c5c; fs15; lh1.4}
+   .ai-disclaimer{flex-shrink 0; padding 0 16 7; 居中; fs11; lh1.4; color #666; opacity .62} */
+.ai-welcome {
+  width: calc(100% - 24px) !important;
+  max-width: 800px !important;
+  margin: 0 auto !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  padding: 24px 0 !important;
+}
+.ai-welcome-title {
+  font-size: 32px !important;
+  font-weight: 600 !important;
+  line-height: 1.22 !important;
+  letter-spacing: -.015em !important;
+  color: var(--text-strong) !important;
+  text-align: center !important;
+  margin: 0 0 28px !important;
+}
+/* 模式分段控件（对齐 .ai-empty-modes/.ai-empty-mode） */
+.ai-welcome-pills {
+  display: inline-flex !important;
+  align-self: center !important;
+  gap: 2px !important;
+  padding: 3px !important;
+  margin: 0 0 26px !important;
+  background: var(--surface-0) !important;
+  border: 1px solid #e2e2df !important;
+  border-radius: 9999px !important;
+}
+.ai-welcome-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  gap: 5px !important;
+  height: 28px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  color: #5c5c5c !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 9999px !important;
+}
+.ai-welcome-pill.is-active {
+  background: var(--surface-1) !important;
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06) !important;
+}
+.ai-welcome-pill .icon { color: currentColor !important; width: 14px !important; height: 14px !important; }
+/* 输入卡（对齐原品结构：外层 surface-0 描边圆角 → 内层白底 .input-card） */
+.ai-input-container {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: var(--surface-0) !important;
+  border: 1px solid #e2e2df !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+.ai-input-container .ai-input-box {
+  background: var(--bg-primary) !important;
+  border: none !important;
+  border-bottom: 1px solid #e2e2df !important;
+  border-radius: 12px 12px 0 0 !important;
+  box-shadow: 0 4px 16px rgba(16, 24, 40, .14) !important;
+}
+.ai-input-container .ai-input-box:focus-within {
+  box-shadow: 0 8px 28px rgba(16, 24, 40, .24) !important;
+}
+.ai-input-container .ai-input-textarea {
+  min-height: 96px !important;   /* 欢迎态 96px（会话态 68px 见下方会话段） */
+  max-height: 160px !important;
+  padding: 14px 16px 12px !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  border-radius: 12px 12px 0 0 !important;
+}
+.ai-input-container .ai-input-textarea::placeholder { font-size: 14px !important; color: #666666 !important; }
+.ai-input-container .ai-input-toolbar {
+  padding: 5px 16px 7px !important;
+  min-height: 32px !important;
+  gap: 8px !important;
+  border-top: none !important;
+  flex-wrap: nowrap !important;
+}
+.ai-input-container .ai-input-tool-btn { width: 22px !important; height: 22px !important; }
+/* 项目行（对齐原品：与输入卡同一外框，透明底、无边框） */
+.ai-project-bar {
+  max-width: none !important;
+  padding: 6px 12px !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  font-size: 13px !important;
+  gap: 8px !important;
+}
+.ai-project-bar .ai-project-path { font-size: 13px !important; color: var(--text-secondary) !important; gap: 8px !important; }
+.ai-project-btn {
+  padding: 3px 12px !important;
+  font-size: 13px !important;
+  background: var(--surface-1) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid #e2e2df !important;
+  border-radius: 6px !important;
+}
+/* 建议 chips（对齐 .ai-empty-suggestions / .ai-suggestion-chip） */
+.ai-quick-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+  gap: 10px 14px !important;
+  margin-top: 30px !important;
+}
+.ai-quick-btn {
+  align-items: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  padding: 7px 14px !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  color: #5c5c5c !important;
+  background: transparent !important;
+  border: 1px solid #ececea !important;
+  border-radius: 12px !important;
+  white-space: normal !important;
+  text-align: left !important;
+}
+.ai-quick-btn:hover { background: var(--bg-hover) !important; border-color: var(--border-dark) !important; color: var(--text) !important; }
+.ai-quick-icon { color: currentColor !important; opacity: .65; }
+.ai-quick-icon .icon { width: 14px !important; height: 14px !important; margin-top: 2px; }
+/* 面板宽度自适应（对齐原品 @container 规则：<560 单列 / <340 隐藏 chips / <300 隐藏示波器） */
+#ai-chat-area { container-type: inline-size; }
+@container (max-width: 560px) { .ai-quick-actions { grid-template-columns: minmax(0, 1fr) !important; } }
+@container (max-width: 340px) { .ai-quick-actions { display: none !important; } }
+@container (max-width: 300px) { .ai-welcome-sim { display: none !important; } }
+/* 免责声明：面板底部整宽行（对齐原品 .ai-disclaimer） */
+.ai-disclaimer {
+  flex-shrink: 0 !important;
+  padding: 0 16px 7px !important;
+  margin: 0 !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+  color: #666666 !important;
+  opacity: .62 !important;
+  text-align: center !important;
+  user-select: none;
+}
+/* 状态栏布局（对齐 ChipCode 实拍 2026-11-12：左=工具链/开发板/分支，右=后端/语言/行列/编码/模式/账号；默认 space-between） */
+.statusbar-left { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.statusbar-right { flex: 0 0 auto; }
+
+/* 侧栏项目头（对齐 ChipCode：TESTBLINK / 2 个文件） */
+.explorer-project { padding: 8px 12px 4px; border-bottom: 1px solid var(--border-light); }
+.explorer-project-name { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text); }
+.explorer-project-count { font-size: 10.5px; color: var(--text-tertiary); margin-top: 2px; }
+
+/* 底部面板 tabs 右侧 ✕ 关闭 */
+.bottom-tab.bottom-close { margin-left: auto; color: var(--text-tertiary); background: transparent; border: none; cursor: pointer; }
+.bottom-tab.bottom-close:hover { color: var(--text); }
+
+/* 对齐 ChipCode 原品（2026-11-13 几何复测）：原品欢迎态底部面板位于 0 宽编辑器列内 → 实际不可见
+   （此前据 innerText 误判为"可见"，实际上 innerText 会包含 0 宽元素）。隐藏规则见上方
+   body.app-welcome:not(.logged-out) .bottom-panel */
+
+/* 对齐 ChipCode 实拍（2026-11-13 复测）：AI 面板头部不显示账号邮箱/积分徽标（账号在状态栏展示）；
+   输入行保留「无打开项目」状态（原品此处可见，实测 x569 y546 60×16）；已选工作空间（项目已打开）后不显示建议 chips。
+   CH1 示波器卡保留显示（ChipCode 欢迎态有 CH1 1V 2.5ms 卡） */
+#gw-credits-badge,
+#gw-daily-badge { display: none !important; }
+body:not(.no-open-file) .ai-quick-actions { display: none !important; }
+/* 对齐 ChipCode：隐藏 MQTT 底栏 tab（ChipCode 无此面板；mqtt-panel.js 动态注入的 data-panel=mqtt） */
+.bottom-tab[data-panel="mqtt"], #mqtt-panel { display: none !important; }
+
+/* 对齐 ChipCode 项目行：名称 + 保存/新建图标一行，文件数第二行 */
+.explorer-project-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.explorer-project-row .explorer-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explorer-project-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.explorer-project-actions .icon-btn { width: 20px; height: 20px; padding: 0; }
+
+/* 对齐 ChipCode：AI 输入工具栏单行（340px 面板下不换行，🎤/⬆ 不再被挤掉），模型药丸可收缩出省略号 */
+.ai-input-toolbar { flex-wrap: nowrap !important; gap: 4px; }
+.ai-input-side .ai-input-toolbar { flex-wrap: nowrap !important; }
+.ai-input-left { flex-shrink: 0; }
+.ai-input-right { flex-shrink: 1; min-width: 0; }
+/* ChipCode 该行无「思考强度」钮（+🖼 🎤 模型 ⬆），为对齐隐藏（功能保留，随时可移除本行恢复） */
+.ai-input-box #tb-think-btn { display: none !important; }
+.model-selector { min-width: 0 !important; flex: 1 1 auto !important; }
+.model-select-btn { max-width: 100%; min-width: 0; }
+.model-name { display: block; min-width: 0; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 对齐 ChipCode：编辑器工具栏精简为通用编辑按钮（✨撤销/重做/保存/历史），开发动作（编译/烧录/AI修复/导出）已由主工具栏(line toolbar-compile/upload)与「设备」页提供，避免与 ChipCode 的 5 图标工具栏差异过大 */
+.editor-toolbar .editor-toolbar-sep,
+.editor-toolbar .dev-quick-btn { display: none !important; }
+
+/* 对齐 ChipCode：隐藏标题栏账号额度徽标（账号数据，非布局；与 AI 面板徽标隐藏一致，保持标题栏干净；真实余额由登录态决定，无法伪造匹配参考图的「1」） */
+#credits-pill { display: none !important; }
+
+/* 活动栏去掉「设备」入口（用户要求）。保留 DOM：状态栏「开发板/工具链」段(app.js:19811)、命令面板(app.js:17761)、switchPanel 都靠 .activity-btn[data-panel="device"].click() 代理打开设备面板，删 DOM 会断掉编译/端口选择入口；隐藏元素仍可被程序 click，功能零损失 */
+.activity-bar .activity-btn[data-panel="device"] { display: none !important; }
+
+/* 左侧「本地模型」列表：选中某个要有明显区别。
+   is-selected=点击单选态（虚线蓝框+浅底）；is-current-model=真正启用的模型（实线蓝边+徽章），两者可并存 */
+.plg-row.is-selected { border-color: var(--primary, #2563eb) !important; outline: 1px dashed var(--primary, #2563eb); outline-offset: -3px; background: rgba(37, 99, 235, .05) !important; }
+.plg-row.is-current-model { border-color: var(--primary, #2563eb) !important; border-left: 3px solid var(--primary, #2563eb) !important; background: rgba(37, 99, 235, .07) !important; }
+.plg-current-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px; font-size: 9.5px; font-weight: 600; color: #fff; background: var(--primary, #2563eb); white-space: nowrap; vertical-align: middle; }
+.plg-use-btn { font-size: 10.5px; padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); cursor: pointer; white-space: nowrap; }
+.plg-use-btn:hover { border-color: var(--primary, #2563eb); color: var(--primary, #2563eb); }
+#plugins-panel .plg-row-act { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* 产品工厂五阶段导航已并入「文件」侧栏：有产品项目时，文件树占上部、导航占其余，保证 5 个阶段完整可见 */
+body.pf-in-explorer .file-tree { flex: 0 1 34% !important; min-height: 90px; border-bottom: 1px solid var(--border-light); }
+body.pf-in-explorer #product-factory-view { flex: 1 1 66% !important; }
+body.pf-in-explorer #product-factory-view .pf-nav { padding: 10px !important; }
+
+/* ===== 对齐原品示波器（.ai-scope-housing / .ai-scope__*）：200px 渐变白壳体、
+   白屏 + 灰边框、右侧 15×15 旋钮、底部 mono 8px 图例（3 个按钮条 + LED + CH1 1V + 2.5ms）===== */
+.ai-welcome-sim {
+  display: grid !important;
+  grid-template-columns: 1fr 15px !important;
+  grid-template-rows: 60px 16px !important;
+  gap: 4px 6px !important;
+  align-self: flex-start !important;
+  width: 200px !important;
+  box-sizing: border-box !important;
+  padding: 6px 7px 5px !important;
+  margin: 0 0 18px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #eaeef2 100%) !important;
+  border: 1px solid #e2e2df !important;
+  border-radius: 9px !important;
+  box-shadow: 0 2px 6px rgba(16,24,40,.12), inset 0 1px 0 #fff !important;
+  cursor: default;
+  user-select: none;
+}
+.ai-welcome-sim-screen {
+  position: relative;
+  box-sizing: border-box !important;
+  height: 60px !important;
+  background: #ffffff !important;
+  border: none !important;
+  border-radius: 2px !important;
+  /* 3px 外扩环 = 原品 .ai-scope__bezel（#dfe4ea + 内阴影）*/
+  box-shadow: 0 0 0 3px #dfe4ea, inset 0 1px 3px rgba(15,23,42,.22) !important;
+  overflow: hidden;
+}
+.ai-welcome-sim-screen .sim-wave { width: 100%; height: 100%; display: block; }
+.sim-grid line { stroke: #d8dce3; stroke-width: .6; stroke-dasharray: 3 3; }
+.ai-welcome-sim-knobs {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+}
+.sim-knob {
+  width: 15px !important; height: 15px !important; border-radius: 50% !important; border: none !important;
+  background: radial-gradient(circle at 34% 28%, #7c8794, #454e59 45%, #22282f) !important;
+  box-shadow: inset 0 -1px 2px rgba(0,0,0,.7), 0 1px 1.5px rgba(0,0,0,.45) !important;
+}
+.ai-welcome-sim-legend {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 5px; padding: 0 1px;
+  font-family: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Microsoft YaHei', monospace !important;
+  font-size: 8px !important; letter-spacing: .04em !important;
+  color: rgba(15,23,42,.42) !important; white-space: nowrap;
+}
+/* 原品 .ai-scope__btn：12×5 立体按钮条 */
+.sim-btn {
+  width: 12px; height: 5px; border-radius: 1.5px; flex-shrink: 0;
+  background: linear-gradient(180deg, #fff, #dfe4ea);
+  border: 1px solid rgba(15,23,42,.16);
+  box-shadow: inset 0 1px #fff, 0 1px 1px rgba(15,23,42,.12);
+}
+.sim-led { width: 5px; height: 5px; border-radius: 50%; background: #4fd08a; box-shadow: 0 0 5px #4fd08a; flex-shrink: 0; margin-left: 2px; }
+.ai-welcome-sim-legend .sim-tag {
+  position: static !important;
+  font-size: 8px !important;
+  color: inherit !important;
+  background: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+.ai-welcome-sim-legend .sim-tag-right { margin-left: auto; }
+
+/* ===== 对齐 ChipCode 原品「后台智能体」面板（2026-11-13 几何复测） =====
+   panel 349×737；header 高 36 / padding 0 8 0 12 / 下边框 0.8；title 12/700；
+   动作按钮 24×24 r6；body padding 8 8 12；分组头 11/700；行 高70 / 边框 0.8 / r6 / 下间距 5；
+   行内 圆点7×7 + 标题13/600 + 时间11 + 条数12 + 「已保存」徽章 + 移除 19×19 */
+.agents-panel { background: var(--bg-primary); }
+.ui-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 36px; box-sizing: border-box; padding: 0 8px 0 12px; gap: 8px;
+  border-bottom: 0.8px solid var(--border-color); flex-shrink: 0;
+}
+.ui-panel-header__title { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.ui-panel-header__actions { display: flex; align-items: center; gap: 2px; }
+.ui-panel-header__action {
+  width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: 6px; color: var(--text-secondary); cursor: pointer;
+}
+.ui-panel-header__action:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ui-panel-header__action .icon { width: 14px; height: 14px; }
+.agents-panel__body { flex: 1 1 auto; overflow-y: auto; padding: 8px 8px 12px; }
+.agents-group { margin: 0 0 12px; }
+.agents-group__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 4px 6px; font-size: 11px; font-weight: 700; color: var(--text-secondary);
+}
+.agents-group__count { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.agents-list { display: flex; flex-direction: column; }
+.agents-row {
+  position: relative; margin: 0 0 5px; background: var(--bg-primary);
+  border: 0.8px solid var(--border-color); border-radius: 6px;
+}
+.agents-row__button {
+  display: flex; align-items: flex-start; gap: 7px; width: 100%; box-sizing: border-box;
+  padding: 7px 28px 7px 8px; background: transparent; border: none; cursor: pointer;
+  text-align: left; font: inherit; color: inherit;
+}
+.agents-row__button:hover { background: var(--bg-hover); border-radius: 6px; }
+.agents-row__dot { width: 7px; height: 7px; margin: 5px 0 0; border-radius: 50%; background: #666666; flex-shrink: 0; }
+.agents-row__dot--neutral { background: #666666; }
+.agents-row__content { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.agents-row__title { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-row__meta { font-size: 11px; color: var(--text-secondary); }
+.agents-row__detail { font-size: 12px; line-height: 1.45; color: #5c5c5c; }
+.ui-badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 6px;
+  font-size: 11px; font-weight: 500; line-height: 1; border-radius: 9999px;
+  background: #efefed; border: 0.8px solid #e2e2df; color: #5c5c5c;
+}
+.ui-badge--dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .65; flex-shrink: 0; }
+.agents-row__badge { flex-shrink: 0; }
+.agents-row__remove {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 19px; height: 19px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: 4px; color: var(--text-secondary);
+  cursor: pointer; opacity: .55; transition: opacity .12s, background .12s;
+}
+.agents-row__remove .icon { width: 12px; height: 12px; }
+.agents-row:hover .agents-row__remove { opacity: 1; }
+.agents-row__remove:hover { background: var(--bg-hover); color: var(--text-primary); }
+.agents-panel__footer { flex-shrink: 0; padding: 6px 12px; border-top: 0.8px solid var(--border-color); }
+.agents-footer-link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 0;
+  background: none; border: none; cursor: pointer; font-size: 11.5px; color: var(--text-secondary);
+}
+.agents-footer-link .icon { width: 12px; height: 12px; }
+.agents-footer-link:hover { color: var(--text-primary); }
+.agents-empty { padding: 24px 10px; text-align: center; font-size: 11.5px; color: var(--text-tertiary); }
 
 /* 标题栏 */
 .titlebar {
@@ -5990,7 +6472,7 @@ select:focus,
   to { opacity: 1; }
 }
 
-/* 设置：左侧分类栏 + 右侧面板（对齐 TrieCode 设置布局）——仅作用于设置弹窗，避免污染其他 modal-body（曾把命令面板输入框/列表挤成两列） */
+/* 设置：左侧分类栏 + 右侧面板（对齐参考基线 设置布局）——仅作用于设置弹窗，避免污染其他 modal-body（曾把命令面板输入框/列表挤成两列） */
 #settings-modal .modal-body { flex: 1; display: flex; min-height: 0; }
 .settings-layout { display: flex; flex: 1; min-height: 520px; }
 .settings-sidebar { width: 220px; flex: none; border-right: 1px solid var(--border-color); padding: 14px 10px; overflow-y: auto; background: rgba(128,128,128, .04); }
@@ -6121,7 +6603,7 @@ select:focus,
   padding: 0 6px;
 }
 #editor-export-btn:hover { color: #1FA9C9; }
-/* 顶栏积分数字徽章（对齐 TrieCode ①：蓝底白字圆角，真实今日剩余额度） */
+/* 顶栏积分数字徽章（对齐参考基线 ①：蓝底白字圆角，真实今日剩余额度） */
 .credits-pill {
   min-width: 22px;
   height: 22px;
@@ -6140,7 +6622,7 @@ select:focus,
 }
 .credits-pill:hover { filter: brightness(1.12); }
 
-/* Git 面板 AI 增强按钮（对齐 TrieCode：普通次级样式，去紫色渐变堆砌） */
+/* Git 面板 AI 增强按钮（对齐参考基线：普通次级样式，去紫色渐变堆砌） */
 .git-ai-btn {
   background: var(--surface-1) !important;
   border-color: var(--border-color) !important;
@@ -6148,7 +6630,7 @@ select:focus,
 }
 .git-ai-btn:hover { color: var(--primary) !important; border-color: var(--primary) !important; }
 
-/* 命令面板（对齐 TrieCode command.invoke） */
+/* 命令面板（对齐参考基线 command.invoke） */
 .cmd-palette-overlay {
   position: fixed; inset: 0; z-index: 6000;
   display: none; align-items: flex-start; justify-content: center;
