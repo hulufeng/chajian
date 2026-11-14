@@ -1,3 +1,11 @@
+// ⚠️ 已知失效的历史测试（2026-11-14 标注），默认不纳入 `npm test`；用 `npm run test:legacy` 单独运行。
+// 失效原因（两条，均与依赖无关）：
+//   1) 本文件用硬编码行号 slice(8424, 8603) 从 app.js 抽代码；app.js 迭代后该区间已变成
+//      inferProjectType 等无关代码，工作流模块现位于 ~L10460+，故 new Function 抛 SyntaxError。
+//   2) 断言依赖的 wfExport / wfImport 独立函数已被移除，改为 wf-export / wf-import 按钮的
+//      内联事件处理（renderer/js/app.js ~L10718+）；wfRun 也新增了 route/loop/agent/approval 语义。
+// 修复方向：改为按函数边界动态抽取 + 用按钮 click 驱动导出/导入，并补齐新 mock；需单独安排。
+//
 // 集成测试：抽离 app.js 中的「工作流模块」(8425-8603 行)，在真实 DOM(jsdom) + mock BubaiCode 下运行，
 // 驱动真实的 wfRun / wfExport / wfImport，验证本次改动（工具节点接终端、条件分支、导入导出、运行态）。
 const fs = require('fs');
