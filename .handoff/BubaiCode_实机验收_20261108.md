@@ -731,4 +731,32 @@
 ### 31.5 仍待办（非阻断）
 - 每日额度用尽后「用积分继续」的路径未测（网关当前直接拒绝并引导填 API Key）。
 - 5 个付费模型 `available:false` 属网关侧未开通；若产品要提供付费模型，需网关侧开通并把 `available` 置 true，客户端动态池会自动识别、无需再改代码。
-- §29.7 的全站 CodeBuddy 风格统一、§27.6 的 4 项半成品边界仍未处理。
+- §29.7 全站 CodeBuddy 风格统一、§27.6 边界收敛详见 §三十二（2026-11-14 晚）。
+
+## 三十二、§27.6 半成品边界收敛 + §29.7 全站风格结论（2026-11-14 晚）
+> 用户「继续」§29.7 全站 CodeBuddy 风格统一、§27.6 的 4 项半成品边界。本章记录核查真实现状与处置。**本轮改动待提交**（app.js 插件依赖闭环 + build-win 脚本修复）。
+
+### 32.1 §27.6 边界逐条处置（核查明细，纠正过时记录）
+| 边界 | 原文档记录 | 本次核查真实现状 | 处置 |
+|---|---|---|---|
+| ① feature flag 默认关 | chipcode-align-adapter flag 默认关 | 有意设计：功能未充分验证，避免影响生产。AI 面板风格切换已由 `window.__bubaiClassicUI()`/`__bubaiCompactUI()` 覆盖 | **保持关闭** + 文档说明 |
+| ② loop.js 未接线 | packages/engine/loop.js 为第二套未接线实现 | 经核查 `preload.js:436` 已 `require('../packages/engine/loop')` 并暴露 `engine.runLoop`/`enforcePlanGate`/`shouldVerify`——「未接线」记录**已过时** | **更新文档** |
+| ③ 插件依赖自动下载未闭环 | 在线安装依赖需手动点「检查并安装依赖」 | 后端 `deps:install` 已实现、详情面板按钮已接（`plgd-deps`→`ensurePluginDependencies`）；但**安装成功不自动触发** | **已闭环**：`installPlugin(13409)` 末尾新增 fire-and-forget `ensurePluginDependencies(id)`，非阻塞、失败仅提示、不回滚 |
+| ④ MQTT/订阅面板未实测 | mqtt-panel.js/subscription-panel.js 未逐点实测 | `renderer/js/mqtt-panel.js` 存在（9KB），订阅/发布 UI 已渲染 | 已实现，待安装版逐点实测（非阻断） |
+| build-win 脚本 | 写死 `BubaiCode Setup 1.0.0.exe`、不调 electron-rebuild/inject-gateway | 已修复：`build-win.ps1/.bat` 改调 `npm run build:win`（含 electron-rebuild + prebuild/inject-gateway）、动态版本、打包前清旧目录规避 safe-delete 守卫 | **已修复并验证**（dist179 临时产出 `BubaiCode-Setup-1.2.33.exe` 388MB） |
+
+### 32.2 §29.7 全站 CodeBuddy 风格统一：结论
+- 经核查**全站基础 CSS 已是令牌驱动**（`--surface-*`/`--border`/`--text-*`/`--primary`），CodeBuddy 核心（低饱和、细边框、内容优先）全站基本具备；搜索确认**无**高圆角（`border-radius:12-30px`）/重阴影（`box-shadow:0 2px+`）/高饱和蓝紫（`#2563eb`/`#6366f1`）/渐变。
+- 与「全站统一」唯一的实质差异是 **AI 面板**——此前蓝色气泡+绿紫大色块，已在 §二十九 用 `body.cb-compact` 整体重皮成 CodeBuddy 式（全宽消息行/细边框/内容优先）。
+- 结论：**全站风格在代码层已高度统一为 CodeBuddy 式**，无需大重写。若仍有具体局部观感差异，需用户指具体位置截图，再针对性微调（顶部工具栏/侧栏图标等属结构性功能差异，非风格未对齐）。
+
+### 32.3 插件依赖自动闭环的实机验证（dist190 / 9234）
+- 注册带 `dependencies` 的 fake 插件 → 调 `ensurePluginDependencies`：`ensureCalls=1`（依赖处理被触发，results 含 cmdtool 条目）、底层 `deps.install` 桥存在。
+- `deps.install` 仅接受 `https://`（`downloadFile` 固定 `https.get`），fake 用 `file://` 触发协议校验失败属测试数据限制，**真实插件用 https 镜像不受影响**。
+- 验收层级：语法/lint 通过 + 源码确认 installPlugin 末尾自动接线 + 运行态确认 `ensurePluginDependencies` 被调用 + `deps:install` 桥可用（11-06 已 e2e 验证）。
+
+### 32.4 当前状态
+- 改动：`app.js`（installPlugin 自动依赖闭环，13623 后约 20 行）、`scripts/build-win.ps1/.bat`（修复）。
+- 测试：复用既有；`npm test` 仍 14/14、115 断言。
+- 构建：dist190（验证用）；正式发布走临时目录（dist191+）。
+- 边界④ MQTT 面板、额度用尽后改用积分路径：仍待实测（非阻断，网关侧局限）。

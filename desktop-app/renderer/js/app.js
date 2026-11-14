@@ -13621,6 +13621,24 @@ function bindEvents() {
     await new Promise(r => setTimeout(r, 800));
     hideInstallModal();
     showToast(plugin.name + ' 安装成功（' + installedTools + ' 个工具）', 'success');
+    // 2026-11-14：闭环 §27.6 边界③ —— 安装成功后自动确保 manifest 声明的外部依赖就绪。
+    // 后台非阻塞执行（不 await），不阻塞安装返回值；失败仅输出提示，不回滚安装。
+    // 此前需用户手动进插件详情点「检查并安装依赖」，现改为安装即自动准备，与 CLI 路径的惰性下载对齐。
+    if (window.PluginSystem && typeof window.PluginSystem.ensurePluginDependencies === 'function') {
+      window.PluginSystem.ensurePluginDependencies(id)
+        .then(dr => {
+          if (!dr || dr.skipped) return; // 该插件无声明依赖，无需处理
+          if (dr.ok) {
+            const done = (dr.results || []).filter(r => r.ok);
+            if (done.length) addOutputLog('✓ ' + plugin.name + ' 的 ' + done.length + ' 个外部依赖已就绪', 'success');
+          } else {
+            const bad = (dr.results || []).filter(r => !r.ok);
+            const why = bad.length ? bad.map(r => r.name + '(' + (r.error || '失败') + ')').join('; ') : (dr.error || '未知原因');
+            addOutputLog('⚠ ' + plugin.name + ' 部分外部依赖未就绪：' + why, 'warning');
+          }
+        })
+        .catch(e => addOutputLog('依赖准备失败：' + e.message, 'warning'));
+    }
     // 基线式：装完询问是否立即启用（暂不 → 保持禁用，稍后可在插件列表手动开启）
     if (hasManifest && plugin.category !== 'ai-model') {
       const enableNow = await showEnablePrompt(plugin);
