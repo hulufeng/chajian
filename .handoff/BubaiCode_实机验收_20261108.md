@@ -632,10 +632,10 @@
 ### 29.6 当前最终状态速查（取代 §27.5、§28.4）
 | 项 | 状态 |
 |---|---|
-| 工作树 | **干净**，全部入库并推送，`ahead=0`（最新 `5eaea81`） |
-| 测试 | `npm test` 13/13 脚本 / 110 断言 |
-| 构建产物 | **仅 `dist188/`**（388MB，含 §26/§28/§29 全部 UI 修复）；其余旧 dist 已清理 |
-| 安装版 | `C:\BubaiCodeTest` = dist188 修复版（9232 调试端口，Normal 窗口）；发布版 177 关闭 |
+| 工作树 | **已由 §三十一 取代**：最新 `ff72827` |
+| 测试 | **已由 §三十一 取代**：`npm test` 14/14 脚本 / 115 断言 |
+| 构建产物 | **已由 §三十一 取代**：当前仅 `dist189/` |
+| 安装版 | **已由 §三十一 取代**：`C:\BubaiCodeTest` = dist189（9233 端口）；发布版 177 关闭 |
 | 风格开关 | `window.__bubaiClassicUI()` 回退 / `__bubaiCompactUI()` 恢复 |
 | 模型 | `C:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf`（4.36GB） |
 | 云端 AI | **2026-11-14 复测已恢复可用**（§三十，推翻 §二十一）；云端 + 本地 7B 双通道均可用 |
@@ -688,3 +688,47 @@
 - 测试实例 9232 配置已还原为 `local / qwen2.5-coder-7b-instruct-q4_k_m.gguf`；发布版配置未改动。
 - 临时 token 文件、CDP 探测脚本均已清理；工作树干净。
 - 本轮**无产品代码改动**，仅文档修正（本章 + §二十一 抬头更正）。
+
+## 三十一、额度用尽行为 + 付费模型静默降级修复（2026-11-14 晚，最终状态）
+> 用户「要」→ 两项都做：① 趁 `dailyRemaining=0` 窗口测额度用尽行为；② 修 §30.3 发现的付费模型静默降级。提交 `ff72827`，构建 `dist189`。**本章为当前最终状态。**
+
+### 31.1 每日额度用尽后的行为（实机，9232）
+| 通道 | 结果 |
+|---|---|
+| 非流式 `ai.chat` | `success:false`，错误「今日免费额度已用完（每日上限 3 次），请填写你自己的 API Key 后继续使用」，`creditsInsufficient:true`；**不扣积分**（`totalCredits` 保持 91） |
+| 流式 `ai.chatStream` | 立即返回 `success:true` + runId（异步通道，错误需订阅 `ai:stream` 的 `type:'error'` 事件才能看到） |
+| `gatewayStatus` | `credits:91, dailyRemaining:0, valid:true`（额度用尽不影响 token 有效性） |
+
+- 结论：每日 3 次是**免费额度**，与 `totalCredits`（积分余额 91）是两套计数；用尽后引导用户填自己的 API Key。文案清晰、无崩溃。
+- ⚠️ 未测到「用尽后改用积分继续」的路径（网关当前直接拒绝），也不宜为了测试而消耗用户积分。
+
+### 31.2 付费模型静默降级：根因与修复
+- **根因**（`main/index.js` 旧实现）：`GW_AVAILABLE_MODELS = ['qwen3-8b']` 硬编码白名单，`normalizeGwModel(m)` 把任何其它模型静默替换成 `qwen3-8b`。注释本意是「矫正旧配置残留避免 404」，但副作用是**用户显式选 DeepSeek PRO 也走免费模型且不告知**（§30.3 实机确认返回体 `model` 被替换）。
+- **修复**（`ff72827`）：
+  1. `getGatewayModelPool(baseURL)`：从 `/api/models` 拉取**完整**模型池（含 `available:false` 项），60s TTL 缓存；`ai:gatewayModels` 成功时同步刷新缓存，避免重复请求；拉取失败回退 `GW_FALLBACK_MODEL='qwen3-8b'`。
+  2. `checkExplicitGwModel(requested, baseURL)`：**调用方显式传 `model`** 且网关标记不可用时，返回 `{success:false, unavailableModel, availableModels, error:'模型「X」当前未开放…请改用：…'}`（非流式）或 `throw`（流式 → `ai:stream` 的 error 事件）。
+  3. **未知 / 旧配置残留 id 仍走矫正**（`normalizeGwModel` 基于动态池），两条路径都加 `console.warn('…已改用…')` 告警，保证历史配置不会 404 无响应。
+  4. 设计取舍：区分「显式选择」与「配置残留」是关键——全部改成拒绝会让旧配置用户突然发不出消息；全部静默矫正则继续误导。
+- 新增 `scripts/verify-gateway-models.cjs`（5 项）：静态断言（无硬编码白名单、动态池/TTL、两条分支接入、缓存刷新）+ 池判定逻辑纯函数模拟（可用直用 / 不可用拒绝 / 未知矫正 / 未指定兜底）。
+
+### 31.3 dist189 实机验证（9233，有效 token 注入后还原）
+- `gatewayModels` 池：`deepseek-pro/flash、minimax-m3/m2.7/m2.5` 均 `false`，`qwen3-8b` = `true`。
+- 显式 `model:'deepseek-flash'` → **明确拒绝**：`{"success":false,"unavailableModel":"deepseek-flash","availableModels":"qwen3-8b","error":"模型「DeepSeek FLASH」当前未开放（网关标记 unavailable）。请改用：qwen3-8b"}`，**未消耗额度**。
+- 流式显式 `model:'deepseek-pro'` → `ai:stream` 收到 1 个 `type:'error'` 事件，内容「模型「DeepSeek PRO」当前未开放…」。
+- 未知残留 id / 不传 model → 未被模型校验拦截，走到网关后返回「今日免费额度已用完」（证明矫正路径仍可用，仅受额度限制）。
+- 配置已还原 `local`；token 临时文件、CDP 脚本清理完毕。
+
+### 31.4 当前最终状态速查（取代 §29.6 部分项）
+| 项 | 状态 |
+|---|---|
+| 最新提交 | `ff72827`，`ahead=0`，工作树干净 |
+| 测试 | `npm test` **14/14 脚本、115 断言** |
+| 构建产物 | **仅 `dist189/`**（含 §29 CodeBuddy 风格 + §31 模型修复）；旧 dist 全清 |
+| 安装版 | `C:\BubaiCodeTest` = dist189（9233 端口） |
+| 云端 | `/api/me`=200、`totalCredits=91`、`dailyRemaining=0`（今日 3 次已用尽）；模型 `qwen3-8b` 与 5 个不可用付费模型 |
+| 本地 | 7B 模型可用，`C:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf` |
+
+### 31.5 仍待办（非阻断）
+- 每日额度用尽后「用积分继续」的路径未测（网关当前直接拒绝并引导填 API Key）。
+- 5 个付费模型 `available:false` 属网关侧未开通；若产品要提供付费模型，需网关侧开通并把 `available` 置 true，客户端动态池会自动识别、无需再改代码。
+- §29.7 的全站 CodeBuddy 风格统一、§27.6 的 4 项半成品边界仍未处理。
