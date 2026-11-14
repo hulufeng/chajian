@@ -2600,10 +2600,53 @@ function setupIPC() {
   function buildAiProviders() { return providerRegistry.toAiProviders(); }
   let AI_PROVIDERS = buildAiProviders();
 
-  // 网关可用模型白名单。旧版默认/残留的 deepseek-flash 等模型在网关上不存在，
-  // 会导致对话请求 404 静默失败（用户表现为"发消息没反应"）。统一矫正为真实可用的模型。
-  const GW_AVAILABLE_MODELS = ['qwen3-8b'];
-  const normalizeGwModel = (m) => (GW_AVAILABLE_MODELS.includes(m) ? m : GW_AVAILABLE_MODELS[0]);
+  // 网关可用模型。旧版把白名单硬编码成 ['qwen3-8b']，任何其它模型（含用户显式选的
+  // DeepSeek PRO）都被 normalizeGwModel 静默替换成 qwen3-8b，用户以为在用付费模型、
+  // 实际走免费模型且毫不知情（2026-11-14 实机确认）。
+  // 现在改为从网关 /api/models 动态拉取「available:true」的 id，带 60s 缓存；
+  // 拉取失败时回退到内置的 GW_FALLBACK_MODEL，保证离线/网关异常时仍可用。
+  const GW_FALLBACK_MODEL = 'qwen3-8b';
+  const GW_MODEL_POOL_TTL = 60 * 1000;
+  // 缓存完整模型池（含 available:false 项），一次请求同时支撑「可用列表」与「显式不可用判定」。
+  let gwModelPool = { models: [{ id: GW_FALLBACK_MODEL, name: GW_FALLBACK_MODEL, available: true }], at: 0, ok: false };
+  async function getGatewayModelPool(baseURL) {
+    if (gwModelPool.ok && Date.now() - gwModelPool.at < GW_MODEL_POOL_TTL) return gwModelPool;
+    try {
+      const gwBase = String(baseURL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
+      const res = await net.fetch(gwBase + '/api/models');
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const models = (Array.isArray(data.models) ? data.models : [])
+          .filter(m => m && m.id).map(m => ({ id: String(m.id), name: String(m.name || m.id), available: m.available === true }));
+        if (models.length && models.some(m => m.available)) {
+          gwModelPool = { models, at: Date.now(), ok: true };
+          return gwModelPool;
+        }
+      }
+    } catch (e) { /* 拉取失败：沿用缓存或回退 */ }
+    if (!gwModelPool.ok) gwModelPool.at = Date.now(); // 避免每次请求都重试失败的拉取
+    return gwModelPool;
+  }
+  const gwUsableIds = (pool) => (pool.models || []).filter(m => m.available).map(m => m.id);
+  // 同步矫正：用于流式/回退等不便 await 的路径，基于最近一次池快照。
+  const normalizeGwModel = (m) => {
+    const ids = gwUsableIds(gwModelPool);
+    return ids.includes(m) ? m : (ids[0] || GW_FALLBACK_MODEL);
+  };
+  // 显式指定的模型若存在于模型池但被标记不可用 → 返回明确错误，不再静默降级。
+  // 未知 / 旧配置残留的 id 仍走矫正（避免历史配置导致 404 无响应）。
+  async function checkExplicitGwModel(requested, baseURL) {
+    if (!requested) return null;
+    const pool = await getGatewayModelPool(baseURL);
+    const usable = gwUsableIds(pool);
+    if (usable.includes(requested)) return null;
+    const hit = (pool.models || []).find(m => m.id === requested);
+    if (hit && hit.available === false) {
+      return { success: false, unavailableModel: requested, availableModels: usable.join('、'),
+        error: `模型「${hit.name}」当前未开放（网关标记不可用）。请改用：${usable.join('、') || '无可用模型'}` };
+    }
+    return null;
+  }
 
   // 2026-11-14：本地模型默认优选 7B。qwen2.5-coder-3b 太小，对本 app 的本地 GBNF 工具决策格式
   // 常产出畸形输出（如 {"":}），用户看到乱码而非真实答案；其专用 LoRA 修正也未必生效。
@@ -2691,7 +2734,16 @@ function setupIPC() {
         // 云端凭据仅用户自己的登录 token；未登录或 token 过期则直接失败，不回退任何内置兜底。
         const candidates = gatewayAuthCandidates(aiCfg);
         if (!candidates.length) return { success: false, error: 'not logged in, please login in settings' };
-        const gwModel = normalizeGwModel(useModel); // 矫正旧配置残留的不可用模型
+        // 2026-11-14：显式指定不可用模型时明确拒绝，避免用户选了 DeepSeek PRO
+        // 却静默走 qwen3-8b（旧行为）。仅当调用方传了 model 才校验；
+        // 配置里残留的旧 id 仍由 normalizeGwModel 矫正，保证历史配置可用。
+        if (model) {
+          const rejected = await checkExplicitGwModel(String(model), baseURL);
+          if (rejected) return rejected;
+        }
+        await getGatewayModelPool(baseURL); // 刷新动态池，供下方同步矫正使用
+        const gwModel = normalizeGwModel(useModel); // 矫正旧配置残留的不可用模型（基于动态池）
+        if (gwModel !== useModel) console.warn(`[ai:chat] 网关模型 ${useModel} 不可用，已改用 ${gwModel}`);
         let gwResp = null, gwData = {}, triedKind = null;
         for (const c of candidates) {
           const cUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/chat';
@@ -2972,8 +3024,18 @@ function setupIPC() {
     let isGateway = aiCfg.provider === 'gateway';
     // 本次请求是否由「本地来源失败」自动回退到网关（true 时不注入本地专用思考参数）
     let gwFallback = false;
-    // 网关模式：矫正旧配置残留的不可用模型（deepseek-flash 等），否则对话 404 静默失败
-    if (isGateway) useModel = normalizeGwModel(useModel);
+    // 网关模式：先按动态模型池校验「显式指定的不可用模型」（抛错 → ai:stream error 事件），
+    // 再矫正旧配置残留的不可用 id，避免 404 静默失败。
+    if (isGateway) {
+      if (model) {
+        const rejected = await checkExplicitGwModel(String(model), baseURL);
+        if (rejected) throw new Error(rejected.error);
+      }
+      await getGatewayModelPool(baseURL);
+      const corrected = normalizeGwModel(useModel);
+      if (corrected !== useModel) console.warn(`[chatStream] 网关模型 ${useModel} 不可用，已改用 ${corrected}`);
+      useModel = corrected;
+    }
     // ===== 参考基线 对齐：Anthropic (/v1/messages) 流式分支 =====
     const isClaude = !!(provider && provider.type === 'claude');
     const AP = isClaude ? require('../packages/engine/anthropic-protocol.cjs') : null;
@@ -3494,6 +3556,15 @@ function setupIPC() {
       if (!res.ok) return { success: false, error: `网关返回 ${res.status}` };
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.models) ? data.models : [];
+      // 同步刷新动态模型池缓存，供 ai:chat / ai:chatStream 的显式校验与矫正复用（避免重复请求）
+      if (list.length) {
+        gwModelPool = {
+          models: list.filter(m => m && m.id).map(m => ({
+            id: String(m.id), name: String(m.name || m.id), available: !!m.available
+          })),
+          at: Date.now(), ok: true
+        };
+      }
       return {
         success: true,
         models: list.map(m => ({
