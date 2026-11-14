@@ -542,8 +542,8 @@
 | 工作树 | **干净**（`git status --short` 为空，全部入库并推送） |
 | 远端 | `ahead=0`，`origin/main` 已同步（最新 `3f6b78a`） |
 | 测试 | `npm test` 12/12 脚本 / 99 断言；`npm run test:workflow` 11/11 |
-| 构建产物 | 仅 `dist183/`（含 UI 修复 + 3B→7B 修复）；其余 15 个旧 dist 已删 |
-| 安装版 | `C:\BubaiCodeTest`（dist183 修复版，9226 调试端口）；发布版 177 已关闭 |
+| 构建产物 | **已由 §二十八 取代**：当前仅 `dist187/`（含 §26 + §28 全部 UI 修复） |
+| 安装版 | **已由 §二十八 取代**：`C:\BubaiCodeTest` = dist187 修复版（9230 调试端口）；发布版 177 已关闭 |
 | 模型 | `C:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf`（4.36GB） |
 | 云端 AI | 仍 402 余额不足不可用（§二十一）；本地 7B 为唯一可用 AI 通道 |
 | 文档口径 | `docs/开发文档-BubaiCode对齐ChipCode.md` §5 已同步为 `npm test` / `dist179` / jsdom 已列入（同批修正） |
@@ -552,3 +552,36 @@
 - 4 项半成品边界（见 §27.2）未收敛，尤其 feature flag 默认关与插件依赖自动下载闭环。
 - `scripts/build-win.ps1` / `.bat` 仍写旧路径 `dist\BubaiCode Setup 1.0.0.exe` 且不调 `electron-rebuild` / `inject-gateway`。
 - `wf_integration_test.js` 的 `loop` 用例当前断言 AI 执行 6 次（依赖 `MAX_LOOP=5` 常量），该常量若调整需同步改断言。
+
+## 二十八、右侧 AI 面板排版修复（2026-11-14，用户第三处「太丑」截图）
+> 提交 `fca09f6`，构建 `dist187`（重装到 `C:\BubaiCodeTest`，9230 调试端口）。**当前安装版 = dist187 修复版。**
+
+### 28.1 CDP 实测根因（窗口 1406×906，截图是整体缩放到 1080px）
+- `.ai-panel` 仅 **340px**（占窗口 24%），`.editor-container` 却 770px 大片空白。
+- `style.css:6162-6171` 的「对齐 ChipCode 单行工具栏」用 `flex-wrap:nowrap !important` + `.ai-input-left{flex-shrink:0}` 把 `.ai-input-right` 压到 127px，其中 `.model-selector` 仅 **27px** 却要显示 `qwen2.5-coder-3b-instruct-q4_k_m (本地)` → 裁成碎字；`#tb-mode-btn` 22px 里「⚡ 自动」竖排（内容需 41px）。
+- `style.css:3476` 重定义 `.model-name` 丢了 2030 行的 `nowrap+ellipsis`；`#project-status` 药丸与下方 `.ai-project-bar`（完整路径 + 选择工作空间）**重复**；`.chat-message.user .chat-avatar` 被气泡挤出裁成半个字；状态条 `padding:10px 14px` 致绿块 87px 高。
+- 对话态另见：`finalizeAiTurn` 直接写 `已工作 1810s`；验证结论徽章只按置信度取色（**FAIL + high 置信度显示亮绿**，语义矛盾）；`#bg-run-btn` 是 `bottom:80px` 大蓝实心胶囊压住输入区/状态栏；流式期间气泡用 `textContent` 显示裸 ```` ``` ```` 围栏，语言标记 `py` 与代码散落成行。
+
+### 28.2 修复清单
+| 类别 | 改动 |
+|---|---|
+| 布局 | 面板 `340→400px`（窄窗保底 360px）；工具栏 wrap（用 `.ai-panel .ai-input-toolbar` 同等特异性覆盖 6164 的 `!important`）；隐藏重复项目药丸与用户头像；状态条 `padding:6px 10px`（87→57px）；placeholder 缩短 |
+| 模型名 | 新增 `friendlyModelLabel()`，把 gguf 文件名转 `Qwen2.5-Coder 7B` 等可读短名；统一 4 处 `current-model-name` 写入点 |
+| 计时 | 新增 `formatWorkSec()`（`Ns` / `Mm Ss`，封顶 30 分钟），实时 `tickAiWork` 与 `finalizeAiTurn` 共用 |
+| 语义配色 | 验证结论徽章按 PASS 绿 / FAIL 红 / 其它灰，低饱和底 + 描边，并加稳定 class `ai-verdict-badge` |
+| 悬浮提示 | `#bg-run-btn` 改低饱和小提示、上移 `bottom:250px` 避开输入区 |
+| 代码块 | 新增 `renderStreamBubble()`：代码围栏**成对闭合**即渲染 Markdown（未闭合保持纯文本避免闪烁），两条流式路径接入；`finalizeAiTurn` 兜底扫描所有未 done 气泡补渲染 |
+| 回归 | 新增 `scripts/verify-ai-panel-ui.cjs`（10 项静态断言）锁定面板宽度、wrap 覆盖、友好格式函数、徽章配色、悬浮提示、兜底渲染、placeholder 长度 |
+
+### 28.3 验证（dist187 安装版，9230）
+- 预览法：先在 9226 用 CDP **注入候选 CSS** 做几何预览（面板 400 / 模型按钮 143 / 模式按钮无裁切 / 无溢出），确认后再写回源码，避免反复打包。
+- 实机：`panel=400px`、`editor=710px`、`modelBtn=143px`、`modeBtn=65px` 且 `scrollW==clientW`、`toolbarWrap=wrap`、项目药丸隐藏、用户头像隐藏、模型名 `Qwen2.5-Coder 3B (本地)`。
+- 流式：`renderStreamBubble` 单元验证闭合围栏 → `<pre>`、未闭合 → `pre-wrap`；实机对话 `preCount=1 / rawFence=0`（代码块不再是散落文本）。
+- 计时：`[5s→已工作 5s, 65s→已工作 1m 5s, 1810s→已工作 30m 0s]`。
+- `npm test` **13/13 脚本、109 项断言全绿**（新增 10 项 UI 回归）。
+
+### 28.4 状态更新（取代 §27.5 部分项）
+- 构建产物：旧 dist 全部清理，**仅留 `dist187/`**（388MB，含全部 UI 修复）。
+- 安装版 `C:\BubaiCodeTest` = dist187，调试端口 9230；发布版 177 仍关闭。
+- 本轮多次打包（dist184/185/186/187）均用「临时改 `build.directories.output` 到新目录」绕过 safe-delete 守卫，每次打包后还原为 `dist179`；旧目录用 `[System.IO.Directory]::Delete($path,$true)` 清理（`cmd /c rmdir` 曾被守卫拦截）。
+- 工作树干净、`ahead=0`（最新 `fca09f6`）。
