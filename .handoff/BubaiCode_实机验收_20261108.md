@@ -765,5 +765,5 @@
 ### 32.4 当前状态
 - 改动：`app.js`（installPlugin 自动依赖闭环，13623 后约 20 行）、`scripts/build-win.ps1/.bat`（修复）。
 - 测试：复用既有；`npm test` 仍 14/14、115 断言。
-- 构建：dist190 已装 `C:\BubaiCodeTest`（9234）；正式发布走临时目录（dist191+）。
+- 构建/发布：正式发布包 `dist191\BubaiCode-Setup-1.2.33.exe`（388MB，含 `.blockmap`）已产出；验证产物 `dist190`、测试安装 `C:\BubaiCodeTest`、9234 用户数据及临时日志已全部清理。package.json 输出目录同步置为 `dist191`。
 - 边界④ MQTT 面板：**已实测**（见 §32.1）。额度用尽后改用积分路径：仍待实测（网关侧直接拒绝并引导填 API Key，本环境无法触发）。
