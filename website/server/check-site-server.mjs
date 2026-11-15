@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { get, request } from 'node:http';
 
 let pass = 0, fail = 0;
@@ -59,7 +60,7 @@ function req(method, path, { body, token } = {}) {
 }
 
 console.log(`\n=== 启动官网后台 ${SERVER}（临时数据目录）===`);
-const srv = spawn(process.execPath, ['codelab-site/server/server.mjs'], {
+const srv = spawn(process.execPath, [fileURLToPath(new URL('server.mjs', import.meta.url))], {
   cwd: process.cwd(),
   env: { ...process.env, PORT: String(PORT), HOST, SITE_DATA_DIR: DATA_DIR, SITE_ADMIN_EMAIL: ADMIN_EMAIL, SITE_ADMIN_PASSWORD: ADMIN_PWD },
   stdio: ['ignore', 'pipe', 'pipe'],
