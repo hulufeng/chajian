@@ -513,6 +513,8 @@ button { font-family:inherit; }
     <div class="form-row"><label>名称</label><input type="text" id="epName"></div>
     <div class="form-row"><label>分类</label>
       <select id="epCategory">
+        <option value="embedded">嵌入式</option>
+        <option value="automation">自动化</option>
         <option value="toolchain">工具链</option>
         <option value="ai-model">AI 模型</option>
         <option value="tool">工具</option>
@@ -962,7 +964,7 @@ function loadPlugins() {
     });
 }
 
-const CAT_NAMES = { 'ai-model':'AI 模型', 'toolchain':'工具链', 'tool':'工具', 'ai-capability':'AI 能力', 'simulator':'模拟器', 'eda':'EDA/设计', 'other':'其他' };
+const CAT_NAMES = { 'embedded':'嵌入式', 'automation':'自动化', 'ai-model':'AI 模型', 'toolchain':'工具链', 'tool':'工具', 'ai-capability':'AI 能力', 'simulator':'模拟器', 'eda':'EDA/设计', 'other':'其他' };
 function catName(c){ return CAT_NAMES[c] || c || '工具链'; }
 function fillPluginFilter(){
   const sel = document.getElementById('pluginFilter');
@@ -1515,7 +1517,15 @@ function editPlugin(id) {
   if (!p) return;
   document.getElementById('epId').value = p.id;
   document.getElementById('epName').value = p.name || '';
-  document.getElementById('epCategory').value = p.category || 'toolchain';
+  const catSel = document.getElementById('epCategory');
+  const catVal = p.category || 'toolchain';
+  if (![...catSel.options].some(o => o.value === catVal)) {
+    const opt = document.createElement('option');
+    opt.value = catVal; opt.textContent = catName(catVal);
+    catSel.appendChild(opt);
+  }
+  catSel.value = catVal;
+  if (catSel.value !== catVal) { catSel.selectedIndex = 0; }
   document.getElementById('epIcon').value = p.icon || '';
   document.getElementById('epVersion').value = p.version || '';
   document.getElementById('epDesc').value = p.description || '';
