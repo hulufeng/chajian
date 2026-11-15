@@ -70,9 +70,10 @@ test('流式残留裸围栏气泡在轮次结束时统一补渲染', () => {
 
 test('CodeBuddy 风格主题层：令牌驱动、可回退', () => {
   assert.ok(CSS.includes('CodeBuddy 风格 AI 面板'), 'style.css 需含主题层');
-  assert.match(CSS, /--cb-bg:\s*var\(--surface-1/, '颜色须走主题令牌，不能写死浅色');
-  assert.match(CSS, /--cb-border:\s*var\(--border/, '边框须走主题令牌');
-  assert.match(CSS, /body\.cb-compact \.chat-message\.user\s*\{[^}]*background:\s*var\(--cb-surface\)/, '用户消息应为浅底卡片而非蓝气泡');
+  // 令牌策略已改为直接复用全局令牌（--cb-* 会被构建链当未使用变量删除，见 style.css 6844 注释）
+  assert.match(CSS, /body\.cb-compact \.ai-panel\s*\{[^}]*background:\s*var\(--surface-1/, '面板背景须走全局令牌');
+  assert.match(CSS, /body\.cb-compact \.ai-panel\s*\{[^}]*border-left:\s*1px solid var\(--border/, '边框须走全局令牌');
+  assert.match(CSS, /body\.cb-compact \.chat-message\.user\s*\{[^}]*background:\s*var\(--surface-2\)/, '用户消息应为浅底卡片而非蓝气泡');
   assert.match(CSS, /body\.cb-compact \.work-status-msg \.work-status-bubble\s*\{[^}]*background:\s*none/, '状态条应去掉绿紫大色块');
   assert.match(CSS, /body\.cb-compact \.ai-input-box\s*\{[^}]*border:\s*1px solid/, '输入框应为独立带边框容器');
   assert.match(CSS, /body\.cb-compact \.ai-tool-flow-body\s*\{[^}]*max-height/, '过程性工具流应收拢');
