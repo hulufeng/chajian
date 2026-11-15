@@ -43,9 +43,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // 下载目标（可用环境变量覆盖；默认走 bluebubai.work 更新服务器）
 const DOWNLOAD_URLS = {
-  windows: process.env.DOWNLOAD_URL_WINDOWS || 'https://bluebubai.work/updates/LabCode-Setup-0.1.9.exe',
-  macos: process.env.DOWNLOAD_URL_MACOS || 'https://bluebubai.work/updates/LabCode-Setup-0.1.9.dmg',
-  linux: process.env.DOWNLOAD_URL_LINUX || 'https://bluebubai.work/updates/LabCode-Setup-0.1.9.AppImage',
+  windows: process.env.DOWNLOAD_URL_WINDOWS || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.exe',
+  macos: process.env.DOWNLOAD_URL_MACOS || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.dmg',
+  linux: process.env.DOWNLOAD_URL_LINUX || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.AppImage',
 };
 
 // ---------- 数据层 ----------
@@ -67,7 +67,7 @@ function defaultDb() {
     contacts: [],
     content: {}, // key -> { title, body, updatedAt }
     downloads: [], // { platform, version, ip, ts }
-    version: { latest: '0.1.9', notes: '初始版本', updatedAt: now },
+    version: { latest: '1.1.3', notes: '线上当前版本', updatedAt: now },
   };
 }
 
@@ -109,7 +109,7 @@ async function loadDb() {
     db.contacts ||= [];
     db.content ||= {};
     db.downloads ||= [];
-    db.version ||= { latest: '0.1.9', notes: '', updatedAt: Date.now() };
+    db.version ||= { latest: '1.1.3', notes: '', updatedAt: Date.now() };
   } catch {
     db = defaultDb();
     await saveDbNow();
