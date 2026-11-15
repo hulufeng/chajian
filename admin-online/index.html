@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabCode 管理后台</title>
+<style>
+:root{
+  --accent:#059669; --accent-deep:#047857; --accent-soft:rgba(5,150,105,.10);
+  --ink:#1d1d1f; --ink-2:#424245; --gray:#86868b; --gray-2:#f5f5f7;
+  --border:rgba(0,0,0,.07); --card:#fff; --bg:#f5f5f7;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+  --shadow-md:0 4px 16px rgba(0,0,0,.06), 0 12px 32px rgba(0,0,0,.05);
+  --radius:16px; --radius-sm:10px;
+  --font:'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,-apple-system,sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--ink); min-height:100vh; -webkit-font-smoothing:antialiased; line-height:1.5; }
+h2,h3 { color:var(--ink); letter-spacing:-.01em; }
+
+.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; background:radial-gradient(120% 120% at 50% 0%, #eafff5 0%, #f5f5f7 55%); }
+.login-box { background:var(--card); padding:44px 40px; border-radius:20px; width:380px; box-shadow:var(--shadow-md); border:1px solid var(--border); }
+.login-box h1 { font-size:22px; margin-bottom:8px; color:var(--accent); display:flex; align-items:center; gap:10px; font-weight:800; }
+.login-box h1 .logo { height:26px; width:auto; display:block; }
+.login-box p { font-size:13px; color:var(--gray); margin-bottom:26px; }
+.login-box label { display:block; font-size:12px; color:var(--ink-2); margin-bottom:6px; font-weight:600; }
+.login-box input { width:100%; padding:11px 13px; background:#fafafa; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--ink); font-size:14px; margin-bottom:16px; transition:border-color .2s, box-shadow .2s; }
+.login-box input:focus { outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px var(--accent-soft); }
+.login-box button { width:100%; padding:12px; background:linear-gradient(135deg,var(--accent),var(--accent-deep)); color:#fff; border:none; border-radius:var(--radius-sm); font-size:15px; font-weight:600; cursor:pointer; transition:transform .15s, box-shadow .2s; }
+.login-box button:hover { transform:translateY(-1px); box-shadow:0 8px 20px rgba(5,150,105,.25); }
+.login-box .err { color:#ef4444; font-size:13px; margin-top:12px; display:none; text-align:center; }
+
+.app { display:none; }
+.sidebar { position:fixed; left:0; top:0; width:224px; height:100vh; background:rgba(255,255,255,.86); backdrop-filter:saturate(180%) blur(20px); padding:22px 0; border-right:1px solid var(--border); z-index:50; display:flex; flex-direction:column; }
+.sidebar .logo { padding:0 22px 20px; font-size:18px; font-weight:800; color:var(--accent); border-bottom:1px solid var(--border); margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+.sidebar .logo .lc { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--accent),var(--accent-deep)); color:#fff; display:none; align-items:center; justify-content:center; font-size:13px; font-weight:900; }
+.sidebar .logo img { height:30px; width:auto; display:block; }
+.sidebar .nav-item { padding:11px 22px; cursor:pointer; font-size:14px; color:var(--ink-2); transition:all .15s; display:flex; align-items:center; gap:11px; border-left:3px solid transparent; }
+.sidebar .nav-item:hover { background:var(--accent-soft); color:var(--ink); }
+.sidebar .nav-item.active { background:var(--accent-soft); color:var(--accent); font-weight:600; border-left-color:var(--accent); }
+.sidebar .logout { margin-top:auto; padding:14px 22px; font-size:13px; color:var(--gray); cursor:pointer; border-top:1px solid var(--border); }
+.sidebar .logout:hover { color:#ef4444; }
+
+.main { margin-left:224px; padding:28px 32px 48px; max-width:1400px; }
+.page { display:none; }
+.page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; }
+.page-header h2 { font-size:26px; font-weight:800; }
+.page-header .subtitle { font-size:13px; color:var(--gray); margin-top:6px; }
+.subtitle { font-size:13px; color:var(--gray); }
+.toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.toolbar button, .page-header button { padding:9px 16px; border:none; border-radius:var(--radius-sm); font-size:13px; font-weight:600; cursor:pointer; background:linear-gradient(135deg,var(--accent),var(--accent-deep)); color:#fff; transition:all .15s; }
+.toolbar button:hover, .page-header button:hover { box-shadow:0 8px 20px rgba(5,150,105,.25); transform:translateY(-1px); }
+
+.card { background:var(--card); padding:22px; border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow-sm); margin-bottom:20px; }
+.card h3 { font-size:16px; font-weight:700; margin-bottom:14px; }
+
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:18px; margin-bottom:22px; }
+.stat-card { background:var(--card); padding:20px 22px; border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow-sm); position:relative; overflow:hidden; }
+.stat-card::before { content:""; position:absolute; right:-20px; top:-20px; width:90px; height:90px; border-radius:50%; background:var(--accent-soft); }
+.stat-card .label { font-size:13px; color:var(--gray); position:relative; }
+.stat-card .value { font-size:30px; font-weight:800; margin-top:6px; position:relative; letter-spacing:-.02em; }
+.stat-card .trend { font-size:12px; color:var(--gray); margin-top:4px; position:relative; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; padding:12px 14px; font-size:12px; font-weight:600; color:var(--gray); background:var(--gray-2); border-bottom:1px solid var(--border); }
+td { padding:12px 14px; border-bottom:1px solid var(--border); color:var(--ink-2); vertical-align:middle; }
+tbody tr { transition:background .15s; }
+tbody tr:hover { background:var(--gray-2); }
+.empty { text-align:center; padding:48px 20px; color:var(--gray); }
+.empty .icon { font-size:48px; margin-bottom:12px; }
+.empty .text { font-size:14px; }
+
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+.badge.blue { background:rgba(37,99,235,.12); color:#2563eb; }
+.badge.green { background:rgba(5,150,105,.12); color:var(--accent-deep); }
+.badge.red { background:rgba(239,68,68,.12); color:#dc2626; }
+.badge.orange { background:rgba(234,88,12,.12); color:#ea580c; }
+.badge.gray { background:rgba(134,134,139,.14); color:var(--ink-2); }
+
+button { font-family:inherit; }
+.action-btn { padding:7px 14px; border:none; border-radius:var(--radius-sm); font-size:12.5px; cursor:pointer; font-weight:600; transition:all .15s; background:var(--gray-2); color:var(--ink-2); }
+.action-btn:hover { filter:brightness(.97); transform:translateY(-1px); }
+.action-btn.red { background:rgba(239,68,68,.12); color:#dc2626; }
+.action-btn.green { background:rgba(5,150,105,.14); color:var(--accent-deep); }
+.action-btn.orange { background:rgba(234,88,12,.14); color:#ea580c; }
+.action-btn.blue { background:rgba(37,99,235,.12); color:#2563eb; }
+
+.form-row { margin-bottom:16px; }
+.form-row label { display:block; font-size:12px; color:var(--ink-2); margin-bottom:6px; font-weight:600; }
+.form-row input, .form-row select, .form-row textarea { width:100%; padding:10px 12px; background:#fafafa; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; color:var(--ink); font-family:inherit; transition:border-color .2s, box-shadow .2s; }
+.form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px var(--accent-soft); }
+.form-row textarea { min-height:80px; resize:vertical; }
+
+.modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; z-index:150; }
+.modal-mask.show { display:flex; }
+.modal { background:var(--card); padding:28px; border-radius:20px; width:440px; max-width:92vw; box-shadow:var(--shadow-md); border:1px solid var(--border); animation:pop .2s ease; }
+@keyframes pop { from { transform:scale(.96); opacity:0; } to { transform:scale(1); opacity:1; } }
+.modal h3 { font-size:18px; font-weight:800; margin-bottom:18px; }
+.modal .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+.modal .actions button { padding:9px 20px; border:none; border-radius:var(--radius-sm); font-size:13px; cursor:pointer; font-weight:600; }
+.modal .actions .cancel { background:var(--gray-2); color:var(--ink-2); }
+.modal .actions .cancel:hover { background:#ececee; }
+.modal .actions .ok { background:linear-gradient(135deg,var(--accent),var(--accent-deep)); color:#fff; }
+.modal .actions .ok:hover { box-shadow:0 8px 20px rgba(5,150,105,.25); }
+
+.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:12px; font-size:13px; z-index:200; display:none; font-weight:500; box-shadow:var(--shadow-md); }
+.toast.show { display:block; animation:slideIn .3s ease; }
+.toast.success { background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; }
+.toast.error { background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+@keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+.upload-area { border:2px dashed rgba(5,150,105,.35); border-radius:16px; padding:32px; text-align:center; cursor:pointer; transition:all .2s; margin-bottom:16px; background:var(--accent-soft); }
+.upload-area:hover { border-color:var(--accent); background:rgba(5,150,105,.16); }
+.upload-area .icon { font-size:36px; margin-bottom:8px; }
+.upload-area .text { font-size:14px; color:var(--ink-2); }
+.upload-area .hint { font-size:12px; color:var(--gray); margin-top:4px; }
+
+.settings-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
+.setting-item { background:var(--card); padding:20px; border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow-sm); }
+.setting-item label { display:block; font-size:13px; color:var(--ink-2); margin-bottom:8px; font-weight:600; }
+.setting-item input, .setting-item select { width:100%; padding:9px 12px; background:#fafafa; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; }
+.setting-item input:focus, .setting-item select:focus { outline:none; border-color:var(--accent); background:#fff; }
+.setting-item .desc { font-size:11px; color:var(--gray); margin-top:6px; }
+
+@media (max-width:768px){
+  .sidebar { width:60px; }
+  .sidebar .logo span, .sidebar .nav-item span { display:none; }
+  .sidebar .logo img { display:none; }
+  .sidebar .logo .lc { display:flex; }
+  .main { margin-left:60px; padding:16px; }
+  .settings-grid { grid-template-columns:1fr; }
+}
+
+/* —— 优化：统一确认/输入弹窗 —— */
+.confirm-modal { width:400px; max-width:92vw; text-align:left; }
+.confirm-title { font-size:17px; font-weight:800; color:var(--ink); margin-bottom:10px; }
+.confirm-msg { font-size:13.5px; line-height:1.6; color:var(--ink-2); white-space:pre-wrap; }
+.confirm-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; }
+.confirm-input { width:100%; margin-top:14px; padding:10px 12px; background:#fafafa; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; color:var(--ink); font-family:inherit; transition:border-color .2s, box-shadow .2s; }
+.confirm-input:focus { outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px var(--accent-soft); }
+/* —— 优化：全局 loading 遮罩 —— */
+.loading-overlay { position:fixed; inset:0; background:rgba(245,245,247,.55); backdrop-filter:blur(2px); display:none; align-items:center; justify-content:center; z-index:280; }
+.loading-overlay.show { display:flex; }
+.spinner { width:36px; height:36px; border:3px solid var(--accent-soft); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
+</head>
+<body>
+
+<!-- 登录页 -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <h1><img class="logo" src="/assets/logo-mark@2x.png" alt="LabCode"> 管理后台</h1>
+    <p>请使用管理员账号登录</p>
+    <label>用户名</label>
+    <input type="text" id="loginUser" placeholder="admin" value="admin">
+    <label>密码</label>
+    <input type="password" id="loginPass" placeholder="请输入密码">
+    <button onclick="doLogin()">登 录</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div class="app" id="app">
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="logo"><div class="lc">LC</div><img src="/assets/logo-mark@2x.png" alt="LabCode"></div>
+    <div class="nav-item active" onclick="showPage('dashboard')">📊 <span>仪表盘</span></div>
+    <div class="nav-item" onclick="showPage('users')">👥 <span>用户管理</span></div>
+    <div class="nav-item" onclick="showPage('plugins')">🔌 <span>插件管理</span></div>
+    <div class="nav-item" onclick="showPage('credits')">💎 <span>积分管理</span></div>
+    <div class="nav-item" onclick="showPage('models')">🤖 <span>模型管理</span></div>
+    <div class="nav-item" onclick="showPage('ai-agent')">🧩 <span>AI 智能体</span></div>
+    <div class="nav-item" onclick="showPage('audit')">📋 <span>操作审计</span></div>
+    <div class="nav-item" onclick="showPage('settings')">⚙️ <span>系统设置</span></div>
+    <button class="logout" onclick="doLogout()">退出登录</button>
+  </div>
+
+  <!-- 主内容 -->
+  <div class="main">
+    <!-- 仪表盘 -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <h2>仪表盘</h2>
+          <div class="subtitle">系统运行概览</div>
+        </div>
+      </div>
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="label">总用户数</div><div class="value" id="statUsers">-</div></div>
+        <div class="stat-card"><div class="label">今日新增</div><div class="value green" id="statNewUsers">-</div></div>
+        <div class="stat-card"><div class="label">插件总数</div><div class="value blue" id="statPlugins">-</div></div>
+        <div class="stat-card"><div class="label">插件总安装</div><div class="value orange" id="statInstalls">-</div></div>
+        <div class="stat-card"><div class="label">可用模型</div><div class="value green" id="statModels">-</div></div>
+        <div class="stat-card"><div class="label">系统状态</div><div class="value green">正常</div></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>最近注册用户</th><th>邮箱</th><th>注册时间</th><th>积分</th><th>状态</th></tr></thead>
+          <tbody id="recentUsers"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 用户管理 -->
+    <div class="page" id="page-users">
+      <div class="page-header">
+        <div>
+          <h2>用户管理</h2>
+          <div class="subtitle">管理所有注册用户</div>
+          <div id="activeSummary" class="subtitle" style="margin-top:4px;color:#2563eb;"></div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <input type="text" id="userSearch" placeholder="搜索邮箱/用户名..." oninput="loadUsers()">
+        <select id="userFilter" onchange="loadUsers()">
+          <option value="">全部状态</option>
+          <option value="active">正常</option>
+          <option value="disabled">已禁用</option>
+        </select>
+        <span id="batchBar" style="margin-left:12px;display:none;align-items:center;gap:8px;">
+          <span id="batchCount" style="font-size:12px;color:#64748b;"></span>
+          <button class="action-btn red" onclick="batchDisable(true)">批量禁用</button>
+          <button class="action-btn green" onclick="batchDisable(false)">批量启用</button>
+          <button class="action-btn blue" onclick="batchAdjustPrompt()">批量调额度</button>
+        </span>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th><input type="checkbox" id="userSelectAll" onchange="toggleSelectAll(this)"></th><th>ID</th><th>用户名</th><th>邮箱</th><th>角色</th><th>积分</th><th>注册时间</th><th>最近活跃</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="usersTable"><tr><td colspan="9" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 插件管理 -->
+    <div class="page" id="page-plugins">
+      <div class="page-header">
+        <div>
+          <h2>插件管理</h2>
+          <div class="subtitle">管理插件市场的所有插件</div>
+        </div>
+        <button onclick="showPluginModal()">➕ 上传新插件</button>
+      </div>
+      <div class="toolbar">
+        <input type="text" id="pluginSearch" placeholder="搜索插件..." oninput="loadPlugins()">
+        <select id="pluginFilter" onchange="renderPlugins()"><option value="">全部分类</option></select>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>图标</th><th>名称</th><th>ID</th><th>版本</th><th>分类</th><th>安装数</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="pluginsTable"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 积分管理 -->
+    <div class="page" id="page-credits">
+      <div class="page-header">
+        <div>
+          <h2>积分管理</h2>
+          <div class="subtitle">查看积分变动记录</div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">总积分发放</div><div class="value blue" id="creditTotal">-</div></div>
+        <div class="stat-card"><div class="label">总积分消耗</div><div class="value orange" id="creditUsed">-</div></div>
+        <div class="stat-card"><div class="label">今日消耗</div><div class="value red" id="creditToday">-</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="subtitle" style="margin-bottom:8px;">近 14 天积分消耗趋势</div>
+        <canvas id="creditChart" height="140" style="width:100%;"></canvas>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>时间</th><th>用户</th><th>类型</th><th>变动</th><th>余额</th><th>原因</th></tr></thead>
+          <tbody id="creditsTable"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 操作审计 -->
+    <div class="page" id="page-audit">
+      <div class="page-header">
+        <div>
+          <h2>操作审计</h2>
+          <div class="subtitle">管理员操作留痕（禁用/启用/调额度/改用户等）</div>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>时间</th><th>操作</th><th>对象</th><th>详情</th></tr></thead>
+          <tbody id="auditTable"><tr><td colspan="4" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 模型管理 -->
+    <div class="page" id="page-models">
+      <div class="page-header">
+        <div>
+          <h2>模型管理</h2>
+          <div class="subtitle">配置平台 API Key · 自助添加模型 · 即时生效无需重启</div>
+        </div>
+        <button onclick="showModelModal()">➕ 添加模型</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>模型</th><th>提供商</th><th>上游模型</th><th>积分系数</th><th>API Key</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="modelsTable"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:#64748b;line-height:1.8;">
+        <strong>说明：</strong>每个模型对应一个上游平台的 API Key 环境变量名（如 <code>DEEPSEEK_API_KEY</code>）。两种配置方式任选：<br>
+        ① <strong>环境变量</strong>（推荐，安全）：服务器 systemd 服务 [Service] 段加 <code>Environment=DEEPSEEK_API_KEY=sk-xxx</code> 后重启；<br>
+        ② <strong>网页直接填</strong>：点「配置 Key」填写保存，立即生效（存储在服务器 config/secrets.json，不回显明文）。<br>
+        配置后模型自动变为「可用」，客户端登录即可使用（按次扣积分）。
+      </div>
+    </div>
+
+    <!-- AI 智能体管理 -->
+    <div class="page" id="page-ai-agent">
+      <div class="page-header">
+        <div>
+          <h2>AI 智能体管理</h2>
+          <div class="subtitle">配置 Agent 工具权限、技能、记忆和参数</div>
+        </div>
+        <button onclick="saveAgentConfig()">💾 保存配置</button>
+      </div>
+
+      <!-- Agent 参数 -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:15px;">⚙️ Agent 参数配置</div>
+        <div style="padding:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">默认模式</label>
+            <select id="agentMode" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+              <option value="plan">Plan（计划模式，需用户批准）</option>
+              <option value="default">Default（默认，写操作需确认）</option>
+              <option value="auto">Auto（自动，仅高风险确认）</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">最大轮次</label>
+            <input type="number" id="agentMaxTurns" value="20" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">温度 (Temperature)</label>
+            <input type="number" id="agentTemp" value="0.7" step="0.1" min="0" max="2" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">子智能体最大轮次</label>
+            <input type="number" id="agentSubMaxTurns" value="6" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">联网搜索会话上限</label>
+            <input type="number" id="agentSearchLimit" value="200" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:#475569;margin-bottom:6px;font-weight:600;">速率限制 (次/分钟)</label>
+            <input type="number" id="agentRateLimit" value="100" style="width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+          </div>
+        </div>
+      </div>
+
+      <!-- 工具权限 -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:15px;">🔧 工具权限配置</div>
+        <table>
+          <thead><tr><th>工具</th><th>类别</th><th>说明</th><th>Plan 模式</th><th>Default 模式</th><th>Auto 模式</th></tr></thead>
+          <tbody id="toolPermTable">
+            <tr><td>read_file</td><td><span class="badge gray">只读</span></td><td>读取文件内容</td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>write_file</td><td><span class="badge orange">修改</span></td><td>创建/覆盖文件</td><td><span class="badge blue">需批准</span></td><td><span class="badge orange">需确认</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>edit_file</td><td><span class="badge orange">修改</span></td><td>编辑文件（替换文本）</td><td><span class="badge blue">需批准</span></td><td><span class="badge orange">需确认</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>terminal</td><td><span class="badge red">执行</span></td><td>执行终端命令</td><td><span class="badge blue">需批准</span></td><td><span class="badge orange">需确认</span></td><td><span class="badge orange">高风险确认</span></td></tr>
+            <tr><td>run_test</td><td><span class="badge red">执行</span></td><td>运行项目测试</td><td><span class="badge blue">需批准</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>web_search</td><td><span class="badge blue">查询</span></td><td>联网搜索</td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>web_fetch</td><td><span class="badge blue">查询</span></td><td>获取网页内容</td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>run_subagent</td><td><span class="badge blue">查询</span></td><td>派子智能体研究</td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+            <tr><td>remember</td><td><span class="badge orange">修改</span></td><td>保存长期记忆</td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td><td><span class="badge green">允许</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 技能管理 -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center;">
+          <span>📚 技能管理（可复用技能包）</span>
+          <button class="action-btn blue" onclick="showSkillModal()">+ 新增技能</button>
+        </div>
+        <table>
+          <thead><tr><th>技能名称</th><th>触发词</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="skillsTable">
+            <tr><td colspan="5" class="empty">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 全局记忆 -->
+      <div class="card">
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:15px;">🧠 全局记忆管理</div>
+        <table>
+          <thead><tr><th>记忆名称</th><th>类型</th><th>内容</th><th>更新时间</th><th>操作</th></tr></thead>
+          <tbody id="memoryTable">
+            <tr><td colspan="5" class="empty">暂无全局记忆</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 系统设置 -->
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <div>
+          <h2>系统设置</h2>
+          <div class="subtitle">配置系统参数</div>
+        </div>
+        <button onclick="saveSettings()">💾 保存设置</button>
+      </div>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label>网站名称</label>
+          <input type="text" id="setSiteName" value="LabCode">
+          <div class="desc">显示在网站标题和页脚</div>
+        </div>
+        <div class="setting-item">
+          <label>网站描述</label>
+          <input type="text" id="setSiteDesc" value="通用 AI 软件开发智能体">
+          <div class="desc">SEO 描述信息</div>
+        </div>
+        <div class="setting-item">
+          <label>免费版月积分</label>
+          <input type="number" id="setFreeCredits" value="5000">
+          <div class="desc">新用户注册赠送 / 每月重置</div>
+        </div>
+        <div class="setting-item">
+          <label>允许注册</label>
+          <select id="setRegEnabled">
+            <option value="true">开启</option>
+            <option value="false">关闭</option>
+          </select>
+          <div class="desc">关闭后新用户无法注册</div>
+        </div>
+        <div class="setting-item">
+          <label>当前版本</label>
+          <input type="text" id="setVersion" value="1.0.0">
+          <div class="desc">桌面客户端最新版本号</div>
+        </div>
+        <div class="setting-item">
+          <label>下载地址</label>
+          <input type="text" id="setDownloadUrl" value="">
+          <div class="desc">安装包下载链接</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 插件上传弹窗 -->
+<div class="modal-mask" id="pluginModal">
+  <div class="modal">
+    <h3>上传新插件</h3>
+    <div class="form-row">
+      <label>插件 ID *</label>
+      <input type="text" id="pluginId" placeholder="如：arduino-cli-toolchain">
+    </div>
+    <div class="form-row">
+      <label>插件名称 *</label>
+      <input type="text" id="pluginName" placeholder="如：Arduino CLI 工具链">
+    </div>
+    <div class="form-row">
+      <label>版本号 *</label>
+      <input type="text" id="pluginVersion" placeholder="如：1.0.0">
+    </div>
+    <div class="form-row">
+      <label>分类</label>
+      <select id="pluginCategory">
+        <option value="toolchain">工具链</option>
+        <option value="ai-capability">AI 能力</option>
+        <option value="simulator">模拟器</option>
+        <option value="eda">EDA/设计</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>图标 (emoji)</label>
+      <input type="text" id="pluginIcon" placeholder="如：🔌" value="🔧">
+    </div>
+    <div class="form-row">
+      <label>描述</label>
+      <textarea id="pluginDesc" placeholder="插件功能描述..."></textarea>
+    </div>
+    <div class="form-row">
+      <label>插件包 (ZIP, base64)</label>
+      <input type="file" id="pluginFile" accept=".zip" onchange="handlePluginFile()">
+      <div id="pluginFileInfo" style="font-size:11px;color:#94a3b8;margin-top:4px;"></div>
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="hidePluginModal()">取消</button>
+      <button class="ok" onclick="uploadPlugin()">上传</button>
+    </div>
+  </div>
+</div>
+
+<!-- 插件编辑弹窗 -->
+<div class="modal-mask" id="editPluginModal">
+  <div class="modal">
+    <h3>编辑插件</h3>
+    <input type="hidden" id="epId">
+    <div class="form-row"><label>名称</label><input type="text" id="epName"></div>
+    <div class="form-row"><label>分类</label>
+      <select id="epCategory">
+        <option value="toolchain">工具链</option>
+        <option value="ai-model">AI 模型</option>
+        <option value="tool">工具</option>
+        <option value="ai-capability">AI 能力</option>
+        <option value="simulator">模拟器</option>
+        <option value="eda">EDA/设计</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+    <div class="form-row"><label>图标 (emoji)</label><input type="text" id="epIcon"></div>
+    <div class="form-row"><label>版本号</label><input type="text" id="epVersion"></div>
+    <div class="form-row"><label>描述</label><textarea id="epDesc"></textarea></div>
+    <div class="actions">
+      <button class="cancel" onclick="hideEditPlugin()">取消</button>
+      <button class="ok" onclick="saveEditPlugin()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 用户编辑弹窗 -->
+<div class="modal-mask" id="userModal">
+  <div class="modal">
+    <h3>编辑用户</h3>
+    <input type="hidden" id="editUserId">
+    <div class="form-row">
+      <label>用户名</label>
+      <input type="text" id="editUserName">
+    </div>
+    <div class="form-row">
+      <label>邮箱</label>
+      <input type="text" id="editUserEmail">
+    </div>
+    <div class="form-row">
+      <label>角色</label>
+      <select id="editUserRole">
+        <option value="user">普通用户</option>
+        <option value="admin">管理员</option>
+        <option value="developer">开发者</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>状态</label>
+      <select id="editUserStatus">
+        <option value="active">正常</option>
+        <option value="disabled">已禁用</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>调整积分 (正数增加，负数扣除)</label>
+      <input type="number" id="editUserCredits" value="0">
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="hideUserModal()">取消</button>
+      <button class="ok" onclick="saveUser()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模型编辑弹窗（新增/编辑） -->
+<div class="modal-mask" id="modelModal">
+  <div class="modal">
+    <h3 id="modelModalTitle">添加模型</h3>
+    <input type="hidden" id="editModelId">
+    <div class="form-row">
+      <label>模型 ID *（小写字母/数字/中划线，如 deepseek-flash）</label>
+      <input type="text" id="editModelMid" placeholder="deepseek-flash" disabled>
+    </div>
+    <div class="form-row">
+      <label>显示名称 *</label>
+      <input type="text" id="editModelName" placeholder="如：DeepSeek FLASH">
+    </div>
+    <div class="form-row">
+      <label>提供商</label>
+      <input type="text" id="editModelProvider" placeholder="如：deepseek / minimax / zhipu">
+    </div>
+    <div class="form-row">
+      <label>上游 Base URL *（OpenAI 兼容，如 https://api.deepseek.com/v1）</label>
+      <input type="text" id="editModelBaseUrl" placeholder="https://api.deepseek.com/v1">
+    </div>
+    <div class="form-row">
+      <label>上游模型名 *（如 deepseek-chat）</label>
+      <input type="text" id="editModelUpstream" placeholder="deepseek-chat">
+    </div>
+    <div class="form-row">
+      <label>API Key 环境变量名 *（如 DEEPSEEK_API_KEY / MINIMAX_API_KEY）</label>
+      <input type="text" id="editModelKeyEnv" placeholder="DEEPSEEK_API_KEY">
+    </div>
+    <div class="form-row">
+      <label>单次积分保底（costPerCall）</label>
+      <input type="number" id="editModelCost" value="1">
+    </div>
+    <div class="form-row">
+      <label>积分系数（multiplier，按 token 计费）</label>
+      <input type="number" id="editModelMult" value="1" step="0.1">
+    </div>
+    <div class="form-row">
+      <label>描述</label>
+      <input type="text" id="editModelDesc" placeholder="如：快速响应 · 日常编码 · 默认模型">
+    </div>
+    <div class="form-row" id="modelKeyRow" style="display:none;">
+      <label>API Key（选填，填了立即生效；留空不配置）</label>
+      <input type="password" id="editModelApiKey" placeholder="sk-xxxx">
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="hideModelModal()">取消</button>
+      <button class="ok" onclick="saveModel()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- API Key 配置弹窗 -->
+<div class="modal-mask" id="keyModal">
+  <div class="modal">
+    <h3>配置 API Key</h3>
+    <div style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.8;" id="keyModalHint"></div>
+    <div class="form-row">
+      <label>API Key（留空并保存 = 清除网页配置，回退环境变量）</label>
+      <input type="password" id="editKeyValue" placeholder="sk-xxxx">
+    </div>
+    <div class="form-row">
+      <label>测试连通性（可选，保存后测试）</label>
+      <div id="keyTestResult" style="font-size:12px;margin-top:4px;"></div>
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="hideKeyModal()">取消</button>
+      <button class="ok" onclick="saveKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 技能编辑弹窗 -->
+<div class="modal-mask" id="skillModal">
+  <div class="modal">
+    <h3 id="skillModalTitle">新增技能</h3>
+    <input type="hidden" id="editSkillId">
+    <div class="form-row">
+      <label>技能名称 *</label>
+      <input type="text" id="editSkillName" placeholder="如：代码审查">
+    </div>
+    <div class="form-row">
+      <label>触发词（用 / 分隔）</label>
+      <input type="text" id="editSkillTriggers" placeholder="如：审查/review/code review">
+    </div>
+    <div class="form-row">
+      <label>技能描述</label>
+      <textarea id="editSkillDesc" placeholder="技能功能描述..."></textarea>
+    </div>
+    <div class="form-row">
+      <label>状态</label>
+      <select id="editSkillEnabled">
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="hideSkillModal()">取消</button>
+      <button class="ok" onclick="saveSkill()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- 优化：统一确认弹窗（替代原生 confirm） -->
+<div class="modal-mask" id="confirmMask">
+  <div class="modal confirm-modal">
+    <div class="confirm-title" id="confirmTitle">提示</div>
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="confirm-actions">
+      <button class="action-btn" id="confirmCancel" style="background:var(--gray-2);color:var(--ink-2);">取消</button>
+      <button class="action-btn green" id="confirmOk">确定</button>
+    </div>
+  </div>
+</div>
+<!-- 优化：统一输入弹窗（替代原生 prompt） -->
+<div class="modal-mask" id="promptMask">
+  <div class="modal confirm-modal">
+    <div class="confirm-title" id="promptTitle">输入</div>
+    <div class="confirm-msg" id="promptMsg"></div>
+    <input class="confirm-input" id="promptInput">
+    <div class="confirm-actions">
+      <button class="action-btn" id="promptCancel" style="background:var(--gray-2);color:var(--ink-2);">取消</button>
+      <button class="action-btn green" id="promptOk">确定</button>
+    </div>
+  </div>
+</div>
+<!-- 优化：全局 loading 遮罩 -->
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+<script>
+const API = '';
+let adminToken = localStorage.getItem('labcode_admin_token') || '';
+let pluginFileBase64 = '';
+
+// ========== 登录 ==========
+function doLogin() {
+  const user = document.getElementById('loginUser').value;
+  const pass = document.getElementById('loginPass').value;
+  fetch(API + '/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: user, password: pass })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.token) {
+      adminToken = data.token;
+      localStorage.setItem('labcode_admin_token', adminToken);
+      document.getElementById('loginWrap').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      initApp();
+    } else {
+      showErr(data.error || '登录失败');
+    }
+  })
+  .catch(() => showErr('网络错误，请检查服务是否启动'));
+}
+
+function doLogout() {
+  localStorage.removeItem('labcode_admin_token');
+  adminToken = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginWrap').style.display = 'flex';
+}
+
+function showErr(msg) {
+  const el = document.getElementById('loginErr');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+
+function toast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken };
+}
+
+// ========== 页面切换 ==========
+// ========== 优化：统一确认/输入弹窗 + 全局 loading ==========
+let _confirmResolve = null;
+function confirmDialog(title, msg) {
+  return new Promise(res => {
+    _confirmResolve = res;
+    document.getElementById('confirmTitle').textContent = title || '提示';
+    document.getElementById('confirmMsg').textContent = msg || '';
+    document.getElementById('confirmMask').classList.add('show');
+  });
+}
+function _closeConfirm(v){ const m = document.getElementById('confirmMask'); m.classList.remove('show'); const r = _confirmResolve; _confirmResolve = null; if (r) r(v); }
+document.getElementById('confirmOk').onclick = () => _closeConfirm(true);
+document.getElementById('confirmCancel').onclick = () => _closeConfirm(false);
+
+let _promptResolve = null;
+function promptDialog(title, msg, def) {
+  return new Promise(res => {
+    _promptResolve = res;
+    document.getElementById('promptTitle').textContent = title || '输入';
+    document.getElementById('promptMsg').textContent = msg || '';
+    const inp = document.getElementById('promptInput'); inp.value = def != null ? def : '';
+    document.getElementById('promptMask').classList.add('show');
+    setTimeout(() => inp.focus(), 60);
+  });
+}
+function _closePrompt(v){ const m = document.getElementById('promptMask'); m.classList.remove('show'); const r = _promptResolve; _promptResolve = null; if (r) r(v); }
+document.getElementById('promptOk').onclick = () => _closePrompt(document.getElementById('promptInput').value);
+document.getElementById('promptCancel').onclick = () => _closePrompt(null);
+document.getElementById('promptInput').addEventListener('keydown', e => { if (e.key === 'Enter') _closePrompt(document.getElementById('promptInput').value); });
+
+let _lc = 0, _lt = null;
+function showLoading(){
+  _lc++;
+  if (_lt) return;
+  _lt = setTimeout(() => { const o = document.getElementById('loadingOverlay'); if (o) o.classList.add('show'); }, 120);
+}
+function hideLoading(){
+  _lc--;
+  if (_lc <= 0) { _lc = 0; if (_lt) { clearTimeout(_lt); _lt = null; } const o = document.getElementById('loadingOverlay'); if (o) o.classList.remove('show'); }
+}
+(function(){
+  const _orig = window.fetch ? window.fetch.bind(window) : null;
+  if (!_orig) return;
+  window.fetch = function(){ showLoading(); return _orig.apply(window, arguments).finally(hideLoading); };
+})();
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'users') loadUsers();
+  if (name === 'plugins') loadPlugins();
+  if (name === 'credits') loadCredits();
+  if (name === 'models') loadModels();
+  if (name === 'ai-agent') loadAgentConfig();
+  if (name === 'settings') loadSettings();
+  if (name === 'audit') loadAudit();
+}
+
+// ========== 仪表盘 ==========
+function loadDashboard() {
+  fetch(API + '/api/admin/stats', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('statUsers').textContent = data.totalUsers || 0;
+      document.getElementById('statNewUsers').textContent = data.todayNewUsers || 0;
+      document.getElementById('statPlugins').textContent = data.totalPlugins || 0;
+      document.getElementById('statInstalls').textContent = data.totalInstalls || 0;
+      document.getElementById('statModels').textContent = data.availableModels || 0;
+      const tbody = document.getElementById('recentUsers');
+      if (data.recentUsers && data.recentUsers.length) {
+        tbody.innerHTML = data.recentUsers.map(u => `
+          <tr>
+            <td>${u.username || u.email?.split('@')[0] || '-'}</td>
+            <td>${u.email}</td>
+            <td>${u.createdAt?.slice(0,10) || '-'}</td>
+            <td>${(u.planCredits||0) + (u.rechargeCredits||0)}</td>
+            <td><span class="badge ${u.status === 'disabled' ? 'red' : 'green'}">${u.status === 'disabled' ? '已禁用' : '正常'}</span></td>
+          </tr>
+        `).join('');
+      } else {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无用户</td></tr>';
+      }
+    })
+    .catch(() => {});
+}
+
+// ========== 用户管理 ==========
+let allUsers = [];
+function loadUsers() {
+  fetch(API + '/api/admin/users', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      allUsers = data.users || [];
+      const sum = document.getElementById('activeSummary');
+      if (sum) sum.innerHTML = `共 <b>${allUsers.length}</b> 个用户 · 近 7 天活跃 <b>${data.active7d || 0}</b> · 近 30 天活跃 <b>${data.active30d || 0}</b>`;
+      renderUsers();
+    });
+}
+
+function fmtActive(ts) {
+  if (!ts) return '<span style="color:#94a3b8;">从未</span>';
+  const d = new Date(ts);
+  const diff = Date.now() - ts;
+  const min = 60e3, hour = 3600e3, day = 864e5;
+  let rel;
+  if (diff < min) rel = '刚刚';
+  else if (diff < hour) rel = Math.floor(diff / min) + ' 分钟前';
+  else if (diff < day) rel = Math.floor(diff / hour) + ' 小时前';
+  else if (diff < 30 * day) rel = Math.floor(diff / day) + ' 天前';
+  else rel = Math.floor(diff / (30 * day)) + ' 个月前';
+  const ds = d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `${ds} <span style="color:#94a3b8;">(${rel})</span>`;
+}
+
+function renderUsers() {
+  const search = document.getElementById('userSearch').value.toLowerCase();
+  const filter = document.getElementById('userFilter').value;
+  let list = allUsers;
+  if (search) list = list.filter(u => (u.email||'').toLowerCase().includes(search) || (u.username||'').toLowerCase().includes(search));
+  if (filter) list = list.filter(u => u.status === filter);
+  const tbody = document.getElementById('usersTable');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无用户</td></tr>'; return; }
+  tbody.innerHTML = list.map(u => `
+    <tr>
+      <td><input type="checkbox" class="user-check" value="${u.id}"></td>
+      <td style="font-size:11px;color:#94a3b8;">${u.id?.slice(0,8) || '-'}</td>
+      <td>${u.username || '-'}</td>
+      <td>${u.email}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'blue' : 'gray'}">${u.role || 'user'}</span></td>
+      <td>${(u.planCredits||0) + (u.rechargeCredits||0)}</td>
+      <td>${u.createdAt?.slice(0,10) || '-'}</td>
+      <td>${fmtActive(u.lastActive)}</td>
+      <td><span class="badge ${u.status === 'disabled' ? 'red' : 'green'}">${u.status === 'disabled' ? '已禁用' : '正常'}</span></td>
+      <td>
+        <button class="action-btn blue" onclick="editUser('${u.id}')">编辑</button>
+        <button class="action-btn ${u.status === 'disabled' ? 'green' : 'red'}" onclick="toggleUser('${u.id}','${u.status === 'disabled' ? 'active' : 'disabled'}')">${u.status === 'disabled' ? '启用' : '禁用'}</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function editUser(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('editUserId').value = u.id;
+  document.getElementById('editUserName').value = u.username || '';
+  document.getElementById('editUserEmail').value = u.email;
+  document.getElementById('editUserRole').value = u.role || 'user';
+  document.getElementById('editUserStatus').value = u.status || 'active';
+  document.getElementById('editUserCredits').value = 0;
+  document.getElementById('userModal').classList.add('show');
+}
+
+function hideUserModal() { document.getElementById('userModal').classList.remove('show'); }
+
+function saveUser() {
+  const id = document.getElementById('editUserId').value;
+  const status = document.getElementById('editUserStatus').value;
+  const body = {
+    username: document.getElementById('editUserName').value,
+    email: document.getElementById('editUserEmail').value,
+    role: document.getElementById('editUserRole').value
+  };
+  fetch(API + '/api/admin/users/' + id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(() => {
+      const credits = parseInt(document.getElementById('editUserCredits').value) || 0;
+      const tasks = [];
+      if (credits !== 0) {
+        tasks.push(fetch(API + '/api/admin/users/' + id + '/credits', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ delta: credits, reason: '管理员调整' }) }));
+      }
+      // 编辑弹窗的禁用状态走 /disable 端点同步（后端 PUT /users 只存 status 字符串、不生效）
+      tasks.push(fetch(API + '/api/admin/users/' + id + '/disable', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ disabled: status === 'disabled' }) }));
+      return Promise.all(tasks);
+    })
+    .then(() => { toast('用户已更新'); hideUserModal(); loadUsers(); })
+    .catch(e => toast('更新失败', 'error'));
+}
+
+function toggleUser(id, status) {
+  // status: 'disabled' 目标禁用 / 'active' 目标启用；后端 /disable 端点按 body.disabled 控制
+  const disabled = (status === 'disabled');
+  fetch(API + '/api/admin/users/' + id + '/disable', {
+    method: 'PUT', headers: authHeaders(), body: JSON.stringify({ disabled })
+  })
+  .then(() => { toast('状态已更新'); loadUsers(); })
+  .catch(e => toast('操作失败', 'error'));
+}
+
+// ========== 插件管理 ==========
+let allPlugins = [];
+function loadPlugins() {
+  fetch(API + '/api/admin/plugins', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      allPlugins = data.plugins || [];
+      fillPluginFilter();
+      renderPlugins();
+    });
+}
+
+const CAT_NAMES = { 'ai-model':'AI 模型', 'toolchain':'工具链', 'tool':'工具', 'ai-capability':'AI 能力', 'simulator':'模拟器', 'eda':'EDA/设计', 'other':'其他' };
+function catName(c){ return CAT_NAMES[c] || c || '工具链'; }
+function fillPluginFilter(){
+  const sel = document.getElementById('pluginFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  const cats = [...new Set(allPlugins.map(p => p.category || 'toolchain'))];
+  sel.innerHTML = '<option value="">全部分类</option>' + cats.map(c2 => `<option value="${c2}">${catName(c2)}</option>`).join('');
+  sel.value = cur;
+}
+function renderPlugins() {
+  const search = document.getElementById('pluginSearch').value.toLowerCase();
+  const fsel = document.getElementById('pluginFilter');
+  const cat = fsel ? fsel.value : '';
+  let list = allPlugins;
+  if (search) list = list.filter(p => (p.name||'').toLowerCase().includes(search) || (p.id||'').toLowerCase().includes(search));
+  if (cat) list = list.filter(p => (p.category || 'toolchain') === cat);
+  const tbody = document.getElementById('pluginsTable');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无插件</td></tr>'; return; }
+  tbody.innerHTML = list.map(p => `
+    <tr>
+      <td style="font-size:20px;">${p.icon || '🔧'}</td>
+      <td><strong>${p.name}</strong></td>
+      <td style="font-size:11px;color:#94a3b8;">${p.id}</td>
+      <td><span class="badge gray">v${p.version}</span></td>
+      <td><span class="badge ${p.category === 'ai-model' ? 'orange' : 'blue'}">${catName(p.category)}</span></td>
+      <td>${p.installedCount || 0}</td>
+      <td><span class="badge ${p.listed === false ? 'red' : 'green'}">${p.listed === false ? '已下架' : '已上架'}</span></td>
+      <td>
+        <button class="action-btn blue" onclick="editPlugin('${p.id}')">编辑</button>
+        <button class="action-btn ${p.listed === false ? 'green' : 'orange'}" onclick="togglePlugin('${p.id}', ${p.listed === false})">${p.listed === false ? '上架' : '下架'}</button>
+        <button class="action-btn red" onclick="deletePlugin('${p.id}')">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function togglePlugin(id, listed) {
+  fetch(API + '/api/admin/plugins/' + id + '/listed', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ listed }) })
+    .then(() => { toast('状态已更新'); loadPlugins(); })
+    .catch(() => toast('操作失败', 'error'));
+}
+
+async function deletePlugin(id) {
+  if (!await confirmDialog('删除插件', '确定删除插件 ' + id + ' 吗？此操作不可恢复。')) return;
+  fetch(API + '/api/admin/plugins/' + id, { method: 'DELETE', headers: authHeaders() })
+    .then(r => r.json())
+    .then(() => { toast('插件已删除'); loadPlugins(); })
+    .catch(() => toast('删除失败', 'error'));
+}
+
+function showPluginModal() {
+  document.getElementById('pluginId').value = '';
+  document.getElementById('pluginName').value = '';
+  document.getElementById('pluginVersion').value = '';
+  document.getElementById('pluginDesc').value = '';
+  document.getElementById('pluginIcon').value = '🔧';
+  document.getElementById('pluginCategory').value = 'toolchain';
+  document.getElementById('pluginFile').value = '';
+  document.getElementById('pluginFileInfo').textContent = '';
+  pluginFileBase64 = '';
+  document.getElementById('pluginModal').classList.add('show');
+}
+
+function hidePluginModal() { document.getElementById('pluginModal').classList.remove('show'); }
+
+function handlePluginFile() {
+  const file = document.getElementById('pluginFile').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    pluginFileBase64 = e.target.result.split(',')[1];
+    document.getElementById('pluginFileInfo').textContent = `已选择: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function uploadPlugin() {
+  const body = {
+    id: document.getElementById('pluginId').value,
+    name: document.getElementById('pluginName').value,
+    version: document.getElementById('pluginVersion').value,
+    description: document.getElementById('pluginDesc').value,
+    icon: document.getElementById('pluginIcon').value,
+    category: document.getElementById('pluginCategory').value,
+    fileBase64: pluginFileBase64 || undefined
+  };
+  if (!body.id || !body.name || !body.version) { toast('请填写必填字段', 'error'); return; }
+  fetch(API + '/api/admin/plugins/upload', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast('插件上传成功');
+      hidePluginModal();
+      loadPlugins();
+    })
+    .catch(() => toast('上传失败', 'error'));
+}
+
+// ========== 积分管理 ==========
+function loadCredits() {
+  fetch(API + '/api/admin/credits/logs', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const logs = data.logs || [];
+      let total = 0, used = 0, today = 0;
+      const todayStr = new Date().toISOString().slice(0,10);
+      logs.forEach(l => {
+        if (l.amount > 0) total += l.amount;
+        if (l.amount < 0) used += Math.abs(l.amount);
+        if (l.createdAt?.startsWith(todayStr) && l.amount < 0) today += Math.abs(l.amount);
+      });
+      document.getElementById('creditTotal').textContent = total;
+      document.getElementById('creditUsed').textContent = used;
+      document.getElementById('creditToday').textContent = today;
+      drawCreditChart(logs);
+      const tbody = document.getElementById('creditsTable');
+      if (!logs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无积分记录</td></tr>'; return; }
+      tbody.innerHTML = logs.slice(0, 50).map(l => `
+        <tr>
+          <td>${l.createdAt?.slice(0,19).replace('T',' ') || '-'}</td>
+          <td>${l.email || l.userId?.slice(0,8) || '-'}</td>
+          <td><span class="badge ${l.type === 'recharge' ? 'green' : l.type === 'consume' ? 'orange' : 'gray'}">${l.type || '-'}</span></td>
+          <td style="color:${l.amount > 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${l.amount > 0 ? '+' : ''}${l.amount}</td>
+          <td>${l.balanceAfter || '-'}</td>
+          <td>${l.reason || '-'}</td>
+        </tr>
+      `).join('');
+    })
+    .catch(() => {});
+}
+
+// ========== 模型管理 ==========
+let allModels = [];
+function loadModels() {
+  fetch(API + '/api/admin/models', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      allModels = data.models || [];
+      renderModels();
+    })
+    .catch(() => {});
+}
+
+function renderModels() {
+  const tbody = document.getElementById('modelsTable');
+  if (!allModels.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无模型，点击右上角「添加模型」</td></tr>'; return; }
+  tbody.innerHTML = allModels.map(m => {
+    const keyBadge = !m.apiKeyConfigured
+      ? '<span class="badge red">未配置</span>'
+      : m.apiKeySource === 'env'
+        ? '<span class="badge green">已配置·环境变量</span>'
+        : '<span class="badge blue">已配置·网页</span>';
+    return `
+    <tr>
+      <td><strong>${m.name}</strong><br><span style="font-size:11px;color:#94a3b8;">${m.desc || ''}</span></td>
+      <td>${m.provider || '-'}</td>
+      <td style="font-size:11px;color:#64748b;">${m.model}<br><span style="font-size:10px;color:#94a3b8;">${m.apiKeyEnv || ''}</span></td>
+      <td>${m.costPerCall || 1} / ×${m.multiplier || 1}</td>
+      <td>${keyBadge}</td>
+      <td><span class="badge ${m.available ? 'green' : 'red'}">${m.available ? '可用' : '不可用'}</span></td>
+      <td style="white-space:nowrap;">
+        <button class="action-btn green" onclick="showKeyModal('${m.id}')">配置 Key</button>
+        <button class="action-btn blue" onclick="editModel('${m.id}')">编辑</button>
+        <button class="action-btn gray" onclick="testModel('${m.id}')">测试</button>
+        <button class="action-btn red" onclick="deleteModel('${m.id}')">删除</button>
+      </td>
+    </tr>
+  `}).join('');
+}
+
+// —— 新增 / 编辑 ——
+function showModelModal() {
+  document.getElementById('modelModalTitle').textContent = '添加模型';
+  document.getElementById('editModelId').value = '';
+  document.getElementById('editModelMid').value = '';
+  document.getElementById('editModelMid').disabled = false;
+  document.getElementById('editModelName').value = '';
+  document.getElementById('editModelProvider').value = '';
+  document.getElementById('editModelBaseUrl').value = '';
+  document.getElementById('editModelUpstream').value = '';
+  document.getElementById('editModelKeyEnv').value = '';
+  document.getElementById('editModelCost').value = '1';
+  document.getElementById('editModelMult').value = '1';
+  document.getElementById('editModelDesc').value = '';
+  document.getElementById('editModelApiKey').value = '';
+  document.getElementById('modelKeyRow').style.display = 'block';
+  document.getElementById('modelModal').classList.add('show');
+}
+
+function editModel(id) {
+  const m = allModels.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('modelModalTitle').textContent = '编辑模型 · ' + m.name;
+  document.getElementById('editModelId').value = m.id;
+  document.getElementById('editModelMid').value = m.id;
+  document.getElementById('editModelMid').disabled = true;
+  document.getElementById('editModelName').value = m.name || '';
+  document.getElementById('editModelProvider').value = m.provider || '';
+  document.getElementById('editModelBaseUrl').value = m.baseUrl || '';
+  document.getElementById('editModelUpstream').value = m.model || '';
+  document.getElementById('editModelKeyEnv').value = m.apiKeyEnv || '';
+  document.getElementById('editModelCost').value = m.costPerCall || 1;
+  document.getElementById('editModelMult').value = m.multiplier || 1;
+  document.getElementById('editModelDesc').value = m.desc || '';
+  document.getElementById('editModelApiKey').value = '';
+  document.getElementById('modelKeyRow').style.display = 'none'; // 编辑模型时用「配置 Key」单独改
+  document.getElementById('modelModal').classList.add('show');
+}
+
+function hideModelModal() { document.getElementById('modelModal').classList.remove('show'); }
+
+function saveModel() {
+  const id = document.getElementById('editModelId').value;
+  const body = {
+    id: document.getElementById('editModelMid').value.trim(),
+    name: document.getElementById('editModelName').value.trim(),
+    provider: document.getElementById('editModelProvider').value.trim(),
+    baseUrl: document.getElementById('editModelBaseUrl').value.trim(),
+    model: document.getElementById('editModelUpstream').value.trim(),
+    apiKeyEnv: document.getElementById('editModelKeyEnv').value.trim(),
+    costPerCall: parseInt(document.getElementById('editModelCost').value) || 1,
+    multiplier: parseFloat(document.getElementById('editModelMult').value) || 1,
+    desc: document.getElementById('editModelDesc').value.trim(),
+    apiKey: document.getElementById('editModelApiKey').value.trim()
+  };
+  const url = id ? API + '/api/admin/models/' + id : API + '/api/admin/models';
+  const method = id ? 'PUT' : 'POST';
+  fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast(id ? '模型已更新' : '模型已添加');
+      hideModelModal();
+      loadModels();
+    })
+    .catch(() => toast('保存失败', 'error'));
+}
+
+// —— 配置 API Key ——
+let keyModelId = '';
+function showKeyModal(id) {
+  const m = allModels.find(x => x.id === id);
+  if (!m) return;
+  keyModelId = id;
+  document.getElementById('keyModalHint').innerHTML =
+    '模型：<strong>' + m.name + '</strong>（' + m.id + '）<br>环境变量：<code>' + (m.apiKeyEnv || '-') + '</code><br>' +
+    '当前：' + (m.apiKeyConfigured ? (m.apiKeySource === 'env' ? '已通过环境变量配置（优先）' : '已通过网页配置') : '未配置');
+  document.getElementById('editKeyValue').value = '';
+  document.getElementById('keyTestResult').textContent = '';
+  document.getElementById('keyModal').classList.add('show');
+}
+
+function hideKeyModal() { document.getElementById('keyModal').classList.remove('show'); }
+
+function saveKey() {
+  const apiKey = document.getElementById('editKeyValue').value.trim();
+  const m = allModels.find(x => x.id === keyModelId);
+  if (!m) return;
+  fetch(API + '/api/admin/models/' + keyModelId, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ apiKey })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast(apiKey ? 'API Key 已保存并生效（无需重启）' : '已清除网页配置的 Key');
+      hideKeyModal();
+      loadModels();
+    })
+    .catch(() => toast('保存失败', 'error'));
+}
+
+// —— 测试连通性 ——
+function testModel(id) {
+  const m = allModels.find(x => x.id === id);
+  if (!m) return;
+  if (!m.apiKeyConfigured) { toast('请先配置 API Key', 'error'); return; }
+  toast('测试中…');
+  fetch(API + '/api/admin/models/' + id + '/test', { method: 'POST', headers: authHeaders(), body: '{}' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast('测试失败：' + data.error.slice(0, 80), 'error'); return; }
+      toast('测试通过：' + data.ms + 'ms（' + (data.source === 'env' ? '环境变量' : '网页配置') + '）');
+    })
+    .catch(() => toast('测试失败', 'error'));
+}
+
+// —— 删除 ——
+async function deleteModel(id) {
+  const m = allModels.find(x => x.id === id);
+  if (!m) return;
+  if (!await confirmDialog('删除模型', '确定删除模型「' + m.name + '」吗？删除后客户端不再显示该模型。')) return;
+  fetch(API + '/api/admin/models/' + id, { method: 'DELETE', headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast('模型已删除');
+      loadModels();
+    })
+    .catch(() => toast('删除失败', 'error'));
+}
+
+// ========== 系统设置 ==========
+function loadSettings() {
+  fetch(API + '/api/admin/settings', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const s = data.settings || {};
+      document.getElementById('setSiteName').value = s.siteName || 'LabCode';
+      document.getElementById('setSiteDesc').value = s.siteDesc || '';
+      document.getElementById('setFreeCredits').value = s.defaultPlanCredits || 5000;
+      document.getElementById('setRegEnabled').value = s.registrationEnabled !== false ? 'true' : 'false';
+      document.getElementById('setVersion').value = s.appVersion || '1.0.0';
+      document.getElementById('setDownloadUrl').value = s.downloadUrl || '';
+    })
+    .catch(() => {});
+}
+
+function saveSettings() {
+  const body = {
+    siteName: document.getElementById('setSiteName').value,
+    siteDesc: document.getElementById('setSiteDesc').value,
+    defaultPlanCredits: parseInt(document.getElementById('setFreeCredits').value) || 5000,
+    registrationEnabled: document.getElementById('setRegEnabled').value === 'true',
+    appVersion: document.getElementById('setVersion').value,
+    downloadUrl: document.getElementById('setDownloadUrl').value
+  };
+  fetch(API + '/api/admin/settings', { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+    .then(() => toast('设置已保存'))
+    .catch(() => toast('保存失败', 'error'));
+}
+
+// ========== AI 智能体管理 ==========
+function loadAgentConfig() {
+  fetch(API + '/api/admin/agent/config', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const cfg = data.config || {};
+      document.getElementById('agentMode').value = cfg.defaultMode || 'default';
+      document.getElementById('agentMaxTurns').value = cfg.maxTurns || 20;
+      document.getElementById('agentTemp').value = cfg.temperature || 0.7;
+      document.getElementById('agentSubMaxTurns').value = cfg.subAgentMaxTurns || 6;
+      document.getElementById('agentSearchLimit').value = cfg.searchLimit || 200;
+      document.getElementById('agentRateLimit').value = cfg.rateLimit || 100;
+    })
+    .catch(() => {});
+  loadSkills();
+}
+
+function saveAgentConfig() {
+  const body = {
+    defaultMode: document.getElementById('agentMode').value,
+    maxTurns: parseInt(document.getElementById('agentMaxTurns').value) || 20,
+    temperature: parseFloat(document.getElementById('agentTemp').value) || 0.7,
+    subAgentMaxTurns: parseInt(document.getElementById('agentSubMaxTurns').value) || 6,
+    searchLimit: parseInt(document.getElementById('agentSearchLimit').value) || 200,
+    rateLimit: parseInt(document.getElementById('agentRateLimit').value) || 100
+  };
+  fetch(API + '/api/admin/agent/config', { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+    .then(() => toast('Agent 配置已保存'))
+    .catch(() => toast('保存失败', 'error'));
+}
+
+function showSkillModal() {
+  document.getElementById('skillModalTitle').textContent = '新增技能';
+  document.getElementById('editSkillId').value = '';
+  document.getElementById('editSkillName').value = '';
+  document.getElementById('editSkillTriggers').value = '';
+  document.getElementById('editSkillDesc').value = '';
+  document.getElementById('editSkillEnabled').value = 'true';
+  document.getElementById('skillModal').classList.add('show');
+}
+
+function hideSkillModal() { document.getElementById('skillModal').classList.remove('show'); }
+
+function loadSkills() {
+  fetch(API + '/api/admin/agent/skills', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const skills = data.skills || [];
+      const tbody = document.getElementById('skillsTable');
+      if (!skills.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无技能，点击右上角新增</td></tr>'; return; }
+      tbody.innerHTML = skills.map(s => `
+        <tr>
+          <td><strong>${s.name}</strong></td>
+          <td style="font-size:12px;color:#64748b;">${(s.triggers||[]).join(' / ')}</td>
+          <td style="font-size:12px;color:#64748b;max-width:300px;">${s.desc || '-'}</td>
+          <td><span class="badge ${s.enabled ? 'green' : 'gray'}">${s.enabled ? '已启用' : '已禁用'}</span></td>
+          <td>
+            <button class="action-btn blue" onclick="editSkill('${s.id}')">编辑</button>
+            <button class="action-btn ${s.enabled ? 'red' : 'green'}" onclick="toggleSkill('${s.id}')">${s.enabled ? '禁用' : '启用'}</button>
+            <button class="action-btn red" onclick="deleteSkill('${s.id}')">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    })
+    .catch(() => {
+      document.getElementById('skillsTable').innerHTML = '<tr><td colspan="5" class="empty">加载失败</td></tr>';
+    });
+}
+
+function editSkill(id) {
+  fetch(API + '/api/admin/agent/skills', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const skill = (data.skills || []).find(s => s.id === id);
+      if (!skill) return;
+      document.getElementById('skillModalTitle').textContent = '编辑技能';
+      document.getElementById('editSkillId').value = skill.id;
+      document.getElementById('editSkillName').value = skill.name;
+      document.getElementById('editSkillTriggers').value = (skill.triggers || []).join(' / ');
+      document.getElementById('editSkillDesc').value = skill.desc || '';
+      document.getElementById('editSkillEnabled').value = skill.enabled ? 'true' : 'false';
+      document.getElementById('skillModal').classList.add('show');
+    });
+}
+
+function saveSkill() {
+  const id = document.getElementById('editSkillId').value;
+  const body = {
+    name: document.getElementById('editSkillName').value,
+    triggers: document.getElementById('editSkillTriggers').value.split('/').map(s => s.trim()).filter(s => s),
+    desc: document.getElementById('editSkillDesc').value,
+    enabled: document.getElementById('editSkillEnabled').value === 'true'
+  };
+  if (!body.name) { toast('请填写技能名称', 'error'); return; }
+  const url = id ? API + '/api/admin/agent/skills/' + id : API + '/api/admin/agent/skills';
+  const method = id ? 'PUT' : 'POST';
+  fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast(id ? '技能已更新' : '技能已新增');
+      hideSkillModal();
+      loadSkills();
+    })
+    .catch(() => toast('保存失败', 'error'));
+}
+
+function toggleSkill(id) {
+  fetch(API + '/api/admin/agent/skills/' + id + '/toggle', { method: 'PUT', headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast(data.skill.enabled ? '技能已启用' : '技能已禁用');
+      loadSkills();
+    })
+    .catch(() => toast('操作失败', 'error'));
+}
+
+async function deleteSkill(id) {
+  if (!await confirmDialog('删除技能', '确定删除这个技能吗？')) return;
+  fetch(API + '/api/admin/agent/skills/' + id, { method: 'DELETE', headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { toast(data.error, 'error'); return; }
+      toast('技能已删除');
+      loadSkills();
+    })
+    .catch(() => toast('删除失败', 'error'));
+}
+
+// ========== 初始化 ==========
+function initApp() {
+  loadDashboard();
+}
+
+// 自动登录
+if (adminToken) {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initApp();
+}
+
+// 回车登录
+document.getElementById('loginPass').addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
+
+
+// ========== 批量操作 + 审计 + 图表 ==========
+function toggleSelectAll(el) {
+  document.querySelectorAll('.user-check').forEach(ch => ch.checked = el.checked);
+  updateBatchBar();
+}
+function updateBatchBar() {
+  const sel = [...document.querySelectorAll('.user-check:checked')];
+  const bar = document.getElementById('batchBar');
+  if (bar) {
+    bar.style.display = sel.length ? 'inline-flex' : 'none';
+    const c = document.getElementById('batchCount');
+    if (c) c.textContent = '已选 ' + sel.length + ' 人';
+  }
+}
+function getSelectedIds() { return [...document.querySelectorAll('.user-check:checked')].map(ch => ch.value); }
+async function batchDisable(disabled) {
+  const ids = getSelectedIds();
+  if (!ids.length) { toast('请先勾选用户', 'error'); return; }
+  if (!await confirmDialog(disabled ? '批量禁用' : '批量启用', (disabled ? '禁用' : '启用') + '选中的 ' + ids.length + ' 个用户？')) return;
+  Promise.all(ids.map(id => fetch(API + '/api/admin/users/' + id + '/disable', { method:'PUT', headers: authHeaders(), body: JSON.stringify({ disabled }) })))
+    .then(() => { toast('已处理 ' + ids.length + ' 人'); loadUsers(); updateBatchBar(); })
+    .catch(() => toast('批量操作失败', 'error'));
+}
+async function batchAdjustPrompt() {
+  const ids = getSelectedIds();
+  if (!ids.length) { toast('请先勾选用户', 'error'); return; }
+  const delta = await promptDialog('批量调额度', '为选中的 ' + ids.length + ' 个用户统一调整积分（正加负减）：', '0');
+  if (delta === null) return;
+  const n = parseInt(delta);
+  if (isNaN(n) || n === 0) { toast('请输入非零整数', 'error'); return; }
+  Promise.all(ids.map(id => fetch(API + '/api/admin/users/' + id + '/credits', { method:'PUT', headers: authHeaders(), body: JSON.stringify({ delta: n, reason: '管理员批量调整' }) })))
+    .then(() => { toast('已调额 ' + ids.length + ' 人'); loadUsers(); updateBatchBar(); })
+    .catch(() => toast('批量调额失败', 'error'));
+}
+function loadAudit() {
+  fetch(API + '/api/admin/audit', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      const logs = data.logs || [];
+      const tbody = document.getElementById('auditTable');
+      if (!logs.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无审计记录</td></tr>'; return; }
+      const map = { disable_user:'禁用/启用', adjust_credits:'调整积分', update_user:'修改用户' };
+      tbody.innerHTML = logs.slice(0, 200).map(l => `
+        <tr>
+          <td>${l.ts?.slice(0,19).replace('T',' ') || '-'}</td>
+          <td><span class="badge blue">${map[l.action] || l.action}</span></td>
+          <td>${l.target || '-'}</td>
+          <td>${l.detail || '-'}</td>
+        </tr>`).join('');
+    }).catch(() => {});
+}
+function drawCreditChart(logs) {
+  const cv = document.getElementById('creditChart');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const days = {};
+  const today = new Date();
+  for (let i = 13; i >= 0; i--) { const d = new Date(today.getTime() - i*86400000); days[d.toISOString().slice(0,10)] = 0; }
+  logs.forEach(l => { if (l.amount < 0 && l.createdAt) { const k = l.createdAt.slice(0,10); if (k in days) days[k] += Math.abs(l.amount); } });
+  const keys = Object.keys(days), vals = keys.map(k => days[k]), max = Math.max(1, ...vals);
+  const W = cv.width = cv.clientWidth || 600, H = 140, pad = 24, bw = (W - pad*2) / keys.length;
+  ctx.clearRect(0,0,W,H);
+  keys.forEach((k,i) => { const h = (vals[i]/max)*(H-pad*2); ctx.fillStyle='#3b82f6'; ctx.fillRect(pad+i*bw+2, H-pad-h, bw-4, h); ctx.fillStyle='#64748b'; ctx.font='9px sans-serif'; if (i%2===0) ctx.fillText(k.slice(5), pad+i*bw, H-6); });
+  ctx.strokeStyle='#e2e8f0'; ctx.beginPath(); ctx.moveTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
+}
+
+
+// ========== 插件编辑 ==========
+function editPlugin(id) {
+  const p = allPlugins.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('epId').value = p.id;
+  document.getElementById('epName').value = p.name || '';
+  document.getElementById('epCategory').value = p.category || 'toolchain';
+  document.getElementById('epIcon').value = p.icon || '';
+  document.getElementById('epVersion').value = p.version || '';
+  document.getElementById('epDesc').value = p.description || '';
+  document.getElementById('editPluginModal').classList.add('show');
+}
+function hideEditPlugin() { document.getElementById('editPluginModal').classList.remove('show'); }
+function saveEditPlugin() {
+  const id = document.getElementById('epId').value;
+  const body = {
+    name: document.getElementById('epName').value.trim(),
+    category: document.getElementById('epCategory').value,
+    icon: document.getElementById('epIcon').value.trim(),
+    version: document.getElementById('epVersion').value.trim(),
+    description: document.getElementById('epDesc').value
+  };
+  if (!body.name) { toast('请填写插件名称', 'error'); return; }
+  fetch(API + '/api/admin/plugins/' + id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(() => { toast('插件已更新'); hideEditPlugin(); loadPlugins(); })
+    .catch(() => toast('保存失败', 'error'));
+}
+</script>
+</body>
+</html>
