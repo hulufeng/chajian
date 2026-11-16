@@ -5183,7 +5183,9 @@ function setupIPC() {
     if (!effectiveFqbn) return { success: false, error: '缺少 fqbn' };
     if (!port) return { success: false, error: '缺少端口（port）' };
     const norm = normalizeSketchDir(sketchPath);
-    const args = ['upload', '--fqbn', effectiveFqbn, '--port', port, norm.target];
+    // 2026-11-16 修复：改用 compile -u（现编现烧），避免 `arduino-cli upload` 上传缓存里的旧产物
+    // （compile:arduino 与 upload 各自 normalizeSketchDir 生成不同临时目录，upload 可能烧到旧 .bin）。
+    const args = ['compile', '-u', '--fqbn', effectiveFqbn, '--port', port, norm.target];
     const result = await runArduinoCli(args, path.dirname(norm.target));
     if (norm.cleanup) { try { fs.rmSync(norm.cleanup, { recursive: true, force: true }); } catch (e) {} }
     return result;

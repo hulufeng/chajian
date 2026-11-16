@@ -1522,14 +1522,19 @@ const TOOL_DEFS = [
               if (tc && tc.path && tc.exists) cliCmd = '"' + tc.path + '"';
             }
           } catch (e) {}
-          // FQBN 自动识别：默认 ESP32，项目含 esp32-c3/esp32c3 标识时用 esp32c3（对齐实际开发板）
+          // FQBN 自动识别：默认 ESP32；按项目标识匹配具体板型（S3/C3/S2/C6/H2）。
+          // 2026-11-16 修复：原先只识别 C3，ESP32-S3 项目被按普通 ESP32 编译，烧录报
+          // "This chip is ESP32-S3, not ESP32"。补全常见板型，S3 优先。
           let fqbn = 'esp32:esp32:esp32';
           try {
             const inoRes = inoFile ? await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile) : null;
             const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
-            const lowerIno = String(inoContent || '').toLowerCase();
-            const lowerCwd = cwd.toLowerCase();
-            if (/(esp32[-_]?c3|esp32c3)/.test(lowerIno + '|' + lowerCwd)) fqbn = 'esp32:esp32:esp32c3';
+            const hay = (String(inoContent || '') + '|' + cwd).toLowerCase();
+            if (/(esp32[-_]?s3|esp32s3|s3[ _-]?dev)/.test(hay)) fqbn = 'esp32:esp32:esp32s3';
+            else if (/(esp32[-_]?c6|esp32c6)/.test(hay)) fqbn = 'esp32:esp32:esp32c6';
+            else if (/(esp32[-_]?h2|esp32h2)/.test(hay)) fqbn = 'esp32:esp32:esp32h2';
+            else if (/(esp32[-_]?c3|esp32c3)/.test(hay)) fqbn = 'esp32:esp32:esp32c3';
+            else if (/(esp32[-_]?s2|esp32s2)/.test(hay)) fqbn = 'esp32:esp32:esp32s2';
           } catch (e) {}
           // ===== 2026-09-13 修复：临时 sketch 目录编译（解决两个真实问题）=====
           // ① arduino-cli 对 sketch 目录要求主 .ino 与目录同名（否则 "main file missing"）；
@@ -2513,7 +2518,10 @@ const ARDUINO_TOOL_IMPLS = {
       fqbn = (byLine || byTail || fqbnMatches[0]).fqbn;
     }
     if (!fqbn) {
-      if (q.includes('esp32c3') || q.includes('esp32-c3')) fqbn = 'esp32:esp32:esp32c3';
+      if (q.includes('esp32s3') || q.includes('esp32-s3')) fqbn = 'esp32:esp32:esp32s3';
+      else if (q.includes('esp32c3') || q.includes('esp32-c3')) fqbn = 'esp32:esp32:esp32c3';
+      else if (q.includes('esp32c6') || q.includes('esp32-c6')) fqbn = 'esp32:esp32:esp32c6';
+      else if (q.includes('esp32s2') || q.includes('esp32-s2')) fqbn = 'esp32:esp32:esp32s2';
       else if (q.includes('esp32')) fqbn = 'esp32:esp32:esp32';
       else if (q.includes('stm32')) fqbn = 'stm32:stm32:stm32';
     }
