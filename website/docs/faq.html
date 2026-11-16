@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>常见问题 · LabCode 代码实验室</title>
-<meta name="description" content="LabCode 编译失败、烧录被拒、串口占用、AI 网关等常见问题与排查清单。">
+<title>常见问题 · BubaiCode 代码实验室</title>
+<meta name="description" content="BubaiCode 编译失败、烧录被拒、串口占用、AI 网关等常见问题与排查清单。">
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
 <style>
@@ -39,11 +39,11 @@
 </head>
 <body>
 <nav class="nav">
-  <div class="nav-brand"><span class="logo">LC</span> LabCode</div>
+  <div class="nav-brand"><span class="logo">LC</span> BubaiCode</div>
   <div class="nav-links">
     <a href="/codelab/">首页</a><a href="/codelab/plugins.html">插件生态</a><a href="/codelab/download.html">下载</a>
     <a href="/codelab/docs/quick-start.html" class="active">文档</a>
-    <a href="https://github.com/hulufeng/LabCode-plugins" target="_blank">GitHub</a>
+    <a href="https://github.com/hulufeng/labcode-plugins" target="_blank">GitHub</a>
     <a href="/codelab/download.html" class="nav-cta">免费下载</a>
   </div>
 </nav>
@@ -60,9 +60,9 @@
 
     <div class="faq-item"><h3>编译失败怎么办？</h3><p>先确认工具链已启用（设置 → 插件），板型 FQBN 选对；Arduino 首编会自动拉核心，耐心等几分钟。报缺库就去插件市场装对应库。仍失败把报错贴给 AI，它会按「断言 / 编译 / 超时」分类自动修。</p></div>
     <div class="faq-item"><h3>点上传后白等约 142 秒才报错 / 烧录被拒？</h3><p>这是<strong>板卡认错</strong>的典型表现：板子被识别成别的型号，流程空等后被拒。回到「设备」面板，重新选择正确的板型与端口，再上传。</p></div>
-    <div class="faq-item"><h3>串口打不开 / 提示被占用？</h3><p>串口监视器、Arduino IDE、串口助手任一占着端口都会冲突。全部关闭，或在 LabCode 里先停监视再上传。Windows 还可能是驱动未装（见设备管理器黄色感叹号）。</p></div>
+    <div class="faq-item"><h3>串口打不开 / 提示被占用？</h3><p>串口监视器、Arduino IDE、串口助手任一占着端口都会冲突。全部关闭，或在 BubaiCode 里先停监视再上传。Windows 还可能是驱动未装（见设备管理器黄色感叹号）。</p></div>
     <div class="faq-item"><h3>ESP32-S3 / C3 / P4 在设备里显示成同一个设备？</h3><p>它们原生 USB 共用 <code>303a:1001</code>，是靠「板型选择」区分的，不是故障。认准板型即可。</p></div>
-    <div class="faq-item"><h3>AI 网关连不上 / 没响应？</h3><p>LabCode 是<strong>三通道 AI 网关</strong>：① 本地 llama（需本机已部署模型）② BYOK（填入你的 API Key 直连）③ 官方登录 + 积分（注册送积分，免费起步）。先确认选的是哪条通道、凭证是否有效。</p></div>
+    <div class="faq-item"><h3>AI 网关连不上 / 没响应？</h3><p>BubaiCode 是<strong>三通道 AI 网关</strong>：① 本地 llama（需本机已部署模型）② BYOK（填入你的 API Key 直连）③ 官方登录 + 积分（注册送积分，免费起步）。先确认选的是哪条通道、凭证是否有效。</p></div>
     <div class="faq-item"><h3>我的代码 / 数据会外传到云端吗？</h3><p>本地优先是核心定位：工程文件与调试日志<strong>默认只写本机、不外发</strong>，仅记录排错必需字段（不记文件内容、不记 AI 正文、不记 Key）。只有你主动配置 BYOK 或调用官方云模型时，才会按你的设置发起对应请求。</p></div>
     <div class="faq-item"><h3>支持哪些开发板？</h3><p>板卡来自 <code>boardRegistry.ts</code>（单一数据源），当前收录 <strong>10 款：5 款 ESP32（S3/C3/P4 等）+ 5 款 STM32</strong>。新增板只需改这一个文件，并满足三条件：能编译 + OpenOCD 有 cfg + USB VID:PID 真实。</p></div>
     <div class="faq-item"><h3>插件市场 / 后台怎么用？</h3><p>插件市场与联系表单、内容块、版本、下载计数由后端 <code>server.mjs</code>（零依赖 Node ESM，端口 8788）提供；管理后台在 <code>/admin/</code>。接口细节见 <a href="api-reference.html">接口参考</a>。</p></div>
@@ -70,6 +70,6 @@
     <div class="callout warn"><strong>仍解决不了？</strong>在「帮助 → 导出测试报告」生成诊断文件发给我，里面含板卡识别、端口、烧录等关键埋点（已脱敏），能直接定位问题。</div>
   </div>
 </div>
-<footer class="footer"><p>© 2026 LabCode 代码实验室 · 通用软件开发智能体</p></footer>
+<footer class="footer"><p>© 2026 BubaiCode 代码实验室 · 通用软件开发智能体</p></footer>
 </body>
 </html>

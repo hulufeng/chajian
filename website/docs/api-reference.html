@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>接口参考 · LabCode 代码实验室</title>
-<meta name="description" content="LabCode 官网后端 REST 接口：插件市场、联系表单、内容块、版本、下载计数与管理后台。">
+<title>接口参考 · BubaiCode 代码实验室</title>
+<meta name="description" content="BubaiCode 官网后端 REST 接口：插件市场、联系表单、内容块、版本、下载计数与管理后台。">
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
 <style>
@@ -42,11 +42,11 @@
 </head>
 <body>
 <nav class="nav">
-  <div class="nav-brand"><span class="logo">LC</span> LabCode</div>
+  <div class="nav-brand"><span class="logo">LC</span> BubaiCode</div>
   <div class="nav-links">
     <a href="/codelab/">首页</a><a href="/codelab/plugins.html">插件生态</a><a href="/codelab/download.html">下载</a>
     <a href="/codelab/docs/quick-start.html" class="active">文档</a>
-    <a href="https://github.com/hulufeng/LabCode-plugins" target="_blank">GitHub</a>
+    <a href="https://github.com/hulufeng/labcode-plugins" target="_blank">GitHub</a>
     <a href="/codelab/download.html" class="nav-cta">免费下载</a>
   </div>
 </nav>
@@ -90,7 +90,7 @@
     <div class="endpoint">
       <div class="head"><span class="method m-get">GET</span><span class="path">/api/version</span></div>
       <p>返回当前客户端最新版本与下载地址，供更新检测使用。</p>
-      <pre><code>{ "version": "1.4.2", "notes": "...", "url": "https://.../LabCode-Setup.exe" }</code></pre>
+      <pre><code>{ "version": "1.4.2", "notes": "...", "url": "https://.../BubaiCode-Setup.exe" }</code></pre>
     </div>
 
     <h2>联系表单</h2>
@@ -103,9 +103,9 @@
 
     <h2>下载计数</h2>
     <div class="endpoint">
-      <div class="head"><span class="method m-get">GET</span><span class="path">/api/downloads?file=LabCode-Setup.exe</span></div>
+      <div class="head"><span class="method m-get">GET</span><span class="path">/api/downloads?file=BubaiCode-Setup.exe</span></div>
       <p>返回指定安装包的累计下载次数。</p>
-      <pre><code>{ "file": "LabCode-Setup.exe", "count": 5821 }</code></pre>
+      <pre><code>{ "file": "BubaiCode-Setup.exe", "count": 5821 }</code></pre>
     </div>
 
     <h2>管理后台</h2>
@@ -124,6 +124,6 @@
     <div class="callout tip">插件市场接入规范见 <a href="plugin-dev.html">插件开发指南</a>；部署与后端结构见 <a href="faq.html">常见问题</a>。</div>
   </div>
 </div>
-<footer class="footer"><p>© 2026 LabCode 代码实验室 · 通用软件开发智能体</p></footer>
+<footer class="footer"><p>© 2026 BubaiCode 代码实验室 · 通用软件开发智能体</p></footer>
 </body>
 </html>

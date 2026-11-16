@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>插件开发指南 · LabCode 代码实验室</title>
-<meta name="description" content="开发自有插件接入 LabCode：七类通用通道（cli/http/grpc/mcp/mqtt/internal/backend）、工具链检测、类型化能力、命令/视图/项目类型声明、manifest 契约与示例。">
+<title>插件开发指南 · BubaiCode 代码实验室</title>
+<meta name="description" content="开发自有插件接入 BubaiCode：七类通用通道（cli/http/grpc/mcp/mqtt/internal/backend）、工具链检测、类型化能力、命令/视图/项目类型声明、manifest 契约与示例。">
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
 <style>
@@ -105,13 +105,13 @@
 <body>
 
 <nav class="nav">
-  <div class="nav-brand"><span class="logo">LC</span> LabCode</div>
+  <div class="nav-brand"><span class="logo">LC</span> BubaiCode</div>
   <div class="nav-links">
     <a href="/codelab/">首页</a>
     <a href="/codelab/plugins.html">插件生态</a>
     <a href="/codelab/download.html">下载</a>
     <a href="/codelab/docs/quick-start.html" class="active">文档</a>
-    <a href="https://github.com/hulufeng/LabCode-plugins" target="_blank">GitHub</a>
+    <a href="https://github.com/hulufeng/labcode-plugins" target="_blank">GitHub</a>
     <a href="/codelab/download.html" class="nav-cta">免费下载</a>
   </div>
 </nav>
@@ -129,12 +129,12 @@
 
   <div class="content">
     <h1>插件开发指南</h1>
-    <p class="lead">开发自有插件接入 LabCode：七类通用通道、工具链检测、类型化能力、命令 / 视图 / 项目类型声明、manifest 契约与示例。</p>
+    <p class="lead">开发自有插件接入 BubaiCode：七类通用通道、工具链检测、类型化能力、命令 / 视图 / 项目类型声明、manifest 契约与示例。</p>
 
-    <p>LabCode 的插件系统面向第三方开放：任何开发者都可以编写插件，把自定义工具链接入 AI 智能体与 UI，无需修改 LabCode 本体。插件通过 <code>manifest.json</code> 声明工具、类型化能力、命令、视图与项目类型，宿主统一分发渲染——UI 与 AI 同源获得插件能力。</p>
+    <p>BubaiCode 的插件系统面向第三方开放：任何开发者都可以编写插件，把自定义工具链接入 AI 智能体与 UI，无需修改 BubaiCode 本体。插件通过 <code>manifest.json</code> 声明工具、类型化能力、命令、视图与项目类型，宿主统一分发渲染——UI 与 AI 同源获得插件能力。</p>
 
     <h2>插件结构</h2>
-    <p>一个插件就是一个目录（安装后位于 <code>%APPDATA%\LabCode\plugins\{id}</code>）。目录按需存在，只有 <code>manifest.json</code> 是必填的：</p>
+    <p>一个插件就是一个目录（安装后位于 <code>%APPDATA%\BubaiCode\plugins\{id}</code>）。目录按需存在，只有 <code>manifest.json</code> 是必填的：</p>
     <pre><code>my-toolchain/
 ├── manifest.json          # manifest（必填）
 ├── ui/                    # Web 视图页面（views.webview 的 entry，可选）
@@ -437,13 +437,13 @@
 
     <h2>打包与发布</h2>
     <p>插件打包为 zip 上传到市场。zip 内可直接是 <code>manifest.json</code> 或包在一个子目录里。安装方式：插件市场一键安装，或「设置 → 插件 → 从文件夹安装」。</p>
-    <div class="callout warn"><strong>安全提示：</strong>插件拥有执行命令的能力，请只从可信来源安装。LabCode 对工具的参数注入有防护（cli 用数组参数、grpc 只连自身 backend），但插件作者声明的内容本身是受信任的。</div>
+    <div class="callout warn"><strong>安全提示：</strong>插件拥有执行命令的能力，请只从可信来源安装。BubaiCode 对工具的参数注入有防护（cli 用数组参数、grpc 只连自身 backend），但插件作者声明的内容本身是受信任的。</div>
 
   </div>
 </div>
 
 <footer class="footer">
-  <p>© 2026 LabCode 代码实验室 · 通用软件开发智能体</p>
+  <p>© 2026 BubaiCode 代码实验室 · 通用软件开发智能体</p>
 </footer>
 
 </body>

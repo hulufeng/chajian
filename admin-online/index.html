@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LabCode 管理后台</title>
+<title>BubaiCode 管理后台</title>
 <style>
 :root{
   --accent:#059669; --accent-deep:#047857; --accent-soft:rgba(5,150,105,.10);
@@ -152,7 +152,7 @@ button { font-family:inherit; }
 <!-- 登录页 -->
 <div class="login-wrap" id="loginWrap">
   <div class="login-box">
-    <h1><img class="logo" src="/assets/logo-mark@2x.png" alt="LabCode"> 管理后台</h1>
+    <h1><img class="logo" src="/assets/logo-mark@2x.png" alt="BubaiCode"> 管理后台</h1>
     <p>请使用管理员账号登录</p>
     <label>用户名</label>
     <input type="text" id="loginUser" placeholder="admin" value="admin">
@@ -167,7 +167,7 @@ button { font-family:inherit; }
 <div class="app" id="app">
   <!-- 侧边栏 -->
   <div class="sidebar">
-    <div class="logo"><div class="lc">LC</div><img src="/assets/logo-mark@2x.png" alt="LabCode"></div>
+    <div class="logo"><div class="lc">LC</div><img src="/assets/logo-mark@2x.png" alt="BubaiCode"></div>
     <div class="nav-item active" onclick="showPage('dashboard')">📊 <span>仪表盘</span></div>
     <div class="nav-item" onclick="showPage('users')">👥 <span>用户管理</span></div>
     <div class="nav-item" onclick="showPage('plugins')">🔌 <span>插件管理</span></div>
@@ -423,7 +423,7 @@ button { font-family:inherit; }
       <div class="settings-grid">
         <div class="setting-item">
           <label>网站名称</label>
-          <input type="text" id="setSiteName" value="LabCode">
+          <input type="text" id="setSiteName" value="BubaiCode">
           <div class="desc">显示在网站标题和页脚</div>
         </div>
         <div class="setting-item">
@@ -1274,7 +1274,7 @@ function loadSettings() {
     .then(r => r.json())
     .then(data => {
       const s = data.settings || {};
-      document.getElementById('setSiteName').value = s.siteName || 'LabCode';
+      document.getElementById('setSiteName').value = s.siteName || 'BubaiCode';
       document.getElementById('setSiteDesc').value = s.siteDesc || '';
       document.getElementById('setFreeCredits').value = s.defaultPlanCredits || 5000;
       document.getElementById('setRegEnabled').value = s.registrationEnabled !== false ? 'true' : 'false';
