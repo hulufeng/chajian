@@ -43,9 +43,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // 下载目标（可用环境变量覆盖；默认走 bluebubai.work 更新服务器）
 const DOWNLOAD_URLS = {
-  windows: process.env.DOWNLOAD_URL_WINDOWS || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.exe',
-  macos: process.env.DOWNLOAD_URL_MACOS || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.dmg',
-  linux: process.env.DOWNLOAD_URL_LINUX || 'https://bluebubai.work/updates/LabCode-Setup-1.1.9.AppImage',
+  windows: process.env.DOWNLOAD_URL_WINDOWS || 'https://bluebubai.work/updates/BubaiCode-Setup-1.2.35.exe',
+  macos: process.env.DOWNLOAD_URL_MACOS || 'https://bluebubai.work/updates/BubaiCode-Setup-1.2.35.dmg',
+  linux: process.env.DOWNLOAD_URL_LINUX || 'https://bluebubai.work/updates/BubaiCode-Setup-1.2.35.AppImage',
 };
 
 // ---------- 数据层 ----------
