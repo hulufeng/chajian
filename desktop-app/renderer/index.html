@@ -341,7 +341,7 @@
     </div>
     <div class="titlebar-center" style="display:none;"></div>
     <div class="titlebar-right">
-      <!-- 账号/积分数字徽章（对齐参考基线 ①：蓝底白字圆徽章，真实今日剩余额度，点击=账号卡；无通知系统不放假角标） -->
+      <!-- 账号额度徽章（对齐 ChipCode 实测：28×28 圆形中性底 + 深色数字，真实今日剩余额度，点击=账号卡；无通知系统不放假角标） -->
       <button class="titlebar-btn credits-pill" id="credits-pill" title="BubaiCode 账号（今日剩余额度）" style="display:none;">–</button>
       <button class="titlebar-btn icon-only" id="settings-btn" title="设置"><svg class="icon"><use href="#icon-settings"></use></svg></button>
       <div class="window-controls">
@@ -352,8 +352,9 @@
     </div>
   </div>
 
-  <!-- 主内容区 -->
+  <!-- 主内容区：外层列（行区 + 底栏），行区承载 活动栏/侧栏/编辑区/AI 面板（对齐 ChipCode 主行 flex:1 1 0% + 底栏） -->
   <div class="main-container">
+    <div class="main-row">
     <!-- 活动栏：对齐 ChipCode 原品（2026-11-13 复测）第 2 项为「产品工厂」，此处补回独立入口；
          其侧栏内容复用「文件」侧栏内的 #product-factory-view（由 product-factory.js 渲染） -->
     <div class="activity-bar">
@@ -635,7 +636,7 @@
       <!-- 智能体面板（1:1 对齐 ChipCode 原品「后台智能体」：
            头部 ui-panel-header（标题 + 后台任务/刷新 两个动作）→ 分组「最近完成」+ 计数 →
            agents-row 列表（状态点 + 标题/时间/条数 + 「已保存」徽章 + 移除）→ 底部「定时任务设置」） -->
-      <div class="agents-panel" id="agents-panel" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+      <div class="agents-panel" id="agents-panel" style="display:none;flex:1;flex-direction:column;">
         <div class="ui-panel-header">
           <div class="ui-panel-header__title">后台智能体</div>
           <div class="ui-panel-header__actions">
@@ -1190,8 +1191,8 @@
               <div id="ai-attach-preview" style="display:none;"></div>
               <div class="ai-input-toolbar">
                 <div class="ai-input-left">
-                  <button class="ai-input-tool-btn" id="attach-btn" title="添加附件"><svg class="icon"><use href="#icon-plus"></use></svg></button>
-                  <button class="ai-input-tool-btn" id="image-btn" title="添加图片"><svg class="icon"><use href="#icon-image"></use></svg></button>
+                  <button class="ai-input-tool-btn" id="attach-btn" title="附加文件"><svg class="icon"><use href="#icon-plus"></use></svg></button>
+                  <button class="ai-input-tool-btn" id="image-btn" title="上传图片（识别图中内容）"><svg class="icon"><use href="#icon-image"></use></svg></button>
                   <span id="ctx-ring" title="上下文占用" style="display:none;align-items:center;margin:0 2px;cursor:default;"></span>
                   <span class="ai-input-project-status" id="project-status">
                     <span class="project-status-icon"><svg class="icon icon-xs"><use href="#icon-file"></use></svg></span>
@@ -1213,7 +1214,7 @@
                   </div>
                   <!-- 对齐 ChipCode 原品：工具栏「思考强度」下拉（复用 thinkingManager 四档 + config 持久化） -->
                   <div style="position:relative;display:flex;align-items:center;">
-                    <button class="ai-input-tool-btn" id="tb-think-btn" title="思考强度：标准思考" style="width:auto;padding:0 6px;gap:4px;font-size:11px;">
+                    <button class="ai-input-tool-btn" id="tb-think-btn" title="思考强度: 标准思考" style="width:auto;padding:0 6px;gap:4px;font-size:11px;">
                       <svg class="icon icon-xs"><use href="#icon-brain"></use></svg><svg class="icon icon-xs"><use href="#icon-chevron-down"></use></svg>
                     </button>
                     <div id="tb-think-menu" style="display:none;position:absolute;bottom:34px;right:0;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:600;min-width:150px;overflow:hidden;">
@@ -1239,7 +1240,7 @@
                     </div>
                   </div>
                   <!-- 对齐 ChipCode 原品：语音按钮在模型之后、发送之前 -->
-                  <button class="ai-input-tool-btn" id="voice-btn" title="语音输入（点击开始/停止录音）"><svg class="icon"><use href="#icon-mic"></use></svg></button>
+                  <button class="ai-input-tool-btn" id="voice-btn" title="语音输入（点开始录音）"><svg class="icon"><use href="#icon-mic"></use></svg></button>
                   <button class="ai-send-btn" id="ai-send-btn" title="发送">
                     <svg class="icon"><use href="#icon-arrow-up"></use></svg>
                   </button>
@@ -1398,6 +1399,7 @@
       </div>
 
     </div><!-- /editor-container（底部面板已移出，作为全宽兄弟节点） -->
+    </div><!-- /main-row（活动栏/侧栏/编辑区/AI 面板：flex:1 1 0% 定高，overflow:hidden） -->
 
     <!-- 底部面板（对齐 ChipCode：跨全宽显示于主内容区下方；欢迎态与有项目态均可见） -->
     <div class="bottom-panel" id="bottom-panel">
@@ -1664,6 +1666,7 @@
               <div class="settings-nav-item" data-target="panel-memory">记忆</div>
               <div class="settings-nav-item" data-target="panel-skills">技能</div>
               <div class="settings-nav-item" data-target="panel-search">搜索</div>
+              <div class="settings-nav-item" data-target="panel-ai-tools">AI 工具</div>
             </div>
             <div class="settings-nav-group">
               <div class="settings-nav-group-title">集成</div>
@@ -1974,6 +1977,27 @@
                   <span id="search-stats" style="font-size: 11.5px;color:var(--text-tertiary);margin-left:auto;"></span>
                 </div>
                 <div id="search-result" style="font-size: 11.5px;color:var(--text-secondary);white-space:pre-wrap;max-height:120px;overflow:auto;"></div>
+              </div>
+              <!-- AI · 工具（自研功能入口：不占 AI 顶栏，保持与 ChipCode 的 6 图标对齐） -->
+              <div class="settings-panel" id="panel-ai-tools">
+                <h4 style="margin:0 0 12px 0;font-size: 13px;color:var(--text-color);">AI 工具</h4>
+                <div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6;">以下为 BubaiCode 自研功能，入口从 AI 顶栏移到这里，不影响顶栏布局。</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border-color);">
+                  <div style="flex:1;"><div style="font-size: 12.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">用量统计</div><div style="font-size: 11.5px;color:var(--text-secondary);line-height:1.6;">查看 AI 调用次数、Token 消耗与最近调用记录。</div></div>
+                  <button class="btn btn-secondary" id="tool-open-usage" style="flex:none;">打开</button>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border-color);">
+                  <div style="flex:1;"><div style="font-size: 12.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">优化提示词</div><div style="font-size: 11.5px;color:var(--text-secondary);line-height:1.6;">用当前模型优化 AI 输入框中的提示词（空输入会提示）。</div></div>
+                  <button class="btn btn-secondary" id="tool-open-optimize" style="flex:none;">打开</button>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border-color);">
+                  <div style="flex:1;"><div style="font-size: 12.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">记忆库</div><div style="font-size: 11.5px;color:var(--text-secondary);line-height:1.6;">查看与删除 AI 长期记忆（memory/memories.json）。</div></div>
+                  <button class="btn btn-secondary" id="tool-open-memory" style="flex:none;">打开</button>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;">
+                  <div style="flex:1;"><div style="font-size: 12.5px;font-weight:600;color:var(--text-color);margin-bottom:4px;">时间旅行</div><div style="font-size: 11.5px;color:var(--text-secondary);line-height:1.6;">按文件变更批次回滚或截断 AI 改动。</div></div>
+                  <button class="btn btn-secondary" id="tool-open-rewind" style="flex:none;">打开</button>
+                </div>
               </div>
 
               <!-- 集成 · MCP 服务器 -->

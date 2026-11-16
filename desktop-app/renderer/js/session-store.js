@@ -171,7 +171,9 @@
       if (!Array.isArray(log) || !log.length) return null;
       var firstUser = null;
       for (var i = 0; i < log.length; i++) if (log[i].role === 'user') { firstUser = log[i]; break; }
-      var title = String((firstUser && firstUser.content) || '对话').replace(/\s+/g, ' ').trim().slice(0, 40) || '对话';
+      // 对齐 ChipCode：标题超过 30 字截断并追加省略号（titleFromPrompt / currentSessionTitle 同规则）
+      var raw = String((firstUser && firstUser.content) || '对话').replace(/\s+/g, ' ').trim() || '对话';
+      var title = raw.length > 30 ? raw.slice(0, 30) + '...' : raw;
       var id = currentId;
       var s = id ? Store.get(id) : null;
       if (id && !s) id = null; // 指向已删除会话：尊重删除，不写回

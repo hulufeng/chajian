@@ -2670,6 +2670,142 @@ const ARDUINO_TOOL_IMPLS = {
     if (memM) res += '动态内存: ' + memM[1] + ' bytes (' + memM[2] + '%)\n';
     res += '\n--- 完整输出（截断） ---\n' + output.slice(0, 3500);
     return res;
+  },
+  // 2026-11-15 烧录实现（参照 compile 的宿主内置路径）：市场插件 upload 工具用 {sketch}/{port}
+  // 占位符，UI 未传参会残留字面量导致必败，故 UI 烧录统一走宿主实现。
+  // 端口选择：显式参数 → select_board/设备面板状态 → 唯一 USB 串口自动选择；
+  // 中文路径：把 .ino 暂存到纯 ASCII 临时目录再以该目录为 cwd 执行，结束后清理。
+  async upload(args) {
+    args = args || {};
+    const cwd = state.projectPath;
+    if (!cwd) return '烧录失败：未打开项目目录，无法烧录';
+    if (!isElectron || !window.BubaiCode) return '烧录失败：非 Electron 环境，烧录不可用';
+    const cli = await getArduinoCliCmd();
+    if (!cli.ok) return cli.out;
+    const isAscii = (s) => /^[\x00-\x7F]*$/.test(String(s || ''));
+    // 1) 定位 .ino（与 compile 相同：项目根 → src → 内存文件树）
+    let inoFile = '';
+    try {
+      const safeList = async (dir) => {
+        try {
+          if (window.BubaiCode.fs.listDir) {
+            const r = await window.BubaiCode.fs.listDir(dir);
+            if (r && r.success && Array.isArray(r.files)) return r.files.map(f => f.name);
+          }
+          return [];
+        } catch (e) { return []; }
+      };
+      inoFile = (await safeList(cwd)).find(f => /\.ino$/.test(f)) || '';
+      if (!inoFile) {
+        const src = await safeList(cwd + '\\src');
+        const hit = src.find(f => /\.ino$/.test(f));
+        if (hit) inoFile = 'src\\' + hit;
+      }
+      if (!inoFile && state.files) {
+        const mem = Object.keys(state.files).find(f => /\.ino$/.test(f));
+        if (mem) inoFile = mem.replace(/\//g, '\\');
+      }
+    } catch (e) {}
+    if (!inoFile) return '烧录失败：项目中没有 .ino 文件';
+    // 2) FQBN：显式参数 → select_board → 设备面板选择 → 按 .ino 内容/路径推断
+    let fqbn = args.fqbn || state.arduinoFqbn || state.compileFqbn || '';
+    if (!fqbn) {
+      try {
+        const inoRes = await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile);
+        const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
+        const lower = (inoContent + '|' + cwd).toLowerCase();
+        fqbn = /(esp32[-_]?s3|esp32s3)/.test(lower) ? 'esp32:esp32:esp32s3'
+          : /(esp32[-_]?c3|esp32c3)/.test(lower) ? 'esp32:esp32:esp32c3'
+          : /esp32/.test(lower) ? 'esp32:esp32:esp32'
+          : 'arduino:avr:uno';
+      } catch (e) { fqbn = 'esp32:esp32:esp32'; }
+    }
+    // 3) 端口：显式参数 → 设备面板/状态 → 唯一 USB 串口自动选择
+    let port = String(args.port || state.arduinoPort || state.compilePort || '').trim();
+    let portNote = '';
+    if (!port) {
+      try {
+        const pSel = document.getElementById('port-select');
+        if (pSel && pSel.value) port = pSel.value;
+      } catch (e) {}
+    }
+    if (!port) {
+      try {
+        const r = await window.BubaiCode.serial.list();
+        const ports = (r && r.ports) || [];
+        const usb = ports.filter(p => p.vendorId);
+        if (usb.length === 1) { port = usb[0].port; portNote = '（自动选择唯一 USB 串口）'; }
+        else {
+          const list = ports.map(p => p.port + (p.board ? ' ' + p.board : '')).join('、') || '无';
+          return '烧录失败：未选择串口。可用串口：' + list + '。请先在设备面板选择端口后重试。';
+        }
+      } catch (e) {
+        return '烧录失败：未选择串口，且串口枚举失败（' + (e && e.message ? e.message : String(e)) + '）';
+      }
+    }
+    // 4) ASCII 暂存：中文项目路径下 arduino-cli 易失败，复制 .ino 到纯 ASCII 临时目录执行。
+    //    与 compile 一致：暂存目录名与 .ino 同名（arduino-cli 要求 sketch 目录与主文件同名）。
+    let stageDir = '';
+    let sketchArg = cwd;
+    let runCwd = cwd;
+    try {
+      let base = '';
+      try { base = await window.BubaiCode.app.getPath('temp'); } catch (e) {}
+      if (!base || !isAscii(base)) base = 'C:\\Windows\\Temp';
+      if (!isAscii(base)) base = 'C:\\';
+      const dirName = 'bubaicode_upload';
+      stageDir = base.replace(/[\\\/]+$/, '') + '\\' + dirName;
+      await window.BubaiCode.fs.mkdir(stageDir);
+      const dest = stageDir + '\\' + dirName + '.ino';
+      const cp = await window.BubaiCode.fs.copyFile(cwd + '\\' + inoFile, dest);
+      if (cp && cp.success) { sketchArg = stageDir; runCwd = stageDir; }
+      else stageDir = '';
+    } catch (e) { stageDir = ''; }
+    const cmdSeq = [];
+    const runUploadCmd = async (extraArgs) => {
+      const full = cli.cmd + ' compile --upload -p ' + port + ' --fqbn ' + fqbn + (extraArgs || '') + ' "' + sketchArg + '"';
+      cmdSeq.push(full);
+      try {
+        const r = await window.BubaiCode.terminal.execute(full, runCwd, 600000);
+        return { output: (r.stdout || '') + (r.stderr ? '\n' + r.stderr : ''), result: r };
+      } catch (e) {
+        return { output: '烧录执行异常: ' + e.message, result: null };
+      }
+    };
+    let output = '';
+    let result = null;
+    let cacheLocked = false;
+    {
+      const first = await runUploadCmd('');
+      output = first.output;
+      result = first.result;
+      // arduino-cli 默认构建缓存（%LOCALAPPDATA%\arduino\sketches）被安全软件锁定时，
+      // 改用 ASCII 暂存目录内的独立构建目录重试一次，避免环境锁阻断烧录。
+      if (!/Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
+        && /Access is denied/i.test(output) && /arduino[\\\/]sketches/i.test(output)) {
+        cacheLocked = true;
+        const altBuild = runCwd.replace(/[\\\/]+$/, '') + '\\bubaicode_build';
+        try { await window.BubaiCode.fs.mkdir(altBuild); } catch (e) {}
+        if (state.terminal) state.terminal.writeln('[upload] 默认构建缓存目录被占用，改用独立构建目录重试: ' + altBuild);
+        const second = await runUploadCmd(' --build-path "' + altBuild + '"');
+        if (/Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(second.output)) output = second.output;
+        else output = output + '\n[已改用独立构建目录重试]\n' + second.output;
+        result = second.result;
+      }
+    }
+    if (state.terminal && output) output.split('\n').forEach(l => state.terminal.writeln(l));
+    if (stageDir) { try { await window.BubaiCode.fs.deleteFile(stageDir); } catch (e) {} }
+    const ok = /Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
+      && !/A fatal error occurred|Failed to (?:connect|open)|could not open port|拒绝访问/i.test(output);
+    const exitCode = result && result.exitCode !== undefined ? result.exitCode : (result && result.success ? 0 : 1);
+    state.lastUploadResult = { ok, exitCode, port, fqbn, fqbnGuess: !args.fqbn && !state.arduinoFqbn && !state.compileFqbn, cacheLocked, cmds: cmdSeq, output, at: Date.now() };
+    const cacheNote = cacheLocked ? '（默认构建缓存被占用，已改用独立构建目录）' : '';
+    let res = ok ? 'UPLOAD OK. 端口 ' + port + ' / 开发板 ' + fqbn + portNote + cacheNote + '\n'
+      : 'UPLOAD FAILED (exit ' + exitCode + ') 端口 ' + port + ' / 开发板 ' + fqbn + cacheNote + '\n';
+    const hint = output.split('\n').find(l => /A fatal error occurred|Failed to |error:|could not open port|拒绝访问/i.test(l));
+    if (hint) res += '首条线索: ' + hint.trim().slice(0, 300) + '\n';
+    res += '\n--- 完整输出（截断） ---\n' + output.slice(0, 3500);
+    return res;
   }
 };
 function getToolDef(name) {
@@ -6511,7 +6647,11 @@ class AgentRunner {
     const runStartedAt = Date.now();
     this.messages.push({ role: 'user', content: userInput, startedAt: runStartedAt, attachments: this._pendingAttachments || [] });
     this._pendingAttachments = [];
-    if (!this.sessionTitle) this.sessionTitle = String(userInput).replace(/\s+/g, ' ').trim().slice(0, 24);
+    if (!this.sessionTitle) {
+      // 对齐 ChipCode：标题超过 30 字截断并追加省略号（与 session-store / titleFromPrompt 同规则）
+      const rawTitle = String(userInput).replace(/\s+/g, ' ').trim();
+      this.sessionTitle = rawTitle.length > 30 ? rawTitle.slice(0, 30) + '...' : rawTitle;
+    }
     this.budget = new BudgetTracker(20, 4);
     this.sterileRecovered = false;
     this.budgetHinted = false;         // 每次 run 重置预算提醒
@@ -11085,8 +11225,8 @@ function bindEvents() {
       const devicePanel = document.getElementById('device-panel');
       const gitPanel = document.getElementById('git-panel');
       const sidebarHeader = sidebar ? sidebar.querySelector('.sidebar-header') : null;
-      // 对齐参考基线 插件面板宽度：351px（实测对齐 ChipCode 原品插件侧栏宽度）；其他面板恢复默认窄栏
-      // 必须用 !important 内联，否则会被 body.app-welcome 的 .left-column { width:26% !important } 覆盖
+      // 对齐 ChipCode 插件面板宽度：351px（ChipCode 侧栏为单一固定 px，WPROBE 实测各视口恒 351）；其余面板恢复 CSS 默认（同为固定 351px）
+      // 注：CSS 已统一固定 351px，此处仅为显式兜底，避免其他内联宽度残留
       const leftCol = sidebar ? sidebar.closest('.left-column') : null;
       const setLeftColWidth = (w) => {
         if (!leftCol) return;
@@ -14166,9 +14306,9 @@ function bindEvents() {
 
     function syncTitle(level) {
       const b = getBtn();
-      if (b) b.title = '思考强度：' + (NAMES[level] || NAMES.standard);
+      if (b) b.title = '思考强度: ' + (NAMES[level] || NAMES.standard);
       const s = document.getElementById('status-think');
-      if (s) s.textContent = '思考强度：' + (NAMES[level] || NAMES.standard);
+      if (s) s.textContent = '思考强度: ' + (NAMES[level] || NAMES.standard);
       const m = getMenu();
       if (m) m.querySelectorAll('.tb-think-item').forEach(it => {
         it.style.fontWeight = it.dataset.level === level ? '700' : '';
@@ -14714,19 +14854,33 @@ function bindEvents() {
   function escAgents(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  // 对齐 ChipCode 原品：近期用「N分钟前/N小时前」相对时间，较早用「项目名 · MM/DD HH:mm」
+  // 对齐 ChipCode 原品 NSe(timestamp, now, lang)：<45s「刚刚」；<1h/<1d/<7d 均用
+  // Intl.RelativeTimeFormat(numeric:"auto") 四舍五入（-1→昨天、-2→前天）；≥7 天回落绝对「MM/DD HH:mm」（h23）。
+  function agentsRelTime(ts, now, lang) {
+    if (!Number.isFinite(ts) || ts <= 0) return '';
+    var diff = ts - now, abs = Math.abs(diff);
+    if (abs < 45000) return String(lang).indexOf('zh') === 0 ? '刚刚' : 'just now';
+    try {
+      var rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+      if (abs < 3600000) return rtf.format(Math.round(diff / 60000), 'minute');
+      if (abs < 86400000) return rtf.format(Math.round(diff / 3600000), 'hour');
+      if (abs < 7 * 86400000) return rtf.format(Math.round(diff / 86400000), 'day');
+    } catch (e) { /* Intl 不可用则回落绝对时间 */ }
+    try {
+      return new Date(ts).toLocaleString(lang, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    } catch (e) { return new Date(ts).toLocaleString(); }
+  }
+  // 对齐 ChipCode 原品 OSe：取路径最后一段作为项目名（容错尾部斜杠）
+  function agentsProjectName(p) {
+    var s = String(p || '').trim().replace(/[\\/]+$/, '');
+    if (!s) return '';
+    var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
+  // 对齐 ChipCode 组件内 meta 合成：[项目名, 相对时间].filter(Boolean).join(' · ')
   function agentsMetaText(s) {
-    const pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
-    const ts = s.updatedAt || s.ts || Date.now();
-    const diff = Date.now() - ts;
-    if (diff >= 0 && diff < 24 * 3600 * 1000) {
-      if (diff < 3600 * 1000) return Math.max(1, Math.floor(diff / 60000)) + '分钟前';
-      return Math.floor(diff / 3600000) + '小时前';
-    }
-    const proj = s.projectPath ? String(s.projectPath).split(/[\\/]/).pop() : '';
-    const d = new Date(ts);
-    const when = pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-    return proj ? proj + ' · ' + when : when;
+    var ts = s.updatedAt || s.ts || s.timestamp || 0;
+    return [agentsProjectName(s.projectPath), agentsRelTime(ts, Date.now(), 'zh-CN')].filter(Boolean).join(' · ');
   }
   function renderAgentsPanel() {
     const listEl = document.getElementById('agents-list');
@@ -14734,13 +14888,17 @@ function bindEvents() {
     if (!listEl) return;
     let list = [];
     try { list = (window.SessionStore ? window.SessionStore.all() : []).slice(); } catch (e) { list = []; }
+    // 对齐 ChipCode JRe：仅保留有消息的已保存会话，按时间倒序取前 maxRecentSessions=8 条（原品上限为 8）
+    list = list.filter(function (s) { return s && s.id && (s.messages || []).length > 0; });
     list.sort(function (a, b) { return (b.updatedAt || b.ts || 0) - (a.updatedAt || a.ts || 0); });
+    list = list.slice(0, 8);
     if (countEl) countEl.textContent = String(list.length);
     if (!list.length) {
       listEl.innerHTML = '<div class="agents-empty">暂无已完成的智能体任务</div>';
       return;
     }
-    listEl.innerHTML = list.slice(0, 30).map(function (s) {
+    // 分组计数 = 列表行数（对齐 ChipCode：计数即「最近完成」分组内行数）
+    listEl.innerHTML = list.map(function (s) {
       const msgs = (s.messages || []);
       const firstUser = msgs.map(function (m) { return m && m.content ? String(m.content) : ''; }).find(function (c) { return c.trim(); });
       const title = s.title || firstUser || '未命名任务';
@@ -14858,7 +15016,7 @@ function bindEvents() {
     if (!b) return;
     b.style.color = rec ? '#ef4444' : '';
     b.style.background = rec ? 'rgba(239,68,68,.18)' : '';
-    b.title = rec ? '停止录音并转写' : '语音输入（点击开始/停止录音）';
+    b.title = rec ? '停止录音并转写' : '语音输入（点开始录音）';
   }
   async function sttToggle() {
     const S = window.__sttState;
@@ -17837,7 +17995,7 @@ function bindEvents() {
         r = { ok: /COMPILE OK/i.test(txt), text: txt };
       } else if (cap === 'upload' && typeof ARDUINO_TOOL_IMPLS !== 'undefined' && ARDUINO_TOOL_IMPLS.upload) {
         const txt = await ARDUINO_TOOL_IMPLS.upload(params || {});
-        r = { ok: !/FAIL|错误|error:/i.test(txt), text: txt };
+        r = { ok: /UPLOAD OK/i.test(txt), text: txt };
       } else {
         r = await window.PluginSystem.runCapability(cap, params || {});
       }
@@ -19155,6 +19313,20 @@ function bindEvents() {
       sNavItems.forEach((it) => {
         const t = (it.textContent || '').toLowerCase();
         it.style.display = (!q || t.indexOf(q) !== -1) ? '' : 'none';
+      });
+    });
+    // AI 工具二级入口：复用原自研功能的既有入口（顶栏对应按钮保持隐藏，不改变 6 图标对齐）
+    const aiToolActions = {
+      'tool-open-usage': () => { const b = document.getElementById('ai-usage-btn'); if (b) b.click(); },
+      'tool-open-optimize': () => { const b = document.getElementById('ai-optimize-btn'); if (b) b.click(); },
+      'tool-open-memory': () => { const b = document.getElementById('ai-memory-btn'); if (b) b.click(); },
+      'tool-open-rewind': () => { if (window.BubaiCodeUI && window.BubaiCodeUI.toggleRewindBar) window.BubaiCodeUI.toggleRewindBar(); }
+    };
+    Object.keys(aiToolActions).forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => {
+        settingsModal.style.display = 'none';
+        aiToolActions[id]();
       });
     });
     // 常规面板（对齐参考基线 常规页）：浏览目录 / 代理模式切换 / 检测刷新
