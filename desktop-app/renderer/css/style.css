@@ -6970,3 +6970,119 @@ body.cb-compact .chat-bubble li { margin: 2px 0 !important; }
 body.cb-compact .chat-bubble hr { border: none !important; border-top: 1px solid var(--border) !important; margin: 10px 0 !important; }
 body.cb-compact .chat-bubble strong { font-weight: 600 !important; color: var(--text-primary) !important; }
 body.cb-compact .chat-bubble pre code { background: none !important; border: 0 !important; padding: 0 !important; color: var(--text-primary) !important; }
+
+
+/* ============================================================
+   2026-11-17 现代对话风·极致精简版（用户确认：去掉头像/工作条/计时头）
+   角色区分靠气泡本身：用户右侧渐变气泡 / AI 左侧浅灰卡片。
+   过程信息（工作条 / 已工作Ns 计时头 / AI 头像）全部隐藏，只留内容。
+   放在文件末尾以覆盖前面的 CodeBuddy 主题层（同优先级后定义生效）。
+   ============================================================ */
+/* ===== 2026-11-17 现代对话风·极致精简版（预览 v2）=====
+   角色区分靠气泡本身（用户右渐变 / AI 左浅灰卡片），不用头像和状态条。
+   过程信息（工作条 / 已工作计时）全部隐藏，只留内容。 */
+
+/* --- 消息区：干净留白 --- */
+body.cb-compact .ai-messages { padding: 20px 18px 32px !important; background: var(--surface-1) !important; }
+
+/* --- 用户消息：右侧渐变气泡 --- */
+body.cb-compact .chat-message.user {
+  justify-content: flex-end !important;
+  margin: 0 0 20px !important;
+  background: none !important; border: 0 !important; padding: 0 !important;
+}
+body.cb-compact .chat-message.user .chat-bubble {
+  background: linear-gradient(135deg, #5b7cfa 0%, #7c5cf0 100%) !important;
+  color: #fff !important;
+  padding: 11px 15px !important;
+  border-radius: 15px 15px 4px 15px !important;
+  font-size: 13.5px !important; line-height: 1.7 !important;
+  max-width: 84% !important;
+  box-shadow: 0 2px 10px rgba(91,124,250,.16) !important;
+  border: 0 !important;
+}
+
+/* --- AI 消息：左侧浅灰卡片，无头像无计时头 --- */
+body.cb-compact .chat-message.ai {
+  margin: 0 0 20px !important;
+  padding: 0 !important; border: 0 !important; border-bottom: 0 !important;
+}
+body.cb-compact .chat-message.ai .chat-bubble {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px 14px 14px 14px !important;
+  padding: 13px 15px !important;
+  font-size: 13.5px !important; line-height: 1.85 !important;
+  color: var(--text-primary) !important;
+  box-shadow: none !important;
+}
+body.cb-compact .chat-message.ai .chat-bubble p:first-child { margin-top: 0 !important; }
+
+/* --- 头像全部隐藏（user 与 ai 都不显示） --- */
+body.cb-compact .chat-message .chat-avatar { display: none !important; }
+
+/* --- 工作条：完全隐藏 --- */
+body.cb-compact .work-status-msg { display: none !important; }
+
+/* --- AI 折叠头（已工作 Ns / N 步）：完全隐藏 --- */
+body.cb-compact .chat-ai-head { display: none !important; }
+
+/* --- 操作条：hover 浮现 --- */
+body.cb-compact .chat-ai-actions { opacity: 0 !important; transition: opacity .15s !important; margin-top: 4px !important; }
+body.cb-compact .chat-message.ai:hover .chat-ai-actions { opacity: .8 !important; }
+body.cb-compact .chat-ai-meta { color: var(--text-tertiary) !important; font-size: 10.5px !important; }
+
+/* --- 代码块：深色卡 --- */
+body.cb-compact .chat-bubble pre {
+  background: #1e2330 !important;
+  border: 1px solid #2b3242 !important;
+  border-radius: 9px !important;
+  padding: 11px 13px !important;
+  font-size: 12px !important; line-height: 1.6 !important;
+  margin: 9px 0 !important; overflow-x: auto;
+}
+body.cb-compact .chat-bubble pre code { background: none !important; color: #d6deeb !important; font-size: 12px !important; }
+body.cb-compact .chat-bubble :not(pre) > code {
+  background: rgba(91,124,250,.1) !important; color: #4f63e0 !important;
+  padding: 1px 5px !important; border-radius: 4px !important; font-size: 11.5px !important;
+}
+body.cb-compact .chat-bubble p { margin: 0 0 9px !important; }
+
+/* --- 思考块：极轻的一行折叠，默认收起，不抢内容 --- */
+body.cb-compact .chat-message.ai:has(.thinking-block) .chat-bubble {
+  background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important;
+}
+body.cb-compact .thinking-block {
+  display: inline-flex !important;
+  background: none !important; border: 0 !important;
+  padding: 2px 0 !important; margin-bottom: 8px !important;
+}
+body.cb-compact .thinking-header { gap: 6px !important; padding: 0 !important; }
+body.cb-compact .thinking-title { color: var(--text-tertiary) !important; font-size: 11px !important; font-weight: 400 !important; }
+body.cb-compact .thinking-icon, body.cb-compact .thinking-chevron { opacity: .6 !important; }
+body.cb-compact .thinking-content { display: none !important; }
+body.cb-compact .thinking-block.expanded .thinking-content {
+  display: block !important;
+  color: var(--text-tertiary) !important; font-size: 11px !important;
+  background: var(--surface-2) !important; border-radius: 8px !important;
+  padding: 8px 11px !important; margin-top: 6px !important;
+  max-height: 120px !important; overflow: auto;
+}
+
+/* --- 输入区：圆润输入框 --- */
+body.cb-compact .ai-input-container { background: var(--surface-1) !important; border-top: 1px solid var(--border) !important; padding: 12px 16px 10px !important; }
+body.cb-compact .ai-input-box {
+  background: var(--surface-2) !important; border: 1px solid var(--border) !important;
+  border-radius: 14px !important; padding: 10px 12px !important;
+  box-shadow: 0 2px 10px rgba(16,24,40,.05) !important;
+}
+body.cb-compact textarea.ai-input-textarea { font-size: 13.5px !important; color: var(--text-primary) !important; line-height: 1.6 !important; }
+body.cb-compact .ai-send-btn {
+  background: linear-gradient(135deg,#5b7cfa,#7c5cf0) !important;
+  border-radius: 9px !important; width: 32px !important; height: 32px !important;
+  box-shadow: 0 2px 8px rgba(91,124,250,.3) !important;
+}
+body.cb-compact .ai-input-tool-btn,
+body.cb-compact .model-select-btn,
+body.cb-compact .safety-mode-btn { background: none !important; border: 0 !important; color: var(--text-secondary) !important; }
+
