@@ -2715,20 +2715,7 @@ const ARDUINO_TOOL_IMPLS = {
       }
     } catch (e) {}
     if (!inoFile) return '烧录失败：项目中没有 .ino 文件';
-    // 2) FQBN：显式参数 → select_board → 设备面板选择 → 按 .ino 内容/路径推断
-    let fqbn = args.fqbn || state.arduinoFqbn || state.compileFqbn || '';
-    if (!fqbn) {
-      try {
-        const inoRes = await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile);
-        const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
-        const lower = (inoContent + '|' + cwd).toLowerCase();
-        fqbn = /(esp32[-_]?s3|esp32s3)/.test(lower) ? 'esp32:esp32:esp32s3'
-          : /(esp32[-_]?c3|esp32c3)/.test(lower) ? 'esp32:esp32:esp32c3'
-          : /esp32/.test(lower) ? 'esp32:esp32:esp32'
-          : 'arduino:avr:uno';
-      } catch (e) { fqbn = 'esp32:esp32:esp32'; }
-    }
-    // 3) 端口：显式参数 → 设备面板/状态 → 唯一 USB 串口自动选择
+    // 2) 端口：显式参数 → 设备面板/状态 → 唯一 USB 串口自动选择（提前，供 FQBN 探测用）
     let port = String(args.port || state.arduinoPort || state.compilePort || '').trim();
     let portNote = '';
     if (!port) {
@@ -2751,6 +2738,39 @@ const ARDUINO_TOOL_IMPLS = {
         return '烧录失败：未选择串口，且串口枚举失败（' + (e && e.message ? e.message : String(e)) + '）';
       }
     }
+    // 3) FQBN：显式参数 → select_board → 端口实测 → 按 .ino 内容/路径推断。
+    // 2026-11-16 修复：项目名/代码内容经常不含芯片型号（如 nh.ino 只有 LED_PIN），
+    // 靠猜会默认成 uno 导致烧录必败。改为先问 arduino-cli 端口上真实连接的板卡。
+    let fqbn = args.fqbn || state.arduinoFqbn || state.compileFqbn || '';
+    let portDetected = false;
+    if (!fqbn && port) {
+      try {
+        const lr = await runArduinoCli(['board', 'list', '--watch-timeout', '1s']);
+        const lines = String(lr.out || '').split('\n');
+        const pl = lines.find(l => l.trim().startsWith(port + ' '));
+        if (pl) {
+          const m = pl.match(/(esp32:esp32:[a-z0-9]+)/i);
+          // esp32_family / ozobot_drvkit 是探测占位符，不能用于编译烧录（family 编译直接失败），
+          // 遇到它们就当没探测到，交给下面的内容推断 + 芯片纠错兜底。
+          if (m && !/esp32_family|ozobot/i.test(m[1])) { fqbn = m[1]; portDetected = true; }
+        }
+      } catch (e) {}
+    }
+    if (!fqbn) {
+      try {
+        const inoRes = await window.BubaiCode.fs.readFile(cwd + '\\' + inoFile);
+        const inoContent = (inoRes && inoRes.content) ? inoRes.content : String(inoRes || '');
+        const lower = (inoContent + '|' + cwd).toLowerCase();
+        fqbn = /(esp32[-_]?s3|esp32s3)/.test(lower) ? 'esp32:esp32:esp32s3'
+          : /(esp32[-_]?c3|esp32c3)/.test(lower) ? 'esp32:esp32:esp32c3'
+          : /(esp32[-_]?c6|esp32c6)/.test(lower) ? 'esp32:esp32:esp32c6'
+          : /esp32/.test(lower) ? 'esp32:esp32:esp32'
+          // 2026-11-16：不再默认 uno（本产品主打 ESP32，uno 兜底会烧录必败且报错不含芯片
+          // 型号无法自动纠正）。默认 S3，若实际是别的芯片，下面的 "This chip is ..." 纠错会兜住。
+          : 'esp32:esp32:esp32s3';
+      } catch (e) { fqbn = 'esp32:esp32:esp32s3'; }
+    }
+    if (portDetected && state.terminal) state.terminal.writeln('[upload] 已从端口 ' + port + ' 检测到板卡: ' + fqbn);
     // 4) ASCII 暂存：中文项目路径下 arduino-cli 易失败，复制 .ino 到纯 ASCII 临时目录执行。
     //    与 compile 一致：暂存目录名与 .ino 同名（arduino-cli 要求 sketch 目录与主文件同名）。
     let stageDir = '';
@@ -2787,6 +2807,30 @@ const ARDUINO_TOOL_IMPLS = {
       const first = await runUploadCmd('');
       output = first.output;
       result = first.result;
+      // 2026-11-16 修复：FQBN 靠项目名/代码内容推断不可靠（项目名 nh、模板代码只写 ESP32 时
+      // 会推断成 esp32，但板子是 ESP32-S3 → "This chip is ESP32-S3, not ESP32"）。
+      // arduino-cli 的报错已明确告知真实芯片，按它自动纠正 FQBN 并重试一次，用户无需手选板型。
+      const chipMismatch = output.match(/This chip is (ESP32(?:-[A-Z0-9]+)?), not/i);
+      if (chipMismatch) {
+        const CHIP_FQBN = {
+          'ESP32-S3': 'esp32:esp32:esp32s3',
+          'ESP32-S2': 'esp32:esp32:esp32s2',
+          'ESP32-C3': 'esp32:esp32:esp32c3',
+          'ESP32-C6': 'esp32:esp32:esp32c6',
+          'ESP32-H2': 'esp32:esp32:esp32h2',
+          'ESP32-PICO': 'esp32:esp32:esp32pico',
+          'ESP32': 'esp32:esp32:esp32'
+        };
+        const realChip = chipMismatch[1].toUpperCase();
+        const corrected = CHIP_FQBN[realChip];
+        if (corrected && corrected !== fqbn) {
+          if (state.terminal) state.terminal.writeln('[upload] 实际芯片为 ' + realChip + '，自动切换 FQBN: ' + fqbn + ' -> ' + corrected);
+          fqbn = corrected;
+          const retry = await runUploadCmd('');
+          output = retry.output;
+          result = retry.result;
+        }
+      }
       // arduino-cli 默认构建缓存（%LOCALAPPDATA%\arduino\sketches）被安全软件锁定时，
       // 改用 ASCII 暂存目录内的独立构建目录重试一次，避免环境锁阻断烧录。
       if (!/Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
