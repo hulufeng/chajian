@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>插件市场 · LabCode</title>
-<meta name="description" content="LabCode 插件市场：Arduino、ESP-IDF、STM32、浏览器自动化等官方工具链插件，一键安装，AI 智能体自动获得对应技能与工具。">
+<title>插件市场 · BubaiCode</title>
+<meta name="description" content="BubaiCode 插件市场：Arduino、ESP-IDF、STM32、浏览器自动化等官方工具链插件，一键安装，AI 智能体自动获得对应技能与工具。">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
 <style>
   :root{
@@ -99,7 +99,7 @@
 
 <nav class="nav">
   <div class="nav-in">
-    <a href="/codelab/" class="brand"><span class="mark">L</span> LabCode 插件</a>
+    <a href="/codelab/" class="brand"><span class="mark">L</span> BubaiCode 插件</a>
     <a href="/codelab/" class="nav-back">← 返回首页</a>
   </div>
 </nav>
@@ -134,13 +134,13 @@
   <div class="community-inner">
     <div class="kicker">社区插件</div>
     <h2>第三方插件，<span style="color:var(--accent)">去中心化生态。</span></h2>
-    <p>官方市场仅收录可审计代码；社区插件由作者自行维护，通过 GitHub <code>LabCode-plugin</code> topic 发现，不进官方市场。</p>
+    <p>官方市场仅收录可审计代码；社区插件由作者自行维护，通过 GitHub <code>bubai-plugin</code> topic 发现，不进官方市场。</p>
 
     <div class="publish-card">
       <div class="publish-ic">🧩</div>
       <div class="publish-content">
         <h4>发布你的插件</h4>
-        <p>Fork 官方仓库或自建仓库，按插件规范写 <code>plugin.json</code>，给仓库打 <code>LabCode-plugin</code> topic 即可被社区发现。</p>
+        <p>Fork 官方仓库或自建仓库，按插件规范写 <code>plugin.json</code>，给仓库打 <code>bubai-plugin</code> topic 即可被社区发现。</p>
         <div class="publish-steps">
           <span class="publish-step">1. 建仓库</span>
           <span class="publish-step">2. 打 topic</span>
@@ -151,13 +151,13 @@
     </div>
 
     <div class="gh-link">
-      🔍 在 GitHub 发现社区插件：<a href="https://github.com/topics/LabCode-plugin" target="_blank">topic:LabCode-plugin →</a>
+      🔍 在 GitHub 发现社区插件：<a href="https://github.com/topics/bubai-plugin" target="_blank">topic:bubai-plugin →</a>
     </div>
 
     <div class="install-guide">
       <h3>如何安装插件</h3>
       <ol>
-        <li>打开 LabCode，进入「设置」（顶部工具栏 ⚙ 或 AI 面板设置）。</li>
+        <li>打开 BubaiCode，进入「设置」（顶部工具栏 ⚙ 或 AI 面板设置）。</li>
         <li>选择左侧「插件」标签页。</li>
         <li>在「市场 · 官方插件」区点击目标插件的「安装」，或点「从文件夹 / ZIP 安装」加载本地插件包。</li>
         <li>安装完成后，插件贡献的能力 / 命令 / 视图 / 项目类型自动接入：工具栏与侧栏出现对应按钮与插件入口，AI 智能体获得插件工具与技能（输入框输入 / 查看技能）。</li>
@@ -167,7 +167,7 @@
 </div>
 
 <footer class="footer">
-  © 2026 LabCode · 本地优先的 AI 编码桌面端
+  © 2026 BubaiCode · 本地优先的 AI 编码桌面端
 </footer>
 
 <script>
@@ -183,7 +183,7 @@ let plugins = [
     desc:'CMake + GCC 编译，SWD 一键烧录，裸机脚手架（F103 / F401 / F411）。CubeMX 工程导入与 HAL 库支持。',
     tags:['编译','烧录','裸机脚手架','串口日志','SWD'], github:`${PLUGIN_BASE}/stm32-cube-toolchain` },
   { name:'插件开发工具链', icon:'🧩', official:true, version:'v0.1.1', category:'ai', categoryName:'AI 与开发辅助',
-    desc:'让 AI 帮你创建 LabCode 插件：AI 完全主导（问需求 → 生成骨架 → 校验 manifest → 问是否安装 → 问是否启用）。',
+    desc:'让 AI 帮你创建 BubaiCode 插件：AI 完全主导（问需求 → 生成骨架 → 校验 manifest → 问是否安装 → 问是否启用）。',
     tags:['AI 创建插件','校验','安装','启用'], github:`${PLUGIN_BASE}/plugin-dev-toolchain` },
   { name:'浏览器自动化', icon:'🌐', official:true, version:'v0.1.5', category:'ai', categoryName:'AI 与开发辅助',
     desc:'给 AI 一个可控的真实浏览器：打开网页、点击、填表、抓取、截图——经 Playwright MCP 接入，直接驱动系统已装的 Edge。',
