@@ -1,6 +1,6 @@
 {
   "name": "BubaiCode",
-  "version": "1.2.33",
+  "version": "1.2.34",
   "description": "BubaiCode —— 用 AI 打通「从引脚到固件」的嵌入式开发全流程。",
   "main": "main/index.js",
   "author": {
