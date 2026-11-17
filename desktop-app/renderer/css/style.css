@@ -95,13 +95,22 @@
   --warning-soft: rgba(251, 191, 36, .12);
   --error-soft: rgba(248, 113, 113, .12);
 
-  /* ⑥ 结构尺寸（对齐参考基线 --toolbar-height: 36px） */
+  /* ⑥ 结构尺寸（对齐 ChipCode UI 规格 §0：AB48 / Sidebar300 / Status22 / Bottom240） */
   --titlebar-height: 36px;
   --toolbar-height: 36px;
-  --activity-bar-width: 36px;
-  --sidebar-width: 380px;
-  --statusbar-height: 24px;
-  --bottom-panel-height: 200px;
+  --activity-bar-width: 48px;
+  --sidebar-width: 300px;
+  --statusbar-height: 22px;
+  --bottom-panel-height: 240px;
+  --ai-panel-width: 360px;
+  --tabbar-height: 35px;
+  /* 4px 栅格间距令牌（ChipCode §0.2） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
 
   /* ⑦ 圆角 / 阴影 / 字体（取值 1:1 对齐参考基线 设计 token） */
   --radius-2xs: 4px;
@@ -7158,3 +7167,51 @@ body.cb-compact .chat-message.ai.work-status-msg.exec-process-block { display: b
 /* 2026-11-17 隐藏独立「工具活动」面板：过程信息已由对话内的执行折叠块承接，
    此面板 flex-shrink:0 硬占高度会挤压对话区/输入框，且与折叠块重复显示两份。 */
 body.cb-compact .ai-tool-flow { display: none !important; }
+
+/* ===== 2026-11-17 布局规格对齐层 v3：严格按 ChipCode UI 规格 §0 像素值 =====
+   参考：.handoff/HANDOFF-chipcode-ui-spec-detail-20261106.md §0
+   目标：活动栏48 / 侧栏300 / AI面板360 / 底面板240 / 状态栏22 / Tab栏35 + 4px 栅格
+   说明：本层放在文件末尾统一覆盖历史散落的 36/351/340/400/200/24/36 值，避免改动十几处 !important。
+   回退：删除本块即可（:root 令牌改动需一并回退）。 */
+:root {
+  --activity-bar-width: 48px;
+  --sidebar-width: 300px;
+  --statusbar-height: 22px;
+  --bottom-panel-height: 240px;
+  --ai-panel-width: 360px;
+  --tabbar-height: 35px;
+}
+
+/* ① 活动栏：48px，同步让位 padding（原 5912/5913 两处 36px） */
+.activity-bar { width: 48px !important; }
+.main-container { padding-left: 48px !important; }
+.activity-btn { height: 48px !important; }
+
+/* ② 左侧栏：300px 固定（原 5692-5695 的 351px） */
+.left-column {
+  width: 300px !important;
+  min-width: 300px !important;
+  max-width: 300px !important;
+}
+
+/* ③ 编辑器 Tab 栏 35px / Tab 32px→按规格 Tab 高 35（整行等高，ChipCode 标签占满 tabbar 高度） */
+.editor-tabs { height: var(--tabbar-height) !important; }
+.tab-item { height: 35px !important; }
+
+/* ④ 右侧 AI 面板：360px（覆盖 6841 的 400px 与 5726 的 340px） */
+.ai-panel {
+  flex: 0 1 var(--ai-panel-width) !important;
+  width: var(--ai-panel-width) !important;
+  min-width: 320px !important;
+}
+body.no-open-file .ai-panel { flex: 0 0 var(--ai-panel-width) !important; }
+
+/* ⑤ 底部面板：240px（覆盖 200px） */
+.bottom-panel { height: var(--bottom-panel-height) !important; min-height: var(--bottom-panel-height) !important; }
+
+/* ⑥ 状态栏：22px（覆盖 24px） */
+.statusbar { height: var(--statusbar-height) !important; }
+
+/* ⑦ 4px 栅格：编辑器 Tab 行/AI 消息/输入区的横向 padding 收敛到 4px 栅格 */
+.ai-messages { padding: var(--space-4) !important; }
+.editor-tabs { padding: 0 var(--space-1) !important; }
