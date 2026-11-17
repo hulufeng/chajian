@@ -20147,15 +20147,13 @@ function bindEvents() {
     window.__showGwLoginOverlay = showLoginOverlay;
     window.__showGwForgot = () => { showLoginOverlay(); gwForgotOverlay(); };
     // 启动检查：登录门禁
-    // 前提：**云端模型必须登录才能用**（登录即赠免费额度，见商业化规划）。
-    // 只对云端通道强制登录；本地模型 / Ollama / 自带 Key 不拦。
+    // 2026-11-17 产品决策：使用前必须登录（不再只拦云端通道）。
+    // 未登录时强制弹出登录/注册遮罩，登录后本地模型/编译/烧录等全部能力可用。
     (async () => {
       try {
         const cfg = await window.BubaiCode.config.get();
-        const provider = (cfg.ai && cfg.ai.provider) || 'gateway';
-        const needsLogin = provider === 'gateway' || (provider === 'custom' && !cfg.ai.apiKey);
         const loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
-        if (needsLogin && !loggedIn && window.__showGwLoginOverlay) {
+        if (!loggedIn && window.__showGwLoginOverlay) {
           window.__showGwLoginOverlay();
         }
         await refreshCreditsBadge();

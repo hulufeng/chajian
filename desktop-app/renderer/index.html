@@ -2527,13 +2527,33 @@
     #gw-login-overlay .gwl-forgot{text-align:right;margin-top:-4px;font-size: 11.5px;color:var(--accent);font-weight:500;cursor:pointer;}
     #gw-login-overlay .gwl-forgot:hover{text-decoration:underline;}
     #gw-login-overlay .gwl-foot{text-align:center;margin-top:16px;font-size: 11.5px;color:var(--text-tertiary);}
+    /* ===== 2026-11-17 登录注册 UI 优化（现代圆润风，与 AI 面板一致）===== */
+    #gw-login-overlay{background:radial-gradient(1200px 600px at 50% -10%,rgba(91,124,250,.16),transparent 60%),radial-gradient(900px 500px at 90% 110%,rgba(155,108,240,.12),transparent 60%),var(--surface-1)!important;backdrop-filter:blur(10px)!important;}
+    [data-theme="light"] #gw-login-overlay{background:radial-gradient(1200px 600px at 50% -10%,rgba(91,124,250,.13),transparent 60%),radial-gradient(900px 500px at 90% 110%,rgba(155,108,240,.10),transparent 60%),rgba(244,246,250,.92)!important;}
+    #gw-login-overlay .gwl-card{max-width:400px!important;background:var(--surface-1)!important;border:1px solid var(--border)!important;border-radius:20px!important;padding:34px 32px 28px!important;box-shadow:0 20px 60px rgba(16,24,40,.14),0 2px 8px rgba(16,24,40,.05)!important;}
+    #gw-login-overlay .gwl-logo{width:60px!important;height:60px!important;margin:0 auto 18px!important;background:linear-gradient(135deg,#5b7cfa,#9b6cf0)!important;border-radius:17px!important;color:#fff!important;box-shadow:0 6px 18px rgba(91,124,250,.32)!important;}
+    #gw-login-overlay .gwl-logo .icon{width:34px!important;height:34px!important;}
+    #gw-login-overlay .gwl-title{font-size:20px!important;font-weight:700!important;letter-spacing:-.3px;}
+    #gw-login-overlay .gwl-sub{font-size:12.5px!important;margin-top:8px!important;line-height:1.7!important;}
+    #gw-login-overlay .gwl-tabs{margin:24px 0 20px!important;background:var(--surface-2)!important;border-radius:11px!important;padding:4px!important;gap:4px!important;}
+    #gw-login-overlay .gwl-tab{padding:10px 0!important;font-size:13px!important;border-radius:8px!important;transition:all .18s!important;}
+    #gw-login-overlay .gwl-tab.active{background:var(--surface-1)!important;color:var(--text-primary)!important;box-shadow:0 1px 4px rgba(16,24,40,.12)!important;}
+    #gw-login-overlay .gwl-panel{gap:15px!important;}
+    #gw-login-overlay .gwl-label{font-size:12px!important;font-weight:600!important;margin-bottom:1px!important;}
+    #gw-login-overlay .gwl-input{padding:12px 14px!important;border-radius:10px!important;font-size:13px!important;background:var(--surface-2)!important;border:1.5px solid var(--border)!important;}
+    #gw-login-overlay .gwl-input:focus{border-color:#5b7cfa!important;box-shadow:0 0 0 3px rgba(91,124,250,.14)!important;background:var(--surface-1)!important;}
+    #gw-login-overlay .gwl-forgot{font-size:12px!important;margin-top:2px!important;color:#5b7cfa!important;}
+    #gw-login-overlay .gwl-submit{padding:13px!important;font-size:14px!important;border-radius:10px!important;background:linear-gradient(135deg,#5b7cfa,#7c5cf0)!important;border:0!important;box-shadow:0 4px 14px rgba(91,124,250,.28)!important;margin-top:4px!important;}
+    #gw-login-overlay .gwl-submit:hover:not(:disabled){filter:brightness(1.05)!important;}
+    #gw-login-overlay .gwl-send{border-radius:10px!important;font-size:12px!important;}
+    #gw-login-overlay .gwl-foot{margin-top:20px!important;font-size:11.5px!important;line-height:1.6!important;}
   </style>
   <div id="gw-login-overlay" style="display:none">
     <div class="gwl-card">
       <div style="text-align:center;margin-bottom:24px">
         <div class="gwl-logo"><svg class="icon"><use href="#icon-app-logo"></use></svg></div>
-        <div class="gwl-title">BubaiCode AI</div>
-        <div class="gwl-sub">内置云端模型已就绪，装完即用<br>登录可获得更多额度、跨设备同步与邀请奖励</div>
+        <div class="gwl-title">欢迎使用 BubaiCode</div>
+        <div class="gwl-sub">登录后即可开始开发<br>云端模型免费使用 · 注册即送额度</div>
       </div>
       <div class="gwl-tabs">
         <button id="gw-ov-tab-login" class="gwl-tab active" type="button">登录</button>
@@ -2575,7 +2595,7 @@
         <button id="gw-ov-register-btn" class="btn btn-primary gwl-submit" type="button">注册</button>
       </div>
       <div class="gwl-foot">
-        <div style="margin-top:6px;color:#888;font-size: 11.5px;">登录后即可使用云端模型，注册即送 100 次免费调用（每天最多 3 次）</div>
+        <div style="margin-top:6px;color:#888;font-size: 11.5px;">注册即送 100 次免费云端调用（每天最多 3 次）</div>
       </div>
     </div>
   </div>
