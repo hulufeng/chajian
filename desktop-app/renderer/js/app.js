@@ -15057,29 +15057,16 @@ function bindEvents() {
       } catch (e) { if (window.showToast) showToast('定时任务设置暂不可用', 'info'); }
     });
   })();
-  // pill：写代码 → 聚焦输入框；做产品 → 打开产品工厂（对齐 ChipCode：分段控件高亮当前模式）
+  // pill：写代码 → 聚焦输入框
   function setWelcomeMode(activeId) {
     const codes = document.getElementById('welcome-pill-code');
-    const product = document.getElementById('welcome-pill-product');
     if (codes) codes.classList.toggle('is-active', activeId === 'code');
-    if (product) product.classList.toggle('is-active', activeId === 'product');
   }
   const welcomePillCode = document.getElementById('welcome-pill-code');
   if (welcomePillCode) welcomePillCode.addEventListener('click', function(){
     setWelcomeMode('code');
     const input = document.getElementById('ai-input');
     if (input) { input.focus(); }
-  });
-  const welcomePillProduct = document.getElementById('welcome-pill-product');
-  if (welcomePillProduct) welcomePillProduct.addEventListener('click', function(){
-    setWelcomeMode('product');
-    // 产品工厂已并入「文件」侧栏：「做产品」直接走新建产品项目
-    if (window.ProductFactory && typeof window.ProductFactory.createProject === 'function') {
-      window.ProductFactory.createProject();
-    } else {
-      const di = document.querySelector('.dropdown-item[data-action="new-product-project"]');
-      if (di) di.click();
-    }
   });
 
   // 上下文占用环：初始渲染 + 模型切换跟随（占用环显示当前模型窗口用量）

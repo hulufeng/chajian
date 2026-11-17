@@ -318,7 +318,6 @@
       const t = e.target;
       if (!t || !t.closest) return;
       if (t.closest('.activity-btn')) setTimeout(syncVisibility, 30);
-      if (t.closest('#welcome-pill-product')) setTimeout(function () { refresh(); }, 60);
     });
     refresh();
   }
