@@ -7280,3 +7280,62 @@ body.app-welcome .ai-disclaimer {
 .chat-bubble tbody tr:hover td { background: var(--surface-2); }
 /* ④ 长文本行宽兜底：所有消息气泡内容不超过 720px（非欢迎态右栏已 360px，此规则不生效） */
 body.cb-compact .chat-message.ai .chat-bubble > * { max-width: 100%; }
+/* ===== 2026-11-17 审美统一 v5：去紫蓝渐变、统一中性纸感、加大留白 =====
+   根因：v4 之后仍混着两套视觉语言——7057 的紫蓝渐变用户气泡 + 7040 的渐变发送按钮，
+        与 ChipCode 克制的灰阶/细边框/极简留白冲突，观感廉价。本层统一到 ChipCode §0.4 令牌。
+   回退：删除本块。 */
+/* ① 用户消息：紫蓝渐变 → 中性 surface-2 卡片 + 左 accent 细条，克制不抢眼 */
+body.cb-compact .chat-message.user .chat-bubble {
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-left: 3px solid var(--accent) !important;
+  border-radius: 4px 10px 10px 4px !important;
+  padding: 10px 14px !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  max-width: 78% !important;
+}
+/* ② 发送按钮：渐变 → 实色 accent + 轻阴影（ChipCode 规格 §0.3 主按钮实色） */
+body.cb-compact .ai-send-btn {
+  background: var(--accent) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(37,99,235,.22) !important;
+}
+body.cb-compact .ai-send-btn:hover { background: var(--primary-hover) !important; }
+/* ③ 输入卡：背景统一 surface-1（去掉 surface-2 的灰块），圆角收到 10px（§0.2 --r-card≈6/--r-modal=8） */
+body.cb-compact .ai-input-box {
+  background: var(--surface-1) !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04) !important;
+  padding: 8px 12px !important;
+}
+body.cb-compact .ai-input-box:focus-within { border-color: var(--accent) !important; box-shadow: var(--focus-ring) !important; }
+/* ④ 消息区留白加大：段间距 8→12px，消息底部 20→24px，右栏 padding 收敛到 16px */
+body.cb-compact .chat-bubble p { margin: 0 0 12px !important; }
+body.cb-compact .chat-message { margin-bottom: 24px !important; }
+body.cb-compact .ai-messages { padding: 18px 16px 32px !important; }
+/* ⑤ 标题层级：靠字号/字重/颜色分层，不靠色块（ChipCode §0.4 字号阶梯） */
+body.cb-compact .chat-bubble h1,
+body.cb-compact .chat-bubble h2 { color: var(--text-primary) !important; font-size: 15px !important; font-weight: 600 !important; }
+body.cb-compact .chat-bubble h3 { color: var(--text-primary) !important; font-size: 14px !important; font-weight: 600 !important; }
+body.cb-compact .chat-bubble strong { color: var(--accent) !important; font-weight: 600 !important; }
+/* ⑥ 列表更透气：行距 2→4px，缩进 20→24px */
+body.cb-compact .chat-bubble ul,
+body.cb-compact .chat-bubble ol { padding-left: 24px !important; margin: 8px 0 12px !important; }
+body.cb-compact .chat-bubble li { margin: 4px 0 !important; line-height: 1.7 !important; }
+/* ⑦ 表格更精致：字号 12→12.5，表头字重 600，行 hover 用 surface-2 */
+body.cb-compact .chat-bubble table { font-size: 12.5px !important; margin: 12px 0 !important; }
+body.cb-compact .chat-bubble thead th { font-weight: 600 !important; letter-spacing: .01em; }
+body.cb-compact .chat-bubble tbody tr:hover td { background: var(--surface-2) !important; }
+/* ⑧ 行内代码：渐变蓝 → 中性 surface-2 + accent 边框 */
+body.cb-compact .chat-bubble :not(pre) > code {
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 4px !important;
+  padding: 1px 5px !important;
+}
+/* ⑨ 欢迎态输入卡统一 720 中列（v4 已设，这里再确保 focus 态一致） */
+body.app-welcome .ai-input-container .ai-input-box { max-width: 720px !important; }
