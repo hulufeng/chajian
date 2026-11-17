@@ -7153,3 +7153,8 @@ body.cb-compact .chat-message .chat-avatar { display: none !important; }
 
 /* 覆盖 1.2.38 的工作条隐藏：执行过程块需要显示 */
 body.cb-compact .chat-message.ai.work-status-msg.exec-process-block { display: block !important; margin: 0 0 14px 0 !important; padding: 0 !important; border: 0 !important; border-bottom: 0 !important; background: none !important; }
+
+
+/* 2026-11-17 隐藏独立「工具活动」面板：过程信息已由对话内的执行折叠块承接，
+   此面板 flex-shrink:0 硬占高度会挤压对话区/输入框，且与折叠块重复显示两份。 */
+body.cb-compact .ai-tool-flow { display: none !important; }
