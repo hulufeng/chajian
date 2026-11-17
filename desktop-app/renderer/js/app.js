@@ -13804,6 +13804,27 @@ function bindEvents() {
     let installedTools = remoteInstall ? (remoteInstall.tools || 0) : 0;
     let hasManifest = !!remoteInstall;
     if (!remoteInstall) {
+      // 2026-11-17 修复：bundled 内置运行时（llama-runtime = BubaiCode AI 引擎）
+      // 的引擎文件随安装包打包在 resources/llama，不是工具插件、没有也不需要 plugin.json。
+      // 之前严格校验「没 manifest 就失败」把它误伤，报「插件包缺少 plugin.json」装不上。
+      // 这里用 checkLLMRuntime 检测内置引擎确实存在 → 直接算安装成功（0 个工具，它是运行时）。
+      if (plugin.bundled === true) {
+        let engineOk = false;
+        try {
+          const rt = await window.BubaiCode.system.checkLLMRuntime();
+          engineOk = !!(rt && rt.engine);
+        } catch (e) {}
+        if (engineOk) {
+          hasManifest = true;
+          installedTools = 0;
+          addOutputLog('✅ 内置运行时「' + plugin.name + '」已就绪（引擎随安装包内置，无需注册工具）', 'success');
+        } else {
+          hideInstallModal();
+          addOutputLog('安装中止：未检测到内置 AI 引擎文件，请安装 BubaiCode 完整版后重试', 'warning');
+          showToast(plugin.name + ' 安装失败：未检测到内置引擎文件', 'error');
+          return { success: false, error: '未检测到内置引擎文件' };
+        }
+      } else {
       const manifest = BUILTIN_PLUGIN_MANIFESTS[id] || plugin.manifest;
       if (manifest && window.PluginSystem && typeof window.PluginSystem.installManifest === 'function') {
         hasManifest = true;
@@ -13824,6 +13845,7 @@ function bindEvents() {
         addOutputLog('安装中止：该插件没有可注册的 plugin.json（未标记为已安装）', 'warning');
         showToast(plugin.name + ' 安装失败：插件包缺少 plugin.json，未标记为已安装', 'error');
         return { success: false, error: '插件包缺少 plugin.json，未标记为已安装' };
+      }
       }
     }
 
