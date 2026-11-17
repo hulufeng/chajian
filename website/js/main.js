@@ -1,4 +1,4 @@
-﻿// ============ LabCode 官方网站交互脚本 ============
+﻿// ============ BubaiCode 官方网站交互脚本 ============
 
 // 语言切换
 let currentLang = 'zh';
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  console.log('✅ LabCode 官网加载完成');
+  console.log('✅ BubaiCode 官网加载完成');
 });
 
 // 计数器动画（用于统计数字）

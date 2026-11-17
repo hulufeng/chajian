@@ -707,7 +707,7 @@ button { font-family:inherit; }
 
 <script>
 const API = '';
-let adminToken = localStorage.getItem('labcode_admin_token') || '';
+let adminToken = localStorage.getItem('bubaicode_admin_token') || '';
 let pluginFileBase64 = '';
 
 // ========== 登录 ==========
@@ -723,7 +723,7 @@ function doLogin() {
   .then(data => {
     if (data.token) {
       adminToken = data.token;
-      localStorage.setItem('labcode_admin_token', adminToken);
+      localStorage.setItem('bubaicode_admin_token', adminToken);
       document.getElementById('loginWrap').style.display = 'none';
       document.getElementById('app').style.display = 'block';
       initApp();
@@ -735,7 +735,7 @@ function doLogin() {
 }
 
 function doLogout() {
-  localStorage.removeItem('labcode_admin_token');
+  localStorage.removeItem('bubaicode_admin_token');
   adminToken = '';
   document.getElementById('app').style.display = 'none';
   document.getElementById('loginWrap').style.display = 'flex';

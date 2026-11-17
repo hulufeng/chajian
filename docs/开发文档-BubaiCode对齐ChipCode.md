@@ -2,13 +2,13 @@
 
 > 版本基线：**BubaiCode v1.2.31**（`desktop-app/package.json:3`）
 > 编写日期：2026-11-09
-> 事实来源：**代码为唯一事实源**。本文结论来自对 `desktop-app/` 全量检索 + 对 ChipCode 发布版 `app.asar` 与源码提取的双源取证（见 `.handoff/HANDOFF-labcode-chipcode-align-gap-20261106.md` §16.20–§16.21）。
+> 事实来源：**代码为唯一事实源**。本文结论来自对 `desktop-app/` 全量检索 + 对 ChipCode 发布版 `app.asar` 与源码提取的双源取证（见 `.handoff/HANDOFF-bubaicode-chipcode-align-gap-20261106.md` §16.20–§16.21）。
 
 ---
 
 ## 0. 必读：纠正历史文档
 
-`docs/` 下已有 8 份文档（`README.md`、`开发文档.md`、`开发文档-完整版.md`、`LabCode开发文档-新电脑整合版.md`、`LabCode项目整理与继续开发指南.md`、`团队协作指南.md`、`项目任务看板.md`、`AI全链路实测验证报告-20260910.md`）均写于 **2026-09-06~09-10 的 v1.0.0 / TrieCode v1.2.9 时代**，存在旧路径（`D:\工作\LabCode\`）与旧版本号，**只作历史参考，不得作为开发依据**。
+`docs/` 下已有 8 份文档（`README.md`、`开发文档.md`、`开发文档-完整版.md`、`BubaiCode开发文档-新电脑整合版.md`、`BubaiCode项目整理与继续开发指南.md`、`团队协作指南.md`、`项目任务看板.md`、`AI全链路实测验证报告-20260910.md`）均写于 **2026-09-06~09-10 的 v1.0.0 / TrieCode v1.2.9 时代**，存在旧路径（`D:\工作\BubaiCode\`）与旧版本号，**只作历史参考，不得作为开发依据**。
 
 尤其要纠正一份关键误判：
 
@@ -58,7 +58,7 @@ desktop-app/
 ```
 
 **技术栈**：Electron 28 + 原生 JS/CSS（无打包、无 React/Vue 主链路）+ Monaco 0.45 + xterm 5.3 + node-pty + serialport 12 + @grpc/grpc-js + mqtt。
-**IPC 命名空间是 `window.BubaiCode.*`**（不是 `LabCode.*`，后者只剩 userData 迁移残留）。通道命名 `域:动作`，如 `ai:chatStream`、`fs:readFile`、`sessions:save`、`compile:arduino`、`serial:log-analyze-crash`、`schedule:*`、`plugins:*`、`mcp:*`、`deps:install`。
+**IPC 命名空间是 `window.BubaiCode.*`**（不是 `BubaiCode.*`，后者只剩 userData 迁移残留）。通道命名 `域:动作`，如 `ai:chatStream`、`fs:readFile`、`sessions:save`、`compile:arduino`、`serial:log-analyze-crash`、`schedule:*`、`plugins:*`、`mcp:*`、`deps:install`。
 
 ---
 

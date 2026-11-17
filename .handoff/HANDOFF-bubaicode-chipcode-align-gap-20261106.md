@@ -1,9 +1,9 @@
-# LabCode ↔ ChipCode 界面功能评估与对齐方案（修正版 v2）
+# BubaiCode ↔ ChipCode 界面功能评估与对齐方案（修正版 v2）
 
-> 评估对象：LabCode 前端 `codelab-desktop/desktop-app/renderer`（发布物，JS 版，origin=chajian.git）。
+> 评估对象：BubaiCode 前端 `codelab-desktop/desktop-app/renderer`（发布物，JS 版，origin=chajian.git）。
 > 目标系统 "她" = ChipCode/TrieCode（已用 Craft Anything 分析，见 `HANDOFF-chipcode-product-structure-20261106.md` / `HANDOFF-chipcode-ui-spec-detail-20261106.md`）。
 > 方法：对 `renderer/js/*.js` 做关键词/结构检索 + 精读 `app.js` 的 `AgentRunner`/`ensureAgent`/`showPermissionModal`/`fileChangeTracker` 等核心区。
-> **重要修正（v2）**：首版评估误把 `AgentRunner` 的"无权限确认通道"**死分支**（永不触发，因 `ensureAgent()` 已设置 `onPermissionRequest→showPermissionModal`）当作现状，夸大了缺口。经精读核实，**LabCode 的 AI Agent 后端已高度对齐 ChipCode**，绝大多数 Phase A 能力已存在（仅命名不同）。
+> **重要修正（v2）**：首版评估误把 `AgentRunner` 的"无权限确认通道"**死分支**（永不触发，因 `ensureAgent()` 已设置 `onPermissionRequest→showPermissionModal`）当作现状，夸大了缺口。经精读核实，**BubaiCode 的 AI Agent 后端已高度对齐 ChipCode**，绝大多数 Phase A 能力已存在（仅命名不同）。
 
 ---
 
@@ -18,9 +18,9 @@
 
 ---
 
-## 二、LabCode 当前已实现的 AI 能力（逐条对照 ChipCode，已核实）
+## 二、BubaiCode 当前已实现的 AI 能力（逐条对照 ChipCode，已核实）
 
-| ChipCode 能力 | LabCode 对应实现（证据） | 对齐 |
+| ChipCode 能力 | BubaiCode 对应实现（证据） | 对齐 |
 |---|---|---|
 | 规划 `plan`/`planDecision` | `#plan-modal` + `#plan-approve-btn`/`#plan-reject-btn` + `#plan-feedback-input`；`state.agent.approvePlan()`/`rejectPlan(feedback)`；`onPlanRequest` | ✅ 已对齐 |
 | 工具循环 `toolStep`/`toolProgress` | `AgentRunner._toolStep(id,name,status,detail)`（status: waiting/running/done/error/rejected/interrupted）；`onToolStep`→`addToolCallBlock` | ✅ 已对齐 |
@@ -94,7 +94,7 @@
 ### 交叉验证结论（BubaiCode Phase A 实现 ↔ ChipCode 设计一致）
 - **A4 agentMode**：ChipCode 三模式 `default`/`plan`/`auto`（i18n `ai.js:857-860`，`set_agent_mode` 回合内即时切换 `agent-runner.js:333-334`，auto=零确认禁删/高危），与 BubaiCode `state.mode`+顶部 `safety-mode-group` 三按钮+`syncSafetyModeUI` **等价** → 标记为已对齐，零新增代码。✅ 一致
 - **A5 compactPreview**：ChipCode 压缩核心在 `context-manager.js`——`compressIfNeeded`(:406)/`foldTurnsToSummary`(:346)/`buildRecentReadsSystemBlock`(:318)，65% 水位主动 prune，agent-runner 以 `compressWithReinject`(:295) 重挂 recentReads+plan。BubaiCode `ai-compact-preview.js` 复用 `compressContext` 三级裁剪（keepTurns=3）生成预览、被 `ctx-compact-btn` 消费。✅ 方向一致（实现粒度略简，功能闭环）
-- **A6 validateKey**：ChipCode `ai-provider.js:558-564` `validateApiKey()` 用最小 `chat([{role:'user',content:'hi'}])` 探测 Key+端点，**不校验格式、不暴露密钥**。BubaiCode `ai-validate-key.js` 复用既有 `window.LabCode.ai.checkConnection`（main 侧真实打端点）做绿/红反馈。✅ 机制一致
+- **A6 validateKey**：ChipCode `ai-provider.js:558-564` `validateApiKey()` 用最小 `chat([{role:'user',content:'hi'}])` 探测 Key+端点，**不校验格式、不暴露密钥**。BubaiCode `ai-validate-key.js` 复用既有 `window.BubaiCode.ai.checkConnection`（main 侧真实打端点）做绿/红反馈。✅ 机制一致
 
 ### A1 已做但可借鉴的加固点（BubaiCode `state.memories`/`remember` 简易实现可补，属后续增强非缺口）
 ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode 简易版可能缺失：
@@ -114,9 +114,9 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 > | A6 密钥校验 | `window.BubaiCode.ai.checkConnection` + `#ai-apikey`/`#byok-key` 输入框 | ✅ |
 >
 > **结论**：差距清单 Phase A 六项全部**代码落地 + 构建打包 + 实机加载验证**通过 → 差距清单至此**完全闭合**（A1 记忆加固点——防抹/原子写/相关性召回——列为后续增强，不阻塞功能验收）。原 §六 尾部"因 node_modules 未装需 build"的告警已消除（本机 node_modules 齐备，p5_build 可重复构建）。
-- ✅ **A4 agentMode 切换**：**无需新建**——经子代理复核，LabCode 已有 `state.mode`(auto/default/plan) + 顶部 `safety-mode-group` 三按钮 + `syncSafetyModeUI`，正是 ChipCode `agentMode` 的等价物，且已驱动计划门控/工具确认/自动验证。标记为「已对齐」。
-- ✅ **A5 compactPreview 逻辑接通**：新增 `ai-compact-preview.js`，暴露 `window.getCompactPreview`/`window.LabCode.getCompactPreview`，复用 `compressContext` 三级裁剪边界（keepTurns=3）生成 `{summary, kept, dropped}` 预览，被既有 `ctx-compact-btn`→`openCompactPreview` 消费（此前因缺数据源而落空）。`node --check` 通过。
-- ✅ **A6 validateKey 内联校验**：新增 `ai-validate-key.js`，对 `#byok-key`/`#ai-apikey`/`#custom-apikey` 做防抖 input 监听，复用既有 `window.LabCode.ai.checkConnection`（main 侧真实打端点验证），绿/红反馈 + 友好错误映射。`node --check` 通过。
+- ✅ **A4 agentMode 切换**：**无需新建**——经子代理复核，BubaiCode 已有 `state.mode`(auto/default/plan) + 顶部 `safety-mode-group` 三按钮 + `syncSafetyModeUI`，正是 ChipCode `agentMode` 的等价物，且已驱动计划门控/工具确认/自动验证。标记为「已对齐」。
+- ✅ **A5 compactPreview 逻辑接通**：新增 `ai-compact-preview.js`，暴露 `window.getCompactPreview`/`window.BubaiCode.getCompactPreview`，复用 `compressContext` 三级裁剪边界（keepTurns=3）生成 `{summary, kept, dropped}` 预览，被既有 `ctx-compact-btn`→`openCompactPreview` 消费（此前因缺数据源而落空）。`node --check` 通过。
+- ✅ **A6 validateKey 内联校验**：新增 `ai-validate-key.js`，对 `#byok-key`/`#ai-apikey`/`#custom-apikey` 做防抖 input 监听，复用既有 `window.BubaiCode.ai.checkConnection`（main 侧真实打端点验证），绿/红反馈 + 友好错误映射。`node --check` 通过。
 - 注：A2 之前评估误判的规划/工具确认/思考档位/时间旅行/自校验 **已核实存在，不属缺口**；A4 agentMode 亦已存在。Phase A 六项改造已落地（仅 A4 为确认已对齐、零新增代码）。
 - **下一步**：因 `node_modules` 未装，需用 `npm install` + `npm run build:win`（或 asar 重打包热修）构建验证；随后在运行实例中实测语音/记忆/rewind/压缩预览/Key 校验五项交互。
 
@@ -125,10 +125,10 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 ## 七、运行时验证（2026-11-06 深夜，已完成 ✅）
 
 ### 方法：asar 热修补（绕开 388MB 重打包）
-1. 本机 `C:\Users\Administrator\AppData\Local\Programs\LabCode\LabCode.exe` 是打包安装版，从自带 asar 加载，不读源码目录 → 改动需进 asar 才能生效。
-2. 备份 `resources/app.asar` → `app.asar.bak`（回滚保障）；`asar extract` 解包到 `D:\work\tmp\labcode_inst_asar`。
+1. 本机 `C:\Users\Administrator\AppData\Local\Programs\BubaiCode\BubaiCode.exe` 是打包安装版，从自带 asar 加载，不读源码目录 → 改动需进 asar 才能生效。
+2. 备份 `resources/app.asar` → `app.asar.bak`（回滚保障）；`asar extract` 解包到 `D:\work\tmp\bubaicode_inst_asar`。
 3. asar 内 renderer 存在**两份**：顶层 `renderer/` 与 `packages/renderer/`（main 实际加载哪份未查，保险起见两份都覆盖）。
-4. 覆盖改动文件（index.html + js/app.js + 5 个新 ai-*.js）到两处 → `asar pack` 重打包（393MB，含 node_modules）→ 杀 LabCode 进程 → 替换 asar → 重启。
+4. 覆盖改动文件（index.html + js/app.js + 5 个新 ai-*.js）到两处 → `asar pack` 重打包（393MB，含 node_modules）→ 杀 BubaiCode 进程 → 替换 asar → 重启。
 5. **注意**：`npm run build:win` 会重建全部并覆盖此热修；下次正式构建后热修自然作废（内容一致）。
 
 ### GUI 验证结果（PrintWindow 后台抓窗 + AttachThreadInput 破前台锁，全部通过）
@@ -154,7 +154,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 
 ### 1. 逻辑回归 28/28 通过
 `D:\work\tmp\verify_align.js`（零依赖 Node + vm + 极简 DOM stub，可复跑：`node D:\work\tmp\verify_align.js`）覆盖 5 个模块：
-- **A5 compactPreview**（8 项）：`getCompactPreview`/`LabCode.getCompactPreview` 导出、summary/kept/dropped 结构、长会话正确切分、短会话零丢弃、无 agent 时安全返回 null。
+- **A5 compactPreview**（8 项）：`getCompactPreview`/`BubaiCode.getCompactPreview` 导出、summary/kept/dropped 结构、长会话正确切分、短会话零丢弃、无 agent 时安全返回 null。
 - **A6 validateKey**（7 项）：监听挂载、600ms 防抖只调用一次、apiKey 透传、有效 Key 绿框+正反馈、无效 Key 红框+「认证失败」友好映射。
 - **A1 记忆库**（6 项）、**A3 rewind**（5 项）：按钮挂载、面板/控制条挂载、点击开→再点关、空状态文案、`onMemoryChange` 钩子、`toggleRewindBar` 导出。
 - **A2 语音**（2 项）：不支持 Web Speech API 时降级提示且不崩。
@@ -162,7 +162,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 
 ### 2. 一致性 & 持久性
 - 源码 ↔ 热修 asar 的 7 个文件（index.html、app.js、5 个 ai-*.js）**SHA256 全部 MATCH**。
-- **重启 LabCode 后新按钮仍在、界面回到干净初始态** → asar 替换持久生效，非内存态。
+- **重启 BubaiCode 后新按钮仍在、界面回到干净初始态** → asar 替换持久生效，非内存态。
 
 ### 3. 交付状态
 - 改动文件（`codelab-desktop/desktop-app/renderer/`）：`index.html`、`js/app.js`（3 处最小钩子）、新增 5 个 `js/ai-*.js`。
@@ -178,10 +178,10 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 ## 九、Phase B 完整会话 store（2026-11-06，已完成 ✅）
 
 ### 9.1 调研结论（3 个只读子代理并行勘察）
-**改造前 LabCode 有「两套互不相通」的会话持久化**，这是根本问题：
+**改造前 BubaiCode 有「两套互不相通」的会话持久化**，这是根本问题：
 | | UI 历史面板 | AgentRunner |
 |---|---|---|
-| 存储 | `localStorage['labcode.chatSessions']` | 主进程 `userData/sessions/<id>.json` |
+| 存储 | `localStorage['bubaicode.chatSessions']` | 主进程 `userData/sessions/<id>.json` |
 | 字段 | `{id,title,ts,messages}`（4 个） | 富字段 `{id,title,messages,thinking,workLog,mode,modelId,projectPath,projectType,plan,usage,timestamp}` |
 | id 体系 | `s<timestamp>` | `session_<base36>` |
 | 用途 | 历史面板/欢迎页读 | 每轮 run 收尾写，**渲染层从未读回** |
@@ -191,7 +191,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 **ChipCode 权威参照**（解包出的 `packages/engine/dist/session-store.js` 是带设计注释的可读 tsc 输出）：`node:sqlite` 权威库 `sessions` + `session_message(seq 有序、display 列原样存完整消息对象)`；`saveSession`(replace_all 事务) / `loadSessionMeta`+`loadSession` / `reviseSession(ops: replace_all|delete_range|insert|update + 批末 renumber)` / 独立 FTS5 索引库 `searchSessions`(bm25 + 中文 3-gram + snippet 高亮 + projectPath 过滤)；`sched_` 定时任务会话在 SQL 与 JSON legacy 两处同时过滤；`sessionId` 白名单 `/^[A-Za-z0-9_-]{1,64}$/` 防路径穿越；memories / rewind turns / planStore 全部以 sessionId 关联。
 
 ### 9.2 架构决策（重要）
-**不照搬 SQLite/FTS5，而是「语义对齐 + 实现适配」**：LabCode 是纯 JSON 文件存储、会话量级小，引入 `node:sqlite` 与独立索引 worker 会带来迁移与双写风险。采用：
+**不照搬 SQLite/FTS5，而是「语义对齐 + 实现适配」**：BubaiCode 是纯 JSON 文件存储、会话量级小，引入 `node:sqlite` 与独立索引 worker 会带来迁移与双写风险。采用：
 - **同步内存镜像 + 异步防抖落盘**：`session-store.js` 维护 `cache[]`，现有 6 处同步 UI 代码零 async 改造即可切换数据源；
 - **单一写者**：`syncCurrent`（UI）与 `captureFromAgent`（AgentRunner）都写入同一条会话，彻底消除两套 id/字段分裂；
 - **磁盘权威 + legacy 一次性迁移**：启动 hydrate 时合并 `sessions.list()` 与旧 localStorage，把 legacy 写回磁盘后清除旧键；
@@ -228,7 +228,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 ### 9.6 与 ChipCode 的剩余差异（非阻塞，后续可选）
 - **索引**：线性扫描替代独立 FTS5 索引库；会话量级大（>千条）时需引入索引 + bm25 / 中文 3-gram。
 - **turn 批次会话作用域**：`fileChangeTracker` 仍用固定 `'default'/'stream'` sessionId，切换会话时清空历史以避免串味；ChipCode 是 `turns/<sessionId>.json` 按会话持久化、可跨重启恢复。
-- **自动记忆提炼**：ChipCode 会话结束按 sessionId 调 LLM 提炼 ≤5 条记忆；LabCode 的 remember/forget 仍是工具驱动（Phase A A1），未做自动提炼。
+- **自动记忆提炼**：ChipCode 会话结束按 sessionId 调 LLM 提炼 ≤5 条记忆；BubaiCode 的 remember/forget 仍是工具驱动（Phase A A1），未做自动提炼。
 - **planStore**：会话切换已恢复 `state.currentPlan`，但未做 ChipCode 那样每轮注入进度防失忆。
 - **契约脚本既有 4 项 FAIL** 待单独清理。
 
@@ -275,27 +275,27 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 查明此前 4 项残留 FAIL **全部是脚本误报，不是断链功能**：
 | 误报 | 真相 |
 |---|---|
-| `window.LabCode.engine.makeTimeoutGuard` | 只在注释 `app.js:6159`，脚本把注释当引用 |
-| `window.LabCode.git.checkpoint` | preload `preload.js:259` 真实存在，但它是三层嵌套**对象**，`walk()` 只收录函数路径 |
-| `window.LabCode.git.credentials` | 同上，`preload.js:265` |
-| `window.LabCode.ai.__usageWrapped` | 渲染层 `app.js:18348` 自己挂的运行时标记，不是 preload API |
+| `window.BubaiCode.engine.makeTimeoutGuard` | 只在注释 `app.js:6159`，脚本把注释当引用 |
+| `window.BubaiCode.git.checkpoint` | preload `preload.js:259` 真实存在，但它是三层嵌套**对象**，`walk()` 只收录函数路径 |
+| `window.BubaiCode.git.credentials` | 同上，`preload.js:265` |
+| `window.BubaiCode.ai.__usageWrapped` | 渲染层 `app.js:18348` 自己挂的运行时标记，不是 preload API |
 
 `scripts/verify-ipc-contract.cjs` 三处修复：
 1. `walk()` 对**对象路径也 `out.add(full)`**（以后三段式 API 不再误报）；
 2. 新增 `inLineComment(src, idx)` 逐行判定，扫描时跳过注释内匹配（比全局状态机稳——1.1MB 渲染主文件里模板字符串/正则极多，状态机会误判）；
-3. 新增 `reSelfAssigned` 收集 `window.LabCode.x.y = ...` 赋值型标记并从 `usedApiPaths` 排除。
+3. 新增 `reSelfAssigned` 收集 `window.BubaiCode.x.y = ...` 赋值型标记并从 `usedApiPaths` 排除。
 
 结果：`main handlers 205 / renderer channels 200 / preload API paths 281`，`[channels] NONE`、`[preload] NONE`、`[main] duplicate NONE`，**`[PASS]` exit=0**。
 `D:\work\tmp\verify_contract.cjs` **8/8**，含**负向测试**：临时造一个真实缺失的 `__missing__.method` 引用，脚本必须仍 `exit=1` 并报出该路径 → 证明校验没有被「改松」。
 
 ### 11.2 补齐此前诚实标注的 GUI 缺口（CDP 直连）
-用 `LabCode.exe --remote-debugging-port=9223` + Node 24 全局 `WebSocket` 连 `Runtime.evaluate` / `Page.captureScreenshot`，绕开原生目录对话框与多进程 PrintWindow 抓错窗口的问题。
+用 `BubaiCode.exe --remote-debugging-port=9223` + Node 24 全局 `WebSocket` 连 `Runtime.evaluate` / `Page.captureScreenshot`，绕开原生目录对话框与多进程 PrintWindow 抓错窗口的问题。
 
 - **产品工厂五阶段视图**：注入 `state.projectPath='D:/work/tmp/pf_demo'` 后，CDP 截图确认 5 张阶段卡片（创意/造型/硬件/软件/联调）全部「完成」绿点、证据覆盖 `1/1`、阶段进度 `5/5`、详情板显示需求原文与验收条件。DOM 读数 `stageButtons:5, emptyState:false`。
 - **MQTT 底栏面板**：CDP 截图确认 `MQTT` tab 激活、broker/用户名/密码输入、连接/测试/清空、订阅 topic、发布 topic/payload 全部渲染。
 - **订阅与套餐面板**：DOM 读数 `navExists:true, panelExists:true, buyButtons:4`，文本含「当前套餐：免费版 / 可用积分：100 / 今日剩余 3 积分」及免费/轻量/专业/旗舰四张卡片。设置弹窗打开时 `Page.captureScreenshot` 超时（8s），但 DOM 证据完整。
 
-验证后已用不带调试端口的方式重启 LabCode，恢复正常状态（4 进程）。
+验证后已用不带调试端口的方式重启 BubaiCode，恢复正常状态（4 进程）。
 
 ### 11.3 最终验证总账
 `28 + 46 + 40 + 68 + 8 = 190/190` 全绿；契约 `[PASS]`；9+1 个 JS `node --check` 全过；应用重启后正常。
@@ -331,7 +331,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 ### 12.5 正式构建 `build:win`（首次成功）
 - `prebuild:win` → `inject-gateway.js` 只写 `resources/gateway.json`（空凭据，无内置 token）；`electron-rebuild` **成功**。
 - **踩坑**：`electron-builder` 清空 `dist168/win-unpacked/resources` 的 728 个文件时，被宿主 CodeBuddy 的 `node-safe-delete-shim`（阈值 500）拦截 → `SAFE_DELETE_BULK_CONFIRM_REQUIRED`。**解法**：用 `-c.directories.output=dist169` 输出到全新空目录，绕过守卫（不删任何东西）。
-- 产物：`desktop-app/dist169/LabCode-Setup-1.2.31.exe` **389,050,568 B**（稳定、err 日志为空）+ `LabCode-1.2.31-x64.nsis.7z` 388MB + blockmap。
+- 产物：`desktop-app/dist169/BubaiCode-Setup-1.2.31.exe` **389,050,568 B**（稳定、err 日志为空）+ `BubaiCode-1.2.31-x64.nsis.7z` 388MB + blockmap。
 - 核验 `dist169/win-unpacked/resources/app.asar`（343MB，比热修包 393MB 更干净，因正式构建排除 devDependencies）**包含全部 10 个新模块**（product-factory / search-index / session-store / auto-memory / product-ai-tools / mqtt-panel / subscription-panel / ai-voice-input / ai-revise 等）。
 - `dist169` 被 `.gitignore:6 desktop-app/dist*/` 忽略；`gateway.json` 只有 `{token:"",url:""}` 且无 git 改动，构建未污染仓库。
 
@@ -357,15 +357,15 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 | `app.asar.bak` | 最初原始安装版（无任何改动） | 342,811,553 |
 
 ### 13.3 部署后验证
-- LabCode 正常启动（4 进程），无崩溃/白屏。
+- BubaiCode 正常启动（4 进程），无崩溃/白屏。
 - GUI 确认：欢迎页历史会话列表（Phase B 数据）、积分徽标（今日剩余 3 积分）、输入栏、模型选择器（Qwen2.5-Coder 3B 本地）全部正常；活动栏 **5 个图标齐全**，第 5 个芯片图标即 Phase D 产品工厂。
 - **双轨消除**：运行物 = 正式发行物 = 源码 8d91d64，三者一致。
 
 ### 14.9 全页面 UI 逐页对比（2026-11-07，实机取证）
-- **方法**：LabCode 经 CDP 遍历（`http://127.0.0.1:9223`，已部署对齐版 app.asar）；ChipCode 经 clawdcursor mcp 逐视图打开（pid 24536，TrieCode 安装版）。逐一打开活动栏各 tab / 顶栏 / 设置窗口取证。
-- **结论**：双方**同源结构**，共有页面 UI 与功能一致；差异集中在 LabCode 的「硬件增强维度」与个别空态呈现。
+- **方法**：BubaiCode 经 CDP 遍历（`http://127.0.0.1:9223`，已部署对齐版 app.asar）；ChipCode 经 clawdcursor mcp 逐视图打开（pid 24536，TrieCode 安装版）。逐一打开活动栏各 tab / 顶栏 / 设置窗口取证。
+- **结论**：双方**同源结构**，共有页面 UI 与功能一致；差异集中在 BubaiCode 的「硬件增强维度」与个别空态呈现。
 
-| 页面 / 视图 | LabCode（实机） | ChipCode（实机） | 判定 |
+| 页面 / 视图 | BubaiCode（实机） | ChipCode（实机） | 判定 |
 |---|---|---|---|
 | 活动栏 tabs | 文件 / 产品工厂 / 源代码管理 / 插件（4 项）+ 底栏 输出·问题·串口·绘图仪·终端·调试·MQTT | 文件 / 产品工厂 / 源代码管理 / 插件（4 项） | ✅ **已对齐**（2026-11-07：设备 tab 从活动栏移除、功能收敛至状态栏点击入口；见 14.11） |
 | 顶栏 | 文件/编辑/视图/帮助 + 串口监视器/终端/搜索 + 设置 + **Wokwi 仿真运行 / 🤖 编排** | 同左但无 Wokwi 仿真运行 / 编排 | 🔶 硬件增强项 |
@@ -375,37 +375,37 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 | 插件市场 | 官方市场/已安装 + 卡片(图标+名+版本+描述+安装) | 同结构 + 同插件集 | ✅ 一致（**修正**：ChipCode 同样内置全部硬件工具链 Arduino CLI/ESP-IDF/STM32Cube/Wokwi/立创EDA/OpenSCAD/51单片机/插件开发/浏览器自动化） |
 | AI 面板 | 示例/写代码/做产品 + 语音/代理/模型/工作空间 + 提示词；模型 Qwen2.5-Coder 3B(本地) | 同结构；模型 Minimax M2.7(云端) | ✅ 结构一致；模型差为本地优先部署策略 |
 | 撤销/回滚 | AI 面板顶部 撤销上一轮(含文件回滚)/选择撤销范围/重做 | 同位置同功能(disabled 态) | ✅ 一致 |
-| 设置 | 左侧分组导航（个人/AI/集成/开发）+ 搜索 + 保存 | 同结构：个人(账户/常规/外观/语音) AI(模型/补全/记忆/技能/搜索) 集成(MCP/插件) 开发(编辑器/版本控制/终端/解释器/钩子/定时任务) | ✅ 同源结构（LabCode 应多硬件分类，待确认） |
+| 设置 | 左侧分组导航（个人/AI/集成/开发）+ 搜索 + 保存 | 同结构：个人(账户/常规/外观/语音) AI(模型/补全/记忆/技能/搜索) 集成(MCP/插件) 开发(编辑器/版本控制/终端/解释器/钩子/定时任务) | ✅ 同源结构（BubaiCode 应多硬件分类，待确认） |
 
-- **需对齐项（真差异）**：仅「源代码管理空态」——LabCode 在未打开项目时仍渲染 git 操作控件（全部暂存/提交/更多），而 ChipCode 显示干净空态（还没有打开项目 + 打开/克隆入口）。建议将 LabCode 源代码管理空态改为与 ChipCode 一致。
-- **其余差异均为 LabCode 硬件增强维度（设备/底栏硬件面板/Wokwi/编排）或本地模型部署策略，非 UI 对齐缺口**。
-- 部署状态：LabCode 运行对齐版 app.asar（dist169 基线，备份 `.prev`），源码改动 `c0118aa` 已提交。
+- **需对齐项（真差异）**：仅「源代码管理空态」——BubaiCode 在未打开项目时仍渲染 git 操作控件（全部暂存/提交/更多），而 ChipCode 显示干净空态（还没有打开项目 + 打开/克隆入口）。建议将 BubaiCode 源代码管理空态改为与 ChipCode 一致。
+- **其余差异均为 BubaiCode 硬件增强维度（设备/底栏硬件面板/Wokwi/编排）或本地模型部署策略，非 UI 对齐缺口**。
+- 部署状态：BubaiCode 运行对齐版 app.asar（dist169 基线，备份 `.prev`），源码改动 `c0118aa` 已提交。
 
 ### 14.10 源代码管理空态对齐（2026-11-07）
 - **改动**（`renderer/index.html` + `renderer/js/app.js`）：在 `git-panel` 内新增 `#git-empty` 空态块（复用 `.scm-empty` 样式，文案与 ChipCode 逐字一致：「还没有打开项目」+ 描述 + 打开项目…/从 Git 克隆项目…）；给 git 操作区加 `id="git-actions"`；在 `refreshGitStatus()` 中无项目时调用 `showEmpty(true)` 隐藏 git-status/git-files/git-actions/checkpoint 按钮、显示 `#git-empty`，有项目时 `showEmpty(false)` 恢复原行为（非仓库仍给「在此初始化仓库」真实入口）。空态两个按钮复用 `welcome-open-project`/`welcome-clone-project` 入口。
 - **验证（CDP 实机）**：部署修复版 asar 后，点源代码管理 tab → `gitBtnActive:true`、`gitPanelDisp:flex`、`gitEmptyDisp:block`（空态可见）、`gitActionsDisp:none`（git 控件隐藏）、`git-empty` 文案与按钮逐字等于 ChipCode（`actionsHidden:true`）——**已 1:1 对齐，无功能回归**。
-- **⚠️ 关键教训（务必规避）**：首次打包部署后点击完全失效（按钮无反应、面板不切换）。根因是 `refreshGitStatus` 改动**误加了重复的 `const r = await window.LabCode.git.status(cwd)`**（原文件该声明在插入处下一行已存在），导致 `SyntaxError: Identifier 'r' has already been declared`，**整个 app.js 解析失败、全部事件监听未挂载**。修复后 `node --check` 通过（EXIT=0）。
+- **⚠️ 关键教训（务必规避）**：首次打包部署后点击完全失效（按钮无反应、面板不切换）。根因是 `refreshGitStatus` 改动**误加了重复的 `const r = await window.BubaiCode.git.status(cwd)`**（原文件该声明在插入处下一行已存在），导致 `SyntaxError: Identifier 'r' has already been declared`，**整个 app.js 解析失败、全部事件监听未挂载**。修复后 `node --check` 通过（EXIT=0）。
   - 经验：修改含 `await` 的函数后，**必须** `node --check` 校验语法再打包；asar 打包不会报 JS 语法错误（仅打包字节），运行时整文件崩溃极难排查。本次靠 CDP `Runtime.exceptionThrown` 捕获到 SyntaxError 才定位。
 - 部署：局部 asar 注入（app_new.asar 基于 unpacked 目录，备份原 asar 为 `.prev`），源码改动待提交。
 
 ### 14.11 活动栏/空态图标 UI 对齐 + 硬件项收敛 + 产品工厂功能实测（2026-11-07）
-- 用户对照 ChipCode 截图（活动栏产品工厂图标圈红）指出仍不一致。实机取证（LabCode CDP / ChipCode 截图）确认 4 处真实差异：① 活动栏顺序 ChipCode=文件/产品工厂(第2位)/源代码管理/插件，LabCode=文件/**设备**/源代码管理/插件/产品工厂(第5位)；② 产品工厂图标 ChipCode=立方体 box，LabCode=`#icon-chip`；③ 空态图标 ChipCode=SVG 立方体，LabCode=「◈」文本；④ 头部 ChipCode=2 个纯图标按钮，LabCode=「打开/新建」文字按钮。
+- 用户对照 ChipCode 截图（活动栏产品工厂图标圈红）指出仍不一致。实机取证（BubaiCode CDP / ChipCode 截图）确认 4 处真实差异：① 活动栏顺序 ChipCode=文件/产品工厂(第2位)/源代码管理/插件，BubaiCode=文件/**设备**/源代码管理/插件/产品工厂(第5位)；② 产品工厂图标 ChipCode=立方体 box，BubaiCode=`#icon-chip`；③ 空态图标 ChipCode=SVG 立方体，BubaiCode=「◈」文本；④ 头部 ChipCode=2 个纯图标按钮，BubaiCode=「打开/新建」文字按钮。
 - **UI 改动**：`index.html` 活动栏重排为 文件/产品工厂(`#icon-box`)/源代码管理/插件 4 项；`product-factory.js` 头部改 2 个纯图标按钮（folder-open / +，新增 `.pf-btn.icon` 幽灵样式）、空态图标换 `#icon-box` SVG；`ensureActivityTab()` 动态 tab 图标同步 box。
-- **硬件增强项收敛**：移除活动栏「设备」tab（`display:none` 保留 DOM 与监听），**功能不丢失**——`app.js` 给状态栏 `#status-board`/`#status-toolchain` 绑定点击打开设备面板，`style.css` 加 `cursor:pointer` + hover 反馈。MQTT/串口/绘图仪等底栏面板、Wokwi 仿真等顶栏入口保持（LabCode 硬件能力保留，仅活动栏视觉收敛到 ChipCode 4 tab）。
+- **硬件增强项收敛**：移除活动栏「设备」tab（`display:none` 保留 DOM 与监听），**功能不丢失**——`app.js` 给状态栏 `#status-board`/`#status-toolchain` 绑定点击打开设备面板，`style.css` 加 `cursor:pointer` + hover 反馈。MQTT/串口/绘图仪等底栏面板、Wokwi 仿真等顶栏入口保持（BubaiCode 硬件能力保留，仅活动栏视觉收敛到 ChipCode 4 tab）。
 - **功能实测发现的真实 bug 并修复（重点）**：
   1. **新建产品项目点不动**：`createProject()` 用了 `window.prompt('产品名称')`，**Electron 不支持 prompt**，按钮静默失败。改为自制 `promptProductName()` 模态（Promise + 取消/遮罩/Esc/Enter 安全收尾，对齐克隆流程 `showGitCloneModal` 做法）。
   2. **「关闭」语义错误**：原 handler 是 `view.style.display='none'`，把整个产品工厂视图（含头部打开/新建按钮）隐藏，用户无法回空态再打开项目。改为模块内 `viewClosed` 标志：`render()` 强制空态、不隐藏 view，头部按钮保持可点；新建/打开成功后清除标志。刻意**不动全局 `projectPath`**（避免破坏文件树/git/终端）。
 - **端到端实机验证（CDP + 桌面自动化操作真实原生对话框）**：新建（输入名称→真实创建 11 个文件含 `spec.md`「# 测试产品A」）→ 五阶段渲染(创意/造型/硬件/软件/联调) → 打开已有项目 → 刷新 → **生成产品包真实落盘 5 文件**（`.manifest.json`/`bom.csv`/`evidence.md`/`README.md`/`requirements.md`）→ 关闭回空态（view 可见、4 按钮可点、文案「当前不是产品项目」）→ 再次打开恢复五阶段；状态栏点击打开设备面板（7 个板卡下拉）；活动栏 4 tab 顺序/图标、空态 SVG、头部图标按钮全部对齐截图；全过程 `Runtime.exceptionThrown` 无异常。
-- **踩坑**：① `window.LabCode.dialog` 是 contextBridge 暴露的**只读对象**，CDP 里 stub `openDirectory` 赋值静默失败，无法用假目录测原生流程——只能用 clawdcursor 操作真实「选择文件夹」对话框；② Windows 文件夹对话框输入路径后需 **两次 Return**（第一次导航进入、第二次确认选择）；③ 重复点击会堆叠多个原生对话框，需逐个 Escape 清理；④ 每次换前台窗口后 `type_text` 会因 `FOREGROUND_CHANGED` 拒绝，需先 `focus_window` 到新 pid。
+- **踩坑**：① `window.BubaiCode.dialog` 是 contextBridge 暴露的**只读对象**，CDP 里 stub `openDirectory` 赋值静默失败，无法用假目录测原生流程——只能用 clawdcursor 操作真实「选择文件夹」对话框；② Windows 文件夹对话框输入路径后需 **两次 Return**（第一次导航进入、第二次确认选择）；③ 重复点击会堆叠多个原生对话框，需逐个 Escape 清理；④ 每次换前台窗口后 `type_text` 会因 `FOREGROUND_CHANGED` 拒绝，需先 `focus_window` 到新 pid。
 - 部署：局部 asar 注入（app_new.asar 基于 unpacked，备份 `.prev`），源码改动待提交。
 
 ### 14.12 多子代理协作：搜索符号 + 文件欢迎页对齐（2026-11-07）
-- **触发**：全页面功能回归发现两处真差异：① 顶栏「搜索」是 `showToast('搜索功能')` 死入口，ChipCode 实机点开的是「搜索代码符号（函数/类/方法/变量）」浮层（含「与 AI 的 code_symbols 共用同一代码符号索引 · Esc 关闭」）；② 文件 tab 无项目态，LabCode 侧栏是「源代码管理 / 还没有打开项目」git 空态且 `#recent-list` 不存在，ChipCode 是「开始你的开发」+ 新建/打开/克隆 3 按钮 + 最近打开列表。**§14.9 原「文件欢迎页 ✅ 一致」为误判，已更正**。
+- **触发**：全页面功能回归发现两处真差异：① 顶栏「搜索」是 `showToast('搜索功能')` 死入口，ChipCode 实机点开的是「搜索代码符号（函数/类/方法/变量）」浮层（含「与 AI 的 code_symbols 共用同一代码符号索引 · Esc 关闭」）；② 文件 tab 无项目态，BubaiCode 侧栏是「源代码管理 / 还没有打开项目」git 空态且 `#recent-list` 不存在，ChipCode 是「开始你的开发」+ 新建/打开/克隆 3 按钮 + 最近打开列表。**§14.9 原「文件欢迎页 ✅ 一致」为误判，已更正**。
 - **协作方式**：3 个只读子代理并行调研（符号索引现状 / 欢迎页 DOM 与死代码链路 / 共享文件与回归风险交叉审查），主代理统一实施避免并行写冲突；实机验证后再开 2 个子代理独立审查边界，按审查结果加固。
 - **子代理关键结论**：① 项目**无**代码符号索引（`main/search-index.js` 是会话检索；AI `code_symbols` 走 clangd LSP 且缺 `language` 参数，恒返回 `LSP not started`）；两套命令面板并存 + 两个全局 Ctrl+Shift+P，不可复用；`openFileInEditor` 从未定义，只能用 `openFile()`；`openFile` 有 10s 异步分支，定位需轮询。② 欢迎页「开始你的开发」的按钮绑定（`welcome-new-project`/`-2` → `showNewProjectModal`）与 `renderRecentProjects()` **早已写好，只是 DOM 被删**；恢复 DOM 即可零新增逻辑。③ 两改动共享 `app.js`/`index.html`/`style.css`，`app.js` 是普通脚本，重复 `const` 会整文件 SyntaxError（历史事故）；新浮层类名不能含 `modal`（`style.css:5762 [class*="modal"]` 动画规则）。
 - **实施（3 文件）**：
   - `index.html`：`#search-btn` title 对齐 ChipCode；新增 `#symbol-search-overlay` 独立浮层（body 直属、专属类名）；侧栏头部改 2 图标按钮（打开.../新建项目）、移除 `scm-refresh-btn`；`#welcome-panel` 换为 `.welcome-start`（开始你的开发 + 描述 + 3 按钮 + `#recent-list`），**保留** `welcome-open-project`/`welcome-clone-project` id（被命令面板/git 空态/品牌卡等 6 处转发依赖）。
-  - `app.js`：新增 IIFE `window.LabCodeSymbols.build()`（基于 `state.files` 的 js/py/c 正则符号索引，含 `.ino`）+ `window.__openSymbolSearch()`；`search-btn` 绑定改真实浮层；AI `code_symbols` 工具改读同一索引（兑现「共用同一索引」）；`syncWelcomePanel()` 侧栏标题恒定「文件」+ 无项目时刷新最近列表；活动栏 explorer 判定口径与 sync 统一；`renderRecentProjects()` 挂 `window.__renderRecentProjects` 全局桥（它是 `bindEvents` 局部函数）；`loadProjectFromDisk` 写入 recent 后刷新列表。
+  - `app.js`：新增 IIFE `window.BubaiCodeSymbols.build()`（基于 `state.files` 的 js/py/c 正则符号索引，含 `.ino`）+ `window.__openSymbolSearch()`；`search-btn` 绑定改真实浮层；AI `code_symbols` 工具改读同一索引（兑现「共用同一索引」）；`syncWelcomePanel()` 侧栏标题恒定「文件」+ 无项目时刷新最近列表；活动栏 explorer 判定口径与 sync 统一；`renderRecentProjects()` 挂 `window.__renderRecentProjects` 全局桥（它是 `bindEvents` 局部函数）；`loadProjectFromDisk` 写入 recent 后刷新列表。
   - `style.css`：追加 `.welcome-start` / `#recent-list .recent-item` / `.symbol-search-*` 独立样式。
 - **2 个审查子代理发现并已加固的边界问题**（实机主流程覆盖不到）：① `mouseenter` 调 `symRender()` 重建 DOM → 移动中点击丢失 → 改为只切 `.active` 类 + `symHighlight()`；② 关闭后焦点残留隐藏 input 吞键盘 → `symClose()` 加 `blur()`；③ Esc 只绑 input → 加 document 级兜底；④ `col` 用 `m.index` 而非捕获组位置 → 改 `m[0].indexOf(m[1])`；⑤ 注释/前向声明误匹配与重复 → 去行注释 + `seen` 去重；⑥ 跳转判定 `activeTab===file` 键形态混用/3s 放弃 → basename 兼容 + 11s；⑦ 空结果 ↓ 置 -1 → 守卫；⑧ 最近列表 `name` 拼 innerHTML → `textContent`；⑨ 空态占位误显可点击 → 独立 class；⑩ 无项目态同步缺口：`persistCodeFile` 设默认项目后、AI 澄清重置后补 `syncWelcomePanel()`；⑪ **存量死功能**：菜单「打开项目」用 `result.success && result.path`，而 `dialog:openDirectory` 返回字符串 → 改兼容字符串/对象。
 - **实机验证（CDP，部署版）**：欢迎页文案/3 按钮/侧栏标题「文件」/2 图标按钮/最近打开 4 项真实历史；搜索浮层真实点击打开+聚焦、Esc 关闭+焦点清除；索引 7 符号（注释 `ghost` 已过滤、`PinMap` 前向声明未重复、`setup` 列号 6 正确）；查询 `setup` 命中 2 项、`Board` 命中 1 项；mouseenter 后点击跳转成功（`activeTab:src/main.js`）；有项目态 welcome 隐藏/fileTree 显示/标题「文件」；4 tab、git 空态、产品工厂空态、状态栏设备面板全部正常；`Runtime.exceptionThrown` 无异常。
@@ -416,22 +416,22 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 - **动机**：用户要求「一个功能一个功能去对比着仿写」——不再凭 UI 截图，而是以**已发布软件 ChipCode 安装版 `app.asar` 的真实源码**为证据基准。
 - **工具链**：`craft-anything` MCP 自检超时（doctor 报 `mcp:self-test` fail），按 skill 恢复指南用 CLI 命令行回退：绝对路径 `D:\software\craft-anything\app\craft-anything-0.4.0-windows-x64-portable\craft-anything-cli.exe`，`--deep --project .craft/chipcode-align.cany`。项目内保留 brief/plan/hypotheses(1)/findings(9)/unknowns(1)/handoff。
 - **证据**：`ev_c7aed…` = asar 提取 2868 文件（92.7MB，coverage complete）到 `D:\work\tmp\craft-anything-extract-69c39c4ceaeab94b`；`ev_69edca…` = `js-app-map`：Electron 1.3.6 / Vite+esbuild+tsc / **298 IPC 通道（248 配对）** / 63 端点 / 2 路由 / `arduinoAPI` 成员。主 bundle `packages/renderer/dist/assets/index-COwJnVOF.js` 5.84MB / 5097 行，**minified 但非混淆**（2444 条中文 UI 串明文，按 10 域聚类）。
-- **重要结论（fnd_3）**：双方 IPC 仅 39 个通道名相同 → LabCode 是独立实现而非 fork，必须按**功能语义**对比。ChipCode 独有域：agents/auth/board/core/lib/devicePanel/pty/sim/skills；LabCode 独有域：serial/dap/ollama/web/webhook/region/clipboard/dashboard。
-- **功能 1 搜索代码符号（fnd_1/2/4/5）**：取证 bundle @473960 + i18n `ai.symbolSearch.*`，ChipCode 是 **tree-sitter 持久索引 worker + IPC `ai.querySymbols(projectPath,query,30)`**（main @1831741 `initCodeIndex/ensureProjectIndexed/querySymbols/hasProjectIndex`），250ms debounce + 递增序号丢弃过期响应 + 六态 + 无标题栏 inline 输入框（宽540/top52/遮罩z90）。→ LabCode 仿写：HTML/CSS 改 inline 形态；JS 改 250ms debounce、竞态序号、空输入空列表、limit 30、noProject/searching/failed/empty/hint 五态、跳转前读磁盘内容。CDP 验证全通过（debounce「搜索中…」→ 30 条上限 → 竞态 → 跳转）。**保留架构差异并记 unknown `unk_831150…`**：tree-sitter 索引短期不补，且不伪造 `indexing` 状态。
-- **功能 2 欢迎页/最近打开（fnd_6/7）**：取证 bundle @500186 `i.slice(0,5)`、@505482 `file.recentMissing` 失效检测 + `removeRecent` 自动移除、i18n `files.empty.*`。→ LabCode 仿写：只显示前 5 项、显示 `name` 字段、点击前 `fs.exists` 检查、失效时 toast「项目已被删除或移动」并 config.set 移除后刷新。CDP 验证：注入 7 项渲染 5 项，点击 GONE 后列表补齐、无异常。
-- **功能 3 产品工厂五阶段（fnd_8/9）**：取证 bundle @5675310 `pf-export` 三态（`is-ready`/`is-stale`、文件数徽标、过期 title、点击打开文件夹或让 AI 生成）+ main `product:packageDigest`。核对 LabCode `main/product-factory.js` 已有等价 `fingerprint(6 文件)` + `manifest.inputsHash` stale 判定 + `buildPackage` 5 文件 → **核心逻辑已对齐，差异只在呈现**。→ 仿写：`computeStages` 补 `package.fileCount`，renderer 导出按钮按 fileCount/stale 显示「生成产品包 / 产品包 N / 产品包 · 已过期 N!」+ `.pf-export--stale` 橙色高亮。CDP 验证：5产品包 → 改 spec.md → 5!产品包·已过期 → 点击重建 → 回 5产品包。
+- **重要结论（fnd_3）**：双方 IPC 仅 39 个通道名相同 → BubaiCode 是独立实现而非 fork，必须按**功能语义**对比。ChipCode 独有域：agents/auth/board/core/lib/devicePanel/pty/sim/skills；BubaiCode 独有域：serial/dap/ollama/web/webhook/region/clipboard/dashboard。
+- **功能 1 搜索代码符号（fnd_1/2/4/5）**：取证 bundle @473960 + i18n `ai.symbolSearch.*`，ChipCode 是 **tree-sitter 持久索引 worker + IPC `ai.querySymbols(projectPath,query,30)`**（main @1831741 `initCodeIndex/ensureProjectIndexed/querySymbols/hasProjectIndex`），250ms debounce + 递增序号丢弃过期响应 + 六态 + 无标题栏 inline 输入框（宽540/top52/遮罩z90）。→ BubaiCode 仿写：HTML/CSS 改 inline 形态；JS 改 250ms debounce、竞态序号、空输入空列表、limit 30、noProject/searching/failed/empty/hint 五态、跳转前读磁盘内容。CDP 验证全通过（debounce「搜索中…」→ 30 条上限 → 竞态 → 跳转）。**保留架构差异并记 unknown `unk_831150…`**：tree-sitter 索引短期不补，且不伪造 `indexing` 状态。
+- **功能 2 欢迎页/最近打开（fnd_6/7）**：取证 bundle @500186 `i.slice(0,5)`、@505482 `file.recentMissing` 失效检测 + `removeRecent` 自动移除、i18n `files.empty.*`。→ BubaiCode 仿写：只显示前 5 项、显示 `name` 字段、点击前 `fs.exists` 检查、失效时 toast「项目已被删除或移动」并 config.set 移除后刷新。CDP 验证：注入 7 项渲染 5 项，点击 GONE 后列表补齐、无异常。
+- **功能 3 产品工厂五阶段（fnd_8/9）**：取证 bundle @5675310 `pf-export` 三态（`is-ready`/`is-stale`、文件数徽标、过期 title、点击打开文件夹或让 AI 生成）+ main `product:packageDigest`。核对 BubaiCode `main/product-factory.js` 已有等价 `fingerprint(6 文件)` + `manifest.inputsHash` stale 判定 + `buildPackage` 5 文件 → **核心逻辑已对齐，差异只在呈现**。→ 仿写：`computeStages` 补 `package.fileCount`，renderer 导出按钮按 fileCount/stale 显示「生成产品包 / 产品包 N / 产品包 · 已过期 N!」+ `.pf-export--stale` 橙色高亮。CDP 验证：5产品包 → 改 spec.md → 5!产品包·已过期 → 点击重建 → 回 5产品包。
 - **待续功能**（handoff 已写入 .cany）：Git 面板 29 通道（含 checkpoint/conflict AI 合并）、AI 会话 40 通道（compact/contextUsage/rewind/planArtifact）、插件市场、设备/板卡库管理、设置分组、终端/串口、agents 并行智能体、schedule 定时任务。
 - 部署：局部 asar 注入；**注意 main 文件改动也须复制到 `unpacked/main/`**（功能 3 踩过）。源码改动待提交。
 
 ### 14.14 证据驱动逐功能仿写 · 续：Git 两个功能（2026-11-07）
-- **功能 4 Git 进行中操作（fnd_10/11）**：ChipCode main @2480639 用 6 个标记（MERGE_HEAD/rebase-merge/rebase-apply/CHERRY_PICK_HEAD/REVERT_HEAD/BISECT_LOG）+ `rev-parse --git-dir` 检测，`finishOp` 执行 `git <kind> --continue|--abort`（bisect 用 `bisect reset`），i18n `git.op.*` 26 条 + `git.panel.pendingOp.*`；LabCode 原先完全无此能力。→ 仿写：`main/index.js` 新增 `PENDING_OP_MARKS`/`detectPendingOp()`/`git:pendingOp`/`git:finishOp`（含未解决冲突与无改动的错误解释）；`main/preload.js` 暴露两通道；renderer 新增 `#git-pending` 横幅（label/hint/继续/放弃按钮）并在 `refreshGitStatus()` 异步检测。**实机用真实冲突仓库验证**（git init→两条分支改同一文件→merge 造出 MERGE_HEAD）：横幅显示「正在合并（merge）」+ 完成/放弃按钮，点放弃后横幅隐藏、磁盘 `MERGE_HEAD` 消失且工作区干净 —— `git merge --abort` 真实生效。横幅 hint 后续按 i18n 逐字修正为「这次操作停在半路了…」/「这个状态需要收尾才能继续做别的操作。」。
-- **功能 5 提交信息生成（fnd_12）**：ChipCode 严格要求只看已暂存改动（`git.commitMessage.nothingStaged`），按钮有「生成中…」态、空结果提示、tooltip；LabCode 原实现直接调 AI（main 会退回未暂存 diff）。→ 仿写：`main/index.js` 的 `git:status` 增加原始 2 字符状态码 `x`/`y` 与 `staged` 标志（原 `status.trim()` 会把 `M ` 与 ` M` 都变成 `M`，丢失暂存位）；renderer `git-ai-commit-msg-btn` 前置检查 `f.staged`、无暂存 toast「没有已暂存的改动」拦截、生成中禁用态、文案逐字对齐。**CDP 验证**：无暂存时拦截且不调 AI；有暂存时按钮「生成中…」→复位，提交框写入真实 AI 生成的信息，无异常。
-- **踩坑补充**：① `window.LabCode.git` 是 contextBridge 只读对象，CDP 里替换其方法做 stub 静默失败（`calls:0`），不能据此判定失败；② `git:status` 的 `status.trim()` 会抹掉 X/Y 暂存位，判断暂存必须用原始 2 字符码；③ main/preload/renderer 三处改动都要同步复制到 asar 镜像（本次 5 文件）；④ PowerShell 内联 `$变量` 会被外层包装吞掉，一律用脚本文件。
+- **功能 4 Git 进行中操作（fnd_10/11）**：ChipCode main @2480639 用 6 个标记（MERGE_HEAD/rebase-merge/rebase-apply/CHERRY_PICK_HEAD/REVERT_HEAD/BISECT_LOG）+ `rev-parse --git-dir` 检测，`finishOp` 执行 `git <kind> --continue|--abort`（bisect 用 `bisect reset`），i18n `git.op.*` 26 条 + `git.panel.pendingOp.*`；BubaiCode 原先完全无此能力。→ 仿写：`main/index.js` 新增 `PENDING_OP_MARKS`/`detectPendingOp()`/`git:pendingOp`/`git:finishOp`（含未解决冲突与无改动的错误解释）；`main/preload.js` 暴露两通道；renderer 新增 `#git-pending` 横幅（label/hint/继续/放弃按钮）并在 `refreshGitStatus()` 异步检测。**实机用真实冲突仓库验证**（git init→两条分支改同一文件→merge 造出 MERGE_HEAD）：横幅显示「正在合并（merge）」+ 完成/放弃按钮，点放弃后横幅隐藏、磁盘 `MERGE_HEAD` 消失且工作区干净 —— `git merge --abort` 真实生效。横幅 hint 后续按 i18n 逐字修正为「这次操作停在半路了…」/「这个状态需要收尾才能继续做别的操作。」。
+- **功能 5 提交信息生成（fnd_12）**：ChipCode 严格要求只看已暂存改动（`git.commitMessage.nothingStaged`），按钮有「生成中…」态、空结果提示、tooltip；BubaiCode 原实现直接调 AI（main 会退回未暂存 diff）。→ 仿写：`main/index.js` 的 `git:status` 增加原始 2 字符状态码 `x`/`y` 与 `staged` 标志（原 `status.trim()` 会把 `M ` 与 ` M` 都变成 `M`，丢失暂存位）；renderer `git-ai-commit-msg-btn` 前置检查 `f.staged`、无暂存 toast「没有已暂存的改动」拦截、生成中禁用态、文案逐字对齐。**CDP 验证**：无暂存时拦截且不调 AI；有暂存时按钮「生成中…」→复位，提交框写入真实 AI 生成的信息，无异常。
+- **踩坑补充**：① `window.BubaiCode.git` 是 contextBridge 只读对象，CDP 里替换其方法做 stub 静默失败（`calls:0`），不能据此判定失败；② `git:status` 的 `status.trim()` 会抹掉 X/Y 暂存位，判断暂存必须用原始 2 字符码；③ main/preload/renderer 三处改动都要同步复制到 asar 镜像（本次 5 文件）；④ PowerShell 内联 `$变量` 会被外层包装吞掉，一律用脚本文件。
 - **剩余待续功能**（handoff 已更新）：AI 会话 40 通道（compactPreview/contextUsage/rewind/planArtifact/transcribe）、插件市场 10、board/core/lib 15、devicePanel 3、设置分组、schedule 16、agents 12、git review/conflict 逐块 AI 合并 36 条 i18n。
 - 部署：局部 asar 注入；源码改动待提交。
 
 ### 14.15 证据驱动逐功能仿写 · 续：Git 冲突区块（2026-11-07）
-- **更正 fnd_14（错误结论，见 fnd_15）**：LabCode **并非**完全没有冲突处理。`main/index.js` @1343 早已存在完整 `git:aiResolveConflicts` 后端：扫描 `U*` 状态文件、正则逐块解析 ours/theirs、每块调 `callAiOnce`（system 要求只输出合并后代码、去围栏、temperature 0.1、maxTokens 2048）、写回并 `git add` 暂存，含 guard<50 防死循环。真正缺口是**呈现层**：缺 `git:listConflicts` 列表 IPC、git 面板没有 ChipCode 那样的冲突区块（逐文件列出 + 逐文件「AI 合并」）。
+- **更正 fnd_14（错误结论，见 fnd_15）**：BubaiCode **并非**完全没有冲突处理。`main/index.js` @1343 早已存在完整 `git:aiResolveConflicts` 后端：扫描 `U*` 状态文件、正则逐块解析 ours/theirs、每块调 `callAiOnce`（system 要求只输出合并后代码、去围栏、temperature 0.1、maxTokens 2048）、写回并 `git add` 暂存，含 guard<50 防死循环。真正缺口是**呈现层**：缺 `git:listConflicts` 列表 IPC、git 面板没有 ChipCode 那样的冲突区块（逐文件列出 + 逐文件「AI 合并」）。
 - **本轮回填**：① main 新增 `git:listConflicts`（扫 `U*` 状态 + 读磁盘数 `^<<<<<<< ` 块数）并给 `git:aiResolveConflicts` 加 `onlyRel` 单文件参数；② preload 暴露 `git.listConflicts`；③ renderer 新增 `#git-conflicts` 区块（标题「N 个文件存在合并冲突」+ 每行「文件·N处」+「AI 合并」按钮，点击调 `git.aiResolveConflicts(cwd,path)` 后 `refreshGitStatus()`）。
 - **CDP 实机验证全通过**：构造真实 merge 冲突仓库（`git init`→两分支改同一行→`merge` 造出 `MERGE_HEAD` + `UU a.txt`，文件含 `<<<<<<<` 标记）→ 区块显示「1 个文件存在合并冲突」+ `a.txt · 1 处` +「AI 合并」按钮 → 点击后 a.txt 由 `UU` 变已暂存 `M`、`git:listConflicts` 返回空、区块 `display:none` 隐藏，全程无 JS 异常。`callAiOnce` 走 main 进程 AI，本例真实生效。
 - 踩坑补充：① CDP 验证脚本对返回 Promise 的 `Runtime.evaluate` 必须加 `awaitPromise:true`，否则拿到 `{}`；② 渲染进程同步 `require('fs')` 偶发失败（「Check dependency list! Synchronous require cannot resolve module 'fs'」），读文件应改走 IPC；③ 早先全文件搜 `aiResolveConflicts` 漏检（被 monaco/tsWorker 噪声淹没），导致 fnd_14 误判，已据实更正。
@@ -440,23 +440,23 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 - 提交链：`f094f68`(A+B) → `938434a`(C+D) → `b3d1296`(契约修复+GUI) → `8d91d64`(B+增强+正式构建)。
 - 回归 **238/238**；IPC 契约 `[PASS]`；安装版运行正式构建产物。
 - **未处理项（保持排除，需用户确认归属）**：`cdp_ws.txt`、`package.json`、`release-build/`、`welcome_chipcode_compare.png` 四个历史遗留改动，四次提交均未混入。
-- dist169 安装包本体（`LabCode-Setup-1.2.31.exe` 389MB）保留在 `desktop-app/dist169/`（gitignore），可直接分发安装。
+- dist169 安装包本体（`BubaiCode-Setup-1.2.31.exe` 389MB）保留在 `desktop-app/dist169/`（gitignore），可直接分发安装。
 
 ---
 
-## 十四、对比测试：LabCode ↔ ChipCode 对齐实证（2026-11-06）
+## 十四、对比测试：BubaiCode ↔ ChipCode 对齐实证（2026-11-06）
 
 ### 14.1 方法（用 pc-autopilot 技能，两侧各走能用的通道）
 - **ChipCode 侧**：`compile_ui(processId=24536)` 读完整 UIA 树 —— ChipCode 的 UIA 树是**完整的**（每个按钮/tab 都有 a11y 全名）。
-- **LabCode 侧**：`LabCode.exe --remote-debugging-port=9223` + CDP `Runtime.evaluate` 读 DOM —— LabCode 的 UIA 只有 `Chrome Legacy Window`（Electron 未强制 a11y，读不到内部），故走 CDP 渲染层。
+- **BubaiCode 侧**：`BubaiCode.exe --remote-debugging-port=9223` + CDP `Runtime.evaluate` 读 DOM —— BubaiCode 的 UIA 只有 `Chrome Legacy Window`（Electron 未强制 a11y，读不到内部），故走 CDP 渲染层。
 - 取两侧**活动栏 / 状态栏 / 产品工厂 / 历史会话 / AI 面板 / 撤销**的文本证据逐维度对比。
 
 ### 14.2 对比矩阵（实机取证，非静态推断）
 
-| 维度 | ChipCode（原版·compile_ui 实证） | LabCode（对齐后·CDP 实证） | 对齐 |
+| 维度 | ChipCode（原版·compile_ui 实证） | BubaiCode（对齐后·CDP 实证） | 对齐 |
 |---|---|---|---|
-| **活动栏** | 文件 / **产品工厂** / 源代码管理 / 插件 | 文件 / 设备 / 源代码管理 / 插件 / **产品工厂** | ✅ 产品工厂已加入；LabCode 多「设备」(硬件特有) |
-| **产品工厂空态** | 空态文案同 + 头部仅「打开/新建」2 按钮（无副标题） | 同文案逐字一致 + 头部 2 图标按钮 + 无副标题 | ✅ **UI 已对齐**（2026-11-07：LabCode 移除副标题+导出/刷新/关闭，头部仅留新建/打开；导出等移入产品视图） |
+| **活动栏** | 文件 / **产品工厂** / 源代码管理 / 插件 | 文件 / 设备 / 源代码管理 / 插件 / **产品工厂** | ✅ 产品工厂已加入；BubaiCode 多「设备」(硬件特有) |
+| **产品工厂空态** | 空态文案同 + 头部仅「打开/新建」2 按钮（无副标题） | 同文案逐字一致 + 头部 2 图标按钮 + 无副标题 | ✅ **UI 已对齐**（2026-11-07：BubaiCode 移除副标题+导出/刷新/关闭，头部仅留新建/打开；导出等移入产品视图） |
 | **产品工厂五阶段** | 原生（需打开产品项目） | 已实现 + CDP 验证 5 阶段全 done | ✅ |
 | **历史会话搜索** | 「搜索历史会话内容…」+ 日期/消息数/项目名 | 3-gram+BM25 增强（§12.1） | ✅ 增强型对齐 |
 | **语音输入** | 「语音输入（点开始录音）」 | 「保存语音识别配置」(ai-voice-input) | ✅ |
@@ -467,30 +467,30 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 | **MQTT** | 同源能力（主界面未展开） | MQTT 面板（连接/测试/清空/订阅/发布 + mqtt-url/user/pass/sub/pub-topic/payload 输入框齐全） | ✅ **端到端已真机验证** |
 | **订阅/套餐** | 免费/轻量/专业/旗舰（同源） | 订阅面板（4 套餐，§11.2 验证） | ✅ |
 | **记忆** | 清空记忆类 | 清空记忆 + 自动提炼（§12.3） | ✅ 增强 |
-| **状态栏·模式** | 模式：自动 | 模式：默认 | 🔸 默认值不同（LabCode 支持自动，默认显「默认」） |
+| **状态栏·模式** | 模式：自动 | 模式：默认 | 🔸 默认值不同（BubaiCode 支持自动，默认显「默认」） |
 | **状态栏·后端** | 0/1 后端就绪（未开工程） | 1/1 后端就绪 | — 状态差异（非功能） |
 
 ### 14.3 结论
-- **活动栏已对齐**：LabCode 加入「产品工厂」图标，与 ChipCode 一致；多出的「设备」是 LabCode 硬件定位特有，非缺失。
-- **产品工厂**：空态文案逐字一致，五阶段 LabCode 已实现并此前 CDP 验证。
+- **活动栏已对齐**：BubaiCode 加入「产品工厂」图标，与 ChipCode 一致；多出的「设备」是 BubaiCode 硬件定位特有，非缺失。
+- **产品工厂**：空态文案逐字一致，五阶段 BubaiCode 已实现并此前 CDP 验证。
 - **AI 面板全面对齐**：语音输入、选择工作空间、做产品示例、模型 BYOK、清空记忆均实证存在。
-- **历史会话**：LabCode 用 3-gram+BM25 做了增强型搜索（比 ChipCode 原生更优）。
-- **MQTT / 订阅 / 自动记忆**：均为从 ChipCode 反编译后移植，LabCode 侧已验证可用。
-- **仅两点差异**：① 状态栏模式默认值（自动 vs 默认，LabCode 支持自动，仅默认值不同）；② 模型供应架构（ChipCode 账号内置积分制 vs LabCode BYOK）—— 这是定位差异，非功能缺失。
+- **历史会话**：BubaiCode 用 3-gram+BM25 做了增强型搜索（比 ChipCode 原生更优）。
+- **MQTT / 订阅 / 自动记忆**：均为从 ChipCode 反编译后移植，BubaiCode 侧已验证可用。
+- **仅两点差异**：① 状态栏模式默认值（自动 vs 默认，BubaiCode 支持自动，仅默认值不同）；② 模型供应架构（ChipCode 账号内置积分制 vs BubaiCode BYOK）—— 这是定位差异，非功能缺失。
 
 ### 14.4 待复核（动态态，本次静态对比未触发）
-- ~~LabCode `ai-revise` 撤销三连按钮在对话态的确切文本/位置~~ → **已实机确认（2026-11-06 补充）**：撤销/回滚是 `ai-rewind.js` 的「变更批次·时间旅行」面板，**不依赖对话态**——AI 面板头部常驻按钮（id=`ai-rewind-btn`，title="变更批次 / 时间旅行"，counter-clockwise 图标），点击展开 `ai-rewind-bar` 列全部 turn 批次（恢复至此/截断此后）。CDP 实证：`aiPanelExists/topRightExists/rewindBtnExists/barExists` 全 true，点击后 `barDisplay=block`、空态文本「暂无文件变更批次」。与 ChipCode 三连按钮（撤销上一轮/选择撤销范围/重做）**功能等价**（均基于 fileChangeTracker turn 批次安全回滚），仅 UI 形态不同（时间旅行列表 vs 三连按钮）。
-- 若要逐像素动态对比五阶段，需两侧都打开同一产品项目（ChipCode 需其原生产品工程格式，LabCode 用 pf_demo 已验证）。
+- ~~BubaiCode `ai-revise` 撤销三连按钮在对话态的确切文本/位置~~ → **已实机确认（2026-11-06 补充）**：撤销/回滚是 `ai-rewind.js` 的「变更批次·时间旅行」面板，**不依赖对话态**——AI 面板头部常驻按钮（id=`ai-rewind-btn`，title="变更批次 / 时间旅行"，counter-clockwise 图标），点击展开 `ai-rewind-bar` 列全部 turn 批次（恢复至此/截断此后）。CDP 实证：`aiPanelExists/topRightExists/rewindBtnExists/barExists` 全 true，点击后 `barDisplay=block`、空态文本「暂无文件变更批次」。与 ChipCode 三连按钮（撤销上一轮/选择撤销范围/重做）**功能等价**（均基于 fileChangeTracker turn 批次安全回滚），仅 UI 形态不同（时间旅行列表 vs 三连按钮）。
+- 若要逐像素动态对比五阶段，需两侧都打开同一产品项目（ChipCode 需其原生产品工程格式，BubaiCode 用 pf_demo 已验证）。
 
 ### 14.5 端到端真机验证（补充，2026-11-06）：MQTT 跨进程铁证
 之前的对比停留在「UI/能力存在 + 逻辑对齐」。**用户要求"必须一致" → 实机跑通端到端**：
-- **方法**：独立 Node MQTT 客户端（不同进程、不同网络栈）连公共 broker 订阅 `labcode/verify`；LabCode 经 CDP 填 broker、连接、订阅同 topic、发布带 marker 消息；验证独立客户端是否真收到。
+- **方法**：独立 Node MQTT 客户端（不同进程、不同网络栈）连公共 broker 订阅 `bubaicode/verify`；BubaiCode 经 CDP 填 broker、连接、订阅同 topic、发布带 marker 消息；验证独立客户端是否真收到。
 - **踩坑（关键）**：EMQX 公共 broker `8084` 端口是 **WSS（加密 WebSocket）**，**不是 WS**——`ws://...:8084` 明文握手必失败（`Parse Error: Expected HTTP/`）。本机 TCP 到 8084 可达、无 HTTP 代理环境变量，故非网络/防火墙挡，而是**端口协议选错**。正确明文端口是 **`ws://broker.emqx.io:8083/mqtt`**。
-- **结果**：LabCode 连 `ws://broker.emqx.io:8083/mqtt` 成功（UI 切「断开」= 已连接态，面板日志「已连接 ...8083」）；发布 `E2E_OK_1793980932115` 后，**独立外部客户端（不同进程）收到该消息**（`EXT_MSG E2E_OK_1793980932115`）。
-- **结论**：LabCode 的 MQTT **功能 100% 真工作、与 ChipCode 对齐一致**——真连 broker、真发布、真被第三方收到，跨进程端到端闭环。UI 面板不回显"自己发布的消息"属设计细节，不影响功能正确性（第三者已证收到）。
+- **结果**：BubaiCode 连 `ws://broker.emqx.io:8083/mqtt` 成功（UI 切「断开」= 已连接态，面板日志「已连接 ...8083」）；发布 `E2E_OK_1793980932115` 后，**独立外部客户端（不同进程）收到该消息**（`EXT_MSG E2E_OK_1793980932115`）。
+- **结论**：BubaiCode 的 MQTT **功能 100% 真工作、与 ChipCode 对齐一致**——真连 broker、真发布、真被第三方收到，跨进程端到端闭环。UI 面板不回显"自己发布的消息"属设计细节，不影响功能正确性（第三者已证收到）。
 
 ### 14.6 端到端真机验证（补充·产品工厂闭环）
-- **方法**：直接调用产品工厂导出核心 API（「导出产品包」按钮背后的 `window.LabCode.product.package({root})` → 主进程 `product:package` → `buildPackage`），绕过 UI 渲染，对完整产品项目 `D:\work\tmp\pf_demo`（`.triecode.json` 标 `projectType:product` + `spec.md/json` + `bom.json` + `constraints.json` + `evidence.jsonl` + `design/shape.json` + `firmware/main.cpp`）执行导出。
+- **方法**：直接调用产品工厂导出核心 API（「导出产品包」按钮背后的 `window.BubaiCode.product.package({root})` → 主进程 `product:package` → `buildPackage`），绕过 UI 渲染，对完整产品项目 `D:\work\tmp\pf_demo`（`.triecode.json` 标 `projectType:product` + `spec.md/json` + `bom.json` + `constraints.json` + `evidence.jsonl` + `design/shape.json` + `firmware/main.cpp`）执行导出。
 - **结果**：`API_RESULT.success=true`，`hardware-package/` 目录生成 5 个文件（`requirements.md` / `bom.csv` / `evidence.md` / `README.md` / `.manifest.json`），`inputsHash=1156bf64`。
 - **内容正确性核验**：`README.md`「阶段进度 5/5 / 验收覆盖 1/1 / 输入指纹 1156bf64」；`requirements.md` 含 spec 验收条件「C1: 温度误差小于1度」；`bom.csv` 含「mcu,ESP32-S3,1,confirmed」；`evidence.md` 含「E1 software pass 编译通过 covers C1」——全部正确反映项目数据。
 - **结论**：产品工厂「生成产品包」功能 **100% 真工作、端到端可用，与 ChipCode 对齐一致**（读取项目 spec/bom/evidence → 生成结构化产品包）。
@@ -498,7 +498,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 ### 14.7 端到端真机验证汇总（"必须一致"落实情况）
 | 功能 | 验证方式 | 结果 |
 |---|---|---|
-| MQTT | LabCode 连公共 broker 发布，独立外部客户端（跨进程）收到 | ✅ 真通 |
+| MQTT | BubaiCode 连公共 broker 发布，独立外部客户端（跨进程）收到 | ✅ 真通 |
 | 产品工厂·生成产品包 | 调导出 API，磁盘生成 5 文件且内容正确 | ✅ 真通 |
 | 撤销/回滚 | ai-rewind 时间旅行面板，底层 fileTracker.undoLastTurn 安全回滚 | ✅ **端到端已验证**：记录批次→撤销→内存与磁盘文件均恢复到 before（安全校验：仅当当前内容===after 才回滚，不覆盖用户改动） |
 | 会话搜索 | 注入含关键词会话→`window.SessionStore.search` 返回命中（main BM25 或 renderer 本地镜像） | ✅ **端到端已验证**：`search(VERIFY_KEYWORD_xxx)` 返回 1 命中且标题含关键词 |
@@ -506,7 +506,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 | 语音/订阅 | 需麦克风/账号，本机受限 | 🔶 待实时（环境限制） |
 
 ### 14.8 UI 对齐（产品工厂空态·2026-11-07）
-- 用户对照 ChipCode 产品工厂空态截图，指出 LabCode 空态头部 UI 不一致（LabCode 有副标题 + 5 文字按钮含导出产品包/刷新/关闭，ChipCode 仅 2 图标按钮、无副标题）。
+- 用户对照 ChipCode 产品工厂空态截图，指出 BubaiCode 空态头部 UI 不一致（BubaiCode 有副标题 + 5 文字按钮含导出产品包/刷新/关闭，ChipCode 仅 2 图标按钮、无副标题）。
 - **代码改动**（`renderer/js/product-factory.js`）：① 空态头部移除副标题「从创意到样机·五阶段证据驱动」；② 头部仅保留「打开/新建」2 个按钮，移除刷新/导出产品包/关闭；③ 将刷新/导出产品包/关闭移入「产品项目打开后的五阶段视图」（`pf-nav__actions`），对齐 ChipCode（导出在五阶段视图内，不在空态头部）。
 - **验证（CDP 实机）**：部署对齐版 asar 后，空态 `subtitle:null`、`headerButtons` 仅「打开/新建」2 项、`bodyText` 含「当前不是产品项目」逐字一致；产品视图 `bodyHasExport/bodyHasRefresh/bodyHasClose` 全 true 且五阶段渲染正常（`viewHasStages:true`）——**UI 已对齐且无功能回归**。
 - 部署：局部 asar 注入（`app_new.asar` 基于 dist169，备份原 asar 为 `.prev`），安装版运行对齐版。源码改动待提交。
@@ -529,7 +529,7 @@ ChipCode `packages/engine/dist/memory.js` 有三条生产级加固，BubaiCode �
 - **IPC 规模**：≈**170 个通道**，最大为 `ai`（agent 子系统）。类别：board/compile/upload/monitor/pty/library/core/backend/project/product/ai/auth/payment/config/dialog/mcp/interpreters/agents/schedule/workspace/git/file/image/lsp/plugins/app/update/windowControls/toolchainAPI。
 - **触发方式**：无 `globalShortcut` 加速器；菜单用 Electron `Menu/role` + `arduinoAPI.onMenu` 派发；命令面板 `toolchainAPI.command.invoke`→`command:invoke`；上下文菜单 + 拖拽（`file.registerDropped`/`webUtils.getPathForFile`）。
 - **面板切换**：Zustand UI store 驱动（非路由）。
-- **对照 BubaiCode**：BubaiCode 用 `state`(app.js 闭包) + `SessionStore` + 自定义事件；IPC 通道由 `LabCode.*` 命名空间暴露（契约脚本 §11 校验 281 API paths）。交互范式相近，但 BubaiCode 未用 Zustand（自研 state + 发布订阅）。
+- **对照 BubaiCode**：BubaiCode 用 `state`(app.js 闭包) + `SessionStore` + 自定义事件；IPC 通道由 `BubaiCode.*` 命名空间暴露（契约脚本 §11 校验 281 API paths）。交互范式相近，但 BubaiCode 未用 Zustand（自研 state + 发布订阅）。
 
 ### 15.3 AI 辅助架构（ChipCode，本轮剖析核心）
 - **运行循环**（`engine/dist/agent-runner.js`）：`runAgent` = `callModel → 解析 toolCalls → 权限管线 → 执行工具 → 回填 role:'tool' → 下一轮`；**双 system 消息**（静态前缀 + 动态）命中前缀缓存；流式 `onStream`/`ai:onAgentStream`，但工具轮不流文本（仅 `toolCall:true` 标记）。

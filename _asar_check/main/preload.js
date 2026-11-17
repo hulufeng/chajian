@@ -1,9 +1,9 @@
-﻿// ============ LabCode Preload 预加载脚本 ============
+﻿// ============ BubaiCode Preload 预加载脚本 ============
 // 暴露安全的 IPC 接口给渲染进程
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('LabCode', {
+contextBridge.exposeInMainWorld('BubaiCode', {
   // 窗口控制
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -144,4 +144,4 @@ contextBridge.exposeInMainWorld('LabCode', {
   }
 });
 
-console.log('✅ LabCode preload 加载完成');
+console.log('✅ BubaiCode preload 加载完成');

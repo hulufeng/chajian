@@ -2,9 +2,9 @@
 
 > 依据：Craft Anything（Deep 模式）对 `C:\Program Files\TrieCode\ChipCode\ChipCode.exe` 的静态分析
 > （PE→ `resources/app.asar` 1.3.2 → `js-app-map`：242 源文件 / 274 IPC / 900 端点 / 22 原生模块 / 2 暴露 API 命名空间）。
-> 视觉令牌取自 TrieCode v1.3.x 设计语言（LabCode `theme.css` 备注「参照 TrieCode v1.3.1」并逐字拷贝其 Design Token），
+> 视觉令牌取自 TrieCode v1.3.x 设计语言（BubaiCode `theme.css` 备注「参照 TrieCode v1.3.1」并逐字拷贝其 Design Token），
 > 并交叉核对 asar 内 `renderer/.../index-*.css` 实测字体栈、圆角与色值。
-> 用途：供 LabCode / 同类「嵌入式+AI 编程 IDE」产品照此还原信息架构、功能板块与视觉规范。
+> 用途：供 BubaiCode / 同类「嵌入式+AI 编程 IDE」产品照此还原信息架构、功能板块与视觉规范。
 
 ---
 
@@ -39,7 +39,7 @@
 
 ## 二、各功能模块：定位 / 职责 / 元素 / 交互 / 状态
 
-> 标注的 IPC 前缀与 API 成员均来自实测，便于后续在 LabCode 中逐条对齐。
+> 标注的 IPC 前缀与 API 成员均来自实测，便于后续在 BubaiCode 中逐条对齐。
 
 ### 2.1 代码编辑 / 展示区（Editor）
 - **定位**：核心工作区，承载源码、可视化（原理图/PCB 之类由渲染器承载）与差异对比。
@@ -159,7 +159,7 @@
 
 ## 三、视觉规范（Design Tokens）
 
-> 来源：TrieCode v1.3.x 设计语言（LabCode `theme.css` 逐字拷贝）+ asar CSS 实测核对。
+> 来源：TrieCode v1.3.x 设计语言（BubaiCode `theme.css` 逐字拷贝）+ asar CSS 实测核对。
 
 ### 3.1 配色（Color）
 | Token | 值 | 用途 |
@@ -186,7 +186,7 @@
 ### 3.3 组件风格（Components）
 - **按钮**：主按钮(实色 accent)/次按钮(描边)/幽灵按钮(纯文字)；圆角 3px（实测主 CSS `border-radius:3px`），高度 32px（control-height）。
 - **输入**：surface-2 背景、1px border、focus 时 border→accent + 轻微阴影。
-- **标签 Tab**：底部 2px 指示条随选中切换（与 LabCode 一致）；未保存用 ● 标记。
+- **标签 Tab**：底部 2px 指示条随选中切换（与 BubaiCode 一致）；未保存用 ● 标记。
 - **面板/卡片**：surface-1/2 背景、1px border、可停靠标题栏带拖拽热区。
 - **列表/树**：行高 ~28–32px，hover→surface-3，选中→accent 10% 底色 + 左条。
 - **徽标 Badge**：圆角药丸，语义色底+白字（端口占用、更新角标、MCP 工具数）。
@@ -251,16 +251,16 @@ preload (packages/preload/dist/index.js, sandbox:true)
 
 ---
 
-## 五、对照实现清单（LabCode 对齐要点）
+## 五、对照实现清单（BubaiCode 对齐要点）
 
-- [ ] **外壳**：单主窗口 + 左活动栏图标导航 + 可停靠侧栏/面板 + 状态栏（LabCode 已有活动栏与面板体系，需补齐 devicePanel/调度/记忆入口）。
-- [ ] **AI 面板**：会话/规划/工具步骤时间线/记忆/时间旅行(rewind) —— 按 `ai:*` 50 通道逐一对齐（LabCode 已有 agent 流式，缺 rewind 与 plan 确认卡）。
-- [ ] **硬件面板**：板卡/端口/波特率/监视器（serialport），与 `board/monitor/upload/portChanged` 对齐（LabCode 已有 devicePanel 三标签）。
-- [ ] **工具链**：编译/库/核心 + `toolchainAPI` 能力（LabCode 已有 arduino-cli/esp-idf 链路，需补 capability/command 注册）。
-- [ ] **Git**：变更/差异/提交/同步（LabCode BATCH4 已补 git 面板）。
-- [ ] **扩展体系**：plugins + skills + mcp（LabCode 已有 MCP 面板、插件依赖、skills 待补）。
-- [ ] **账户/支付/代理/后端**：`auth/backend/payment/proxy`（LabCode 当前「登录门禁」需对齐多供应商 BYOK）。
-- [ ] **调度**：`schedule:*` 17 通道（LabCode 待建）。
+- [ ] **外壳**：单主窗口 + 左活动栏图标导航 + 可停靠侧栏/面板 + 状态栏（BubaiCode 已有活动栏与面板体系，需补齐 devicePanel/调度/记忆入口）。
+- [ ] **AI 面板**：会话/规划/工具步骤时间线/记忆/时间旅行(rewind) —— 按 `ai:*` 50 通道逐一对齐（BubaiCode 已有 agent 流式，缺 rewind 与 plan 确认卡）。
+- [ ] **硬件面板**：板卡/端口/波特率/监视器（serialport），与 `board/monitor/upload/portChanged` 对齐（BubaiCode 已有 devicePanel 三标签）。
+- [ ] **工具链**：编译/库/核心 + `toolchainAPI` 能力（BubaiCode 已有 arduino-cli/esp-idf 链路，需补 capability/command 注册）。
+- [ ] **Git**：变更/差异/提交/同步（BubaiCode BATCH4 已补 git 面板）。
+- [ ] **扩展体系**：plugins + skills + mcp（BubaiCode 已有 MCP 面板、插件依赖、skills 待补）。
+- [ ] **账户/支付/代理/后端**：`auth/backend/payment/proxy`（BubaiCode 当前「登录门禁」需对齐多供应商 BYOK）。
+- [ ] **调度**：`schedule:*` 17 通道（BubaiCode 待建）。
 - [ ] **视觉令牌**：直接采用 TrieCode v1.3.x 令牌集（accent #2563eb/#3b82f6、surface-0..3、control-height 32、radius 3/6、字体栈如上），保证与 ChipCode 视觉一致。
 - [ ] **安全基线**：contextIsolation/sandbox 维持；新能力一律走 contextBridge/IPC，不在渲染层直触 Node。
 

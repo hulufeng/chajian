@@ -1,7 +1,7 @@
 
 [TerminalService] node-pty 加载成功
-🚀 LabCode 启动中...
-📁 用户数据目录: C:\Users\Administrator\AppData\Roaming\LabCode
+🚀 BubaiCode 启动中...
+📁 用户数据目录: C:\Users\Administrator\AppData\Roaming\BubaiCode
 🔧 开发模式: false
 [TerminalService] 创建终端 term_1: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe (node-pty)
 Checking for update

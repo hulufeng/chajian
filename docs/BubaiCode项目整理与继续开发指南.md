@@ -1,15 +1,15 @@
-# LabCode 项目整理与继续开发指南
+# BubaiCode 项目整理与继续开发指南
 
 **整理时间：** 2026-09-09
-**项目全称：** LabCode（仿写 TrieCode 的 AI 编程 IDE）
-**GitHub 仓库：** https://github.com/hulufeng/LabCode（public）
-**本地项目路径：** `D:\工作\LabCode\`
+**项目全称：** BubaiCode（仿写 TrieCode 的 AI 编程 IDE）
+**GitHub 仓库：** https://github.com/hulufeng/BubaiCode（public）
+**本地项目路径：** `D:\工作\BubaiCode\`
 
 ---
 
 ## 一、项目是什么
 
-LabCode 是一款对标 **TrieCode（www.triecode.com，v1.2.9）** 的 AI 编程桌面开发工具，包含三端：
+BubaiCode 是一款对标 **TrieCode（www.triecode.com，v1.2.9）** 的 AI 编程桌面开发工具，包含三端：
 
 | 端 | 目录 | 技术栈 | 状态 |
 |---|---|---|---|
@@ -17,7 +17,7 @@ LabCode 是一款对标 **TrieCode（www.triecode.com，v1.2.9）** 的 AI 编�
 | 桌面客户端 | `desktop-app/` | Electron 28 + Monaco 编辑器 + 智能体引擎 | ✅ MVP 完成 |
 | 管理后台 | `admin/` | HTML + CSS + JS（localStorage 持久化） | ✅ 已完成（7 大模块） |
 
-品牌硬约束：**品牌名 LabCode**、浅色白色主题、主色蓝色 `#2563eb`、图标使用 MIT 许可 Tabler 风格内联 SVG。
+品牌硬约束：**品牌名 BubaiCode**、浅色白色主题、主色蓝色 `#2563eb`、图标使用 MIT 许可 Tabler 风格内联 SVG。
 
 ---
 
@@ -26,7 +26,7 @@ LabCode 是一款对标 **TrieCode（www.triecode.com，v1.2.9）** 的 AI 编�
 ### 已推送（14 个 commit，28+ 文件）
 
 ```
-LabCode/
+BubaiCode/
 ├── .gitignore
 ├── README.md
 ├── admin/
@@ -39,7 +39,7 @@ LabCode/
 │   └── renderer/
 │       ├── index.html
 │       ├── css/style.css
-│       ├── icons/labcode-icons.svg
+│       ├── icons/bubaicode-icons.svg
 │       └── js/terminal.js
 ├── docs/
 │   ├── README.md
@@ -47,7 +47,7 @@ LabCode/
 │   ├── 开发文档.md
 │   ├── 团队协作指南.md
 │   ├── 项目任务看板.md
-│   ├── LabCode_vs_TrieCode_功能对比.md
+│   ├── BubaiCode_vs_TrieCode_功能对比.md
 │   └── TrieCode界面设计学习记录.md
 ├── examples/
 │   └── esp32_light_controller.ino
@@ -103,16 +103,16 @@ LabCode/
 ### 方式 A：从 GitHub 克隆（推荐，仅缺 app.js 与 package-lock.json）
 
 ```bash
-git clone https://github.com/hulufeng/LabCode.git
-cd LabCode/desktop-app
+git clone https://github.com/hulufeng/BubaiCode.git
+cd BubaiCode/desktop-app
 npm install          # 重新生成 node_modules
 npm start            # 或: node_modules\electron\dist\electron.exe . --disable-gpu --no-sandbox
 ```
 
-缺的两个文件可从原电脑 `D:\工作\LabCode\` 复制，或本地补推：
+缺的两个文件可从原电脑 `D:\工作\BubaiCode\` 复制，或本地补推：
 
 ```bash
-cd D:\工作\LabCode
+cd D:\工作\BubaiCode
 git add desktop-app/renderer/js/app.js desktop-app/package-lock.json
 git commit -m "feat: 添加智能体引擎核心app.js与依赖锁文件"
 git push origin main
@@ -120,15 +120,15 @@ git push origin main
 
 ### 方式 B：整包拷贝
 
-直接复制 `D:\工作\LabCode\` 整个目录（含 node_modules 则免 npm install）。
+直接复制 `D:\工作\BubaiCode\` 整个目录（含 node_modules 则免 npm install）。
 
 ### 本地快捷入口
 
 | 内容 | 打开方式 |
 |---|---|
-| 桌面客户端 | `cd D:\工作\LabCode\desktop-app; node_modules\electron\dist\electron.exe . --disable-gpu --no-sandbox` |
-| 管理后台 | 浏览器打开 `D:\工作\LabCode\admin\index.html`（admin/admin123） |
-| 官方网站 | 浏览器打开 `D:\工作\LabCode\website\index.html` |
+| 桌面客户端 | `cd D:\工作\BubaiCode\desktop-app; node_modules\electron\dist\electron.exe . --disable-gpu --no-sandbox` |
+| 管理后台 | 浏览器打开 `D:\工作\BubaiCode\admin\index.html`（admin/admin123） |
+| 官方网站 | 浏览器打开 `D:\工作\BubaiCode\website\index.html` |
 | 参考软件 TrieCode | `D:\360Downloads\TrieCode\TrieCode.exe` |
 | TrieCode 操作记录 | `D:\工作\TrieCode操作记录\`（1345 张截图 + 操作记录文档） |
 

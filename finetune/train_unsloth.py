@@ -3,7 +3,7 @@
 """
 train_unsloth.py - 用 Unsloth 微调 Qwen2.5-Coder-7B 成为「工具决策专家」
 
-产出：LoRA adapter（lora_out/）+ 合并后的 GGUF（gguf_out/）直接丢进 D:\\LabCode\\models 即可用。
+产出：LoRA adapter（lora_out/）+ 合并后的 GGUF（gguf_out/）直接丢进 D:\\BubaiCode\\models 即可用。
 
 硬件预期：RTX 5060 Ti 8GB 可跑（4bit + LoRA r16 + seq 4096），7B 全量数据约 1-2 小时。
 
@@ -120,7 +120,7 @@ def main():
     gguf_dir = os.path.join(args.out, 'gguf')
     model.save_pretrained_gguf(gguf_dir, tokenizer)
     print('GGUF 已导出:', gguf_dir)
-    print('下一步：把 GGUF 拷到 D:\\LabCode\\models，然后跑 eval_tools.py 验收')
+    print('下一步：把 GGUF 拷到 D:\\BubaiCode\\models，然后跑 eval_tools.py 验收')
 
 
 if __name__ == '__main__':

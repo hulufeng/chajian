@@ -16,7 +16,7 @@ PORT=9000 node server.mjs
 启动后控制台打印：
 - 官网首页：`http://127.0.0.1:8788/`
 - 管理后台：`http://127.0.0.1:8788/admin/`
-- 默认管理员：`admin@labcode.dev` / `admin123`（**生产务必用 `SITE_ADMIN_PASSWORD` 改掉**）
+- 默认管理员：`admin@bubaicode.dev` / `admin123`（**生产务必用 `SITE_ADMIN_PASSWORD` 改掉**）
 
 客户端（官网前端）默认直接连同源的 `/api/*`；若后台与官网分离部署，前端把请求前缀指向本服务即可。
 
@@ -58,7 +58,7 @@ PORT=9000 node server.mjs
 |------|------|------|
 | `PORT` | `8788` | 监听端口 |
 | `HOST` | `127.0.0.1` | 监听地址 |
-| `SITE_ADMIN_EMAIL` | `admin@labcode.dev` | 管理员邮箱 |
+| `SITE_ADMIN_EMAIL` | `admin@bubaicode.dev` | 管理员邮箱 |
 | `SITE_ADMIN_PASSWORD` | `admin123` | 管理员密码（**生产必改**） |
 | `SITE_DATA_DIR` | `./data` | 数据目录（自检时指向临时目录） |
 | `DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` | bluebubai.work | 各平台安装包真实地址 |

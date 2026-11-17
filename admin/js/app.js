@@ -1,22 +1,22 @@
-﻿// LabCode 管理后台交互逻辑
+﻿// BubaiCode 管理后台交互逻辑
 
 // ============ 数据存储 ============
 const STORAGE_KEYS = {
-  users: 'LabCode_admin_users',
-  apis: 'LabCode_admin_apis',
-  plugins: 'LabCode_admin_plugins',
-  sessions: 'LabCode_admin_sessions',
-  logs: 'LabCode_admin_logs',
-  settings: 'LabCode_admin_settings',
-  auth: 'LabCode_admin_auth'
+  users: 'BubaiCode_admin_users',
+  apis: 'BubaiCode_admin_apis',
+  plugins: 'BubaiCode_admin_plugins',
+  sessions: 'BubaiCode_admin_sessions',
+  logs: 'BubaiCode_admin_logs',
+  settings: 'BubaiCode_admin_settings',
+  auth: 'BubaiCode_admin_auth'
 };
 
 // 默认数据
 const DEFAULT_USERS = [
-  { id: 1, username: 'admin', email: 'admin@LabCode.com', password: 'admin123', role: 'admin', active: true, createdAt: '2026-01-01', lastLogin: '2026-09-05 10:30', apiCalls: 12580 },
-  { id: 2, username: 'developer', email: 'dev@LabCode.com', password: 'dev123456', role: 'user', active: true, createdAt: '2026-02-15', lastLogin: '2026-09-04 16:20', apiCalls: 8432 },
-  { id: 3, username: 'tester', email: 'test@LabCode.com', password: 'test123456', role: 'user', active: true, createdAt: '2026-03-20', lastLogin: '2026-09-03 09:15', apiCalls: 3210 },
-  { id: 4, username: 'guest', email: 'guest@LabCode.com', password: 'guest123', role: 'guest', active: false, createdAt: '2026-04-10', lastLogin: '2026-08-20 14:00', apiCalls: 156 }
+  { id: 1, username: 'admin', email: 'admin@BubaiCode.com', password: 'admin123', role: 'admin', active: true, createdAt: '2026-01-01', lastLogin: '2026-09-05 10:30', apiCalls: 12580 },
+  { id: 2, username: 'developer', email: 'dev@BubaiCode.com', password: 'dev123456', role: 'user', active: true, createdAt: '2026-02-15', lastLogin: '2026-09-04 16:20', apiCalls: 8432 },
+  { id: 3, username: 'tester', email: 'test@BubaiCode.com', password: 'test123456', role: 'user', active: true, createdAt: '2026-03-20', lastLogin: '2026-09-03 09:15', apiCalls: 3210 },
+  { id: 4, username: 'guest', email: 'guest@BubaiCode.com', password: 'guest123', role: 'guest', active: false, createdAt: '2026-04-10', lastLogin: '2026-08-20 14:00', apiCalls: 156 }
 ];
 
 const DEFAULT_APIS = [
@@ -27,9 +27,9 @@ const DEFAULT_APIS = [
 ];
 
 const DEFAULT_PLUGINS = [
-  { id: 1, name: 'Git 集成', version: 'v1.2.0', icon: '📦', description: '提供 Git 版本控制集成，支持提交、分支管理、差异对比等功能。', author: 'LabCode Team', active: true, installedAt: '2026-06-15', capabilities: ['版本控制', '代码审查'] },
+  { id: 1, name: 'Git 集成', version: 'v1.2.0', icon: '📦', description: '提供 Git 版本控制集成，支持提交、分支管理、差异对比等功能。', author: 'BubaiCode Team', active: true, installedAt: '2026-06-15', capabilities: ['版本控制', '代码审查'] },
   { id: 2, name: 'Docker 支持', version: 'v0.9.3', icon: '🐳', description: 'Docker 容器管理插件，支持镜像构建、容器运行、日志查看。', author: 'Community', active: true, installedAt: '2026-07-20', capabilities: ['容器管理', 'DevOps'] },
-  { id: 3, name: '数据库浏览器', version: 'v2.1.0', icon: '🗄️', description: '支持 MySQL、PostgreSQL、SQLite、MongoDB 等多种数据库的浏览和查询。', author: 'LabCode Team', active: false, installedAt: '2026-05-10', capabilities: ['数据库', '数据查询'] },
+  { id: 3, name: '数据库浏览器', version: 'v2.1.0', icon: '🗄️', description: '支持 MySQL、PostgreSQL、SQLite、MongoDB 等多种数据库的浏览和查询。', author: 'BubaiCode Team', active: false, installedAt: '2026-05-10', capabilities: ['数据库', '数据查询'] },
   { id: 4, name: 'Markdown 预览', version: 'v1.0.5', icon: '📝', description: '实时 Markdown 预览，支持数学公式、流程图、甘特图。', author: 'Community', active: true, installedAt: '2026-08-01', capabilities: ['文档', '预览'] },
   { id: 5, name: 'REST Client', version: 'v1.5.2', icon: '🌐', description: 'HTTP 请求测试工具，支持 REST API 调试、响应格式化、历史记录。', author: 'Community', active: false, installedAt: '2026-04-25', capabilities: ['API 调试', 'HTTP'] }
 ];
@@ -53,7 +53,7 @@ const DEFAULT_LOGS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  appName: 'LabCode',
+  appName: 'BubaiCode',
   version: 'v1.0.0',
   language: 'zh-CN',
   theme: 'dark',
@@ -777,7 +777,7 @@ function exportLogs() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `LabCode_logs_${new Date().toISOString().split('T')[0]}.txt`;
+  a.download = `BubaiCode_logs_${new Date().toISOString().split('T')[0]}.txt`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('日志已导出', 'success');

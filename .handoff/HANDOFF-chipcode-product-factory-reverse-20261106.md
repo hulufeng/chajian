@@ -1,10 +1,10 @@
-# ChipCode「产品工厂」反编译报告 + LabCode 改造方案（待用户决策）
+# ChipCode「产品工厂」反编译报告 + BubaiCode 改造方案（待用户决策）
 
 - 日期：2026-11-06
 - 工具：**Craft Anything v0.4.0**（用户安装的技能，Deep 模式）+ 3 个 `code-explorer` 子代理并行勘察
 - 目标：`C:\Program Files\TrieCode\ChipCode\resources\app.asar`（34.8MB，`sha256=4cb71b199c9ebac633630ec04c87df126353540144bd186be9bda131a8cdc0a5`），解包到 `D:\work\tmp\chipcode_asar`
 - 输入：用户提供的产品工厂空态截图
-- **本轮不改任何 LabCode 代码**，只交付证据与方案，由用户决定怎么改
+- **本轮不改任何 BubaiCode 代码**，只交付证据与方案，由用户决定怎么改
 
 ---
 
@@ -88,9 +88,9 @@
 
 ---
 
-## 2. LabCode 现状（关键，决定方案起点）
+## 2. BubaiCode 现状（关键，决定方案起点）
 
-**LabCode 并非从零**：已存在「产品工厂」的壳，但语义完全不同。
+**BubaiCode 并非从零**：已存在「产品工厂」的壳，但语义完全不同。
 
 | 项 | 证据 | 状态 |
 |---|---|---|
@@ -102,7 +102,7 @@
 | `productStage` / 五个产品 AI 工具 | 全仓搜 | ❌ 0 命中 |
 | 已有的项目/文件 IPC | `project:*` 族（Phase A 调研） | ✅ 有可复用基础 |
 
-**结论**：LabCode 的「产品工厂」是**一次性 AI 生成方案**的轻量工具，ChipCode 的是**以磁盘文件为真相、五阶段状态机驱动、AI 工具逐步推进**的完整产品生命周期系统。两者同名但不同物。
+**结论**：BubaiCode 的「产品工厂」是**一次性 AI 生成方案**的轻量工具，ChipCode 的是**以磁盘文件为真相、五阶段状态机驱动、AI 工具逐步推进**的完整产品生命周期系统。两者同名但不同物。
 
 ---
 
@@ -113,7 +113,7 @@
 ### 方案 A：最小可视化对齐（推荐先做，1-2 天）
 **做什么**：只复刻截图的**侧栏空态 + 五阶段导航 UI**，状态用本地 JSON 模拟（不接磁盘文件、不接 AI）。
 - 新增左活动栏 `product` tab + 侧栏面板（空态与截图 1:1）
-- 项目类型判别改为读取项目根 `.labcode.json` 的 `projectType`（先做简化版）
+- 项目类型判别改为读取项目根 `.bubaicode.json` 的 `projectType`（先做简化版）
 - 五阶段纵向导航 + 状态圆点 + 证据进度条（`pf-nav__*` 风格）
 - 阶段详情板只读展示，数据来自一个 `product-state.json`
 
@@ -147,7 +147,7 @@
 **收益**：完全对齐。**成本/风险**：最高，且会删除现有用户可见功能，需产品决策。
 
 ### 方案 E：不改造，只做文档
-把本报告作为设计基线归档，LabCode 保持现状。
+把本报告作为设计基线归档，BubaiCode 保持现状。
 
 ---
 
@@ -155,7 +155,7 @@
 
 **选 A**（先可视化对齐），理由：
 1. 用户提供的证据是**截图**（空态 UI），A 直接消除最直观的差异；
-2. LabCode 已有同名视图但语义不同，A 不改它、零冲突；
+2. BubaiCode 已有同名视图但语义不同，A 不改它、零冲突；
 3. B/C 的地基（项目 IPC、AgentRunner、Phase A 的工具确认链路）都已具备，A 完成后可平滑升级；
 4. 与 Phase A/B/C 的节奏一致（每阶段可验证、可回滚）。
 
@@ -197,5 +197,5 @@
   1. Craft Anything CLI 无常驻 server，evidence ledger 为空 → 别依赖 `ev_` id，用路径+行号引用；要真 ledger 需 `mcp` 常驻 + IDE 重连。
   2. 渲染包 `index-BPkqxohS.js` 的 `:857`/`:5081` 是 150-194KB 超长行，局部 JSX 读不全 → 阶段详情板布局属推断。
   3. CSS 194KB 单行 → 像素级 `pf-nav__*` 还原需另想办法（运行时截图或 CSS 解析）。
-  4. LabCode 的 `#product-factory-view` 已被「AI 硬件拆解工坊」占用，别直接覆盖，除非选 D。
+  4. BubaiCode 的 `#product-factory-view` 已被「AI 硬件拆解工坊」占用，别直接覆盖，除非选 D。
   5. `.handoff` 在根仓库被 `.gitignore` 忽略，交接文档须放 `codelab-desktop/.handoff/` 才入库。

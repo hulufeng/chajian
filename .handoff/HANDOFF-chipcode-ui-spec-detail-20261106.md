@@ -272,7 +272,7 @@
 - 监视器（带时间戳输出、发送指令）、一键烧录 `upload`
 
 ### 7.1 布局
-- 子标签：设备 / 配置 / 目标（`devicePanel` 三态，LabCode 已照此重构）。
+- 子标签：设备 / 配置 / 目标（`devicePanel` 三态，BubaiCode 已照此重构）。
 - 设备页：板卡 Select(32px) + 端口 Select + 波特率 Select + 连接按钮(32px) + 监视器输出区（等宽，min 高 120）。
 
 ### 7.2 状态机

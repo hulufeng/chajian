@@ -55,7 +55,7 @@ function defaultDb() {
     users: [
       {
         id: 'admin',
-        email: process.env.SITE_ADMIN_EMAIL || 'admin@labcode.dev',
+        email: process.env.SITE_ADMIN_EMAIL || 'admin@bubaicode.dev',
         // 默认密码：环境变量 SITE_ADMIN_PASSWORD，否则开发默认 admin123（请生产改用强密码）
         pass: hashPassword(process.env.SITE_ADMIN_PASSWORD || 'admin123'),
         role: 'admin',
@@ -84,7 +84,7 @@ function seedPlugins(now) {
       description: 'CMake + GCC 编译，SWD 一键烧录，裸机脚手架', category: 'embedded',
       tags: ['STM32', 'SWD'], github: base('stm32-cube-toolchain'), published: true, installs: 0, createdAt: now, updatedAt: now },
     { id: 'plugin-dev-toolchain', name: '插件开发工具链', version: '0.1.0', icon: '🛠️',
-      description: '让 AI 帮你创建 LabCode 插件——生成骨架→校验→安装', category: 'ai',
+      description: '让 AI 帮你创建 BubaiCode 插件——生成骨架→校验→安装', category: 'ai',
       tags: ['元插件', '脚手架'], github: base('plugin-dev-toolchain'), published: true, installs: 0, createdAt: now, updatedAt: now },
     { id: 'browser-toolchain', name: '浏览器自动化', version: '0.1.0', icon: '🧭',
       description: '给 AI 一个可控的真实浏览器——打开网页、点击、抓取', category: 'ai',
@@ -135,7 +135,7 @@ async function saveDbNow() {
 
 // ---------- 密码 / 令牌 ----------
 function hashPassword(pw) {
-  const salt = 'labcode-static-pw-salt-v1-7d2c';
+  const salt = 'bubaicode-static-pw-salt-v1-7d2c';
   const derived = crypto.scryptSync(pw, salt, 64).toString('hex');
   return `${salt}:${derived}`;
 }

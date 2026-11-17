@@ -1,4 +1,4 @@
-// LabCode Cloud BFF —— 最小可用代理骨架
+// BubaiCode Cloud BFF —— 最小可用代理骨架
 // 作用：客户端 → 本机/ECS 本服务（鉴权+计费）→ DeepSeek 官方 API
 // 零依赖：Node 18+ 原生 http/fetch。本地 `node server.js` 即可跑。
 //
@@ -134,6 +134,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`LabCode BFF listening on http://0.0.0.0:${PORT}`);
+  console.log(`BubaiCode BFF listening on http://0.0.0.0:${PORT}`);
   console.log(`  upstream: ${DEEPSEEK_BASE}  users: ${Object.keys(users).join(', ')}  rate: ${RATE_PER_MIN}/min`);
 });

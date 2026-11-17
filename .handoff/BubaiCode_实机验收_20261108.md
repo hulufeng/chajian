@@ -81,18 +81,18 @@
   - 生产网关：`root@bluebubai.work:22`（SSH key `C:\Users\Administrator\.ssh\id_ed25519`），服务目录 `/var/www/codelab-ai-gateway/`，pm2 进程名 `codelab`，Key 存 `config/secrets.json`（**不在进程 env，也不在 shell env**，只读提取需从 secrets.json）
   - 模型池：仅 `qwen3-8b`（硅基流动 `Qwen/Qwen3-8B`）免费可用，其余被 `BLOCK_PAID_MODELS=true` 挡
 - **如何复现实机验收**：CDP `Runtime.evaluate` 执行表达式；AI 对话走 `.ai-send-btn` 或 Enter（输入框 `textarea[placeholder*="输入消息"]`），模型切换点 `.model-select-btn`→`.gw-cloud-item`（勿点分组标题）；活动栏面板 `data-panel` 共 6 项（explorer/product-factory/git/context/plugins/device，device 在 UI 隐藏）；插件生态查 `window.PluginSystem.allTools()`（全局对象，实测 28 工具，**不在** `window.BubaiCode` 命名空间下）；MCP 工具查 playwright/easyeda 的 `listTools()`。
-- **git 状态**：`desktop-app/ChipCode_功能审查与设计方案.md` 偏差修正提交为 `8622d6d`（历史提交，非当前 HEAD）；当前 HEAD 为 `a3c08bf`（`chore: 清理无用的 chipcode 对齐 investigation 残留目录`）；`main` 跟踪 `labcode/main`（`git@github.com:hulufeng/LabCode.git`）且相对其 ahead 54，`origin`（`git@github.com:hulufeng/chajian.git`）与 `main` 0/0 已同步；本验收文档在 `.handoff/`（本地，不进 git，为工作树唯一未跟踪文件）。
+- **git 状态**：`desktop-app/ChipCode_功能审查与设计方案.md` 偏差修正提交为 `8622d6d`（历史提交，非当前 HEAD）；当前 HEAD 为 `a3c08bf`（`chore: 清理无用的 chipcode 对齐 investigation 残留目录`）；`main` 跟踪 `bubaicode/main`（`git@github.com:hulufeng/BubaiCode.git`）且相对其 ahead 54，`origin`（`git@github.com:hulufeng/chajian.git`）与 `main` 0/0 已同步；本验收文档在 `.handoff/`（本地，不进 git，为工作树唯一未跟踪文件）。
 - **下一步 / 待办（非必须）**：①若想增强 429 韧性：网关加免费 fallback 上游、或优化熔断（缩短/退避/健康探测）；②观察普通用户低频使用是否仍偶发 429；③`context` 面板空状态、`device` 隐藏入口可优化 UI；④后续功能改动同步更新 `ChipCode_功能审查与设计方案.md`（已修 4→6/26→28 偏差）。
 - **本次清理的无用文件**：`d:\work\tmp\` 下的临时探测脚本（`cdp_*.js`、`gui_panels.py`、`ssh_probe*.py`、`ssh_keycheck*.py`）已删除；`desktop-app/` 下 `cdp_*.js` 已删；`.craft/chipcode-align.cany/`（之前 chipcode 对齐 investigation 残留）已删。验收截图证据（panel_*.png 等）保留在 `d:\work\tmp\` 按需查阅。
 
 ## 十一、当前交付状态 / 快速开工清单（2026-11-08 收尾，当日多代理复核后修订）
 > ⚠️ **本章为 11-08 快照，已整体过时**（HEAD、实例、工作树状态均已变化）。**当前最终状态请以 §二十七 为准**；本章保留作历史记录，其中 `dist168` 目录与 9222 实例均已不存在/关闭。
-- **git**：主线 `main` 当前 HEAD 为 `a3c08bf`（`chore: 清理无用的 chipcode 对齐 investigation 残留目录`）；双远端 `origin = git@github.com:hulufeng/chajian.git`（与 `main` 0/0 已同步）与 `labcode = git@github.com:hulufeng/LabCode.git`；`main` 跟踪 `labcode/main`，相对其 ahead 54（54 个提交尚未同步至 labcode，已同步至 origin）；工作树仅 `.handoff/` 下本文件（本地，按政策不进 git）未跟踪，其余干净。
+- **git**：主线 `main` 当前 HEAD 为 `a3c08bf`（`chore: 清理无用的 chipcode 对齐 investigation 残留目录`）；双远端 `origin = git@github.com:hulufeng/chajian.git`（与 `main` 0/0 已同步）与 `bubaicode = git@github.com:hulufeng/BubaiCode.git`；`main` 跟踪 `bubaicode/main`，相对其 ahead 54（54 个提交尚未同步至 bubaicode，已同步至 origin）；工作树仅 `.handoff/` 下本文件（本地，按政策不进 git）未跟踪，其余干净。
 - **运行实例**：若仍在跑，`desktop-app/dist168/win-unpacked/BubaiCode.exe --remote-debugging-port=9222`；复验前先确认进程存活（`Get-Process BubaiCode`）。
 - **CDP 探测模板**：连 `http://127.0.0.1:9222/json` 取 `webSocketDebuggerUrl` → `Runtime.evaluate` 执行 `window.BubaiCode.{ollama,models,ai,engine,codingAgents,gatewayStatus}`（AI 命名空间）或 `window.PluginSystem.allTools()`（插件生态，全局，实测 28）或 DOM 查询（`.ai-send-btn` / `.model-select-btn` → `.gw-cloud-item` / `data-panel`）。
-- **远端处置（已决策：不推、不改跟踪）**：`origin`（chajian.git）与 `main` 0/0 同步，是现行主发布线；`labcode`（`LabCode.git`，public）落后 54 提交（`a2114fe..a3c08bf`，FF 可行）但**有意不推送**——该批提交含 BubaiCode 全量品牌化与商业化代码，与仓库名 LabCode / public 属性冲突，且同一批代码已在 origin 发布（v1.2.31）。`labcode` 定性为历史遗留远端。**改跟踪不可执行**（需写 `.git/config`，被约束禁止）。⚠️ **`[branch "main"] remote = labcode`，故无参数 `git push` 与 IDE 推送按钮默认打到 LabCode 仓库；要推 origin 必须显式 `git push origin main`。** 任何向 labcode 的推送/远端 revert/force push 均需单独明确授权。
-- **userData 路径**：`C:\Users\Administrator\AppData\Roaming\BubaiCode`（`%APPDATA%\BubaiCode`）；插件安装、配置、缓存均在此，复验查状态定位该目录。另有一份历史实例数据 `...\Roaming\LabCode\`。
-- **残留已清理（2026-11-08 多代理复核）**：验证用测试插件 `test-plugin-view` 已通过应用内 `window.PluginSystem.uninstall('test-plugin-view')` 卸载（活动栏图标 1→0、注册表与 views 清零、正式插件 10 个保留），并删除 `...\Roaming\LabCode\plugins\test-plugin-view` 历史副本；两处 userData 残留均消失。**注意**：手工删目录不会清内存注册表与 `installedPlugins`，必须走应用内卸载或重启实例。
+- **远端处置（已决策：不推、不改跟踪）**：`origin`（chajian.git）与 `main` 0/0 同步，是现行主发布线；`bubaicode`（`BubaiCode.git`，public）落后 54 提交（`a2114fe..a3c08bf`，FF 可行）但**有意不推送**——该批提交含 BubaiCode 全量品牌化与商业化代码，与仓库名 BubaiCode / public 属性冲突，且同一批代码已在 origin 发布（v1.2.31）。`bubaicode` 定性为历史遗留远端。**改跟踪不可执行**（需写 `.git/config`，被约束禁止）。⚠️ **`[branch "main"] remote = bubaicode`，故无参数 `git push` 与 IDE 推送按钮默认打到 BubaiCode 仓库；要推 origin 必须显式 `git push origin main`。** 任何向 bubaicode 的推送/远端 revert/force push 均需单独明确授权。
+- **userData 路径**：`C:\Users\Administrator\AppData\Roaming\BubaiCode`（`%APPDATA%\BubaiCode`）；插件安装、配置、缓存均在此，复验查状态定位该目录。另有一份历史实例数据 `...\Roaming\BubaiCode\`。
+- **残留已清理（2026-11-08 多代理复核）**：验证用测试插件 `test-plugin-view` 已通过应用内 `window.PluginSystem.uninstall('test-plugin-view')` 卸载（活动栏图标 1→0、注册表与 views 清零、正式插件 10 个保留），并删除 `...\Roaming\BubaiCode\plugins\test-plugin-view` 历史副本；两处 userData 残留均消失。**注意**：手工删目录不会清内存注册表与 `installedPlugins`，必须走应用内卸载或重启实例。
 - **源码落点**：真实源码是 `desktop-app/renderer`（`index.html` / `js/app.js` / `js/context-panel.js` / `js/plugin-loader.js` 等），`dist168` 只是 electron-builder 产物（`resources/app.asar` 打包副本），`packages/renderer` 是无关的 Vite/React 骨架；改源码后须重新构建才进 `app.asar`，直接改产物无效。
 - **429 韧性复核（已决策：保持观察）**：熔断、`BLOCK_PAID_MODELS`、模型池、`available` 判定与 `[relay]` 日志**全在生产** `root@bluebubai.work:/var/www/codelab-ai-gateway/`（pm2 `codelab`），本仓库只有调用方（`main/index.js:3241-3289` 的 `gatewayStatus`、L2563 的 `GW_AVAILABLE_MODELS`）。**补正**：`packages/ai/src/error-classification.js` 与 `app.js:3249` 的 `AIErrorClassifier` 经全仓核查均为**死代码（0 调用）**，改它们对 429 无效，故不做无效改动。优先级：**③ 观察（零改动，执行）＞ ② 优化熔断 ＞ ① 加免费 fallback**；②① 均需 SSH 动生产并需用户单独授权。
 - **UI 优化（已实施，见 §十二）**：`context` 空态与 `device` 常显均已落地源码；验收时「可见 5 项 / device 隐藏 / context 近乎空白」是**当时快照**，第二/四/七节原始观察保留不改（证据真实性），改后状态以 §十二 为准。
@@ -124,7 +124,7 @@
 - **恢复**：正式实例已按 `BubaiCode.exe --remote-debugging-port=9222`（原 userData）重启，4 进程、CDP 可用；临时 `p2_out` 与两个冒烟 profile 已删除。快照 `dist168_pre_p2_20261108145821` 保留作回滚源。
 
 ### 12.4 远端与 429 的最终处置（已决策，见第十一节）
-- **远端**：不推 `labcode`、不改跟踪（后者需写 `.git/config`，被约束禁止）。`origin`(chajian) 0/0 是现行发布线；`labcode` 定性历史遗留 public 仓库，54 提交含 BubaiCode 品牌化/商业化代码，推送有品牌与合规风险且无发布收益。⚠️ 无参数 `git push` 默认指向 `labcode`，须显式 `git push origin main`。
+- **远端**：不推 `bubaicode`、不改跟踪（后者需写 `.git/config`，被约束禁止）。`origin`(chajian) 0/0 是现行发布线；`bubaicode` 定性历史遗留 public 仓库，54 提交含 BubaiCode 品牌化/商业化代码，推送有品牌与合规风险且无发布收益。⚠️ 无参数 `git push` 默认指向 `bubaicode`，须显式 `git push origin main`。
 - **429**：保持观察（零改动）。熔断与 fallback 全在生产网关，本地两个错误分类器是死代码（0 调用），不做无效改动；②优化熔断 / ①加免费 fallback 需 SSH 动生产 + 用户单独授权。
 
 ### 12.5 后续功能改动同步

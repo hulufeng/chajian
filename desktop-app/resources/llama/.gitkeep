@@ -8,5 +8,5 @@
 # 以保证「目录一定存在」——否则 electron-builder 会因源目录缺失而失败。
 #
 # 需要随安装包一起发布引擎时：把 llama.cpp 运行时的文件拷贝到本目录即可
-# （例如从 D:\LabCode\runtime\llama-cpp-vulkan 复制）。
+# （例如从 D:\BubaiCode\runtime\llama-cpp-vulkan 复制）。
 # 不放置也不影响启动：getEngineDir() 会回退到其它候选路径。

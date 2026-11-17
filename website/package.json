@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "LabCode 官网 + 官网后台（静态站点托管 + 零依赖 Node 后端 server/）",
+  "description": "BubaiCode 官网 + 官网后台（静态站点托管 + 零依赖 Node 后端 server/）",
   "scripts": {
     "start": "node server/server.mjs",
     "test": "node server/check-site-server.mjs"

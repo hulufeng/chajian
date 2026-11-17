@@ -9,7 +9,7 @@
 - `78da004` fix(desktop-app): 更新安装按钮调用 downloadUpdate 后再 quitAndInstall（最新，含全部修复）
 
 ## 现象
-- 只在 dev 模式（`electron . --dev`）验证时一切正常；但打包态 exe（`win-unpacked/LabCode.exe`，不带 `--dev`）启动后主窗口表现为 `0×0`、`IsWindowVisible=False`、不可见。
+- 只在 dev 模式（`electron . --dev`）验证时一切正常；但打包态 exe（`win-unpacked/BubaiCode.exe`，不带 `--dev`）启动后主窗口表现为 `0×0`、`IsWindowVisible=False`、不可见。
 - 用同一个打包 exe 但加 `--dev` 启动，窗口却正常（`1403×902`、`Visible=True`）。
 
 ## 根因
@@ -21,13 +21,13 @@
 ## 修复
 1. `main/index.js` `setupAutoUpdate`：移除下载完成后的 `setTimeout(quitAndInstall, 3000)` 强制重启，仅 `webContents.send('update:downloaded', info)` 通知渲染端。
 2. 新增环境变量开关 `AUTO_UPDATE_DISABLED`（值为 `'1'` 或 `'true'`）：测试/自测旧版本时跳过自动检查（初始 5 秒定时器 + 每小时间隔），手动 `update:check` 也返回 `{ disabled: true }`。
-3. 渲染端 `renderer/js/app.js`：新增更新提示 UI，监听 `update:available`（"New version X found, downloading…"）与 `update:downloaded`（"Update downloaded. Restart to install." + **Restart & Install** 按钮），按钮调用 preload 已暴露的 `window.LabCode.update.install()` → 主进程 `update:install` handler → `autoUpdater.quitAndInstall(true, true)`。
+3. 渲染端 `renderer/js/app.js`：新增更新提示 UI，监听 `update:available`（"New version X found, downloading…"）与 `update:downloaded`（"Update downloaded. Restart to install." + **Restart & Install** 按钮），按钮调用 preload 已暴露的 `window.BubaiCode.update.install()` → 主进程 `update:install` handler → `autoUpdater.quitAndInstall(true, true)`。
    - preload 已暴露 `ipc.on`（含 `allowedChannels`: `update:available / update:not-available / update:progress / update:downloaded`）与 `update.install`，**无需改动 preload**。
 
 ## 端到端真机验证（2026-10-15 续，已通过）
-- **关键前提**：`win-unpacked` 绿版下 electron-builder 的 `quitAndInstall()` 静默无效（它要求应用是经安装器安装的 nsis 实例才能定位并替换）。验证必须用 **nsis 安装版**（`LabCode Setup 1.0.0.exe` 以 `/S` 静默安装）。
+- **关键前提**：`win-unpacked` 绿版下 electron-builder 的 `quitAndInstall()` 静默无效（它要求应用是经安装器安装的 nsis 实例才能定位并替换）。验证必须用 **nsis 安装版**（`BubaiCode Setup 1.0.0.exe` 以 `/S` 静默安装）。
 - 步骤：静默安装 1.0.0 → 启动安装版 → 自动检测 `bluebubai.work/updates` 上的 1.1.3 → 后台下载（复用此前缓存）→ 渲染端右下角 toast 显示 "Update downloaded. Restart to install." + **Restart & Install** 按钮 → 点击按钮 → 应用退出并以 1.1.3 重新启动。
-- 结果：**成功升级到 1.1.3**（安装路径 `_labcode-install8\LabCode.exe`，FileVersion=1.1.3），自动更新全链路（检测 / 下载 / UI / 安装）验证通过。
+- 结果：**成功升级到 1.1.3**（安装路径 `_bubaicode-install8\BubaiCode.exe`，FileVersion=1.1.3），自动更新全链路（检测 / 下载 / UI / 安装）验证通过。
 
 ## 验证中暴露并修复的 3 个隐藏 bug（均已提交 origin/main）
 1. **index.js 缺 `autoUpdateDisabled` 定义**：初始字节替换因 PowerShell 字符串换行转义（`\n` 被当成字面反斜杠-n）与 CRLF/LF 混淆，定义未真正插入；打包态启动报 `ReferenceError: autoUpdateDisabled is not defined` 崩溃。修复：用 `[char]13 + [char]10` 字节级替换（commit `717592f`）。
@@ -42,9 +42,9 @@
 - `resources/` 等资源路径。
 - **`quitAndInstall` 在绿版无效、仅 nsis 安装版生效**——自动更新安装环节必须在 nsis 安装版上验证，不能只在 `win-unpacked` 上点按钮。
 
-正确流程：`dev` 跑通 → `npm run build:win` → 跑 `win-unpacked/LabCode.exe`（不带 `--dev`）确认窗口/Monaco/终端/插件市场正常 → 再用 **nsis 安装版** 跑一次真实更新安装 → 才敢发布。测试期用 `AUTO_UPDATE_DISABLED=1` 避免被服务器新版本拉走。
+正确流程：`dev` 跑通 → `npm run build:win` → 跑 `win-unpacked/BubaiCode.exe`（不带 `--dev`）确认窗口/Monaco/终端/插件市场正常 → 再用 **nsis 安装版** 跑一次真实更新安装 → 才敢发布。测试期用 `AUTO_UPDATE_DISABLED=1` 避免被服务器新版本拉走。
 
 ## 待办 / 遗留
-- 测试产物（测试安装目录 `_labcode-install8`、`AppData\Local\Programs\LabCode`、调试日志、LabCode 进程）已清理。
+- 测试产物（测试安装目录 `_bubaicode-install8`、`AppData\Local\Programs\BubaiCode`、调试日志、BubaiCode 进程）已清理。
 - 自动更新发布流程：确认 `bluebubai.work/updates` 上 `1.1.3` 的来源与发布权限，避免旧版本自测时被强制拉新（已可用 `AUTO_UPDATE_DISABLED=1` 规避）。
 - 渲染端更新 toast 在 `win-unpacked` 绿版下无法触发真实安装（仅 nsis 安装版生效），测试时务必用 nsis 安装版。

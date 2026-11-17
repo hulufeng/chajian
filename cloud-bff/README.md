@@ -1,4 +1,4 @@
-# LabCode 云端 BFF
+# BubaiCode 云端 BFF
 
 客户端 → 本服务（鉴权/限流/记账）→ DeepSeek 官方 API。零依赖，Node 18+。
 
@@ -22,7 +22,7 @@ curl -X POST http://127.0.0.1:8787/v1/chat/completions ^
 
 ## ECS 部署（i-m5eihcqadjdav7u2cqq9，cn-qingdao）
 
-1. 把 `server.js` + `package.json` 放到 `/opt/labcode/bff/`；
+1. 把 `server.js` + `package.json` 放到 `/opt/bubaicode/bff/`；
 2. 环境变量写 systemd unit：
    - `DEEPSEEK_API_KEY`（DeepSeek 官方）
    - `BFF_USERS`（`用户=token,用户=token`，签发 token 给客户端）

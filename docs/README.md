@@ -1,10 +1,10 @@
-# ⚡ LabCode
+# ⚡ BubaiCode
 
 > 通用 AI 软件开发智能体 — 从想法到可运行的软件。
 
-LabCode 内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网检索。一个桌面应用，覆盖软件开发全流程。
+BubaiCode 内置真正动手的 AI 智能体：读写代码、执行命令、运行测试、联网检索。一个桌面应用，覆盖软件开发全流程。
 
-**基于 TrieCode 仿写，品牌名 LabCode。**
+**基于 TrieCode 仿写，品牌名 BubaiCode。**
 
 ---
 
@@ -23,7 +23,7 @@ LabCode 内置真正动手的 AI 智能体：读写代码、执行命令、运�
 ## 📦 项目结构
 
 ```
-LabCode/
+BubaiCode/
 ├── desktop-app/                # 桌面客户端（核心）
 │   ├── package.json            # 项目配置和依赖
 │   ├── main/                   # Electron 主进程
@@ -38,7 +38,7 @@ LabCode/
 │       │   ├── app.js          # 智能体引擎（168KB，含AI思考/工具调用/计划进度/权限确认）
 │       │   └── terminal.js     # 终端管理器（xterm.js 集成）
 │       └── icons/
-│           └── labcode-icons.svg # SVG 图标 sprite（50+图标，MIT许可）
+│           └── bubaicode-icons.svg # SVG 图标 sprite（50+图标，MIT许可）
 │
 ├── website/                    # 官方网站
 │   ├── index.html              # 主页面（Landing Page）
@@ -56,7 +56,7 @@ LabCode/
 │   ├── 团队协作指南.md          # 团队协作指南（分工/流程/规范）
 │   ├── 项目任务看板.md          # 项目任务看板（进度/任务/Bug）
 │   ├── HANDOFF.md              # 交接文档
-│   ├── LabCode_vs_TrieCode_功能对比.md  # 与 TrieCode 功能对比
+│   ├── BubaiCode_vs_TrieCode_功能对比.md  # 与 TrieCode 功能对比
 │   ├── TrieCode界面设计学习记录.md        # TrieCode 学习记录
 │   └── screenshots/            # 截图归档
 │
@@ -291,7 +291,7 @@ cd admin
 | **[团队协作指南.md](团队协作指南.md)** | 团队协作，分工，流程，规范 |
 | **[项目任务看板.md](项目任务看板.md)** | 任务进度，Bug，里程碑 |
 | **[HANDOFF.md](HANDOFF.md)** | 交接文档，项目历史 |
-| **[LabCode_vs_TrieCode_功能对比.md](LabCode_vs_TrieCode_功能对比.md)** | 与 TrieCode 功能对比 |
+| **[BubaiCode_vs_TrieCode_功能对比.md](BubaiCode_vs_TrieCode_功能对比.md)** | 与 TrieCode 功能对比 |
 | **[TrieCode界面设计学习记录.md](TrieCode界面设计学习记录.md)** | TrieCode 学习记录 |
 
 ---
@@ -333,4 +333,4 @@ MIT License
 
 **Built with ❤️ for developers.**
 
-*项目基于 TrieCode 仿写，品牌名 LabCode。*
+*项目基于 TrieCode 仿写，品牌名 BubaiCode。*

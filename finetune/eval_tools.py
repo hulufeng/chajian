@@ -3,11 +3,11 @@
 """
 eval_tools.py - 本地模型工具决策能力验收（训练前/后对比）
 
-做法与 LabCode 线上一致：GBNF 约束 + 非流式（grammar 从 main/index.js 的 buildToolGbnf 实时抽取，
+做法与 BubaiCode 线上一致：GBNF 约束 + 非流式（grammar 从 main/index.js 的 buildToolGbnf 实时抽取，
 保证测的就是上线代码）。跑 4 类用例 x N 次，输出准确率。
 
 用法：
-  python eval_tools.py --model "D:\\LabCode\\models\\qwen2.5-coder-7b-instruct-q4_k_m.gguf" --repeat 3
+  python eval_tools.py --model "D:\\BubaiCode\\models\\qwen2.5-coder-7b-instruct-q4_k_m.gguf" --repeat 3
   python eval_tools.py --model <微调后的GGUF> --repeat 5 --baseline <基线GGUF>
 """
 import argparse
@@ -19,7 +19,7 @@ import time
 import http.client
 
 APP_MAIN = os.environ.get(
-    'LABCODE_MAIN',
+    'BUBAI_MAIN',
     r'D:\work\daimaLABshiyanshi\codelab-desktop\desktop-app\main\index.js')
 LLAMA_SERVER = os.environ.get(
     'LLAMA_SERVER',

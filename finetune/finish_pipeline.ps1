@@ -5,7 +5,7 @@
 #
 # Notes:
 #  - Conversion needs ~7GB RAM. Do NOT run it while training is running (it got killed before).
-#  - llama-quantize.exe comes from the packaged LabCode (dist\win-unpacked\resources\llama).
+#  - llama-quantize.exe comes from the packaged BubaiCode (dist\win-unpacked\resources\llama).
 
 param([string]$OutDir = 'out_win')
 

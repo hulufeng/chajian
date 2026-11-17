@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-remap_to_labcode.py - 把训练数据的工具名映射回 LabCode 线上那 9 个工具
+remap_to_bubaicode.py - 把训练数据的工具名映射回 BubaiCode 线上那 9 个工具
 
 为什么要这一步（踩过的坑）：
 第一轮直接用 Hermes 原始数据训，结果模型在 GBNF 约束下**塌缩成永远输出 none**。
 根因是 Hermes 里有 200+ 种工具名（buy_bitcoin / mintNFT / search_hotels …），
-而线上 GBNF 只允许 LabCode 的 9 个名字 —— 训练分布与线上候选集完全不匹配，
+而线上 GBNF 只允许 BubaiCode 的 9 个名字 —— 训练分布与线上候选集完全不匹配，
 模型学到的"该调工具"映射到线上就是一堆非法名字，退而求其次只能选 none。
 
 修法：
-  1. 工具名按语义映射到 LabCode 的 9 个（映射不了的样本直接丢）
+  1. 工具名按语义映射到 BubaiCode 的 9 个（映射不了的样本直接丢）
   2. none 类下采样（闲聊/解释类），避免模型偷懒
-  3. labcode 手写样本按权重复制（真实场景优先）
+  3. bubaicode 手写样本按权重复制（真实场景优先）
 
 用法：
-  python remap_to_labcode.py --src train.jsonl --labcode labcode_tools_examples.jsonl --out .
+  python remap_to_bubaicode.py --src train.jsonl --bubaicode bubaicode_tools_examples.jsonl --out .
   # 产出 train2.jsonl / val2.jsonl
 """
 import argparse
@@ -24,10 +24,10 @@ import os
 import random
 import re
 
-LABCODE_TOOLS = ['read_file', 'write_file', 'edit_file', 'terminal', 'run_test',
+BUBAI_TOOLS = ['read_file', 'write_file', 'edit_file', 'terminal', 'run_test',
                  'list_files', 'search_files', 'create_project', 'install_plugin']
 
-# 关键词 -> LabCode 工具（按顺序匹配，越靠前优先级越高）
+# 关键词 -> BubaiCode 工具（按顺序匹配，越靠前优先级越高）
 RULES = [
     (r'(run[_-]?test|unit[_-]?test|pytest|compile[_-]?test|do[_-]?test|test[_-]?suite)', 'run_test'),
     (r'(test|verify|validate|check|debug|diagnose)', 'run_test'),
@@ -49,7 +49,7 @@ RULES = [
 
 def map_tool(name):
     n = (name or '').strip()
-    if n in LABCODE_TOOLS:
+    if n in BUBAI_TOOLS:
         return n
     if n == 'none':
         return 'none'
@@ -78,10 +78,10 @@ def last_assistant_decision(messages):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='train.jsonl')
-    ap.add_argument('--labcode', default='labcode_tools_examples.jsonl')
+    ap.add_argument('--bubaicode', default='bubaicode_tools_examples.jsonl')
     ap.add_argument('--out', default='.')
     ap.add_argument('--none-ratio', type=float, default=0.25, help='none 样本占比上限')
-    ap.add_argument('--labcode-weight', type=int, default=10, help='labcode 手写样本复制份数')
+    ap.add_argument('--bubaicode-weight', type=int, default=10, help='bubaicode 手写样本复制份数')
     ap.add_argument('--val-ratio', type=float, default=0.03)
     ap.add_argument('--seed', type=int, default=42)
     args = ap.parse_args()
@@ -97,7 +97,7 @@ def main():
         return rows
 
     src_rows = load(args.src)
-    lc_rows = load(args.labcode)
+    lc_rows = load(args.bubaicode)
 
     kept, dropped, remapped = [], 0, 0
     for r in src_rows:
@@ -133,7 +133,7 @@ def main():
         print(f'  none 下采样到 {len(none_rows)}')
 
     samples = tool_rows + none_rows
-    samples += lc_rows * args.labcode_weight
+    samples += lc_rows * args.bubaicode_weight
 
     random.shuffle(samples)
     n_val = max(1, int(len(samples) * args.val_ratio))

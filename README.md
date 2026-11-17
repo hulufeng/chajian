@@ -1,11 +1,11 @@
-# LabCode — 软硬件开发桌面 IDE
+# BubaiCode — 软硬件开发桌面 IDE
 
 面向软硬件开发的一体化桌面 IDE：内置 AI 智能体、多 Agent 协作工作区、真实编译/烧录/串口工具链、板级仿真。
 
 ## 功能
 
 ### 多 Agent AI 工作区（对齐 Ekko Studio）
-- **Agent 目录**：16 个内置 Agent（LabCode/Hermes/Claude/Codex/Grok/OpenCode/DeepSeek/Qwen/Kimi/CodeBuddy/Qoder/Copilot/Cursor/Antigravity/ZCode 等）+ 自定义 Agent 安装（OpenAI/Anthropic/Ollama/DeepSeek 模板）
+- **Agent 目录**：16 个内置 Agent（BubaiCode/Hermes/Claude/Codex/Grok/OpenCode/DeepSeek/Qwen/Kimi/CodeBuddy/Qoder/Copilot/Cursor/Antigravity/ZCode 等）+ 自定义 Agent 安装（OpenAI/Anthropic/Ollama/DeepSeek 模板）
 - **CLI 工具**：真实 coding-agent CLI 安装/检测/更新/卸载（npm 全局安装，对齐 Ekko Agent Manager），已装 CLI 自动桥接为可执行 Agent，可进工作流与群聊
 - **可视化工作流**：AI / 条件分支 / 终端命令 / 输出节点，连线编排、循环回边、审批门、导入导出、定时调度触发
 - **群聊协作**：多 Agent 房间，@mention 定向，依次回应
@@ -42,8 +42,8 @@ npm start          # 正常启动
 ```bash
 cd desktop-app
 npx electron-builder --linux --publish never
-# 产物：dist/LabCode-1.0.0.AppImage（免安装直接运行）
-#       dist/LabCode_1.0.0_amd64.deb（sudo dpkg -i 安装）
+# 产物：dist/BubaiCode-1.0.0.AppImage（免安装直接运行）
+#       dist/BubaiCode_1.0.0_amd64.deb（sudo dpkg -i 安装）
 ```
 
 ### Windows（NSIS 安装包，在 Windows 本机执行）
@@ -51,7 +51,7 @@ npx electron-builder --linux --publish never
 ```bash
 cd desktop-app
 scripts\build-win.bat        # 一键脚本（或 build-win.ps1）
-# 产物：dist\LabCode Setup 1.0.0.exe
+# 产物：dist\BubaiCode Setup 1.0.0.exe
 #       允许自选安装目录、自动创建桌面/开始菜单快捷方式
 ```
 
@@ -66,7 +66,7 @@ npx electron-builder --win --publish never
 ```bash
 cd desktop-app
 npx electron-builder --mac --publish never
-# 产物：dist/LabCode-1.0.0.dmg
+# 产物：dist/BubaiCode-1.0.0.dmg
 ```
 
 > 注：跨平台打包受限——Windows/macOS 安装包需在对应系统上构建（Linux 交叉编译 Windows 需 wine 且 Electron 二进制为对应平台版本）。

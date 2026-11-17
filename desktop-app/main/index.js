@@ -20,7 +20,7 @@ function copyDirSync(s, d) {
 }
 function migrateLegacyUserData() {
   try {
-    const legacy = path.join(app.getPath('appData'), 'LabCode');
+    const legacy = path.join(app.getPath('appData'), 'BubaiCode');
     const target = app.getPath('userData');
     if (legacy === target || !fs.existsSync(legacy)) return;
     const items = ['plugins', 'config.json', 'sessions'];

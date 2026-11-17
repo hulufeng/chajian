@@ -138,7 +138,7 @@ try {
 
   console.log('\n=== 7. 下载计数 ===');
   const redir = await req('GET', '/d/windows?v=0.2.0');
-  ok(redir.status === 302 && /LabCode-Setup/.test(redir.headers.location || ''), `下载重定向 302（${redir.headers.location}）`);
+  ok(redir.status === 302 && /BubaiCode-Setup/.test(redir.headers.location || ''), `下载重定向 302（${redir.headers.location}）`);
   const dlAdmin = await req('GET', '/api/admin/downloads', { token });
   ok(dlAdmin.status === 200 && dlAdmin.json.total >= 1, `下载统计 total>=1（实 ${dlAdmin.json?.total}）`);
   ok(dlAdmin.json.byPlatform.windows >= 1, '按平台统计含 windows');
@@ -158,9 +158,9 @@ try {
 
   console.log('\n=== 10. 静态托管 ===');
   const home = await req('GET', '/');
-  ok(home.status === 200 && /LabCode/.test(home.raw), 'GET / 返回首页 HTML');
+  ok(home.status === 200 && /BubaiCode/.test(home.raw), 'GET / 返回首页 HTML');
   const admin = await req('GET', '/admin/');
-  ok(admin.status === 200 && /LabCode 官网后台/.test(admin.raw), 'GET /admin/ 返回管理后台 HTML');
+  ok(admin.status === 200 && /BubaiCode 官网后台/.test(admin.raw), 'GET /admin/ 返回管理后台 HTML');
   const ph = await req('GET', '/plugins.html');
   ok(ph.status === 200, 'GET /plugins.html 200');
   const api404 = await req('GET', '/api/unknown');

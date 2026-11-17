@@ -1,4 +1,4 @@
-# LabCode 本地模型「工具决策专家」微调套件
+# BubaiCode 本地模型「工具决策专家」微调套件
 
 目标：把 Qwen2.5-Coder-7B（本地 GGUF）微调成**会选工具、会填参数**的决策模型，治「笨」的本。
 与线上 GBNF 约束解码（`desktop-app/main/index.js` 的 `buildToolGbnf`）配合：约束保格式，微调保选择质量。
@@ -27,8 +27,8 @@ pip install transformers==4.52.4 peft accelerate datasets bitsandbytes
 set HF_ENDPOINT=https://hf-mirror.com
 python -c "from huggingface_hub import snapshot_download; print(snapshot_download('Qwen/Qwen2.5-Coder-3B-Instruct'))"
 
-:: 2) 数据准备（Hermes 多轮 -> 决策 JSON；labcode 真实样本 5 倍加权）
-python prepare_data.py --hermes func-calling.json --labcode labcode_tools_examples.jsonl --out .
+:: 2) 数据准备（Hermes 多轮 -> 决策 JSON；bubaicode 真实样本 5 倍加权）
+python prepare_data.py --hermes func-calling.json --bubaicode bubaicode_tools_examples.jsonl --out .
 
 :: 3) 训练（先 dry-run 看数据管线）
 python train_win.py --base Qwen/Qwen2.5-Coder-3B-Instruct --dry-run
@@ -55,15 +55,15 @@ pip install --no-deps "trl==0.11.4" peft accelerate transformers datasets
 #    hermes-function-calling-v1（开放无 gated，56k 下载）
 curl -L -o func-calling.json https://hf-mirror.com/datasets/NousResearch/hermes-function-calling-v1/resolve/main/func-calling.json
 
-# 2) 数据准备：Hermes 多轮对话 -> 决策 JSON（与 GBNF 形状一致）；labcode 真实工具样本自动加权 5 份
-python prepare_data.py --hermes func-calling.json --labcode labcode_tools_examples.jsonl --out .
+# 2) 数据准备：Hermes 多轮对话 -> 决策 JSON（与 GBNF 形状一致）；bubaicode 真实工具样本自动加权 5 份
+python prepare_data.py --hermes func-calling.json --bubaicode bubaicode_tools_examples.jsonl --out .
 
 # 3) 训练（RTX 5060 Ti 8GB 约 1-2 小时）
 python train_unsloth.py --data . --out lora_out
 #    产出 lora_out/（adapter）+ lora_out/gguf/（可直接用的 GGUF）
 
 # 4) 验收：训练前/后对比（同一 GBNF + 同一套题，14 类用例 x N 次）
-python eval_tools.py --baseline "D:\LabCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf" ^
+python eval_tools.py --baseline "D:\BubaiCode\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf" ^
                      --model   "lora_out\gguf\qwen2.5-coder-7b-tools-Q4_K_M.gguf" --repeat 3
 ```
 
@@ -71,7 +71,7 @@ python eval_tools.py --baseline "D:\LabCode\models\qwen2.5-coder-7b-instruct-q4_
 
 | 文件 | 作用 |
 |---|---|
-| `labcode_tools_examples.jsonl` | 22 条 LabCode 真实工具场景（读/写/改/编译/搜索/装插件 + 多轮循环 + none） |
+| `bubaicode_tools_examples.jsonl` | 22 条 BubaiCode 真实工具场景（读/写/改/编译/搜索/装插件 + 多轮循环 + none） |
 | `prepare_data.py` | ShareGPT → 决策 JSON；自动抽取每个工具调用轮作为训练目标，带完整上文 |
 | `train_unsloth.py` | Unsloth QLoRA（r16, 4bit, seq4096）；合并 + 导出 GGUF（Linux/WSL） |
 | `train_win.py` | **Windows 原生** LoRA/QLoRA（transformers+peft）；`--load-4bit` 走 bnb NF4；输出 lora + merged |
@@ -86,14 +86,14 @@ python eval_tools.py --baseline "D:\LabCode\models\qwen2.5-coder-7b-instruct-q4_
 锅在训练数据。
 
 根因：**训练分布与线上候选集不匹配**。Hermes 原始数据里 200+ 种工具名（`buy_bitcoin`、`mintNFT`、
-`search_hotels`…），而线上 GBNF 只认 LabCode 的 9 个名字。模型学到的「该调工具」在线上全部非法，
+`search_hotels`…），而线上 GBNF 只认 BubaiCode 的 9 个名字。模型学到的「该调工具」在线上全部非法，
 唯一恒合法又高频的退路是 `none`（占 40%）→ 塌缩。
 
-所以**不要直接拿通用工具调用数据微调** —— 必须先用 `remap_to_labcode.py` 把工具名映射回线上那 9 个：
+所以**不要直接拿通用工具调用数据微调** —— 必须先用 `remap_to_bubaicode.py` 把工具名映射回线上那 9 个：
 
 ```bat
-python remap_to_labcode.py --src train.jsonl --labcode labcode_tools_examples.jsonl --out .
-::  -> train2.jsonl / val2.jsonl（工具名全在 GBNF 候选内，none 下采样到 25%，labcode 样本 x10）
+python remap_to_bubaicode.py --src train.jsonl --bubaicode bubaicode_tools_examples.jsonl --out .
+::  -> train2.jsonl / val2.jsonl（工具名全在 GBNF 候选内，none 下采样到 25%，bubaicode 样本 x10）
 python train_win.py --base <3B> --train train2.jsonl --val val2.jsonl --out out_win2 --epochs 2
 ```
 
@@ -102,13 +102,13 @@ python train_win.py --base <3B> --train train2.jsonl --val val2.jsonl --out out_
 1. **训练形状 = 线上形状**：assistant 目标就是 `{"tool":..., "arguments":{...}}`，与 GBNF 约束逐字节一致，训完直接受益，不丢分在格式上。
 2. **多轮上下文**：从 Hermes 多轮对话抽取「工具结果已回填」的样本（读→改→编译循环），教模型** Sequencing**，不是单发预测。
 3. **none 也是正类**：闲聊/解释类必须学会不调用工具（线上 grammar 里 none 是首选退路，选错=浪费一轮）。
-4. **labcode 样本 5 倍加权**：防止真实工具名被通用数据淹没。
+4. **bubaicode 样本 5 倍加权**：防止真实工具名被通用数据淹没。
 5. **只训 assistant 决策轮**（prompt/completion 截取差集），system+user 上下文不算 loss。
 
 ## 预期效果
 
 基线（未微调 7B）在本套题约 60-80%；微调后目标 ≥95%（选择质量），配合 GBNF 后格式 100%。
-验收不过线（<90%）就调数据：加 labcode 样本、降 hermes 占比、或加训一轮。
+验收不过线（<90%）就调数据：加 bubaicode 样本、降 hermes 占比、或加训一轮。
 
 ## 后续可选
 

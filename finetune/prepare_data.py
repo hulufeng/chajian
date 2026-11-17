@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-prepare_data.py - 把开源工具调用数据转成「决策 JSON」训练格式（对齐 LabCode GBNF 决策轮）
+prepare_data.py - 把开源工具调用数据转成「决策 JSON」训练格式（对齐 BubaiCode GBNF 决策轮）
 
 输入（可混合）：
   1. NousResearch/hermes-function-calling-v1 的 func-calling.json（ShareGPT 多轮对话）
      下载：https://hf-mirror.com/datasets/NousResearch/hermes-function-calling-v1/resolve/main/func-calling.json
-  2. 本目录 labcode_tools_examples.jsonl（LabCode 真实工具手工样本，已是目标格式）
+  2. 本目录 bubaicode_tools_examples.jsonl（BubaiCode 真实工具手工样本，已是目标格式）
 
 输出：
   train.jsonl / val.jsonl，每行 {"messages":[...]}，assistant 目标形如
@@ -14,7 +14,7 @@ prepare_data.py - 把开源工具调用数据转成「决策 JSON」训练格式
   与 desktop-app/main/index.js buildToolGbnf 约束形状一致，训完即插即用。
 
 用法：
-  python prepare_data.py --hermes func-calling.json --labcode labcode_tools_examples.jsonl --out .
+  python prepare_data.py --hermes func-calling.json --bubaicode bubaicode_tools_examples.jsonl --out .
 """
 import argparse
 import json
@@ -129,28 +129,28 @@ def load_jsonl(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--hermes', help='hermes func-calling.json 路径')
-    ap.add_argument('--labcode', help='labcode_tools_examples.jsonl 路径')
+    ap.add_argument('--bubaicode', help='bubaicode_tools_examples.jsonl 路径')
     ap.add_argument('--out', default='.')
     ap.add_argument('--val-ratio', type=float, default=0.02)
     args = ap.parse_args()
 
     samples = []
     lc_samples = []
-    if args.labcode and os.path.exists(args.labcode):
-        lc = load_jsonl(args.labcode)
-        print('labcode 样本:', len(lc))
+    if args.bubaicode and os.path.exists(args.bubaicode):
+        lc = load_jsonl(args.bubaicode)
+        print('bubaicode 样本:', len(lc))
         lc_samples = lc
         samples += lc
     if args.hermes and os.path.exists(args.hermes):
         samples += hermes_to_samples(args.hermes)
     if not samples:
-        print('没有输入数据；至少提供 --hermes 或 --labcode')
+        print('没有输入数据；至少提供 --hermes 或 --bubaicode')
         return
 
-    # labcode 样本复制 5 份提高权重（真实工具不能淹没在通用数据里）
+    # bubaicode 样本复制 5 份提高权重（真实工具不能淹没在通用数据里）
     if lc_samples:
         samples += lc_samples * 5
-        print('labcode 加权后总量:', len(samples))
+        print('bubaicode 加权后总量:', len(samples))
     random.seed(42)
     random.shuffle(samples)
     n_val = max(1, int(len(samples) * args.val_ratio))

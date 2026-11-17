@@ -1,4 +1,4 @@
-# LabCode 桌面端（JS 版 / desktop-app）主线 CI
+# BubaiCode 桌面端（JS 版 / desktop-app）主线 CI
 #
 # 说明：
 # - 本仓库主线是 JS 版，入口为 desktop-app/main/index.js，纯 JS 无编译步骤
@@ -87,6 +87,6 @@ jobs:
       - name: 上传安装包
         uses: actions/upload-artifact@v4
         with:
-          name: LabCode-win-x64
+          name: BubaiCode-win-x64
           path: desktop-app/dist/*.exe
           if-no-files-found: error

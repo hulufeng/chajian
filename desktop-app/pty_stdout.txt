@@ -1,6 +1,6 @@
 
 [TerminalService] node-pty 加载成功
-🚀 LabCode 启动中...
-📁 用户数据目录: C:\Users\Administrator\AppData\Roaming\LabCode
+🚀 BubaiCode 启动中...
+📁 用户数据目录: C:\Users\Administrator\AppData\Roaming\BubaiCode
 🔧 开发模式: false
 Checking for update

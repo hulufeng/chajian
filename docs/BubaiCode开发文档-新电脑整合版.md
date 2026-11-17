@@ -1,17 +1,17 @@
-# LabCode 开发文档（新电脑接手整合版）
+# BubaiCode 开发文档（新电脑接手整合版）
 
 **版本：** v1.0.2 | **整理日期：** 2026-09-09
 **项目定位：** 仿写 TrieCode（www.triecode.com，v1.2.9）的 AI 编程桌面开发工具
-**GitHub 仓库：** https://github.com/hulufeng/LabCode（public，最新 commit：2d3654f）
-**本地项目路径：** `D:\工作\LabCode\`
+**GitHub 仓库：** https://github.com/hulufeng/BubaiCode（public，最新 commit：2d3654f）
+**本地项目路径：** `D:\工作\BubaiCode\`
 
-> 📌 **本文件是整合版**：合并了《开发文档-完整版》《LabCode项目整理与继续开发指南》《TrieCode实际操作记录》《LabCode_vs_TrieCode_功能对比》《HANDOFF》等文档的核心内容，**新电脑只需读这一份即可接手开发**。
+> 📌 **本文件是整合版**：合并了《开发文档-完整版》《BubaiCode项目整理与继续开发指南》《TrieCode实际操作记录》《BubaiCode_vs_TrieCode_功能对比》《HANDOFF》等文档的核心内容，**新电脑只需读这一份即可接手开发**。
 
 ---
 
 ## 一、项目是什么
 
-LabCode 是一款集成 **Monaco 编辑器 + AI 智能体 + 内置终端 + 测试运行器** 的桌面开发工具，核心亮点是 AI 能真正动手读写代码、执行命令、运行测试，通过三种权限模式保障安全。
+BubaiCode 是一款集成 **Monaco 编辑器 + AI 智能体 + 内置终端 + 测试运行器** 的桌面开发工具，核心亮点是 AI 能真正动手读写代码、执行命令、运行测试，通过三种权限模式保障安全。
 
 项目包含**三端**：
 
@@ -22,7 +22,7 @@ LabCode 是一款集成 **Monaco 编辑器 + AI 智能体 + 内置终端 + 测�
 | 管理后台 | `admin/` | HTML + CSS + JS（localStorage 持久化） | ✅ 已完成（7 大模块） |
 
 **品牌硬约束（不可改）：**
-- 品牌名：**LabCode**
+- 品牌名：**BubaiCode**
 - 主题：浅色白色主题，主色蓝色 `#2563eb`
 - 图标：Tabler Icons 风格内联 SVG（MIT 许可，可商用）
 
@@ -46,8 +46,8 @@ LabCode 是一款集成 **Monaco 编辑器 + AI 智能体 + 内置终端 + 测�
 ### 方式 A：从 GitHub 克隆（推荐）
 
 ```bash
-git clone https://github.com/hulufeng/LabCode.git
-cd LabCode
+git clone https://github.com/hulufeng/BubaiCode.git
+cd BubaiCode
 ```
 
 > ✅ **已确认**：GitHub 上文件齐全（含 app.js 168KB、package-lock.json 100KB），`npm install` 后可直接运行。2026-09-09 已实测 clone 验证。
@@ -61,7 +61,7 @@ cd LabCode
 ## 四、项目结构
 
 ```
-LabCode/
+BubaiCode/
 ├── .gitignore                       # Git 忽略规则
 ├── README.md                        # 根目录项目说明
 │
@@ -80,7 +80,7 @@ LabCode/
 │   ├── package-lock.json            # 依赖锁文件
 │   ├── main/                        # Electron 主进程
 │   │   ├── index.js                 # 主进程入口（窗口/IPC/菜单/配置/会话/更新）
-│   │   ├── preload.js               # 预加载脚本（暴露 window.LabCode API）
+│   │   ├── preload.js               # 预加载脚本（暴露 window.BubaiCode API）
 │   │   └── terminal.js              # 终端服务（node-pty + 降级模式）
 │   └── renderer/                    # 渲染进程
 │       ├── index.html               # 主界面（五区布局）
@@ -89,12 +89,12 @@ LabCode/
 │       │   ├── app.js               # 智能体引擎（168KB，核心逻辑）
 │       │   └── terminal.js          # 终端管理器（xterm.js 集成）
 │       └── icons/
-│           └── labcode-icons.svg    # SVG 图标库（50+ 图标，MIT）
+│           └── bubaicode-icons.svg    # SVG 图标库（50+ 图标，MIT）
 │
 ├── docs/                            # ═══ 文档 ═══
 │   ├── 开发文档-完整版.md           # 详细开发文档
 │   ├── TrieCode实际操作记录.md       # TrieCode 真实操作记录
-│   ├── LabCode_vs_TrieCode_功能对比.md
+│   ├── BubaiCode_vs_TrieCode_功能对比.md
 │   ├── TrieCode界面设计学习记录.md
 │   ├── HANDOFF.md                   # 交接文档
 │   ├── 团队协作指南.md
@@ -158,15 +158,15 @@ npm start            # 启动
 ```
 
 - **安全配置**：`contextIsolation: true`、`nodeIntegration: false`、`sandbox: false`
-- 渲染进程通过 `window.LabCode.*` 调用主进程能力（IPC）
+- 渲染进程通过 `window.BubaiCode.*` 调用主进程能力（IPC）
 - **关键约束**：renderer 因 contextIsolation **没有 require()**，所有 Node 能力必须走 preload 暴露的 API
 
 ### 6.2 主进程（main/index.js）
 
 1. **窗口管理** — 无边框窗口（frame: false），宽高记忆（config.json）
 2. **菜单** — 原生菜单：文件/编辑/视图/帮助
-3. **配置存储** — `%APPDATA%\LabCode\config.json`
-4. **会话存储** — `%APPDATA%\LabCode\sessions\*.json`
+3. **配置存储** — `%APPDATA%\BubaiCode\config.json`
+4. **会话存储** — `%APPDATA%\BubaiCode\sessions\*.json`
 5. **IPC 接口** — 窗口控制、配置、会话、对话框、文件读写、终端、外部链接、代理、自动更新
 6. **文件读写（含编码自动检测）**：
    - 读文件：UTF-8 BOM → 严格 UTF-8 解码（fatal）→ GBK 回退（iconv-lite）
@@ -175,7 +175,7 @@ npm start            # 启动
 ### 6.3 预加载脚本（main/preload.js）
 
 ```javascript
-window.LabCode = {
+window.BubaiCode = {
   window:   { minimize, maximize, close, isMaximized },
   config:   { get, set, save },
   sessions: { list, save, delete },
@@ -276,7 +276,7 @@ window.LabCode = {
 ### 1. 新建项目功能修复（用户反馈"点不动"）
 - **根因**：① renderer 因 contextIsolation 无 `require()`，createProject 抛错；② 欢迎页按钮绑定到不存在的 `new-project-btn`
 - **修复**：实现 `new-project-modal` 弹窗（**6 类型卡片**：Arduino/Python/Node.js/ESP-IDF/C/C++/通用）+ `createProject` 磁盘创建（纯字符串路径拼接 + `FileSystem.writeFile`，主进程自动建目录）
-- **验证**：创建 `ESP32C3_DesktopRobot` 项目成功，磁盘落盘 `.labcode.json` + `.ino` + `README.md`
+- **验证**：创建 `ESP32C3_DesktopRobot` 项目成功，磁盘落盘 `.bubaicode.json` + `.ino` + `README.md`
 
 ### 2. GBK 编码乱码修复
 - **根因**：GBK 编码的 .ino 文件（中文 Windows 常见）按 UTF-8 读取产生乱码
@@ -339,22 +339,22 @@ window.LabCode = {
 ### 关键结论
 
 - TrieCode 的 Arduino 工具链底层是 **arduino-cli**，未安装时无法编译/烧录（TrieCode 也不会替你装）
-- **TrieCode AI 需积分付费**（免费版 200 积分/月）→ LabCode 的差异化机会：**管理后台配 API Key，用户自带 Key 即可用，不锁积分**
+- **TrieCode AI 需积分付费**（免费版 200 积分/月）→ BubaiCode 的差异化机会：**管理后台配 API Key，用户自带 Key 即可用，不锁积分**
 - TrieCode 也有部分按钮"点不动"（文件菜单无下拉）→ 此类桌面工具菜单不完整属常见问题
 
-### TrieCode vs LabCode 操作对比
+### TrieCode vs BubaiCode 操作对比
 
-| 操作步骤 | TrieCode | LabCode | 结论 |
+| 操作步骤 | TrieCode | BubaiCode | 结论 |
 |---|---|---|---|
 | 启动 | launch_app | electron.exe | ✅ 一致 |
 | 新建项目 | 9 类型弹窗 | 6 类型弹窗（已修复） | ⚠️ 可补 插件/C/Rust |
-| 项目元数据 | `.triecode.json` | `.labcode.json`（同结构） | ✅ 对齐 |
+| 项目元数据 | `.triecode.json` | `.bubaicode.json`（同结构） | ✅ 对齐 |
 | 代码编辑 | Monaco | Monaco | ✅ 一致 |
 | 终端 | PowerShell + node-pty | PowerShell（降级模式） | ⚠️ 需装 node-pty |
-| AI 对话 | 需积分（付费墙） | MockAIClient | ✅ LabCode 差异化 |
+| AI 对话 | 需积分（付费墙） | MockAIClient | ✅ BubaiCode 差异化 |
 | 开发板选择 | arduino-cli | 未实现 | ⚠️ 待补 |
 | 编译 | 需 arduino-cli+选板 | 无编译按钮 | ⚠️ 待实现 |
-| 编码处理 | 未知 | GBK 自动检测 | ✅ LabCode 更优 |
+| 编码处理 | 未知 | GBK 自动检测 | ✅ BubaiCode 更优 |
 
 ---
 
@@ -367,7 +367,7 @@ npm run build:mac      # macOS DMG
 npm run build:linux    # Linux AppImage + deb
 ```
 
-- appId：`com.LabCode.app`
+- appId：`com.BubaiCode.app`
 - **注意**：`resources/` 目录目前可能不存在，打包前需添加图标文件（icon.ico/icns/png）
 
 ---
@@ -399,7 +399,7 @@ npm run build:linux    # Linux AppImage + deb
 | GBK 文件乱码 | 确认主进程 index.js 的编码检测逻辑存在 + iconv-lite 已安装 |
 | node-pty 编译失败 | 不影响使用（自动降级），想用真实终端需装 VS Build Tools |
 | GitHub push 失败 | 网络不稳时重试，或改用 MCP push_files |
-| 重置应用数据 | 删除 `%APPDATA%\LabCode` 目录 |
+| 重置应用数据 | 删除 `%APPDATA%\BubaiCode` 目录 |
 
 ---
 
@@ -426,4 +426,4 @@ npm run build:linux    # Linux AppImage + deb
 
 ---
 
-*本文档为整合版（2026-09-09），基于真实代码核实整理；GitHub 仓库：https://github.com/hulufeng/LabCode*
+*本文档为整合版（2026-09-09），基于真实代码核实整理；GitHub 仓库：https://github.com/hulufeng/BubaiCode*

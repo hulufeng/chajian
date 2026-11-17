@@ -1,6 +1,6 @@
 # 技术文档 · BubaiCode Agent 架构与 ChipCode 对齐规格
 
-> 配套文档：`docs/开发文档-BubaiCode对齐ChipCode.md`（怎么开发）、`.handoff/HANDOFF-labcode-chipcode-align-gap-20261106.md`（取证过程）。
+> 配套文档：`docs/开发文档-BubaiCode对齐ChipCode.md`（怎么开发）、`.handoff/HANDOFF-bubaicode-chipcode-align-gap-20261106.md`（取证过程）。
 > 版本基线：BubaiCode v1.2.31 / 2026-11-09。
 > 标注约定：**【观察】**= 代码或运行时字节直接读到的实值；**【推导】**= 由多处观察共同推出；**【推断】**= 判断，未直接验证。
 
@@ -27,7 +27,7 @@
 └────────────────────────────────────────────────────────────────┘
 ```
 
-**【观察】** 命名空间是 `window.BubaiCode.*`；`LabCode.*` 只剩 userData 迁移残留（`main/index.js:11-35`）。
+**【观察】** 命名空间是 `window.BubaiCode.*`；`BubaiCode.*` 只剩 userData 迁移残留（`main/index.js:11-35`）。
 **【观察】** `packages/engine/loop.js:44-45` 明确注释「app.js 当前仍保留内联循环，只消费引擎护栏」，`runLoop()` **未接入主链路**；`packages/ai/src/` 的 Provider 包亦未接入（渲染端实际走 `RealAIClient` + `window.BubaiCode.ai`）。这是当前最大的架构债：**两份并行实现**。
 
 ---
