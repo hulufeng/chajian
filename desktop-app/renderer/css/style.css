@@ -7086,3 +7086,70 @@ body.cb-compact .ai-input-tool-btn,
 body.cb-compact .model-select-btn,
 body.cb-compact .safety-mode-btn { background: none !important; border: 0 !important; color: var(--text-secondary) !important; }
 
+
+
+/* ============================================================
+   2026-11-17 执行过程折叠块（用户参考图：正在执行中·Ns 可展开看每步）
+   覆盖上方 1.2.38 的「工作条全隐藏」。角色区分仍靠气泡，头像继续隐藏。
+   ============================================================ */
+/* ===== 过程折叠块预览（对齐参考图） ===== */
+
+/* 用户消息：保持右上渐变气泡 */
+body.cb-compact .chat-message.user { justify-content: flex-end !important; margin: 0 0 20px !important; background: none !important; border: 0 !important; padding: 0 !important; }
+body.cb-compact .chat-message.user .chat-bubble { background: linear-gradient(135deg,#5b7cfa,#7c5cf0) !important; color:#fff !important; padding:11px 15px !important; border-radius:15px 15px 4px 15px !important; font-size:13.5px !important; max-width:84% !important; border:0 !important; }
+body.cb-compact .chat-message .chat-avatar { display: none !important; }
+
+/* 执行过程折叠块 */
+.exec-process-block {
+  margin: 0 0 14px 0 !important;
+  border: 0 !important;
+}
+.exec-head {
+  display: inline-flex !important; align-items: center; gap: 5px !important;
+  background: none !important; border: 0 !important;
+  padding: 0 !important; margin: 0 0 4px !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important; font-weight: 500 !important;
+  cursor: pointer;
+}
+.exec-head .icon { width: 12px !important; height: 12px !important; transition: transform .15s !important; transform: rotate(-90deg); }
+.exec-process-block.expanded .exec-head .icon { transform: rotate(0); }
+.exec-title b { color: var(--text-primary) !important; font-weight: 600 !important; }
+
+/* 步骤列表：展开才显示 */
+.exec-steps { display: none !important; }
+.exec-process-block.expanded .exec-steps { display: block !important; }
+
+.exec-step {
+  display: flex !important; align-items: baseline; flex-wrap: wrap; gap: 6px !important;
+  font-size: 11.5px !important; line-height: 1.9 !important;
+  color: var(--text-secondary) !important;
+  font-family: inherit !important;
+}
+.exec-step.done .exec-ic { color: #52a56b !important; }
+.exec-step.running .exec-ic { color: #e0a53c !important; }
+.exec-ic { font-size: 12px !important; width: 14px !important; flex-shrink: 0 !important; }
+.exec-label { color: var(--text-primary) !important; font-weight: 500 !important; white-space: nowrap !important; }
+.exec-state { color: var(--text-tertiary) !important; font-size: 11px !important; white-space: nowrap !important; }
+.exec-step.running .exec-state { color: #e0a53c !important; }
+.exec-cmd {
+  font-family: ui-monospace, Consolas, monospace !important;
+  font-size: 11px !important; color: var(--text-tertiary) !important;
+  background: none !important; padding: 0 !important;
+  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+  max-width: 100% !important;
+}
+.exec-think { color: var(--text-tertiary) !important; font-size: 11px !important; font-style: italic !important; }
+
+/* 思考中指示 */
+.exec-thinking-ind {
+  display: flex !important; align-items: center; gap: 8px !important;
+  margin: 6px 0 18px !important;
+  color: var(--text-tertiary) !important; font-size: 11.5px !important;
+}
+.exec-think-ic { font-size: 13px !important; color: var(--primary) !important; animation: exec-spin 1.4s linear infinite; display: inline-block !important; }
+@keyframes exec-spin { to { transform: rotate(360deg); } }
+
+
+/* 覆盖 1.2.38 的工作条隐藏：执行过程块需要显示 */
+body.cb-compact .chat-message.ai.work-status-msg.exec-process-block { display: block !important; margin: 0 0 14px 0 !important; padding: 0 !important; border: 0 !important; border-bottom: 0 !important; background: none !important; }

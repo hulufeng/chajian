@@ -9115,13 +9115,13 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
   if (state === 'running') {
     if (!workStatusBarEl || !workStatusBarEl.isConnected) {
       workStatusBarEl = document.createElement('div');
-      workStatusBarEl.className = 'chat-message ai work-status-msg';
+      workStatusBarEl.className = 'chat-message ai work-status-msg exec-process-block expanded';
       workStatusBarEl.innerHTML = `
-        <div class="chat-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">▶</div>
-        <div class="chat-bubble work-status-bubble">
-          <span class="work-status-line">已工作 <b class="work-elapsed">0</b>s · 思考 · <b class="work-tools">0</b> 个工具 · 📚 已收集上下文 <b class="work-context">0</b> 次</span>
-          <span class="work-status-meta">▍ ${window.__labAiLabel || '本地模型'} · 实时</span>
-        </div>`;
+        <button class="exec-head" type="button" aria-expanded="true">
+          <svg class="icon icon-xs"><use href="#icon-chevron-down"></use></svg>
+          <span class="exec-title">正在执行中 · <b class="work-elapsed">0</b>秒</span>
+        </button>
+        <div class="exec-steps"></div>`;
       const welcome = document.getElementById('ai-welcome');
       if (welcome && welcome.style.display !== 'none') {
         area.insertBefore(workStatusBarEl, welcome.nextSibling);
@@ -9141,6 +9141,12 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
           }
         }, 1000);
       }
+      // 折叠头点击展开/收起（一次绑定）
+      const head = workStatusBarEl.querySelector('.exec-head');
+      if (head) head.addEventListener('click', () => {
+        workStatusBarEl.classList.toggle('expanded');
+        head.setAttribute('aria-expanded', workStatusBarEl.classList.contains('expanded') ? 'true' : 'false');
+      });
     }
     const el = workStatusBarEl.querySelector('.work-elapsed');
     const tl = workStatusBarEl.querySelector('.work-tools');
@@ -9151,13 +9157,9 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
   } else if (state === 'done') {
     if (workStatusTimer) { clearInterval(workStatusTimer); workStatusTimer = null; }
     if (workStatusBarEl && workStatusBarEl.isConnected) {
-      const line = workStatusBarEl.querySelector('.work-status-line');
-      if (line) {
-        line.innerHTML = `✓ 已完成 · 耗时 <b>${elapsed || 0}</b>s · <b>${tools || 0}</b> 个工具 · 📚 已收集上下文 <b>${context || 0}</b> 次`;
-      }
+      const title = workStatusBarEl.querySelector('.exec-title');
+      if (title) title.innerHTML = `✓ 已完成 · 耗时 <b>${elapsed || 0}</b>秒`;
       workStatusBarEl.classList.add('work-status-done');
-      const meta = workStatusBarEl.querySelector('.work-status-meta');
-      if (meta) meta.textContent = '▍ ' + (window.__labAiLabel || '本地模型 · 免费');
     }
     workStatusBarEl = null;
   }
@@ -9378,6 +9380,30 @@ function updateToolFlowPanel({ tool, status, args, result }) {
   // 最多保留 5 条，自动滚动到底部
   while (body.children.length > 5) body.removeChild(body.firstChild);
   body.scrollTop = body.scrollHeight;
+
+  // 2026-11-17 同步到对话内的「正在执行中」折叠块：每步一行，展开可见
+  // （对齐参考图：终端命令/读取文件/思考 每步带状态；工作条全部隐藏是上一版的过度精简）
+  if (workStatusBarEl && workStatusBarEl.isConnected) {
+    const steps = workStatusBarEl.querySelector('.exec-steps');
+    if (steps) {
+      let stepIcon = status === 'done' ? '⊚' : status === 'running' ? '○' : '✕';
+      let stepLabel = label; // 上面已算好（执行命令/写入文件/运行测试等）
+      if (tool === 'read_file') stepLabel = '读取文件';
+      else if (tool === 'list_dir' || tool === 'search') stepLabel = '读取文件';
+      const stateTxt = status === 'done' ? '已运行' : status === 'running' ? '运行中' : '失败';
+      const row = document.createElement('div');
+      row.className = 'exec-step ' + status;
+      let detail = '';
+      if (isFileTool) detail = escapeHtml((args && args.file_path) || '');
+      else if (isCmdTool) detail = escapeHtml(String((args && (args.command || args.test_path)) || '').slice(0, 90));
+      else detail = escapeHtml(tool);
+      row.innerHTML = `<span class="exec-ic">${stepIcon}</span><span class="exec-label">${stepLabel}</span><span class="exec-state">${stateTxt}</span><code class="exec-cmd">${detail}</code>`;
+      steps.appendChild(row);
+      // 运行中自动展开，便于看到进度；最多保留 8 步
+      if (status === 'running') workStatusBarEl.classList.add('expanded');
+      while (steps.children.length > 8) steps.removeChild(steps.firstChild);
+    }
+  }
 }
 
 // ============ diff 验收卡（对齐 Trae Diff 视图：文件数 / 行数 / 可展开 diff）============
