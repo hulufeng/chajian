@@ -7339,3 +7339,30 @@ body.cb-compact .chat-bubble :not(pre) > code {
 }
 /* ⑨ 欢迎态输入卡统一 720 中列（v4 已设，这里再确保 focus 态一致） */
 body.app-welcome .ai-input-container .ai-input-box { max-width: 720px !important; }
+/* ===== 2026-11-17 审美修正 v6：欢迎态视觉重心（实机截图验证版） =====
+   根因：v5 实机截图显示 AI 面板占满剩余宽度(~1650px)，但消息/错误卡片偏右~120px，
+        左半边空白、内容散成两列。v4 只覆盖了具体类名，错误卡片/API Key 卡片未命中。
+   修法：欢迎态消息容器改 flex column + align-items:center，所有子元素统一 720px 居中成列。
+   回退：删除本块。 */
+body.app-welcome .ai-messages {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+body.app-welcome .ai-messages > * {
+  width: 100% !important;
+  max-width: 720px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* 用户气泡在欢迎态取消右贴边，统一左对齐进中列 */
+body.app-welcome .ai-messages .chat-message.user {
+  align-self: center !important;
+  justify-content: flex-start !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+body.app-welcome .ai-messages .chat-message.user .chat-bubble {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
