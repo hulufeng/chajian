@@ -5329,9 +5329,15 @@ class RealAIClient {
       }
       if (lines.length) planProgressSection = '\n## 当前计划进度（每轮自动注入，防止跨轮失忆）\n' + lines.join('\n') + '\n';
     } catch (e) { /* 计划状态不可用时不注入 */ }
+    // 2026-11-17 修复 AI 幻觉：欢迎态（未打开项目）明确告知模型，避免把 terminal 回退 cwd
+    // (process.cwd()) 的目录列表误归纳成「工作区已有 N 个项目」。UI 的「无打开项目」是正确的。
+    const projectOpenState = (state.projectPath || (state.files && Object.keys(state.files).length))
+      ? `已打开项目路径: ${state.projectPath || '(内存文件，未落盘)'}`
+      : '当前未打开任何项目（欢迎态）。用户尚未选择工作空间，禁止声称「工作区已有 N 个项目」或列出工作区项目；如需项目信息必须先让用户打开项目或调用 list_files（会返回空目录）。';
     return `${identity}
 ${memorySection}${productStageSection}${planProgressSection}
 ## 当前项目
+- 打开状态: ${projectOpenState}
 - 项目类型: ${projectTypeDesc}
 - 产品阶段: ${(window.ProductFactory && window.ProductFactory.snapshot && window.ProductFactory.snapshot.isProduct) ? (window.ProductFactory.activeStage || 'idea') : '未设置'}
 - ${mainFileHint || '请根据项目类型创建正确格式的文件。'}

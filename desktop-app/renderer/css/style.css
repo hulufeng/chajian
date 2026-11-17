@@ -7215,3 +7215,68 @@ body.no-open-file .ai-panel { flex: 0 0 var(--ai-panel-width) !important; }
 /* ⑦ 4px 栅格：编辑器 Tab 行/AI 消息/输入区的横向 padding 收敛到 4px 栅格 */
 .ai-messages { padding: var(--space-4) !important; }
 .editor-tabs { padding: 0 var(--space-1) !important; }
+/* ===== 2026-11-17 布局/排版对齐 v4：欢迎态限宽居中 / 回到底部避让 / AI 表格 =====
+   参考：用户截图（欢迎态下 AI 回答横跨全宽 + 回到底部按钮压正文）
+   回退：删除本块。 */
+/* ① 欢迎态消息流限宽居中：消息/工具块/输入区统一 720px 中列（ChipCode 规格 §3.2 欢迎态） */
+body.app-welcome .ai-messages > .chat-message,
+body.app-welcome .ai-messages > .ai-message,
+body.app-welcome .ai-messages > .work-status-msg,
+body.app-welcome .ai-messages > .exec-process-block,
+body.app-welcome .ai-messages > .tool-call-block {
+  max-width: 720px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* 欢迎态输入区/项目条/免责声明限宽（ai-welcome 已是 800px，这里统一到 720px 中列） */
+body.app-welcome .ai-input-container,
+body.app-welcome .ai-project-bar,
+body.app-welcome .ai-disclaimer {
+  max-width: 720px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* ② 回到底部按钮：从 sticky 压正文改为右下角固定，避开输入区（底部留白 = 输入卡高度） */
+.chat-scroll-bottom {
+  position: absolute !important;
+  right: 20px !important;
+  bottom: 16px !important;
+  margin: 0 !important;
+  z-index: 30 !important;
+  min-height: 32px !important;
+  padding: 6px 14px !important;
+  font-size: 11.5px !important;
+  background: var(--surface-2) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-2) !important;
+}
+.chat-scroll-bottom:hover { background: var(--surface-3) !important; color: var(--text-primary) !important; }
+/* ③ AI 表格：浅表头底色 + 行分隔线 + 圆角，避免裸表格 */
+.chat-bubble table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+.chat-bubble thead th {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-bubble tbody td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+.chat-bubble tbody tr:last-child td { border-bottom: none; }
+.chat-bubble tbody tr:hover td { background: var(--surface-2); }
+/* ④ 长文本行宽兜底：所有消息气泡内容不超过 720px（非欢迎态右栏已 360px，此规则不生效） */
+body.cb-compact .chat-message.ai .chat-bubble > * { max-width: 100%; }
