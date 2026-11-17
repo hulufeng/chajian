@@ -7366,3 +7366,27 @@ body.app-welcome .ai-messages .chat-message.user .chat-bubble {
   margin-left: 0 !important;
   margin-right: auto !important;
 }
+/* ===== 2026-11-17 视觉修正 v7：消息居中不再绑定 app-welcome =====
+   根因：v6 用 body.app-welcome 限定，用户截图显示会话态 app-welcome 被移除后，
+        正文又变成左对齐贴边、输入框占满宽——内容散开。
+   修法：对 .ai-messages 全局设 flex column + align-items:center；所有直接子元素 720px 居中。
+        360px 右栏下该规则无副作用（子元素宽度被容器压到 322px，仍居中）。
+   回退：删除本块。 */
+.ai-messages {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+.ai-messages > * {
+  width: 100% !important;
+  max-width: 720px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.chat-message.user {
+  align-self: center !important;
+  justify-content: flex-start !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.chat-message.user .chat-bubble { margin-left: 0 !important; margin-right: auto !important; }
