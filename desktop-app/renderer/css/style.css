@@ -7390,3 +7390,40 @@ body.app-welcome .ai-messages .chat-message.user .chat-bubble {
   margin-right: auto !important;
 }
 .chat-message.user .chat-bubble { margin-left: 0 !important; margin-right: auto !important; }
+
+/* ===== 2026-11-17 欢迎页视觉锚点恢复 v6（实机对比 ChipCode 后修正）=====
+   根因：6937-6941 的 cb-compact「去装饰」规则，把 6214 精心复刻 ChipCode 原品的
+        示波器卡片用 display:none 隐藏了(6939)，标题压成 15px/淡灰(6938)，chip 压成 11.5px(6941)。
+        结果=弱标题+孤立 pill+大空输入框，正是「太丑」的根源。
+       ChipCode 真实欢迎页恰相反：示波器卡片是视觉锚点、标题醒目、chip 清晰。
+   修法：恢复示波器 + 强化标题 + 隐藏孤立的单 pill(做产品已删) + chip 回到舒适尺寸。
+   DOM 顺序本就与 ChipCode 一致(历史→标题→pill→示波器→输入框→4chip)，无需改结构。
+   回退：删除本块。 */
+/* ① 恢复示波器卡片：6214 的完整 ChipCode 复刻样式(白壳/CH1波形/旋钮/图例)立即生效 */
+body.cb-compact .ai-welcome-sim { display: grid !important; }
+/* ② 标题强化：15px/500/淡灰 → 20px/600/主色，重建视觉重心 */
+body.cb-compact .ai-welcome-title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: .01em !important;
+  margin: 10px 0 18px !important;
+}
+/* ③ 隐藏孤立的单「写代码」pill（做产品已删，单个 pill 视觉突兀；其聚焦输入框功能可忽略） */
+body.cb-compact .ai-welcome-pills { display: none !important; }
+/* ④ 快速建议 chip 回到舒适尺寸（11.5px → 12.5px，加大 padding，pill 化） */
+body.cb-compact .ai-quick-btn {
+  font-size: 12.5px !important;
+  padding: 11px 14px !important;
+  border-radius: 8px !important;
+  color: var(--text-primary) !important;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+body.cb-compact .ai-quick-btn:hover {
+  border-color: var(--accent, var(--primary)) !important;
+  background: var(--surface-2) !important;
+}
+/* ⑤ 垂直节奏：示波器与输入框之间留白舒展 */
+body.cb-compact .ai-welcome-sim { margin: 0 0 22px !important; }
