@@ -7452,3 +7452,42 @@ body.cb-compact .chat-message.user .chat-bubble {
 body.cb-compact .ask-user-card {
   box-shadow: 0 1px 3px rgba(16,24,40,.06) !important;
 }
+
+
+/* ===== 2026-11-18 会话区饱满度 v8-final（用户反馈：空白太大/消息挤顶/错误卡丑）=====
+   根因：v6/v7 用 body.app-welcome .ai-messages > .chat-message（特异性 0,3,1）设 max-width:720px；
+        v8 初版用 body.cb-compact .ai-messages > *（0,2,1）特异性不足被压过，宽度仍 720px。
+   修法：① 用 >=0,3,1 特异性覆盖宽度到 900px（窄面板 94% 自适应）
+        ② 消息从顶排（混合DOM下垂直居中会把消息挤到底，已放弃）
+        ③ 错误卡/BYOK 卡圆角+边框精致化
+   回退：删除本块。 */
+/* ① 消息列宽度：高特异性覆盖 v6/v7 的 720px */
+body.app-welcome .ai-messages > .chat-message,
+body.app-welcome .ai-messages > .ai-message,
+body.app-welcome .ai-messages > .work-status-msg,
+body.cb-compact .ai-messages > .chat-message,
+body.cb-compact .ai-messages > .ai-message,
+body.cb-compact .ai-messages > .work-status-msg,
+.ai-messages > .chat-message,
+.ai-messages > .ai-message,
+.ai-messages > .work-status-msg {
+  width: 900px !important;
+  max-width: 94% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* ② 不设垂直居中：.ai-messages 内含欢迎区/系统消息混合，flex center 会把消息挤到底部；保持从顶排 */
+/* ③ 错误卡/BYOK 卡精致化 */
+body.cb-compact .chat-message.ai .chat-bubble,
+body.cb-compact .work-status-msg .work-status-bubble {
+  border-radius: 10px !important;
+}
+body.cb-compact .ai-messages .chat-bubble > div[style*="background"] {
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--border) !important;
+}
+/* 输入区顶部分隔 */
+body.cb-compact .ai-input-container {
+  box-shadow: 0 -2px 12px rgba(16,24,40,.04) !important;
+}
