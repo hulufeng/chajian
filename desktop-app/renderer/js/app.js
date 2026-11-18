@@ -8543,6 +8543,17 @@ function renderChatMarkdown(bubble, text) {
 // 围栏未闭合时保持纯文本，防止半截代码块闪烁重排。
 function renderStreamBubble(bubble, text) {
   if (!bubble) return;
+  // 对照 CodeBuddy：引擎内部日志（[系统]/[用户选择]/emoji）不渲染成消息卡，
+  // 打 sys-log class 由 CSS 压成极淡一行，避免满屏技术噪音。
+  try {
+    var _t = String(text || '').trim();
+    var _sysOnly = _t && _t.split(/\n/).every(function(ln){
+      var x = ln.trim();
+      return !x || /^[\[【]?(系统|用户选择)[\]】]?/.test(x) || /^[\u2600-\u27BF\uD83C-\uDBFF]/.test(x);
+    });
+    var _host = bubble.closest ? bubble.closest('.chat-message') : null;
+    if (_host) _host.classList.toggle('sys-log', !!_sysOnly);
+  } catch (e) {}
   const fences = (String(text).match(/```/g) || []).length;
   if (fences >= 2 && fences % 2 === 0) {
     renderChatMarkdown(bubble, text);

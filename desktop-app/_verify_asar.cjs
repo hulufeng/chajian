@@ -1,0 +1,11 @@
+const a=require('@electron/asar');
+const B=String.fromCharCode(92);
+const p='D:/work/daimaLABshiyanshi/codelab-desktop/desktop-app/dist227/win-unpacked/resources/app.asar';
+const js=a.extractFile(p,'renderer'+B+'js'+B+'app.js').toString('utf8');
+const css=a.extractFile(p,'renderer'+B+'css'+B+'style.css').toString('utf8');
+console.log('JS sys-log tag:', js.includes("classList.toggle('sys-log'"));
+console.log('CSS v9:', css.includes('会话态克制化 v9'));
+console.log('CSS width 100%:', css.includes('width: 100% !important'));
+console.log('CSS sys-log style:', css.includes('.chat-message.sys-log .chat-bubble'));
+console.log('CSS empty hidden:', css.includes('.chat-message.ai .chat-bubble:empty'));
+console.log('CSS ask-user card:', css.includes('.ask-user-card'));

@@ -7500,3 +7500,56 @@ body.cb-compact .work-status-msg.work-status-failed .exec-title {
 body.cb-compact .work-status-msg.work-status-failed {
   border-left: 3px solid var(--warn, #d97706) !important;
 }
+
+
+/* ===== 2026-11-18 会话态克制化 v9（对照 CodeBuddy：消息/输入同宽 + 过程噪音弱化）=====
+   根因：v8 把消息列加到 900px 但输入框仍 720px → 上下边缘错位；
+        引擎内部 [系统] 日志被渲染成 900px 灰卡；streaming 空灰条 + ask-user 白卡笨重。
+   修法：① 消息列与输入框统一 860px 中列 ② sys-log 压成淡色一行 ③ 空条/选择卡去卡片化
+   回退：删除本块。 */
+/* ① 统一中列：消息与输入框同宽，边缘对齐 */
+/* 消息列：固定 860 居中 */
+body.cb-compact .ai-messages > *,
+body.cb-compact .ai-messages > .chat-message,
+body.cb-compact .ai-messages > .chat-message.ai,
+body.cb-compact .ai-messages > .chat-message.user,
+body.cb-compact .ai-messages > .work-status-msg,
+body.app-welcome .ai-messages > .chat-message,
+.ai-messages > .chat-message {
+  width: 100% !important;
+  max-width: 860px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* 输入框：100% 自适应 + 最大 860，与消息列同宽且不撑破窄面板 */
+body.cb-compact .ai-input-container,
+body.app-welcome .ai-input-container,
+.ai-input-container,
+body.cb-compact .ai-input-container .ai-input-box {
+  width: 100% !important;
+  max-width: 860px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* ② 系统日志：淡色一行，无卡片无灰底 */
+body.cb-compact .chat-message.sys-log .chat-bubble {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 2px 0 !important;
+  color: var(--text-tertiary) !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  min-height: 0 !important;
+}
+/* ③ streaming 空占位条：不渲染成灰块 */
+body.cb-compact .chat-message.ai .chat-bubble:empty {
+  display: none !important;
+}
+/* ④ ask-user 选择卡：轻卡片化，去笨重灰底包裹 */
+body.cb-compact .chat-message.ai .ask-user-card {
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(16,24,40,.04) !important;
+}
