@@ -7391,7 +7391,7 @@ body.app-welcome .ai-messages .chat-message.user .chat-bubble {
 }
 .chat-message.user .chat-bubble { margin-left: 0 !important; margin-right: auto !important; }
 
-/* ===== 2026-11-17 欢迎页视觉锚点恢复 v6（实机对比 ChipCode 后修正）=====
+/* ===== 2026-11-17 欢迎页视觉优化 v6b（按用户要求去掉示波器）=====
    根因：6937-6941 的 cb-compact「去装饰」规则，把 6214 精心复刻 ChipCode 原品的
         示波器卡片用 display:none 隐藏了(6939)，标题压成 15px/淡灰(6938)，chip 压成 11.5px(6941)。
         结果=弱标题+孤立 pill+大空输入框，正是「太丑」的根源。
@@ -7400,7 +7400,7 @@ body.app-welcome .ai-messages .chat-message.user .chat-bubble {
    DOM 顺序本就与 ChipCode 一致(历史→标题→pill→示波器→输入框→4chip)，无需改结构。
    回退：删除本块。 */
 /* ① 恢复示波器卡片：6214 的完整 ChipCode 复刻样式(白壳/CH1波形/旋钮/图例)立即生效 */
-body.cb-compact .ai-welcome-sim { display: grid !important; }
+body.cb-compact .ai-welcome-sim { display: none !important; }
 /* ② 标题强化：15px/500/淡灰 → 20px/600/主色，重建视觉重心 */
 body.cb-compact .ai-welcome-title {
   font-size: 20px !important;
