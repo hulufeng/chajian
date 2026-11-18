@@ -7427,3 +7427,28 @@ body.cb-compact .ai-quick-btn:hover {
 }
 /* ⑤ 垂直节奏：示波器与输入框之间留白舒展 */
 body.cb-compact .ai-welcome-sim { margin: 0 0 22px !important; }
+
+
+/* ===== 2026-11-18 会话区背景层次 v7（用户反馈「背景全白」）=====
+   根因：body.cb-compact .ai-messages 用 --surface-1(#ffffff) 做背景，
+        与白底选择卡片(.ask-user-card)/白底消息卡同色，整片纯白无层次。
+   修法：会话态对话区底色降到 --surface-0(#f5f6f8)，白底卡片自然浮起；
+        用户气泡改白底+边框，与灰底形成一档对比。欢迎态同样受益（白输入框在灰底上浮起）。
+   回退：删除本块。 */
+body.cb-compact .ai-messages {
+  background: var(--surface-0) !important;
+}
+/* 用户气泡：紫蓝渐变/浅灰 → 白底 + 细边框 + accent 左条，浮在灰底上 */
+body.cb-compact .chat-message.user .chat-bubble {
+  background: var(--surface-1) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-left: 3px solid var(--accent) !important;
+  border-radius: 4px 10px 10px 4px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.05) !important;
+}
+/* 选择卡片/思考块补一点阴影，在灰底上更有层次 */
+body.cb-compact .ask-user-card {
+  box-shadow: 0 1px 3px rgba(16,24,40,.06) !important;
+}
