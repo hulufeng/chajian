@@ -1,0 +1,15 @@
+const a=require('@electron/asar');
+const B=String.fromCharCode(92);
+const p='D:/work/daimaLABshiyanshi/codelab-desktop/desktop-app/dist225/win-unpacked/resources/app.asar';
+const js=a.extractFile(p,'renderer'+B+'js'+B+'app.js').toString('utf8');
+const css=a.extractFile(p,'renderer'+B+'css'+B+'style.css').toString('utf8');
+console.log('=== app.js ===');
+console.log('failed emit:', js.includes("_emitWorkStatus('failed')"));
+console.log('failed branch:', js.includes("state === 'failed'"));
+console.log('work-status-failed class:', js.includes('work-status-failed'));
+console.log('humanized error:', js.includes('暂时连不上 AI 服务'));
+console.log('=== css ===');
+console.log('failed style:', css.includes('work-status-failed'));
+console.log('v8 900px:', css.includes('width: 900px !important'));
+console.log('gray bg v7:', css.includes('会话区背景层次 v7'));
+console.log('no-product pill:', css.includes('ai-welcome-pills { display: none'));

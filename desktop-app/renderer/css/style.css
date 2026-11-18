@@ -7491,3 +7491,12 @@ body.cb-compact .ai-messages .chat-bubble > div[style*="background"] {
 body.cb-compact .ai-input-container {
   box-shadow: 0 -2px 12px rgba(16,24,40,.04) !important;
 }
+
+
+/* ===== 2026-11-18 失败状态样式（配合 app.js 的 state='failed'）===== */
+body.cb-compact .work-status-msg.work-status-failed .exec-title {
+  color: var(--warn, #d97706) !important;
+}
+body.cb-compact .work-status-msg.work-status-failed {
+  border-left: 3px solid var(--warn, #d97706) !important;
+}

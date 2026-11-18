@@ -5852,10 +5852,16 @@ void loop() {
             `请检查网络，或切换到本地模型 / 自有 API Key 后重试。`
           );
         }
-        return this._degradedReply(
-          `⚠️ AI 请求失败：${result?.error || '未知错误'}\n\n` +
-          `请在 设置 → AI 模型来源 检查模型与网络配置后重试。`
-        );
+        const rawErr = String(result?.error || '未知错误');
+        const isConn = /ERR_CONNECTION|ECONNREFUSED|fetch failed|network/i.test(rawErr);
+        const friendly = isConn
+          ? `暂时连不上 AI 服务\n\n` +
+            `别担心，这不是你的操作问题。可以试试：\n` +
+            `· 点下面的按钮换个方式继续\n` +
+            `· 或到「设置 → AI 模型来源」切换模型后重试\n\n` +
+            `(技术信息：${rawErr})`
+          : `AI 这次没能回答\n\n可以换个方式重试，或到「设置 → AI 模型来源」调整后重试。\n\n(技术信息：${rawErr})`;
+        return this._degradedReply(friendly);
       }
 
       // 解析工具调用
@@ -7109,7 +7115,7 @@ class AgentRunner {
       // 不再进入"思路兜底 / 强制写码 / 重复追问"等基于模型输出的补救逻辑
       if (result.degraded) {
         this._emitDiffSummary();
-        this._emitWorkStatus('done');
+        this._emitWorkStatus('failed');
         _timeoutGuard.disarm();
         // 给出自带 Key 的一键入口（BYOK），用户不用自己去设置里翻
         try { appendByokCard('用自己的 API Key 继续'); } catch (e) {}
@@ -9160,6 +9166,14 @@ function updateWorkStatusBar({ state, elapsed, tools, context }) {
     if (el) el.textContent = elapsed;
     if (tl) tl.textContent = tools;
     if (ct) ct.textContent = context;
+  } else if (state === 'failed') {
+    if (workStatusTimer) { clearInterval(workStatusTimer); workStatusTimer = null; }
+    if (workStatusBarEl && workStatusBarEl.isConnected) {
+      const title = workStatusBarEl.querySelector('.exec-title');
+      if (title) title.innerHTML = `⚠ 未完成 · 耗时 <b>${elapsed || 0}</b>秒`;
+      workStatusBarEl.classList.add('work-status-failed');
+    }
+    workStatusBarEl = null;
   } else if (state === 'done') {
     if (workStatusTimer) { clearInterval(workStatusTimer); workStatusTimer = null; }
     if (workStatusBarEl && workStatusBarEl.isConnected) {
