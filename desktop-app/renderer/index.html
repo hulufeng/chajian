@@ -1397,10 +1397,7 @@
         <div id="monaco-editor" style="display:none;"></div>
       </div>
 
-    </div><!-- /editor-container（底部面板已移出，作为全宽兄弟节点） -->
-    </div><!-- /main-row（活动栏/侧栏/编辑区/AI 面板：flex:1 1 0% 定高，overflow:hidden） -->
-
-    <!-- 底部面板（对齐 ChipCode：跨全宽显示于主内容区下方；欢迎态与有项目态均可见） -->
+    <!-- 底部面板（编辑器列内：tab 栏只占代码区宽度，左栏与 AI 面板通高——对齐 ChipCode 实拍） -->
     <div class="bottom-panel" id="bottom-panel">
     <div class="bottom-tabs">
       <button class="bottom-tab active" data-panel="output">输出</button>
@@ -1528,6 +1525,8 @@
       </div>
     </div><!-- /bottom-content -->
     </div><!-- /bottom-panel -->
+    </div><!-- /editor-container -->
+    </div><!-- /main-row（活动栏/侧栏/编辑区/AI 面板：flex:1 1 0% 定高，overflow:hidden） -->
   </div><!-- /main-container -->
   </div><!-- /main-container（补齐缺失闭合） -->
 
@@ -2427,8 +2426,10 @@
     #product-factory-view .pf-board{display:none!important;}
     #product-factory-view .pf-header{padding:8px 12px!important;}
     #product-factory-view .pf-nav__empty{padding:12px 14px!important;}
-    /* 对齐 ChipCode 原品：欢迎页不显示历史会话搜索块（原品默认/产品工厂模式均无该块；历史会话仍可从菜单打开） */
-    #ai-welcome-history{display:none!important;}
+    /* 对齐 ChipCode 原品（2026-11-19 修正）：欢迎页显示历史会话搜索块 + 最近会话列表，
+   与 ChipCode 的「搜索历史会话内容... + 消息流」一致。历史会话始终可见，不再藏进菜单。 */
+    #ai-welcome-history{display:block!important;order:-1!important;width:100%!important;max-height:280px!important;overflow-y:auto!important;margin-bottom:10px!important;}
+    #ai-welcome-title{display:none!important;}
     .pf-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);flex-shrink:0;}
     .pf-title{font-weight:600;font-size:13px;}
     .pf-sub{font-size:11px;color:var(--text-secondary);}

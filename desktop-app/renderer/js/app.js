@@ -204,9 +204,19 @@ function getLanguage(filename) {
   return map[ext] || 'plaintext';
 }
 function getFileIcon(filename) {
-  const ext = filename.split('.').pop().toLowerCase();
-  const icons = { py:'🐍', js:'📜', ts:'🔷', html:'🌐', css:'🎨', json:'📋', md:'📝', java:'☕', go:'Go', rs:'🦀' };
-  return icons[ext] || '📄';
+  // 用内置 SVG 图标替代 emoji：部分 Windows 字体缺少 emoji 字形，会渲染成豆境块 □（对齐 ChipCode 的纯文字 + SVG 图标标签）
+  const ext = String(filename).split('.').pop().toLowerCase();
+  const map = {
+    py: 'icon-code', js: 'icon-code', jsx: 'icon-code', ts: 'icon-code', tsx: 'icon-code',
+    c: 'icon-code', h: 'icon-code', cpp: 'icon-code', cc: 'icon-code', hpp: 'icon-code',
+    ino: 'icon-code', html: 'icon-code', css: 'icon-code', java: 'icon-code', go: 'icon-code', rs: 'icon-code',
+    json: 'icon-file', md: 'icon-file', txt: 'icon-file', yml: 'icon-file', yaml: 'icon-file',
+    toml: 'icon-file', csv: 'icon-file', xml: 'icon-file', svg: 'icon-file', log: 'icon-file',
+    ini: 'icon-file', conf: 'icon-file',
+    sh: 'icon-terminal', bat: 'icon-terminal', cmd: 'icon-terminal', ps1: 'icon-terminal'
+  };
+  const id = map[ext] || 'icon-file';
+  return '<svg class="icon icon-xs" aria-hidden="true"><use href="#' + id + '"></use></svg>';
 }
 function initFiles() {
   // 如果在 Electron 环境中，尝试加载上次的项目
@@ -962,7 +972,7 @@ function renderTabs() {
     const name = path.split('/').pop();
     const tab = document.createElement('div');
     tab.className = 'tab' + (state.activeTab === path ? ' active' : '');
-    tab.innerHTML = `<span class="tab-icon">${getFileIcon(name)}</span><span>${name}</span><span class="tab-close">✕</span>`;
+    tab.innerHTML = `<span>${name}</span><span class="tab-close" title="关闭"><svg class="icon icon-xs" aria-hidden="true"><use href="#icon-x"></use></svg></span>`;
     tab.addEventListener('click', () => openFile(path));
     tab.querySelector('.tab-close').addEventListener('click', (e) => closeTab(path, e));
     bar.appendChild(tab);
@@ -985,7 +995,7 @@ function ensureMonacoEditor() {
   try {
     state.monaco = monaco;
     state.editor = monaco.editor.create(document.getElementById('monaco-editor'), {
-      value: '', language: 'plaintext', theme: 'vs', fontSize: 13,
+      value: '', language: 'plaintext', theme: 'arduino-light', fontSize: 15, lineHeight: 25,
       fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace",
       minimap: { enabled: true }, scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 8 }, glyphMargin: true, wordWrap: 'off',
     });
@@ -994,7 +1004,7 @@ function ensureMonacoEditor() {
       if (window.BubaiCode && window.BubaiCode.config && window.BubaiCode.config.get) {
         window.BubaiCode.config.get().then((c) => {
           if (c && c.editor && state.editor) {
-            state.editor.updateOptions({ fontSize: c.editor.fontSize || 13, wordWrap: c.editor.wordWrap || 'off', fontFamily: (c.ui && c.ui.fontFamily) ? c.ui.fontFamily : undefined });
+            state.editor.updateOptions({ fontSize: c.editor.fontSize || 15, wordWrap: c.editor.wordWrap || 'off', fontFamily: (c.ui && c.ui.fontFamily) ? c.ui.fontFamily : undefined });
           if (c.ui && c.ui.fontFamily) document.body.style.fontFamily = c.ui.fontFamily;
           }
         }).catch(() => {});
@@ -1010,8 +1020,17 @@ function ensureMonacoEditor() {
       ],
       colors: { 'editor.background': '#1a1b26', 'editor.foreground': '#c0caf5', 'editorLineNumber.foreground': '#565f89', 'editor.selectionBackground': '#33467c', 'editor.lineHighlightBackground': '#1e2030', 'editorCursor.foreground': '#c0caf5' }
     });
-    // 浅色主题默认 'vs'，深色用 'bubaicode-dark'（1:1 对齐参考基线 浅色主题）
-    monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'bubaicode-dark');
+    // 对齐 ChipCode 的 arduino-light 语法高亮主题（2026-11-19，1:1 复刻其 token 配色）
+monaco.editor.defineTheme('arduino-light', {base:'vs', inherit:true, rules:[
+  {token:'predefined', foreground:'267f99', fontStyle:'bold'},
+  {token:'constant', foreground:'0000ff'},
+  {token:'keyword', foreground:'af00db'},
+  {token:'string', foreground:'a31515'},
+  {token:'comment', foreground:'008000', fontStyle:'italic'},
+  {token:'function', foreground:'795e26'}],
+  colors:{'editor.background':'#ffffff','editor.foreground':'#1e1e1e','editorCursor.foreground':'#00979D','editor.selectionBackground':'#add6ff'}});
+// 浅色主题默认 'vs'，深色用 'bubaicode-dark'（1:1 对齐参考基线 浅色主题）
+    monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'arduino-light' : 'bubaicode-dark');
     state.editor.onDidChangeCursorPosition((e) => { document.getElementById('cursor-position').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`; });
     state.editor.onDidChangeModelContent(() => {
       if (state.activeTab && state.files[state.activeTab]) {
@@ -9368,7 +9387,7 @@ function updateToolFlowPanel({ tool, status, args, result }) {
 
   if (isFileTool) {
     const fp = (args && args.file_path) || '';
-    inner += `<div class="tool-flow-file">📄 ${escapeHtml(fp)}</div>`;
+    inner += `<div class="tool-flow-file"><svg class="icon icon-xs" aria-hidden="true"><use href="#icon-file"></use></svg> ${escapeHtml(fp)}</div>`;
     if (status === 'running') {
       const content = (args && args.content) || '';
       const preview = content.length > 600 ? content.slice(0, 600) + '\n…' : content;
@@ -9995,7 +10014,7 @@ function ensureAgent(pSessionId) {
             textOnly = textOnly.split('```' + (_b.lang || '') + '\n' + _b.code + '\n```').join('');
           }
           textOnly = textOnly.replace(/^\s*```[\w+-]*\s*$/gm, '').replace(/^\s*```\s*$/gm, '').trim();
-          const fileList = createdFiles.map(f => '📄 ' + f).join('\n');
+          const fileList = createdFiles.map(f => '- ' + f).join('\n');
           const displayText = textOnly + '\n\n**已生成代码文件（已在编辑器打开）：**\n' + fileList;
           renderChatMarkdown(currentAIBubble, displayText);
         } else if (currentAIBubble) {
@@ -10280,7 +10299,7 @@ ${outText || errText}
             const _dFlt = extractCodeBlocks(currentAIStream, false);
             for (const _b of _dFlt) textOnly = textOnly.split('```' + (_b.lang || '') + '\n' + _b.code + '\n```').join('');
             textOnly = textOnly.replace(/^\s*```[\w+-]*\s*$/gm, '').replace(/^\s*```\s*$/gm, '').trim();
-            const fileList = createdFiles.map(f => '📄 ' + f).join('\n');
+            const fileList = createdFiles.map(f => '- ' + f).join('\n');
             renderChatMarkdown(currentAIBubble, textOnly + '\n\n**已自动修复并保存：**\n' + fileList + '\n\n（可重新运行验证）');
           } else if (currentAIBubble) {
             renderChatMarkdown(currentAIBubble, currentAIStream);
