@@ -19,11 +19,16 @@ test('面板宽度放宽到 400px 且窄窗仍可收缩', () => {
   assert.match(tail, /\.ai-panel\s*\{[^}]*min-width:\s*360px/, '窄窗保底 360px');
 });
 
-test('工具栏允许换行，模型按钮不再被压到 27px', () => {
-  assert.match(tail, /\.ai-input-toolbar\s*\{[^}]*flex-wrap:\s*wrap\s*!important/, '需覆盖 6163 行的 nowrap !important');
-  assert.match(tail, /\.ai-panel \.ai-input-toolbar/, '6164 行高特异性选择器需用同等特异性覆盖');
-  assert.match(tail, /\.model-selector\s*\{[^}]*min-width:\s*120px/, '模型选择器需有最小宽度');
-  assert.match(tail, /\.model-name\s*\{[^}]*text-overflow:\s*ellipsis/, '模型名需省略号');
+test('工具栏单行对齐 ChipCode，仅极窄容器兜底折行（2026-11-20 策略变更）', () => {
+  // ChipCode 取证：composer 工具栏从不设 flex-wrap（窄面板下静默裁切）。
+  // 11-14 当时的病因是 padding 链把内宽压到 241px，而非"必须两行"；11-20 已清零横向 padding
+  // 并把模式/思考按钮收成纯图标，故撤销无条件 wrap 覆盖，只保留容器查询兜底。
+  assert.doesNotMatch(tail, /(?<!\.ai-input-container )\.ai-input-toolbar\s*\{[^}]*flex-wrap:\s*wrap/, '不应再无条件 wrap，否则回到 11-14 的两行形态（@container 兜底那条带 .ai-input-container 前缀，不算）');
+  assert.match(CSS, /#ai-input-container\s*\{[^}]*container-type:\s*inline-size/, '兜底折行需要容器查询上下文');
+  assert.match(CSS, /@container \(max-width: 336px\)[\s\S]*?\.ai-input-container \.ai-input-toolbar\s*\{[^}]*flex-wrap:\s*wrap\s*!important/, '容器 ≤336px 才退回两行（宁可两行也不裁切按钮）');
+  assert.match(CSS, /\.ai-input-toolbar #tb-mode-btn\s*\{[^}]*width:\s*28px\s*!important/, '模式按钮纯图标 28px（ChipCode 同形）');
+  assert.match(tail, /\.model-selector\s*\{[^}]*min-width:\s*96px/, '模型选择器最小宽 96px（ChipCode 原值，可收缩到省略号）');
+  assert.match(APP, /tbBtn\.title = '安全模式：'/, '标签被 CSS 隐藏后，当前模式名必须由 tooltip 承载');
 });
 
 test('流式上屏在代码围栏闭合时渲染 Markdown', () => {

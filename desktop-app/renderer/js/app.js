@@ -14414,6 +14414,9 @@ function bindEvents() {
     if (tbLabel) tbLabel.textContent = ({ auto: '自动', default: '默认', plan: '计划' }[activeMode] || '自动');
     const tbEmoji = document.getElementById('tb-mode-emoji');
     if (tbEmoji) tbEmoji.textContent = ({ auto: '⚡', default: '🛡️', plan: '📋' }[activeMode] || '⚡');
+    // 工具栏已按 ChipCode 收成纯图标（标签 display:none），当前模式名改由 tooltip 承载
+    const tbBtn = document.getElementById('tb-mode-btn');
+    if (tbBtn) tbBtn.title = '安全模式：' + ({ auto: '自动', default: '默认', plan: '计划' }[activeMode] || '自动') + '（点击切换）';
   }
 
   // 对齐 ChipCode 原品：工具栏「⚡ 模式 ▾」下拉开关（菜单项为 .safety-mode-btn，走上方统一委托切换）

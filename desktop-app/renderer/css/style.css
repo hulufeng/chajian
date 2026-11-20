@@ -6839,20 +6839,22 @@ body.pf-in-explorer #product-factory-view .pf-nav { padding: 10px !important; }
 /* ===== 2026-11-14 右侧 AI 面板排版修复（用户反馈「太丑」）=====
    根因：面板固定 340px + 6162 段强制 nowrap，把 .model-selector 压到 27px（完整模型名被裁成碎字）、
    #tb-mode-btn 压到 22px（「⚡ 自动」竖排）、状态条留白过大、用户头像被气泡挤出裁切。
-   修复：面板放宽到 400px（窄窗仍可收缩）、工具栏允许换行、隐藏与下方项目栏重复的项目药丸、
+   修复：面板放宽到 400px（窄窗仍可收缩）、隐藏与下方项目栏重复的项目药丸、
    模型名给可收缩省略号、模式按钮按内容自适应、状态条紧凑化、用户头像隐藏。
+   （工具栏换行兜底已于 2026-11-20 撤掉，改回 ChipCode 单行策略，见本段下方与文末新段。）
    已在 dist183 安装版（9226）以 CDP 注入实测：模型按钮 27→143px、模式按钮无裁切、输入区无溢出。 */
 .ai-panel { flex: 0 1 400px !important; width: 400px; min-width: 360px !important; }
-/* 6164 行的 `.ai-input-side .ai-input-toolbar` 特异性 (0,2,0) 高于单类选择器，
-   同为 !important 时它会赢；这里用同等特异性 + 靠后位置确保 wrap 真正生效 */
-.ai-panel .ai-input-toolbar,
-.ai-panel.ai-input-side .ai-input-toolbar { flex-wrap: wrap !important; gap: 6px; row-gap: 6px; }
-.ai-input-toolbar { flex-wrap: wrap !important; gap: 6px; row-gap: 6px; }
-.ai-input-left { flex: 0 1 auto !important; min-width: 0; }
+/* 单行策略与 ChipCode 一致（工具栏无 flex-wrap），故取消 11-14 的 wrap 覆盖，
+   让 6175/6176 段的 nowrap !important 生效；真正放不下时由文末 @container 兜底折行。 */
+.ai-input-toolbar { gap: 8px; row-gap: 6px; }
+.ai-input-left { flex: 0 0 auto !important; min-width: 0; }
 .ai-input-right { flex: 1 1 auto !important; min-width: 0; justify-content: flex-end; }
 /* 项目状态药丸与下方 .ai-project-bar（完整路径 + 选择工作空间）重复，隐藏以腾出宽度 */
 .ai-input-box #project-status { display: none !important; }
-.model-selector { min-width: 120px !important; max-width: 190px; flex: 1 1 auto !important; }
+/* ChipCode 模型选择器：flexShrink:1 / minWidth:96 / 名字省略号。
+   BubaiCode 的选择器多包一层 .ai-input-right，百分比 max-width 会相对该组解析（≈108px 反而更窄），
+   故保留绝对上限 190px，下限对齐 ChipCode 的 96px。 */
+.model-selector { min-width: 96px !important; max-width: 190px; flex: 1 1 auto !important; }
 .model-select-btn { max-width: 100% !important; min-width: 0; }
 .model-name { display: block; min-width: 0; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap; }
 .ai-input-container #tb-mode-btn { width: auto !important; min-width: 52px; white-space: nowrap !important; flex-shrink: 0 !important; }
@@ -6916,11 +6918,14 @@ body.cb-compact .tool-flow-item { background: none !important; border: 0 !import
 body.cb-compact .tool-flow-code { font-size: 10.5px !important; color: var(--text-secondary) !important; }
 body.cb-compact .ai-verdict-badge { border: 0 !important; background: none !important; color: var(--text-tertiary) !important; padding: 0 !important; font-size: 10.5px !important; font-weight: 400 !important; text-align: left !important; margin: 2px 0 6px !important; }
 
-/* 输入区：独立圆角容器（对齐 .chat-input-container），工具栏轻量化 */
-body.cb-compact .ai-input-container { background: var(--surface-1) !important; border-top: 1px solid var(--border) !important; padding: 12px 14px 8px !important; }
-body.cb-compact .ai-input-box { background: var(--surface-1) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; box-shadow: 0 1px 3px rgba(16, 24, 40, .04) !important; }
+/* 输入区：独立圆角容器（对齐 .chat-input-container），工具栏轻量化
+   2026-11-20：横向内边距全部交给工具栏/输入框自己承担（ChipCode 结构：卡片 0 内边距 +
+   工具栏 padding 5px 16px 7px），原先 container 16 + box 12 + toolbar 8 每侧吃掉 52px，
+   而 ChipCode 每侧 32px，工具栏可用宽度少 44px，是 11-14 只能靠换行兜底的真正原因。 */
+body.cb-compact .ai-input-container { background: var(--surface-1) !important; border-top: 1px solid var(--border) !important; padding: 12px 0 8px !important; }
+body.cb-compact .ai-input-box { background: var(--surface-1) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; box-shadow: 0 1px 3px rgba(16, 24, 40, .04) !important; padding: 0 !important; }
 body.cb-compact textarea.ai-input-textarea { font-size: 12.5px !important; color: var(--text-primary) !important; }
-body.cb-compact .ai-input-toolbar { border: 0 !important; padding: 6px 8px !important; }
+body.cb-compact .ai-input-toolbar { border: 0 !important; padding: 5px 16px 7px !important; gap: 8px !important; min-height: 32px !important; }
 body.cb-compact .ai-input-tool-btn,
 body.cb-compact .model-select-btn,
 body.cb-compact .safety-mode-btn { background: none !important; border: 0 !important; color: var(--text-secondary) !important; }
@@ -7073,11 +7078,12 @@ body.cb-compact .thinking-block.expanded .thinking-content {
   max-height: 120px !important; overflow: auto;
 }
 
-/* --- 输入区：圆润输入框 --- */
-body.cb-compact .ai-input-container { background: var(--surface-1) !important; border-top: 1px solid var(--border) !important; padding: 12px 16px 10px !important; }
+/* --- 输入区：圆润输入框 ---
+   2026-11-20 横向内边距归零（见 6921 段说明）：卡片 0 + 工具栏 5px 16px 7px = ChipCode 每侧 32px */
+body.cb-compact .ai-input-container { background: var(--surface-1) !important; border-top: 1px solid var(--border) !important; padding: 12px 0 10px !important; }
 body.cb-compact .ai-input-box {
   background: var(--surface-2) !important; border: 1px solid var(--border) !important;
-  border-radius: 14px !important; padding: 10px 12px !important;
+  border-radius: 14px !important; padding: 0 !important;
   box-shadow: 0 2px 10px rgba(16,24,40,.05) !important;
 }
 body.cb-compact textarea.ai-input-textarea { font-size: 13.5px !important; color: var(--text-primary) !important; line-height: 1.6 !important; }
@@ -7298,13 +7304,16 @@ body.cb-compact .ai-send-btn {
   box-shadow: 0 1px 3px rgba(37,99,235,.22) !important;
 }
 body.cb-compact .ai-send-btn:hover { background: var(--primary-hover) !important; }
-/* ③ 输入卡：背景统一 surface-1（去掉 surface-2 的灰块），圆角收到 10px（§0.2 --r-card≈6/--r-modal=8） */
+/* ③ 输入卡：背景统一 surface-1（去掉 surface-2 的灰块），圆角收到 10px（§0.2 --r-card≈6/--r-modal=8）
+   2026-11-20：padding 8px 12px → 0。本段在 7084 之后，是卡片横向内边距真正的赢家；
+   留着它，6926/7084 的归零就被覆盖，工具栏可用宽度仍少 24px。
+   横向留白改由输入框自身 14px 16px 与工具栏 5px 16px 7px 承担（= ChipCode 结构）。 */
 body.cb-compact .ai-input-box {
   background: var(--surface-1) !important;
   border-radius: 10px !important;
   border: 1px solid var(--border) !important;
   box-shadow: 0 1px 2px rgba(16,24,40,.04) !important;
-  padding: 8px 12px !important;
+  padding: 0 !important;
 }
 body.cb-compact .ai-input-box:focus-within { border-color: var(--accent) !important; box-shadow: var(--focus-ring) !important; }
 /* ④ 消息区留白加大：段间距 8→12px，消息底部 20→24px，右栏 padding 收敛到 16px */
@@ -7830,3 +7839,41 @@ body { height: 100vh !important; }
    有项目时(非 app-welcome)仍是左+editor+AI 三栏。
    避免「开始你的开发」与「打开或新建项目开始编程」两个引导并排。 */
 body.app-welcome:not(.logged-out) .editor-container { display: none !important; }
+
+/* ============================================================
+   2026-11-20 composer 工具栏改回 ChipCode 单行策略（取证驱动）
+   ChipCode 依据（app.asar index-D1UgdnuC.js 内联样式 + 1750×1125 项目态实拍）：
+     工具栏 display:flex / align-items:center / gap:8 / padding:5px 16px 7px / min-height:32，
+     没有 flex-wrap ⇒ 任何面板宽度都只有一行；按钮一律 flexShrink:0
+     （attach 22×22、optimize/thinking/mic padding 3px 8px、send 28×28），
+     可缩的只有文件 chip（minWidth:0 + 省略号）和模型选择器（flexShrink:1 / minWidth:96 / maxWidth:42%）。
+   BubaiCode 之前折成两行的真正原因不是策略，而是宽度链：chat-area 16 + container 16 + box 12 + toolbar 8
+   每侧 52px，面板 349px 时工具栏只剩 241px 可用；同宽 ChipCode 有 285px（每侧 32px）。
+   6926 / 7084 / 7308 三处（7308 才是真正的赢家）已把卡片横向内边距归零，工具栏取回 ChipCode 的
+   5px 16px 7px，每侧从 52px 降到 32px；本段负责收缩策略与窄面板兜底。
+   实测（dev CDP 9364 扫宽 320→560）：面板 400px 起单行且零溢出（barInner 326 / 硬需求 298），
+   面板 320~370 由下方 @container 退回两行，任何宽度都不裁切按钮。
+   与 ChipCode 的唯一有意偏差：ChipCode 面板下限 300px 时单行会溢出裁切；BubaiCode 下限 320px，
+   故用 @container 在放不下时退回换行，宁可两行也不裁掉按钮。
+   ============================================================ */
+#ai-input-container { container-type: inline-size; }
+/* 只有模型选择器可缩（6855 段 flex:1 1 auto !important），其余按钮一律不缩，避免「⚡ 自动」竖排 */
+/* 模式/思考按钮改 ChipCode 图标态：实拍里 TPt 是裸脑图标、DPt 是裸刻度图标，都没有文字与 chevron
+   （当前模式靠 emoji 本身 + title 提示传达）。实测模式按钮 65→28、思考按钮 48→28，共省 57px，
+   正是 400px 面板单行的缺口。 */
+.ai-input-toolbar #tb-mode-label,
+.ai-input-toolbar #tb-mode-btn > svg.icon,
+.ai-input-toolbar #tb-think-btn > svg.icon:last-of-type { display: none !important; }
+.ai-input-toolbar #tb-mode-btn { width: 28px !important; min-width: 0 !important; padding: 0 !important; justify-content: center; }
+.ai-input-toolbar #tb-think-btn { padding: 0 6px !important; }
+.ai-input-toolbar .ai-input-left > *,
+.ai-input-toolbar .ai-input-right > div:not(.model-selector),
+.ai-input-toolbar .ai-input-right > button { flex-shrink: 0 !important; }
+.ai-input-toolbar .ai-input-left { gap: 8px; }
+.ai-input-toolbar .ai-input-right { gap: 8px; }
+/* 兜底：容器（= 面板 - chat-area 左右 32px - 卡片边框）窄于单行硬需求时退回换行。
+   实测单行硬需求 = barInner 298px（按钮 22+22+28+28+96+22+32=250 + 6 段 gap 8=48），
+   对应 card 330 / 面板 ≈368；阈值取 336（面板 ≈374）留 6px 余量给字体与 DPI 差异。 */
+@container (max-width: 336px) {
+  .ai-input-container .ai-input-toolbar { flex-wrap: wrap !important; row-gap: 6px !important; }
+}
