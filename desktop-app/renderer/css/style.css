@@ -7953,3 +7953,31 @@ html, body { font-family: var(--font-family) !important; }
 .ai-project-bar .ai-project-path { font-size: 11px !important; color: var(--text-tertiary) !important; }
 /* 2026-11-21 规范：AI 顶栏图标按钮继承默认 13.3333px，显式设 13px 与全局字号阶梯一致 */
 .ai-top-btn { font-size: 13px !important; }
+
+
+/* ============================================================
+   2026-11-22 ChipCode 风格：三栏响应式 + 用户气泡去渐变扁平化
+   不用新 CSS 变量（规避构建链删除仅子规则引用的变量），直接写 clamp 值。
+   ============================================================ */
+@media (min-width: 900px) {
+  /* 文件树按视口比例，240~320px */
+  .left-column {
+    width: clamp(240px, 19vw, 320px) !important;
+    min-width: clamp(240px, 19vw, 320px) !important;
+    max-width: clamp(240px, 19vw, 320px) !important;
+  }
+  /* AI 面板按视口比例，320~400px */
+  .ai-panel {
+    flex: 0 1 clamp(320px, 23vw, 400px) !important;
+    width: clamp(320px, 23vw, 400px) !important;
+    min-width: clamp(320px, 23vw, 400px) !important;
+  }
+}
+/* 去渐变：用户气泡改扁平浅底（chipcode 无渐变实心色） */
+body.cb-compact .chat-message.user .chat-bubble {
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+
