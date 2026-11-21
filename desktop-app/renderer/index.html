@@ -1180,11 +1180,14 @@
           <!-- AI 输入框（1:1 对齐参考基线：作为欢迎组件的一部分整体居中） -->
           <!-- AI 输入框（1:1 对齐参考基线：作为欢迎组件的一部分整体居中） -->
           <div class="ai-input-container" id="ai-input-container">
+            <!-- AI 出站退避提示（对齐参考基线「网络波动，N 秒后自动重试（第 x/y 次）」）：
+                 放在输入卡内部而不是旁边，因为无项目态会整体搬动这个容器，写在外面会跟丢。 -->
+            <div class="ai-retry-hint" id="ai-retry-hint" style="display:none;"></div>
             <div class="ai-input-box">
               <textarea
                 id="ai-input"
                 class="ai-input-textarea"
-                placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · / 技能）"
+                placeholder="输入消息…" title="Enter 发送 · Shift+Enter 换行 · / 技能"
                 rows="1"
               ></textarea>
               <div id="ai-attach-preview" style="display:none;"></div>
@@ -1676,6 +1679,7 @@
               <div class="settings-nav-item" data-target="panel-editor">编辑器</div>
               <div class="settings-nav-item" data-target="panel-vcs">版本控制</div>
               <div class="settings-nav-item" data-target="panel-terminal">终端</div>
+              <div class="settings-nav-item" data-target="panel-audit">审批记录</div>
               <div class="settings-nav-item" data-target="panel-interpreter">解释器</div>
               <div class="settings-nav-item" data-target="panel-hooks">钩子</div>
               <div class="settings-nav-item" data-target="panel-schedule">定时任务</div>
@@ -2056,6 +2060,25 @@
                   </div>
                 </div>
               </div>
+              <div class="settings-panel" id="panel-audit">
+                <h4 style="margin:0 0 10px 0;font-size: 13px;color:var(--text-color);">审批记录</h4>
+                <div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">每一次「拦下 / 需确认 / 你点了批准 / AI 带 force 绕过确认」都落一行到 <code>userData/audit/</code> 下的 JSONL，重启后仍能查。护栏结论由主进程写，工具决策由智能体写，两轴同表显示。</div>
+                <div id="audit-stats" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+                  <select id="audit-filter-axis" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-color);color:var(--text-color);font-size:12px;">
+                    <option value="">全部来源</option>
+                    <option value="guard">仅护栏结论</option>
+                    <option value="agent">仅工具决策</option>
+                  </select>
+                  <select id="audit-filter-outcome" style="padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-color);color:var(--text-color);font-size:12px;"></select>
+                  <input id="audit-filter-tool" placeholder="按工具名过滤，如 terminal" style="flex:1;min-width:140px;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-color);color:var(--text-color);font-size:12px;">
+                  <button class="btn btn-secondary" id="audit-refresh-btn" style="flex:none;">刷新</button>
+                  <button class="btn btn-secondary" id="audit-opendir-btn" style="flex:none;">打开目录</button>
+                  <button class="btn btn-secondary" id="audit-clear-btn" style="flex:none;">清空</button>
+                </div>
+                <div id="audit-list" style="max-height:320px;overflow:auto;border:1px solid var(--border-color);border-radius:8px;"></div>
+                <div id="audit-note" style="font-size:11px;color:var(--text-secondary);margin-top:8px;"></div>
+              </div>
               <div class="settings-panel" id="panel-hooks">
                 <h4 style="margin:0 0 10px 0;font-size: 13px;color:var(--text-color);">钩子</h4>
                 <div style="font-size: 11.5px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">在特定事件前后自动执行脚本（如提交前格式化、工具调用后通知）。填写脚本绝对路径，留空表示关闭。</div>
@@ -2362,6 +2385,9 @@
   <script src="js/plugin-loader.js"></script>
   <script src="js/session-store.js"></script>
   <script src="js/product-ai-tools.js"></script>
+  <script src="js/git-conflict-markers.js"></script>
+  <script src="js/ai-backoff.js"></script>
+  <script src="js/audit-record.js"></script>
   <script src="js/app.js"></script>
   <!-- 对齐接线层：零侵入原型包装，默认关闭；开启 window.CHIPCODE_ALIGN.enable() -->
   <script src="js/chipcode-align-adapter.js"></script>

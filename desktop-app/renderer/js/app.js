@@ -1828,6 +1828,8 @@ const TOOL_DEFS = [
     execute: (args) => {
       const d = state.lastCompileResult;
       if (!d) return '暂无诊断信息。可先运行 plugin_arduino-cli-toolchain_compile 获取编译诊断。';
+      // 用户中途取消没有诊断可言，别让它以 FAILED (exit -1) 的形态把 agent 带去查一个不存在的错误
+      if (d.cancelled) return 'COMPILE CANCELLED（上次编译被用户取消，未产生诊断）\nFQBN: ' + (d.fqbn || '') + '\n';
       let res = (d.ok ? 'COMPILE OK' : 'COMPILE FAILED (exit ' + d.exitCode + ')') + '\n';
       if (d.errLine) res += '首条错误: ' + String(d.errLine).trim().slice(0, 300) + '\n';
       res += 'FQBN: ' + (d.fqbn || '') + '\n';
@@ -2367,39 +2369,25 @@ const TOOL_DEFS = [
 
   // ================= 对齐参考基线 conflict:aiMerge：AI 自动解决合并冲突 =================
   {
-    name: 'resolve_merge_conflict', category: 'modify', description: 'AI 自动解决工作区中的 git 合并冲突：检测冲突文件→逐个用模型生成最终内容→写回→git add。参数：cwd(可选)',
+    name: 'resolve_merge_conflict', category: 'modify', description: 'AI 自动解决工作区中的 git 合并冲突：逐文件、逐冲突处交模型给最终内容，写回前复检标记是否清干净，然后 git add。参数：cwd(可选)',
     parameters: { type: 'object', properties: { cwd: { type: 'string' } }, required: [] },
     execute: async (args) => {
       const cwd = args.cwd || state.projectPath; if (!cwd) return 'Error: 未打开项目目录';
-      const CONFLICT_RE = /<<<<<<< .*?\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> .*?(\r?\n|$)/;
+      // 解决逻辑只有一份：主进程按冲突区域逐处合并并做标记复检（畸形区域/残留标记一律不写盘），
+      // 渲染层不再自己复制一套正则判据 —— 两处判据会漂移，且复制的那份认不出 diff3 基线段。
       try {
-        const status = await window.BubaiCode.git.status(cwd);
-        const entries = Array.isArray(status) ? status : (status && status.files) || [];
-        const conflicted = entries.filter(f => {
-          const s = String(f.status || f.x || '');
-          return /U/.test(s) || f.conflict === true;
-        });
-        if (!conflicted.length) return '未发现合并冲突文件（无 UU/AA 等未合并状态）';
-        const client = new RealAIClient();
-        const report = [];
-        for (const f of conflicted) {
-          const rel = f.path || f.file || f.name;
-          if (!rel) { report.push('✗ 未知路径，跳过'); continue; }
-          const full = cwd + '\\' + rel.replace(/\//g, '\\');
-          const rd = await window.BubaiCode.fs.readFile(full);
-          if (!rd || !rd.success) { report.push('✗ ' + rel + ': 读取失败'); continue; }
-          const content = rd.content || '';
-          if (!CONFLICT_RE.test(content)) { report.push('- ' + rel + ': 无冲突标记，跳过'); continue; }
-          const prompt = '下面是含 git 合并冲突标记（<<<<<<< / ======= / >>>>>>>）的文件内容。请只输出“解决后”的完整文件内容（保留正确的最终代码，去掉所有冲突标记），不要任何解释或代码块标记：\n\n' + content;
-          const res = await client.chat(prompt, []);
-          const resolved = (res && res.content) ? res.content : (res && res.result && res.result.content ? res.result.content : '');
-          const cleaned = (resolved || '').replace(/^```[\s\S]*?```/g, '').trim();
-          if (!cleaned || CONFLICT_RE.test(cleaned)) { report.push('✗ ' + rel + ': 模型未给出有效解决'); continue; }
-          await window.BubaiCode.fs.writeFile(full, cleaned);
-          await window.BubaiCode.git.add(cwd, [rel]);
-          report.push('✓ ' + rel + ': 已解决并暂存');
+        const list = await window.BubaiCode.git.listConflicts(cwd);
+        if (!list || !list.success) return 'Error: ' + ((list && list.error) || '无法读取冲突清单');
+        const items = list.conflicts || [];
+        if (!items.length) return '未发现合并冲突文件（工作区没有未合并状态）';
+        const out = [];
+        for (const it of items) {
+          const r = await window.BubaiCode.git.aiResolveConflicts(cwd, it.path);
+          const line = (r && (r.report || r.error || r.message)) || '无结果';
+          out.push('· ' + it.path + '（' + it.hunks + ' 处）:\n' + line);
         }
-        return report.join('\n');
+        if (list.swapSides) out.push('注：仓库处于变基/应用补丁中，「用户侧」已按变基语义归一（ours = 你正在重放的改动）。');
+        return out.join('\n');
       } catch (e) { return 'Error: ' + e.message; }
     }
   }
@@ -2475,18 +2463,22 @@ function cacheGet(key, ttlMs) {
 function cacheSet(key, data) { _arduinoCache.set(key, { data, exp: Date.now() }); }
 function cacheInvalidate() { _arduinoCache.clear(); }
 
-async function runArduinoCli(args, timeoutMs) {
+// opts.cancelTag：编译/烧录这类长命令挂上可取消标签，工具栏取消按钮据此杀进程树（compile:cancel）
+async function runArduinoCli(args, timeoutMs, opts) {
+  const cancelTag = (opts && opts.cancelTag) ? String(opts.cancelTag) : '';
   const cli = await getArduinoCliCmd();
   if (!cli.ok) return { ok: false, code: -1, out: cli.out };
   const cwd = state.projectPath || '';
   const cmd = cli.cmd + ' ' + args.map(a => /[\s"&|<>^]/.test(String(a)) ? '"' + String(a).replace(/"/g, '\\"') + '"' : String(a)).join(' ');
   try {
-    const result = await window.BubaiCode.terminal.execute(cmd, cwd, timeoutMs || 120000);
+    const result = await window.BubaiCode.terminal.execute(cmd, cwd, timeoutMs || 120000, cancelTag ? { cancelTag } : undefined);
     const out = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
     const code = result.exitCode !== undefined ? result.exitCode : (result.success ? 0 : 1);
     if (state.terminal) out.split('\n').forEach(l => state.terminal.writeln(l));
     // 写操作后清缓存（install/uninstall/compile 后列表会变）
     if (['install', 'uninstall', 'upgrade', 'upload'].some(x => args.includes(x))) cacheInvalidate();
+    // 取消要单独成一路：被杀掉的进程退出码非 0，落进失败分支会白挨一次报错 + AI 误诊
+    if (result.cancelled) return { ok: true, cancelled: true, code: -1, out: (cancelTag || '命令') + '已取消\n' + out };
     return { ok: true, code, out };
   } catch (e) {
     return { ok: false, code: -1, out: '执行失败: ' + e.message };
@@ -2672,7 +2664,7 @@ const ARDUINO_TOOL_IMPLS = {
     let output = '';
     let result;
     try {
-      result = await window.BubaiCode.terminal.execute(cmd, cwd, 300000);
+      result = await window.BubaiCode.terminal.execute(cmd, cwd, 300000, { cancelTag: '编译' });
       output = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
     } catch (e) {
       output = '编译执行异常: ' + e.message;
@@ -2684,6 +2676,10 @@ const ARDUINO_TOOL_IMPLS = {
           for (const tf of tmpFiles.files) { try { await window.BubaiCode.fs.deleteFile(tf.path); } catch (e1) {} }
         }
       } catch (e) {}
+    }
+    if (result && result.cancelled) {
+      state.lastCompileResult = { ok: false, cancelled: true, exitCode: -1, errLine: '', fqbn, output, at: Date.now() };
+      return 'COMPILE CANCELLED（编译已取消）';
     }
     const exitCode = /Compiling sketch|Sketch uses|Global variables use|COMPILE OK/i.test(output) ? 0 : (result && result.exitCode !== undefined ? result.exitCode : 1);
     const success = /COMPILE OK|Sketch uses\s+[\d,]+\s+bytes/i.test(output);
@@ -2813,7 +2809,7 @@ const ARDUINO_TOOL_IMPLS = {
       const full = cli.cmd + ' compile --upload -p ' + port + ' --fqbn ' + fqbn + (extraArgs || '') + ' "' + sketchArg + '"';
       cmdSeq.push(full);
       try {
-        const r = await window.BubaiCode.terminal.execute(full, runCwd, 600000);
+        const r = await window.BubaiCode.terminal.execute(full, runCwd, 600000, { cancelTag: '烧录' });
         return { output: (r.stdout || '') + (r.stderr ? '\n' + r.stderr : ''), result: r };
       } catch (e) {
         return { output: '烧录执行异常: ' + e.message, result: null };
@@ -2829,7 +2825,7 @@ const ARDUINO_TOOL_IMPLS = {
       // 2026-11-16 修复：FQBN 靠项目名/代码内容推断不可靠（项目名 nh、模板代码只写 ESP32 时
       // 会推断成 esp32，但板子是 ESP32-S3 → "This chip is ESP32-S3, not ESP32"）。
       // arduino-cli 的报错已明确告知真实芯片，按它自动纠正 FQBN 并重试一次，用户无需手选板型。
-      const chipMismatch = output.match(/This chip is (ESP32(?:-[A-Z0-9]+)?), not/i);
+      const chipMismatch = !!(result && !result.cancelled) ? output.match(/This chip is (ESP32(?:-[A-Z0-9]+)?), not/i) : null;
       if (chipMismatch) {
         const CHIP_FQBN = {
           'ESP32-S3': 'esp32:esp32:esp32s3',
@@ -2850,9 +2846,12 @@ const ARDUINO_TOOL_IMPLS = {
           result = retry.result;
         }
       }
+      // 被用户取消的这一次不再触发任何自动重试（重试会把刚杀掉的编译再跑一遍）
+      const cancelledSoFar = !!(result && result.cancelled);
       // arduino-cli 默认构建缓存（%LOCALAPPDATA%\arduino\sketches）被安全软件锁定时，
       // 改用 ASCII 暂存目录内的独立构建目录重试一次，避免环境锁阻断烧录。
-      if (!/Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
+      if (!cancelledSoFar
+        && !/Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
         && /Access is denied/i.test(output) && /arduino[\\\/]sketches/i.test(output)) {
         cacheLocked = true;
         const altBuild = runCwd.replace(/[\\\/]+$/, '') + '\\bubaicode_build';
@@ -2866,6 +2865,10 @@ const ARDUINO_TOOL_IMPLS = {
     }
     if (state.terminal && output) output.split('\n').forEach(l => state.terminal.writeln(l));
     if (stageDir) { try { await window.BubaiCode.fs.deleteFile(stageDir); } catch (e) {} }
+    if (result && result.cancelled) {
+      state.lastUploadResult = { ok: false, cancelled: true, exitCode: -1, port, fqbn, cacheLocked, cmds: cmdSeq, output, at: Date.now() };
+      return 'UPLOAD CANCELLED（烧录已取消）';
+    }
     const ok = /Hash of data verified|Hard resetting via RTS pin|Wrote\s+[\d,]+\s+bytes/i.test(output)
       && !/A fatal error occurred|Failed to (?:connect|open)|could not open port|拒绝访问/i.test(output);
     const exitCode = result && result.exitCode !== undefined ? result.exitCode : (result && result.success ? 0 : 1);
@@ -3572,80 +3575,37 @@ function classifyTestOutcome(out) {
 // 调试/验收钩子：便于运行态注入样本验证判定逻辑（不改变行为）
 window.classifyTestOutcome = classifyTestOutcome;
 
-// ============ 增强：AI 调用错误分类器 ============
-// 参考业界 error-classification.js: transient可重试/deterministic不重试/unknown
+// ============ AI 调用错误分类（判据单点委托给 ai-backoff.js）============
+// 下面这个类此前自带两套 transient/deterministic 正则，而且**定义完从未被调用过**——
+// 真正决定「补不补发」的是主进程出站点。两套规则迟早漂移（同一句错话，一边说可重试一边说不行），
+// 所以这里保留对外形状 { category, retryable, reason }，判定委托给渲染层加载的同一份 ai-backoff。
+const BACKOFF_REASON = {
+  transient: '暂时性故障，已自动退避重试',
+  deterministic: '确定性失败，重发也是同样错话',
+  cancelled: '已取消',
+  unknown: '未知错误，乐观视为可重试',
+};
+
 class AIErrorClassifier {
-  constructor() {
-    this.transientPatterns = [
-      /timeout/i, /timed out/i, /ETIMEDOUT/i,
-      /5\d{2}/,  // 5xx 错误
-      /429/,       // 限流
-      /rate limit/i,
-      /service unavailable/i,
-      /bad gateway/i,
-      /gateway timeout/i,
-      /connection reset/i,
-      /ECONNRESET/i,
-      /ECONNREFUSED/i,
-      /network error/i,
-      /temporarily unavailable/i
-    ];
-    
-    this.deterministicPatterns = [
-      /401/, /403/,  // 认证/权限
-      /invalid api key/i,
-      /authentication failed/i,
-      /permission denied/i,
-      /400/, /404/,  // 参数错误/不存在
-      /invalid request/i,
-      /bad request/i,
-      /context length exceeded/i,
-      /maximum context length/i,
-      /model not found/i,
-      /insufficient quota/i,
-      /billing/i
-    ];
-  }
-  
   classify(error) {
     if (!error) return 'unknown';
-    const message = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
-    
-    // HTTP 状态码优先
-    const statusMatch = message.match(/\b(\d{3})\b/);
-    if (statusMatch) {
-      const status = parseInt(statusMatch[1]);
-      if (status >= 500) return { category: 'transient', retryable: true, reason: `HTTP ${status} 服务器错误` };
-      if (status === 429) return { category: 'transient', retryable: true, reason: 'HTTP 429 限流' };
-      if (status >= 400 && status < 500) return { category: 'deterministic', retryable: false, reason: `HTTP ${status} 客户端错误` };
-    }
-    
-    // 模式匹配
-    for (const pattern of this.transientPatterns) {
-      if (pattern.test(message)) {
-        return { category: 'transient', retryable: true, reason: `匹配瞬时错误模式: ${pattern}` };
-      }
-    }
-    
-    for (const pattern of this.deterministicPatterns) {
-      if (pattern.test(message)) {
-        return { category: 'deterministic', retryable: false, reason: `匹配确定性错误模式: ${pattern}` };
-      }
-    }
-    
-    // 未知错误乐观视为 transient
-    return { category: 'unknown', retryable: true, reason: '未知错误，乐观视为可重试' };
+    const B = window.BubaiCodeAiBackoff;
+    // 模块没加载成功也不能假装「可重试」：这里 fail-closed，UI 只显示错话不承诺重试。
+    if (!B) return { category: 'unknown', retryable: false, reason: '退避模块未加载，不自动重试' };
+    const message = typeof error === 'string' ? error
+      : (error.message || JSON.stringify(error));
+    const asErr = error instanceof Error ? error : { message };
+    if (asErr !== error && error && typeof error.status === 'number') asErr.status = error.status;
+    const v = B.classifyError(asErr);
+    return { category: v.kind, retryable: v.isRetryable, reason: BACKOFF_REASON[v.kind] || BACKOFF_REASON.unknown };
   }
-  
-  // 解析 Retry-After 头
+
+  // 解析 Retry-After 头（秒 / HTTP-date）为毫秒；判据同样交给 ai-backoff，免得两处各认一种写法
   parseRetryAfter(header) {
     if (!header) return null;
-    // 秒数
-    if (/^\d+$/.test(header)) return parseInt(header) * 1000;
-    // HTTP-date
-    const date = new Date(header);
-    if (!isNaN(date.getTime())) return date.getTime() - Date.now();
-    return null;
+    const B = window.BubaiCodeAiBackoff;
+    if (!B) return null;
+    return B.parseRetryAfter({ 'retry-after': String(header) }) || null;
   }
 }
 
@@ -3653,10 +3613,19 @@ const aiErrorClassifier = new AIErrorClassifier();
 
 // ============ 增强：权限决策审计 ============
 // 参考业界 approval-audit.js: decision段+outcome段，outcome闭集fail-closed
+// 闭集与脱敏规则都在 renderer/js/audit-record.js（R2 之后主进程落盘要用同一份）。此前两处各写一份，
+// 调用点新增的 allowed-session / allowed-always 落不进白名单，被 fail-closed 成 rejected
+// ——「用户批准了」会被审计写成「用户拒绝了」。
+const AUDIT_REC = (typeof BubaiAuditRecord !== 'undefined' && BubaiAuditRecord) ? BubaiAuditRecord : null;
+if (!AUDIT_REC) console.error('[Audit] audit-record.js 未加载：审计停写（宁可不记，也不记没脱敏、没校验的历史）');
+const APPROVAL_OUTCOMES = AUDIT_REC ? AUDIT_REC.APPROVAL_OUTCOMES : [];
+
 class ApprovalAudit {
   constructor(maxEntries = 5000) {
     this.entries = [];
     this.maxEntries = maxEntries;
+    // 落盘钩子（主进程 audit:append）。面板回放历史时不设，避免把刚读到的再写一遍。
+    this.onEvent = null;
   }
   
   // 记录决策（pre阶段：策略判定结论）
@@ -3676,12 +3645,10 @@ class ApprovalAudit {
     return entry;
   }
   
-  // 记录结果（decided：用户/决策结果）
+  // 记录结果（decided：用户/系统对某次决策的处置）
   recordOutcome(toolName, outcome, reason) {
-    // outcome 闭集：allowed-once / rejected / cancelled / unavailable
-    const validOutcomes = ['allowed-once', 'rejected', 'cancelled', 'unavailable'];
-    if (!validOutcomes.includes(outcome)) {
-      console.warn(`[Audit] 无效 outcome: ${outcome}，fail-closed 视为 rejected`);
+    if (!APPROVAL_OUTCOMES.includes(outcome)) {
+      console.warn('[Audit] 无效 outcome: ' + outcome + '，fail-closed 视为 rejected');
       outcome = 'rejected';
     }
     
@@ -3743,7 +3710,7 @@ class ApprovalAudit {
     const stats = {
       total: this.entries.length,
       byDecision: { allow: 0, ask: 0, deny: 0 },
-      byOutcome: { 'allowed-once': 0, rejected: 0, cancelled: 0, unavailable: 0, pending: 0 },
+      byOutcome: APPROVAL_OUTCOMES.reduce((acc, k) => { acc[k] = 0; return acc; }, { pending: 0 }),
       byTool: {}
     };
     
@@ -5944,14 +5911,23 @@ void loop() {
       const onEvent = (evt) => {
         if (!evt || evt.runId !== runId) return;
         lastEventAt = Date.now();
+        // 出站退避的状态事件（主进程 fetchWithBackoff 补发前推来）：黄条倒数；
+        // 这一支必须排在 delta 之前 —— 重试期间没有 delta，靠 delta 撤条子就永远撤不掉。
+        if (evt.type === 'status') {
+          if (evt.status === 'retrying') showRetryHint(evt.retryCount, evt.retryMax, evt.delayMs);
+          else hideRetryHint();
+          return;
+        }
         if (evt.type === 'thinking_delta') {
           // 引擎 reasoning_content：真实思考流（豆包式）
+          hideRetryHint();
           const d = String(evt.delta || '');
           thinkingText += d;
           if (this.onThinkingDelta) this.onThinkingDelta(d);
           return;
         }
         if (evt.type === 'delta') {
+          hideRetryHint(); // 正文回来即撤黄条，不留成永久提示
           if (!thinkDone && String(evt.delta).includes('<think>')) {
             // 兜底：模型把思考输出为 <think> 标签正文（引擎未开 reasoning_content 时）
             this._routeThinkAndContent(String(evt.delta), (tk) => {
@@ -6009,7 +5985,11 @@ void loop() {
           if (suppressed && pending && this.onStreamDelta) {
             this.onStreamDelta(pending);
           }
-          resolve({ ok: false, error: evt.error, creditsInsufficient: !!evt.creditsInsufficient });
+          // 没重试成功 / 压根没重试，得说清是哪一种：确定性失败重发没意义，用户该改配置而不是再点一次发送。
+          const verdict = aiErrorClassifier.classify(evt.error);
+          const hint = (verdict && verdict.retryable === false && verdict.category !== 'cancelled')
+            ? '（' + verdict.reason + '）' : '';
+          resolve({ ok: false, error: String(evt.error || '') + hint, errorKind: verdict && verdict.category, creditsInsufficient: !!evt.creditsInsufficient });
         }
       };
 
@@ -6045,6 +6025,7 @@ void loop() {
       const cleanup = () => {
         clearTimeout(timer);
         clearInterval(watchdog);
+        hideRetryHint(); // done/error/取消都走这里：重试条不能活过本次请求
         if (window.BubaiCode && window.BubaiCode.ai && window.BubaiCode.ai.offStream) {
           window.BubaiCode.ai.offStream(listener);
         }
@@ -7764,7 +7745,7 @@ class AgentRunner {
               const err = 'Error: 用户拒绝执行此操作';
               this.messages.push({ role: 'tool', tool_call_id: tc.id, content: err });
               this._toolStep(tc.id, tc.name, 'rejected', '用户拒绝执行');
-              approvalAudit.recordOutcome(tc.name, 'denied', '用户拒绝执行');
+              approvalAudit.recordOutcome(tc.name, 'rejected', '用户拒绝执行');
               continue;
             }
             
@@ -7785,7 +7766,7 @@ class AgentRunner {
             const err = 'Error: 无权限确认通道，已拒绝执行此操作（安全默认）';
             this.messages.push({ role: 'tool', tool_call_id: tc.id, content: err });
             this._toolStep(tc.id, tc.name, 'rejected', '无权限确认通道，已拒绝执行');
-            approvalAudit.recordOutcome(tc.name, 'denied', '无权限确认通道，安全默认拒绝执行');
+            approvalAudit.recordOutcome(tc.name, 'rejected', '无权限确认通道，安全默认拒绝执行');
             continue;
           }
         }
@@ -8983,6 +8964,34 @@ function showTyping() {
   area.appendChild(msg); area.scrollTop = area.scrollHeight;
 }
 function removeTyping() { const el = document.getElementById('typing-indicator'); if (el) el.remove(); }
+
+// ============ AI 出站退避重试提示（对齐参考基线「网络波动，N 秒后自动重试（第 x/y 次）」）============
+// 主进程 fetchWithBackoff 每次补发前 send('status', {status:'retrying', retryCount, retryMax, delayMs})；
+// 这里只负责把它变成输入卡顶部一条会倒数的黄条。倒数自己走秒，而不是显示一次总时长：
+// 看得见数字在动，用户才不会以为软件卡死进而猛点「停止」。
+let retryHintTimer = null;
+function showRetryHint(count, max, delayMs) {
+  const el = document.getElementById('ai-retry-hint');
+  if (!el) return;
+  let remain = Math.max(1, Math.ceil((Number(delayMs) || 0) / 1000));
+  const paint = () => {
+    el.textContent = '网络波动，' + remain + ' 秒后自动重试（第 ' + (count || 1) + '/' + (max || 2) + ' 次）';
+    el.style.display = '';
+  };
+  paint();
+  if (retryHintTimer) clearInterval(retryHintTimer);
+  retryHintTimer = setInterval(() => {
+    remain -= 1;
+    if (remain <= 0) { hideRetryHint(); return; }
+    paint();
+  }, 1000);
+}
+function hideRetryHint() {
+  if (!retryHintTimer) return;         // 没在显示就别每个 delta 去摸一次 DOM
+  clearInterval(retryHintTimer); retryHintTimer = null;
+  const el = document.getElementById('ai-retry-hint');
+  if (el) { el.style.display = 'none'; el.textContent = ''; }
+}
 
 function addToolStep(tool, status, summary) {
   const area = document.getElementById('ai-chat-area');
@@ -17190,7 +17199,11 @@ function bindEvents() {
                   result.output.split('\n').forEach(line => state.terminal.writeln(line));
                 }
                 state.terminal.writeln('');
-                if (result.success) {
+                if (result.cancelled) {
+                  // 取消不是失败：别打红叉，也别让上层把「已取消」当编译错误去诊断
+                  state.terminal.writeln('⏹ 编译已取消');
+                  addOutputLog('编译已取消', 'info');
+                } else if (result.success) {
                   state.terminal.writeln('✓ 编译成功，耗时 ' + duration + ' 秒');
                   addOutputLog('编译成功，耗时 ' + duration + ' 秒', 'success');
                 } else {
@@ -17520,7 +17533,10 @@ function bindEvents() {
     if (op.abortLabel) mk(op.abortLabel, 'abort', 'warn');
   }
 
-  // ===== 合并冲突区块（1:1 仿写 参考基线 git.conflict.*：列出冲突文件 + 逐文件 AI 合并） =====
+  // ===== 合并冲突区块（对齐参考基线 git.conflict.*：列出冲突文件 + 逐处选择 + 逐文件 AI 合并） =====
+  // 刷新会重建整个冲突列表：记住哪些文件展开了「逐处选择」，重建后自动展开，免得用户选到一半被清空
+  const openConflictPickers = new Set();
+
   async function renderGitConflicts(cwd) {
     const box = document.getElementById('git-conflicts');
     const list = document.getElementById('git-conflicts-list');
@@ -17529,36 +17545,156 @@ function bindEvents() {
     const hide = () => { box.style.display = 'none'; };
     if (!cwd || !window.BubaiCode.git || typeof window.BubaiCode.git.listConflicts !== 'function') return hide();
     let conflicts = [];
-    try { const r = await window.BubaiCode.git.listConflicts(cwd); conflicts = (r && r.success) ? (r.conflicts || []) : []; } catch (e) { return hide(); }
-    if (!conflicts.length) return hide();
+    let swapSides = false;
+    try {
+      const r = await window.BubaiCode.git.listConflicts(cwd);
+      conflicts = (r && r.success) ? (r.conflicts || []) : [];
+      swapSides = !!(r && r.swapSides);
+    } catch (e) { return hide(); }
+    if (!conflicts.length) { [...openConflictPickers].forEach(k => { if (k.indexOf(cwd + '\u0000') === 0) openConflictPickers.delete(k); }); return hide(); }
     box.style.display = '';
-    title.textContent = conflicts.length + ' 个文件存在合并冲突';
+    // 变基期间 ours/theirs 身份是反的，标题必须说明界面上的「我的」到底指哪一侧
+    title.textContent = conflicts.length + ' 个文件存在合并冲突' + (swapSides ? '（变基/应用补丁中：「我的」= 你正在重放的改动）' : '');
     list.innerHTML = '';
+    const keepOpen = new Set(conflicts.map(c => cwd + '\u0000' + c.path));
+    [...openConflictPickers].forEach(k => { if (!keepOpen.has(k)) openConflictPickers.delete(k); });
+    const toggles = [];
     conflicts.forEach(c => {
+      const key = cwd + '\u0000' + c.path;
+      const item = document.createElement('div');
+      item.className = 'git-conflicts-item';
       const row = document.createElement('div');
       row.className = 'git-conflicts-row';
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = c.path + ' · ' + c.hunks + ' 处';
+      const btnPick = document.createElement('button');
+      btnPick.className = 'pf-btn';
+      btnPick.textContent = '逐处选择';
       const btn = document.createElement('button');
       btn.className = 'pf-btn';
       btn.textContent = 'AI 合并';
+      const detail = document.createElement('div');
+      detail.className = 'git-conflict-detail';
+      detail.style.display = 'none';
+      btnPick.addEventListener('click', async () => {
+        if (detail.style.display !== 'none') { detail.style.display = 'none'; detail.innerHTML = ''; openConflictPickers.delete(key); return; }
+        openConflictPickers.add(key);
+        detail.style.display = '';
+        detail.innerHTML = '<div class="git-conflict-hint">读取冲突区域…</div>';
+        try { await renderConflictPicker(cwd, c.path, detail, swapSides); }
+        catch (e) { detail.innerHTML = '<div class="git-conflict-hint">读取失败：' + escapeHtml(e.message || String(e)) + '</div>'; }
+      });
       btn.addEventListener('click', async () => {
-        btn.disabled = true;
+        btn.disabled = true; btnPick.disabled = true;
         const old = btn.textContent;
         btn.textContent = '合并中…';
         try {
           const res = await window.BubaiCode.git.aiResolveConflicts(cwd, c.path);
-          if (res && res.success) showToast('已解决: ' + c.path, 'success');
-          else showToast('合并失败: ' + ((res && res.error) || ''), 'error');
+          if (res && res.success) {
+            const done = (res.resolved || 0) > 0;
+            showToast(done ? ('已解决: ' + c.path) : (c.path + ' 未解决（详见输出日志）'), done ? 'success' : 'warn');
+            if (res.report) addOutputLog('AI 冲突解决 ' + c.path + ':\n' + res.report, done ? 'success' : 'warn');
+          } else showToast('合并失败: ' + ((res && res.error) || ''), 'error');
           refreshGitStatus();
         } catch (e) { showToast('合并异常: ' + e.message, 'error'); }
-        finally { btn.disabled = false; btn.textContent = old; }
+        finally { btn.disabled = false; btnPick.disabled = false; btn.textContent = old; }
       });
       row.appendChild(name);
+      row.appendChild(btnPick);
       row.appendChild(btn);
-      list.appendChild(row);
+      item.appendChild(row);
+      item.appendChild(detail);
+      list.appendChild(item);
+      if (openConflictPickers.has(key)) toggles.push(btnPick);
     });
+    // 列表重建完再恢复展开，选到一半的文件不会因为一次刷新被打回原形
+    if (toggles.length) setTimeout(() => toggles.forEach(b => b.click()), 0);
+  }
+
+  // 逐处选择：解析冲突区域 → 每处「采用我的 / 采用对方 / 保留双方」→ 写盘前复检标记是否清干净
+  // 畸形区域（标记不成对）只说明不猜测；行尾由解析模块逐行保真，CRLF 文件不会混进 LF
+  async function renderConflictPicker(cwd, rel, host, swapSides) {
+    const M = window.BubaiCodeConflict;
+    if (!M) { host.innerHTML = '<div class="git-conflict-hint">冲突解析模块未加载（git-conflict-markers.js）</div>'; return; }
+    const full = diskJoin(cwd, rel);
+    const rd = await window.BubaiCode.fs.readFile(full);
+    if (!rd || !rd.success) { host.innerHTML = '<div class="git-conflict-hint">读取失败：' + escapeHtml((rd && rd.error) || '未知错误') + '</div>'; return; }
+    const content = rd.content || '';
+    const parsed = M.parseConflictMarkers(content, { swapSides });
+    if (parsed.malformed) { host.innerHTML = '<div class="git-conflict-hint">冲突标记不成对（畸形），不会猜测或改写文件 —— 请在编辑器里手工处理这一处。</div>'; return; }
+    if (!parsed.regions.length) { host.innerHTML = '<div class="git-conflict-hint">未找到冲突区域（可能已在外部解决），点刷新更新状态。</div>'; return; }
+    const picks = parsed.regions.map(() => null);
+    const bodyOf = (arr) => (arr && arr.length ? arr.join('\n') : '(空)');
+    host.innerHTML = '';
+    const summary = document.createElement('div');
+    summary.className = 'git-conflict-hint';
+    summary.textContent = M.summarizeConflicts(parsed);
+    host.appendChild(summary);
+    parsed.regions.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'git-conflict-region';
+      const head = document.createElement('div');
+      head.className = 'git-conflict-region-head';
+      head.textContent = '第 ' + (r.index + 1) + ' 处 · 第 ' + r.ours.startLine + '–' + r.theirs.endLine + ' 行 · ' + (r.base ? '两侧 + 共同基线' : '两侧');
+      card.appendChild(head);
+      const sides = document.createElement('div');
+      sides.className = 'git-conflict-sides';
+      const side = (label, lines) => {
+        const d = document.createElement('div'); d.className = 'git-conflict-side';
+        const h = document.createElement('div'); h.className = 'git-conflict-side-head'; h.textContent = label;
+        const b = document.createElement('pre'); b.className = 'git-conflict-side-body'; b.textContent = lines;
+        d.appendChild(h); d.appendChild(b); return d;
+      };
+      sides.appendChild(side('我的' + (r.oursLabel ? '（' + r.oursLabel + '）' : ''), bodyOf(r.ours.lines)));
+      sides.appendChild(side('对方' + (r.theirsLabel ? '（' + r.theirsLabel + '）' : ''), bodyOf(r.theirs.lines)));
+      card.appendChild(sides);
+      if (r.base) {
+        const bd = document.createElement('div'); bd.className = 'git-conflict-side git-conflict-base';
+        const bh = document.createElement('div'); bh.className = 'git-conflict-side-head'; bh.textContent = '共同基线（仅供参考）';
+        const bb = document.createElement('pre'); bb.className = 'git-conflict-side-body'; bb.textContent = bodyOf(r.base.lines);
+        bd.appendChild(bh); bd.appendChild(bb); card.appendChild(bd);
+      }
+      const acts = document.createElement('div');
+      acts.className = 'git-conflict-picks';
+      const btns = [['ours', '采用我的'], ['theirs', '采用对方'], ['both', '保留双方']].map(pair => {
+        const bt = document.createElement('button');
+        bt.className = 'pf-btn';
+        bt.textContent = pair[1];
+        bt.addEventListener('click', () => {
+          picks[r.index] = pair[0];
+          btns.forEach(x => x.classList.toggle('active', x === bt));
+          applyBtn.disabled = picks.some(p => !p);
+        });
+        acts.appendChild(bt);
+        return bt;
+      });
+      card.appendChild(acts);
+      host.appendChild(card);
+    });
+    const foot = document.createElement('div');
+    foot.className = 'git-conflict-actions';
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'pf-btn pf-btn-primary';
+    applyBtn.textContent = '应用并暂存';
+    applyBtn.disabled = true;
+    applyBtn.addEventListener('click', async () => {
+      applyBtn.disabled = true;
+      try {
+        const resolved = M.resolveConflicts(content, picks, { swapSides });
+        if (M.hasConflictMarkers(resolved)) { showToast('解决结果仍含冲突标记，已拒绝写盘', 'error'); applyBtn.disabled = false; return; }
+        const wr = await window.BubaiCode.fs.writeFile(full, resolved);
+        if (!wr || wr.success === false) { showToast('写盘失败：' + ((wr && wr.error) || '未知错误'), 'error'); applyBtn.disabled = false; return; }
+        await window.BubaiCode.git.add(cwd, [rel]);
+        showToast('已解决 ' + picks.length + ' 处并暂存：' + rel, 'success');
+        refreshGitStatus();
+      } catch (e) {
+        showToast('解决失败：' + (e.message || String(e)), 'error');
+        applyBtn.disabled = false;
+      }
+    });
+    foot.appendChild(applyBtn);
+    host.appendChild(foot);
   }
 
   // ===== 仓库 Issues 列表（1:1 仿写 参考基线 git:issues:list：列出上游仓库 open issues；需 git 凭据 PAT） =====
@@ -18123,8 +18259,51 @@ function bindEvents() {
   // ===== capabilities 路由:UI 按钮统一入口(对齐参考基线 runCapability)=====
   // 编译/烧录/串口监视等不再直调插件工具或硬编码 terminal 命令,
   // 一律经 runCapability(cap) → 项目绑定的主动工具链 → transport 分发。
+  // ===== 编译/烧录运行态：运行中再点同一入口即取消（对标 ChipCode「编译已取消」动线）=====
+  // 真正停得下来的是主进程：compile:cancel 会杀掉带 cancelTag 的进程树（main/terminal.js execTasks）。
+  // 渲染层这里只管按钮外观切换，以及"取消不是失败"——不报红、不触发 AI 根因诊断。
+  const COMPILE_RUN_BTNS = [
+    ['toolbar-compile-btn', '编译'], ['editor-compile-btn', '编译'],
+    ['toolbar-upload-btn', '烧录'], ['editor-upload-btn', '烧录']
+  ];
+  let compileRun = null; // { tag, cancelAck }
+  function paintCompileRun() {
+    for (const item of COMPILE_RUN_BTNS) {
+      const btn = document.getElementById(item[0]);
+      if (!btn) continue;
+      const use = btn.querySelector('use');
+      if (btn.dataset.baseTitle === undefined) btn.dataset.baseTitle = btn.getAttribute('title') || '';
+      if (btn.dataset.baseIcon === undefined && use) btn.dataset.baseIcon = use.getAttribute('href') || '';
+      const running = !!compileRun;
+      btn.classList.toggle('is-cancel', running);
+      btn.setAttribute('title', running ? '取消' + item[1] : btn.dataset.baseTitle);
+      if (use) use.setAttribute('href', running ? '#icon-square' : (btn.dataset.baseIcon || '#icon-player-play'));
+    }
+  }
+  async function cancelCompileRun() {
+    if (!compileRun) return;
+    const tag = compileRun.tag;
+    if (!(window.BubaiCode && window.BubaiCode.compile && window.BubaiCode.compile.cancel)) {
+      showToast('当前版本不支持取消，请等待' + tag + '结束', 'warn');
+      return;
+    }
+    let r = null;
+    try { r = await window.BubaiCode.compile.cancel(); } catch (e) { r = { ok: false, error: e.message }; }
+    compileRun.cancelAck = r;
+    if (r && r.ok) showToast('正在取消' + tag + '…', 'warn');
+    else showToast((r && r.error) || '取消失败', 'warn');
+  }
+
   async function runCapBtn(cap, params, opt) {
     opt = opt || {};
+    let runTag = '';
+    if (cap === 'compile' || cap === 'upload') {
+      if (compileRun) { await cancelCompileRun(); return { ok: false, cancelled: true, text: compileRun.tag + '已取消' }; }
+      runTag = cap === 'compile' ? '编译' : '烧录';
+      compileRun = { tag: runTag, cancelAck: null };
+      paintCompileRun();
+      if (opt.busyText) showToast(opt.busyText, 'info');
+    }
     let r;
     try {
       if (cap === 'compile' && typeof ARDUINO_TOOL_IMPLS !== 'undefined' && ARDUINO_TOOL_IMPLS.compile) {
@@ -18142,10 +18321,17 @@ function bindEvents() {
     } catch (e) {
       r = { ok: false, error: '能力路由异常: ' + e.message };
     }
+    if (compileRun) {
+      const ack = compileRun.cancelAck;
+      r.cancelled = !!(ack && ack.ok) || /COMPILE CANCELLED|UPLOAD CANCELLED/.test(String(r.text || ''));
+      compileRun = null;
+      paintCompileRun();
+    }
     const out = String(r.text != null ? r.text : (r.error || '未知错误'));
-    const bad = !r.ok || (r.text != null && /error|错误/i.test(out));
-    showToast(bad ? (opt.failText || '操作失败') : (opt.okText || '操作成功'), bad ? 'error' : 'success');
-    addOutputLog('[' + (opt.logTag || cap) + ']\n' + out, bad ? 'error' : 'success');
+    const bad = !r.cancelled && (!r.ok || (r.text != null && /error|错误/i.test(out)));
+    showToast(r.cancelled ? (runTag + '已取消') : (bad ? (opt.failText || '操作失败') : (opt.okText || '操作成功')),
+      r.cancelled ? 'warn' : (bad ? 'error' : 'success'));
+    addOutputLog('[' + (opt.logTag || cap) + ']\n' + out, r.cancelled ? 'info' : (bad ? 'error' : 'success'));
     if (opt.openPanel) {
       const ov = document.getElementById(opt.openPanel);
       if (ov && ov.style.display === 'none') ov.style.display = 'flex'; }
@@ -18196,30 +18382,36 @@ function bindEvents() {
     const outputDir = state.projectPath ? state.projectPath + '/build' : undefined;
     const btns = [document.getElementById('dev-aifix-btn'), document.getElementById('editor-aifix-btn')].filter(Boolean);
     btns.forEach(b => { b.disabled = true; b.classList.add('aifix-loading'); });
+    // AI 修复会真的重新编译（主进程那次执行带 cancelTag），借编译按钮的运行态让用户能中途取消
+    const ownRun = !compileRun;
+    if (ownRun) { compileRun = { tag: '编译', cancelAck: null }; paintCompileRun(); }
     showToast('AI 正在分析编译错误并修复…', 'info');
     try {
       const result = await window.BubaiCode.compile.aiFix({ sketchPath, fqbn, outputDir });
       if (state.terminal) {
         state.terminal.writeln('');
-        state.terminal.writeln('AI 修复完成');
+        state.terminal.writeln(result.cancelled ? '编译已取消' : 'AI 修复完成');
         if (result.message) state.terminal.writeln('→ ' + result.message);
         if (result.compileErrorBefore) {
           state.terminal.writeln('— 原编译错误 —');
           result.compileErrorBefore.split('\n').slice(0, 25).forEach(l => state.terminal.writeln(l));
         }
       }
-      addOutputLog('AI 修复: ' + (result.message || result.error || ''), result.success ? 'success' : 'error');
+      addOutputLog('AI 修复: ' + (result.message || result.error || ''),
+        result.cancelled ? 'info' : (result.success ? 'success' : 'error'));
       if (result.applied && result.fixedCode && state.editor) {
         state.editor.setValue(result.fixedCode);
         showToast('已用修复后代码更新编辑器', 'info');
       }
       if (result.alreadyOk) showToast('编译已通过，无需修复', 'success');
+      else if (result.cancelled) showToast(result.applied ? '编译已取消（修复已写回，未验证）' : '编译已取消', 'warn');
       else if (result.success && result.recompiled && result.recompiled.success) showToast('AI 已修复，重新编译通过', 'success');
       else if (result.success && result.applied && result.recompiled && !result.recompiled.success) showToast('AI 已尝试修复，但编译仍失败', 'warn');
       else if (!result.success) showToast('AI 修复未完成: ' + (result.message || result.error || ''), 'error');
     } catch (e) {
       showToast('AI 修复异常: ' + e.message, 'error');
     } finally {
+      if (ownRun) { compileRun = null; paintCompileRun(); }
       btns.forEach(b => { b.disabled = false; b.classList.remove('aifix-loading'); });
     }
   }
@@ -18502,18 +18694,16 @@ function bindEvents() {
   // ============ 编辑器工具栏快捷：编译 / 烧录（软硬件开发流水线）============
   const editorCompileBtn = document.getElementById('editor-compile-btn');
   if (editorCompileBtn) editorCompileBtn.addEventListener('click', async () => {
-    showToast('编译中…', 'info');
-    await runCapBtn('compile', {}, { okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
+    await runCapBtn('compile', {}, { busyText: '编译中…', okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
   });
   // ===== 顶部工具栏 ▶编译 / ⬆上传（对齐 ChipCode：菜单右侧编译/上传图标）=====
   const toolbarCompileBtn = document.getElementById('toolbar-compile-btn');
   if (toolbarCompileBtn) toolbarCompileBtn.addEventListener('click', async () => {
-    showToast('编译中…', 'info');
-    await runCapBtn('compile', {}, { okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
+    await runCapBtn('compile', {}, { busyText: '编译中…', okText: '编译成功', failText: '编译失败', logTag: '编译', openPanel: 'bottom-panel', openTab: 'output' });
   });
   const toolbarUploadBtn = document.getElementById('toolbar-upload-btn');
   if (toolbarUploadBtn) toolbarUploadBtn.addEventListener('click', async () => {
-    await runCapBtn('upload', {}, { okText: '上传成功', failText: '上传失败', logTag: '上传', openPanel: 'bottom-panel', openTab: 'output' });
+    await runCapBtn('upload', {}, { busyText: '上传中…', okText: '上传成功', failText: '上传失败', logTag: '上传', openPanel: 'bottom-panel', openTab: 'output' });
   });
   // ===== 底部面板 × 关闭（对齐 ChipCode tabs 右侧 ✕）=====
   const bottomCloseBtn = document.getElementById('bottom-close-btn');
@@ -18525,9 +18715,8 @@ function bindEvents() {
   if (editorUploadBtn) editorUploadBtn.addEventListener('click', async () => {
     const portSel = document.getElementById('port-select');
     const port = portSel ? portSel.value : '';
-    if (!port) { showToast('请先在设备面板选择串口', 'warn'); return; }
-    showToast('烧录到 ' + port + '…', 'info');
-    await runCapBtn('upload', { port }, { okText: '烧录成功', failText: '烧录失败', logTag: '烧录', openPanel: 'bottom-panel', openTab: 'terminal' });
+    if (!port && !compileRun) { showToast('请先在设备面板选择串口', 'warn'); return; }
+    await runCapBtn('upload', { port }, { busyText: '烧录到 ' + port + '…', okText: '烧录成功', failText: '烧录失败', logTag: '烧录', openPanel: 'bottom-panel', openTab: 'terminal' });
   });
 
   // 工具活动面板（Flow）按钮

@@ -303,7 +303,7 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     clone: (url, destDir) => ipcRenderer.invoke('git:clone', url, destDir),
     aiCommitMessage: (cwd) => ipcRenderer.invoke('git:aiCommitMessage', cwd),
     aiCommit: (cwd) => ipcRenderer.invoke('git:aiCommit', cwd),
-    aiResolveConflicts: (cwd) => ipcRenderer.invoke('git:aiResolveConflicts', cwd),
+    aiResolveConflicts: (cwd, onlyRel) => ipcRenderer.invoke('git:aiResolveConflicts', cwd, onlyRel),
     aiPrDescription: (cwd) => ipcRenderer.invoke('git:aiPrDescription', cwd),
     issuesList: (cwd, limit) => ipcRenderer.invoke('git:issues:list', cwd, limit),
     prCreate: (cwd, opts) => ipcRenderer.invoke('git:pr:create', cwd, opts),
@@ -465,11 +465,20 @@ contextBridge.exposeInMainWorld('BubaiCode', {
     arduino: (options) => ipcRenderer.invoke('compile:arduino', options),
     upload: (options) => ipcRenderer.invoke('compile:upload', options),
     aiFix: (options) => ipcRenderer.invoke('compile:aiFix', options),
+    cancel: () => ipcRenderer.invoke('compile:cancel'),
     exportBinary: (options) => ipcRenderer.invoke('compile:exportBinary', options),
     listCores: () => ipcRenderer.invoke('compile:list-cores'),
     listBoards: () => ipcRenderer.invoke('compile:list-boards'),
     listPorts: () => ipcRenderer.invoke('compile:list-ports'),
     cliExists: () => ipcRenderer.invoke('compile:cli-exists')
+  },
+
+  // 审批审计（R2）：决策/处置落盘 + 面板查询
+  audit: {
+    append: (event) => ipcRenderer.invoke('audit:append', event),
+    list: (filter) => ipcRenderer.invoke('audit:list', filter),
+    clear: () => ipcRenderer.invoke('audit:clear'),
+    openDir: () => ipcRenderer.invoke('audit:openDir')
   },
 
   // Wokwi 仿真（对齐参考基线 Wokwi 工具链）

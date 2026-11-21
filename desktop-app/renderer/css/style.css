@@ -142,7 +142,7 @@
   --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-in-out: cubic-bezier(.65, 0, .35, 1);
   --focus-ring: 0 0 0 3px var(--accent-glow);
-  --font-family: 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'HarmonyOS Sans SC', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Segoe UI Symbol', -apple-system, BlinkMacSystemFont, 'Source Han Sans SC', '思源黑体', sans-serif;
+  --font-family: 'HarmonyOS Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; 'Segoe UI Symbol', -apple-system, BlinkMacSystemFont, 'Source Han Sans SC', '思源黑体', sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
 
   /* 兼容别名：历史 UI（插件/设备等面板）引用了 参考基线 风格 token 名但主题从未定义，导致大面积颜色跑偏；此处映射到真实 token（var 动态解析，自动适配深浅色） */
@@ -1390,6 +1390,21 @@ input, textarea {
 .git-conflicts-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
 .git-conflicts-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .git-conflicts-row .pf-btn { flex: 0 0 auto; font-size: 11px; padding: 3px 8px; }
+/* 逐处选择面板（对齐参考基线 git.conflict.*：区域卡片 + 两侧并排 + 逐处采用） */
+.git-conflicts-item { display: flex; flex-direction: column; gap: 4px; }
+.git-conflict-detail { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px 8px; border-left: 2px solid var(--border-color); }
+.git-conflict-hint { font-size: 11px; color: var(--text-tertiary); }
+.git-conflict-region { display: flex; flex-direction: column; gap: 5px; padding: 7px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); }
+.git-conflict-region-head { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.git-conflict-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.git-conflict-side { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.git-conflict-side-head { font-size: 10.5px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-conflict-side-body { margin: 0; padding: 5px 6px; max-height: 120px; overflow: auto; font-family: var(--font-mono, monospace); font-size: 10.5px; line-height: 1.35; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; }
+.git-conflict-base .git-conflict-side-body { color: var(--text-tertiary); }
+.git-conflict-picks, .git-conflict-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.git-conflict-picks .pf-btn { font-size: 10.5px; padding: 2px 8px; }
+.git-conflict-picks .pf-btn.active { border-color: var(--accent-color, #4c8dff); color: var(--accent-color, #4c8dff); }
+.git-conflict-actions .pf-btn { font-size: 11px; padding: 3px 10px; }
 
 .welcome-title {
   font-size: 25px;
@@ -2271,29 +2286,6 @@ body.no-open-file .ai-panel {
   flex-direction: column;
   position: relative;
 }
-
-/* ↓ 回到底部（对齐参考基线：工作流滚动时悬浮一键回底） */
-.chat-scroll-bottom {
-  position: sticky;
-  bottom: 14px;
-  margin-left: auto;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: 0.5px solid rgba(0,0,0, .12);
-  border-radius: 999px;
-  background: rgba(255,255,255, .95);
-  color: #1A1B1C;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0,0,0, .12);
-  transition: transform .15s ease, box-shadow .15s ease;
-  min-height: 40px;
-}
-.chat-scroll-bottom:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0, .16); }
 
 /* 工作状态条（对齐参考基线：▶ 已工作 Xs · 思考 · N 个工具 · 📚 已收集上下文） */
 .work-status-msg .work-status-bubble {
@@ -5726,15 +5718,6 @@ button:disabled,
 }
 /* 底部面板位于 editor-container 列内（index.html），宽度随编辑器列伸缩；左栏与 AI 面板通高，对齐 ChipCode 实拍 */
 .bottom-panel { flex: 0 0 auto; width: 100%; min-height: 200px; }
-/* AI 面板 DOM 在编辑器之前，用 order 排到最右 */
-.ai-panel {
-  order: 2;
-  flex: 0 1 340px !important; /* 340px 基准（对齐 ChipCode 实拍 ~260-300px 面板宽）且允许收缩 */
-  width: 340px;
-  min-width: 300px !important;
-  border-left: 1px solid var(--border-light) !important;
-  border-right: none !important;
-}
 body.no-open-file .editor-container { flex: 1 1 auto !important; min-width: 340px !important; }
 /* 无项目态对齐参考基线 实测截图：主区中央显示品牌空态卡(⚡BubaiCode+打开或新建项目开始编程)，
    AI 面板保持右侧固定宽——不再让 AI 欢迎区占满中央(旧设计已废弃，app-welcome 类保留仅为兼容、无 CSS 效果) */
@@ -6058,6 +6041,28 @@ body.app-welcome:not(.logged-out) .ai-panel {
   border-radius: 12px 12px 0 0 !important;
   box-shadow: 0 4px 16px rgba(16, 24, 40, .14) !important;
 }
+/* AI 出站退避提示条（对齐参考基线）：贴在输入卡顶部的窄条，容器 overflow:hidden 天然裁成圆角。
+   只在等重试的那几秒出现，收到 delta / done / error 就撤——留着会变成永久黄条。 */
+.ai-retry-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-bottom: 1px solid #e2e2df;
+}
+.ai-retry-hint::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ai-retry-blink 1.2s ease-in-out infinite;
+}
+@keyframes ai-retry-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .ai-input-container .ai-input-box:focus-within {
   box-shadow: 0 8px 28px rgba(16, 24, 40, .24) !important;
 }
@@ -6843,7 +6848,6 @@ body.pf-in-explorer #product-factory-view .pf-nav { padding: 10px !important; }
    模型名给可收缩省略号、模式按钮按内容自适应、状态条紧凑化、用户头像隐藏。
    （工具栏换行兜底已于 2026-11-20 撤掉，改回 ChipCode 单行策略，见本段下方与文末新段。）
    已在 dist183 安装版（9226）以 CDP 注入实测：模型按钮 27→143px、模式按钮无裁切、输入区无溢出。 */
-.ai-panel { flex: 0 1 400px !important; width: 400px; min-width: 360px !important; }
 /* 单行策略与 ChipCode 一致（工具栏无 flex-wrap），故取消 11-14 的 wrap 覆盖，
    让 6175/6176 段的 nowrap !important 生效；真正放不下时由文末 @container 兜底折行。 */
 .ai-input-toolbar { gap: 8px; row-gap: 6px; }
@@ -7877,3 +7881,75 @@ body.app-welcome:not(.logged-out) .editor-container { display: none !important; 
 @container (max-width: 336px) {
   .ai-input-container .ai-input-toolbar { flex-wrap: wrap !important; row-gap: 6px !important; }
 }
+
+/* 编译/烧录进行中：同一按钮位切成「取消」（对标 ChipCode 编译态可中止） */
+.toolbar-btn.is-cancel,
+.editor-toolbar-btn.is-cancel,
+.editor-action-btn.is-cancel {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.38);
+  background: rgba(220, 38, 38, 0.10);
+}
+.toolbar-btn.is-cancel:hover,
+.editor-toolbar-btn.is-cancel:hover,
+.editor-action-btn.is-cancel:hover {
+  background: rgba(220, 38, 38, 0.18);
+  color: #b91c1c;
+}
+
+
+/* 2026-11-21 回到底部：灰胶囊 → 极简圆形图标按钮（↓，34px，白底淡边框，hover 才明显） */
+#chat-scroll-bottom {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: 0 2px 8px rgba(16,24,40,.10) !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  opacity: .78 !important;
+  left: auto !important;
+  right: 16px !important;
+  bottom: 14px !important;
+}
+#chat-scroll-bottom::before {
+  content: '↓' !important;
+  font-size: 17px !important;
+  line-height: 1 !important;
+  color: var(--text-secondary) !important;
+}
+#chat-scroll-bottom:hover {
+  background: var(--surface-2) !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+/* 2026-11-21 字体栈收敛：确保 body 真正引用收敛后的 --font-family（HarmonyOS Sans SC 优先） */
+html, body { font-family: var(--font-family) !important; }
+/* 2026-11-21 三栏布局修复：AI 面板固定排最右（源码无 order 规则，DOM 顺序导致 AI 挤在代码左侧） */
+.ai-panel { order: 3 !important; }
+/* 2026-11-21 AI 输入工具栏窄栏单行（覆盖两处 flex-wrap:wrap !important 的旧规则，省 30px 高度给消息区） */
+.ai-input-container .ai-input-toolbar{flex-wrap:nowrap!important;gap:4px!important;}
+
+/* 2026-11-21 清除残留蓝色：ChipCode 对齐时只改了 --accent，--primary(蓝) 仍被选中态引用，统一改灰底黑字 */
+.activity-btn.active, .bottom-tab.active, .file-tree-item.selected, .model-option.active {
+  color: #111 !important;
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+}
+.file-tree-item.selected .file-icon, .file-tree-item.selected .file-name { color: #111 !important; }
+.file-tree-item.selected svg, .file-tree-item.selected use { color: #111 !important; fill: currentColor !important; }
+/* 路径栏辅助信息弱化（覆盖 .ai-project-bar .ai-project-path 的 13px !important） */
+.ai-project-bar .ai-project-path { font-size: 11px !important; color: var(--text-tertiary) !important; }
+/* 2026-11-21 规范：AI 顶栏图标按钮继承默认 13.3333px，显式设 13px 与全局字号阶梯一致 */
+.ai-top-btn { font-size: 13px !important; }

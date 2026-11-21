@@ -7,6 +7,53 @@ const fs = require('fs');
 const os = require('os');
 const https = require('https');
 const { spawn, execFile } = require('child_process');
+// 冲突标记解析/解决：与渲染层同一份纯函数实现，判据不会两处漂移
+const conflictMarkers = require(path.join(__dirname, '..', 'renderer', 'js', 'git-conflict-markers.js'));
+// 出站地址安全闸：任何带着密钥/ token 的请求，发出前先过这道 https/本机 校验
+const netGuard = require('../packages/engine/net-guard.js');
+// AI 出站退避：429/5xx/网络抖补发，认证/参数/超限类不补发（与渲染层共用 renderer/js/ai-backoff.js 这一份判定）
+const aiBackoff = require(path.join(__dirname, '..', 'renderer', 'js', 'ai-backoff.js'));
+// 取消编译/烧录要杀的是整棵进程树：arduino-cli 会派生 xtensa/avr 编译器子孙，只杀直接 child 等于没停
+const { killProcessTree } = require('./kill-tree.js');
+// 可中止任务登记表（纯逻辑，与终端服务共用同一份实现）
+const { createKillableTasks } = require('../packages/engine/killable-tasks.js');
+
+// 过闸则返回 ''（调用点继续走），拒发则返回可直接展示给用户的中文错话。
+// 各调用点的错误契约不同（有的 return {error}，有的 throw），所以这里只出文案不出手。
+function insecureEndpoint(base, label) {
+  if (!base) return '';
+  try { netGuard.assertHttpsOrLocal(String(base), label); return ''; }
+  catch (e) { return e.message || String(e); }
+}
+
+// AI 出站的「取响应」统一入口：429 / 5xx / 网络抖最多补发 2 次（1.5s、3s，上游给 Retry-After 就听它的，封顶 30s）。
+// 只对「还没产出任何字节」的请求补发 —— 正文已经上屏之后再重发会出现两段答案，所以包的是 net.fetch 这一步，
+// 不是整轮对话。补发额度用完时把最后一个响应原样交回调用点，让原有的 !ok 分支继续拼错话（文案零漂移）。
+async function fetchWithBackoff(doFetch, opts) {
+  const o = opts || {};
+  let lastRetryable = null;
+  try {
+    return await aiBackoff.withBackoff(async () => {
+      lastRetryable = null;
+      const res = await doFetch();
+      if (res && !res.ok && aiBackoff.isRetryableStatus(res.status)) {
+        lastRetryable = res;
+        throw aiBackoff.annotateError(new Error('API 返回 ' + res.status), res.status, aiBackoff.parseRetryAfter(res));
+      }
+      return res;
+    }, {
+      signal: o.signal || null,
+      onRetry: (info) => {
+        const secs = Math.round(info.delayMs / 1000);
+        console.warn('[ai-backoff] ' + (o.label || '') + ' 退避重试（第 ' + info.attempt + '/' + info.maxRetries + ' 次），' + secs + 's 后：' + info.error.message);
+        if (typeof o.onRetry === 'function') o.onRetry(info);
+      },
+    });
+  } catch (e) {
+    if (lastRetryable) return lastRetryable; // 状态码类失败：交回响应，调用点自己出「API 返回 N: 正文」
+    throw e;                                 // 网络异常/取消：原样抛，各调用点现有 catch 的错话不变
+  }
+}
 
 // ============ 品牌迁移：从旧 旧版 userData 安全迁移到新 BubaiCode userData ============
 // 全量改名 name: 旧版→BubaiCode 后，Electron userData 路径随之改变，旧插件/配置留在 旧版 目录。
@@ -37,6 +84,7 @@ migrateLegacyUserData();
 // 终端服务
 const { getTerminalService } = require('./terminal');
 const terminalService = getTerminalService();
+const auditStore = require('./audit-store');
 
 // 全局变量
 let mainWindow = null;
@@ -530,6 +578,9 @@ function setupIPC() {
     if (!stt.apiKey || !stt.baseURL || !stt.model) {
       return { ok: false, code: 'STT_DISABLED', message: '尚未配置语音识别：请在 设置 → 模型供应商 → 语音识别 填写 API Key / Base URL / 模型。' };
     }
+    // 发凭据前先过闸。放在 try 之前：这里的拒绝是可操作配置错误，不能被下面「网络连接失败」兜底文案吃掉。
+    const sttUrlMsg = insecureEndpoint(stt.baseURL, '语音识别 baseURL');
+    if (sttUrlMsg) return { ok: false, code: 'STT_INSECURE_URL', message: sttUrlMsg };
     if (sttAbort) { try { sttAbort.abort(); } catch (e) {} }
     sttAbort = new AbortController();
     const timer = setTimeout(() => { if (sttAbort) { try { sttAbort.abort(); } catch (e) {} } }, 60000);
@@ -2347,67 +2398,91 @@ function setupIPC() {
     } catch (e) { return { success: false, error: e.message }; }
   });
 
+  // 未合并路径清单：git diff --diff-filter=U 为权威（覆盖 AA/DD 等无 U 列态），porcelain 作补集
+  async function listUnmergedPaths(cwd) {
+    const set = new Set();
+    const zr = await runGit(cwd, ['-c', 'core.quotePath=false', 'diff', '--name-only', '--diff-filter=U', '-z']);
+    if (zr.ok) zr.stdout.split('\0').filter(Boolean).forEach(p => set.add(p.replace(/\\/g, '/')));
+    const st = await runGit(cwd, ['status', '--porcelain', '-b']);
+    if (st.ok) st.stdout.split('\n').filter(Boolean).forEach(l => {
+      const xy = l.slice(0, 2);
+      if (xy !== '##' && /[UAD]/.test(xy) && /U/.test(xy)) set.add(l.slice(3).trim().replace(/\\/g, '/'));
+    });
+    return Array.from(set).filter(Boolean);
+  }
+
+  // 变基/应用补丁期间 git 把 HEAD 挪到对方提交上，两侧身份是反的：此时 ours 是远端、theirs 才是用户自己。
+  // 展示（解析）与写盘（解决）必须用同一个判定，否则用户点「我的」会得到对方的版本。
+  async function sidesAreSwapped(cwd) {
+    const op = await detectPendingOp(cwd);
+    return !!op && (op.kind === 'rebase' || op.kind === 'am');
+  }
+
   // 列出当前工作区冲突文件与冲突块数（对齐参考基线 在源代码管理面板渲染冲突区块）
   ipcMain.handle('git:listConflicts', async (_, cwd) => {
     if (!cwd) return { success: false, error: '缺少 cwd' };
     try {
-      const st = await runGit(cwd, ['status', '--porcelain', '-b']);
-      if (!st.ok) return { success: false, error: st.stderr };
-      const conflicts = [];
-      for (const line of st.stdout.split('\n').filter(Boolean)) {
-        const s2 = line.slice(0, 2).trim();
-        if (s2.length === 2 && /U/.test(s2)) {
-          const rel = line.slice(3);
-          const full = path.join(cwd, rel);
-          let hunks = 0;
-          try { const content = fs.readFileSync(full, 'utf8'); hunks = (content.match(/^<<<<<<< /gm) || []).length; } catch (e) {}
-          conflicts.push({ path: rel, hunks });
-        }
-      }
-      return { success: true, conflicts };
+      const paths_ = await listUnmergedPaths(cwd);
+      const swapSides = await sidesAreSwapped(cwd);
+      const conflicts = paths_.map(rel => {
+        let hunks = 0;
+        try { const content = fs.readFileSync(path.join(cwd, rel), 'utf8'); hunks = (content.match(/^<{7}/gm) || []).length; } catch (e) {}
+        return { path: rel, hunks };
+      });
+      return { success: true, conflicts, swapSides };
     } catch (e) { return { success: false, error: e.message }; }
   });
 
-  // 解析冲突标记，逐文件交给 AI 解决后写回并暂存（onlyRel 可只解决指定文件，对齐参考基线 逐文件 AI 合并）
+  // 逐处把冲突交给 AI 解决后写回并暂存（onlyRel 只解决指定文件，对齐参考基线 逐文件 AI 合并）
+  // 安全闸：畸形区域不猜、模型输出仍含标记不写盘、写盘后二次复检，绝不把冲突标记当成代码提交进去
   ipcMain.handle('git:aiResolveConflicts', async (_, cwd, onlyRel) => {
     if (!cwd) return { success: false, error: '缺少 cwd' };
     try {
-      const st = await runGit(cwd, ['status', '--porcelain', '-b']);
-      if (!st.ok) return { success: false, error: st.stderr };
-      let conflicted = st.stdout.split('\n').filter(Boolean).map(l => {
-        const s2 = l.slice(0, 2).trim();
-        return (s2.length === 2 && /U/.test(s2)) ? l.slice(3) : null;
-      }).filter(Boolean);
-      if (onlyRel) conflicted = [onlyRel];
+      let conflicted = await listUnmergedPaths(cwd);
+      if (onlyRel) {
+        const want = String(onlyRel).replace(/\\/g, '/');
+        conflicted = conflicted.filter(p => p === want);
+        if (!conflicted.length) return { success: false, error: '该文件当前不是未合并状态：' + onlyRel };
+      }
       if (!conflicted.length) return { success: true, resolved: 0, message: '没有检测到冲突文件' };
-      const CONFLICT_RE = /<<<<<<< .*?\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> .*?(\r?\n|$)/;
+      const swapSides = await sidesAreSwapped(cwd);
       const report = [];
+      let resolvedCount = 0;
       for (const rel of conflicted) {
         const full = path.join(cwd, rel);
         if (!fs.existsSync(full)) { report.push('✗ ' + rel + ': 文件不存在'); continue; }
-        let content = fs.readFileSync(full, 'utf8');
-        let guard = 0, ok = true;
-        while (CONFLICT_RE.test(content) && guard < 50) {
-          guard++;
-          const m = content.match(CONFLICT_RE);
-          const ours = m[1], theirs = m[2];
-          const before = content.slice(0, m.index), after = content.slice(m.index + m[0].length);
+        let content;
+        try { content = fs.readFileSync(full, 'utf8'); } catch (e) { report.push('✗ ' + rel + ': 读取失败'); continue; }
+        const parsed = conflictMarkers.parseConflictMarkers(content, { swapSides });
+        if (parsed.malformed) { report.push('✗ ' + rel + ': 冲突标记不成对（畸形），未改动文件，请手工处理'); continue; }
+        if (!parsed.regions.length) { report.push('✗ ' + rel + ': 有未合并状态但找不到冲突区域，未改动文件'); continue; }
+        const picks = [];
+        let bad = null;
+        for (const r of parsed.regions) {
+          const prompt = '下面是同一个文件里的一处合并冲突。请输出这一处的最终正确内容（保留双方都需要的改动，不要带任何冲突标记）。只输出解决后的代码，不要解释、不要代码围栏。\n\n'
+            + '【用户侧（你的改动）】\n' + (r.ours.lines.join('\n') || '(空)') + '\n\n'
+            + (r.base ? '【共同基线（diff3，仅参考，不要直接输出）】\n' + r.base.lines.join('\n') + '\n\n' : '')
+            + '【对方侧（传入的改动）】\n' + (r.theirs.lines.join('\n') || '(空)');
           const ai = await callAiOnce([
-            { role: 'system', content: '你是资深工程师。合并冲突时，请输出冲突的最终正确内容（保留双方都需要的改动，删除冲突标记）。只输出解决后的代码，不要任何解释或代码围栏。' },
-            { role: 'user', content: '当前分支(ours)：\n' + ours + '\n\n传入分支(theirs)：\n' + theirs + '\n\n请输出合并后的最终内容：' }
+            { role: 'system', content: '你是资深工程师，负责合并 git 冲突并给出最终内容。' },
+            { role: 'user', content: prompt }
           ], { maxTokens: 2048, temperature: 0.1 });
-          const resolved = (ai || '').replace(/^```[a-zA-Z0-9_+-]*\n?/, '').replace(/```\s*$/, '').trim();
-          if (!resolved || CONFLICT_RE.test(resolved)) { ok = false; break; }
-          content = before + resolved + after;
+          const cleaned = String(ai || '').replace(/^```[a-zA-Z0-9_+-]*\n?/, '').replace(/```\s*$/, '').trim();
+          if (!cleaned) { bad = '模型未给出内容'; break; }
+          if (conflictMarkers.hasConflictMarkers(cleaned)) { bad = '模型输出仍含冲突标记'; break; }
+          picks.push(cleaned);
         }
-        if (!ok || guard >= 50) { report.push('✗ ' + rel + ': 模型未给出有效解决'); }
-        else {
-          fs.writeFileSync(full, content, 'utf8');
-          await runGit(cwd, ['add', rel]);
-          report.push('✓ ' + rel + ': 已解决并暂存');
-        }
+        if (bad) { report.push('✗ ' + rel + '：' + bad + '，未改动文件'); continue; }
+        let resolvedText;
+        try { resolvedText = conflictMarkers.resolveConflicts(content, picks, { swapSides }); }
+        catch (e) { report.push('✗ ' + rel + '：' + e.message + '，未改动文件'); continue; }
+        if (conflictMarkers.hasConflictMarkers(resolvedText)) { report.push('✗ ' + rel + ': 解决结果仍含标记，未写盘'); continue; }
+        try { fs.writeFileSync(full, resolvedText, 'utf8'); } catch (e) { report.push('✗ ' + rel + ': 写盘失败 ' + e.message); continue; }
+        await runGit(cwd, ['add', rel]);
+        resolvedCount++;
+        report.push('✓ ' + rel + ': 已解决 ' + parsed.regions.length + ' 处并暂存');
       }
-      return { success: true, resolved: conflicted.length, report: report.join('\n') };
+      return { success: true, resolved: resolvedCount, total: conflicted.length, swapSides, report: report.join('\n'), message: resolvedCount ? '' : report.join('\n') };
     } catch (e) { return { success: false, error: e.message }; }
   });
 
@@ -2599,6 +2674,9 @@ function setupIPC() {
   refreshProvidersFromConfig();
   function buildAiProviders() { return providerRegistry.toAiProviders(); }
   let AI_PROVIDERS = buildAiProviders();
+  // 网关取址的唯一口径：先过出站安全闸（https 或本机），再去尾斜杠。
+  // 空值沿用内置网关地址，行为与改前一致；填了 http://  LAN 地址则拒发，不带 token 出门。
+  const gwEndpoint = (raw) => netGuard.guardEndpoint(raw || AI_PROVIDERS.gateway.baseURL, '账号 API 地址');
 
   // 网关可用模型。旧版把白名单硬编码成 ['qwen3-8b']，任何其它模型（含用户显式选的
   // DeepSeek PRO）都被 normalizeGwModel 静默替换成 qwen3-8b，用户以为在用付费模型、
@@ -2669,13 +2747,16 @@ function setupIPC() {
     const gwModel = normalizeGwModel(model || aiCfg.model);
     let resp = null, lastErr = '';
     for (const c of candidates) {
-      const cUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/chat';
+      const cUrl = gwEndpoint(c.url) + '/api/chat';
       try {
-        resp = await net.fetch(cUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
-          body: JSON.stringify({ model: gwModel, messages, temperature })
-        });
+        resp = await fetchWithBackoff(
+          () => net.fetch(cUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
+            body: JSON.stringify({ model: gwModel, messages, temperature })
+          }),
+          { label: '网关回退' }
+        );
       } catch (e) { lastErr = e.message || String(e); resp = null; continue; }
       if (resp.status !== 401) break;
     }
@@ -2724,6 +2805,11 @@ function setupIPC() {
     if (!baseURL) {
       return { success: false, error: '未配置 API baseURL，请在设置中配置' };
     }
+    // 出站安全闸：密钥/token 绝不走明文 http（本机端点除外）
+    {
+      const epMsg = insecureEndpoint(baseURL, aiCfg.provider === 'gateway' ? '账号 API 地址' : 'API 地址');
+      if (epMsg) return { success: false, error: epMsg };
+    }
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return { success: false, error: '消息为空' };
     }
@@ -2746,13 +2832,16 @@ function setupIPC() {
         if (gwModel !== useModel) console.warn(`[ai:chat] 网关模型 ${useModel} 不可用，已改用 ${gwModel}`);
         let gwResp = null, gwData = {}, triedKind = null;
         for (const c of candidates) {
-          const cUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/chat';
+          const cUrl = gwEndpoint(c.url) + '/api/chat';
           triedKind = c.kind;
-          gwResp = await net.fetch(cUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
-            body: JSON.stringify({ model: gwModel, messages, temperature })
-          });
+          gwResp = await fetchWithBackoff(
+            () => net.fetch(cUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token },
+              body: JSON.stringify({ model: gwModel, messages, temperature })
+            }),
+            { label: 'ai:chat 网关非流式' }
+          );
           if (gwResp.status !== 401) break; // 401 才试下一个候选
         }
         gwData = await gwResp.json().catch(() => ({}));
@@ -2783,9 +2872,12 @@ function setupIPC() {
           const aBody = AP.toAnthropicBody({
             messages, model: useModel, maxTokens: maxTokens, temperature: temperature,
           });
-          const aResp = await net.fetch(aUrl, {
-            method: 'POST', headers: aHeaders, body: JSON.stringify(aBody),
-          });
+          const aResp = await fetchWithBackoff(
+            () => net.fetch(aUrl, {
+              method: 'POST', headers: aHeaders, body: JSON.stringify(aBody),
+            }),
+            { label: 'ai:chat Anthropic' }
+          );
           const aJson = await aResp.json().catch(() => ({}));
           if (!aResp.ok) {
             const msg = (aJson && aJson.error && aJson.error.message) || ('Anthropic 返回 ' + aResp.status);
@@ -2824,11 +2916,14 @@ function setupIPC() {
       const headers = { 'Content-Type': 'application/json' };
       if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
 
-      let response = await net.fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(bodyObj)
-      });
+      let response = await fetchWithBackoff(
+        () => net.fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(bodyObj)
+        }),
+        { label: 'ai:chat 非流式' }
+      );
 
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
@@ -3005,6 +3100,8 @@ function setupIPC() {
   async function streamChatCompletion(sender, runId, { messages, model, temperature, maxTokens, tools, aiCfg }) {
     const provider = AI_PROVIDERS[aiCfg.provider] || AI_PROVIDERS.deepseek;
     const baseURL = (aiCfg.provider === 'gateway' && aiCfg.gatewayUrl) ? aiCfg.gatewayUrl : (resolveAiBaseURL(aiCfg) || provider.baseURL);
+    // 出站安全闸：抛错即由 ai:chatStream 的 catch 转成流错误事件，原话进 UI
+    if (baseURL) netGuard.assertHttpsOrLocal(baseURL, aiCfg.provider === 'gateway' ? '账号 API 地址' : 'API 地址');
     let useModel = resolveModel(model, aiCfg, provider);
     const abortCtrl = new AbortController();
     activeAiControllers.set(runId, abortCtrl);
@@ -3104,7 +3201,7 @@ function setupIPC() {
       isGateway = true;
       gwFallback = true;
       useModel = normalizeGwModel(model || aiCfg.model);
-      url = ((aiCfg.gatewayUrl || AI_PROVIDERS.gateway.baseURL) || '').replace(/\/$/, '') + '/api/chat/stream';
+      url = gwEndpoint(aiCfg.gatewayUrl) + '/api/chat/stream';
       headers['Authorization'] = 'Bearer ' + gwCandidates[0].token;
       bodyObj = { model: useModel, messages, temperature };
       if (Array.isArray(tools) && tools.length > 0) bodyObj.tools = tools;
@@ -3170,7 +3267,21 @@ function setupIPC() {
         if (tp && Object.keys(tp).length) Object.assign(b, tp);
       }
       const toolCalls = [];
-      const response = await net.fetch(url, { method: 'POST', headers, body: JSON.stringify(b), signal: acSignal });
+      const response = await fetchWithBackoff(
+        () => net.fetch(url, { method: 'POST', headers, body: JSON.stringify(b), signal: acSignal }),
+        {
+          signal: acSignal,
+          label: 'ai:chatStream',
+          // 把「正在退避」告诉渲染层：用户看到的是「网络波动，N 秒后自动重试（第 x/y 次）」，
+          // 不是「卡在原地」——静默等待比失败更容易被理解成软件坏了。
+          onRetry: (info) => send('status', {
+            status: 'retrying',
+            retryCount: info.attempt,
+            retryMax: info.maxRetries,
+            delayMs: info.delayMs,
+          }),
+        }
+      );
       if (!response.ok) {
         // 网关：当前候选 token 401 → 换下一个候选（用户登录失效时回退到管理后台后端 key）
         if (response.status === 401 && isGateway && gwCandidates[candIdx + 1]) {
@@ -3291,7 +3402,14 @@ function setupIPC() {
       const b = Object.assign({}, bodyObj, { messages: continueMessages });
       if (aiCfg.provider === 'local') b.chat_template_kwargs = { enable_thinking: false };
       else if (aiCfg.provider === 'ollama') b.think = false;
-      const resp = await net.fetch(url, { method: 'POST', headers, body: JSON.stringify(b), signal: acSignal });
+      const resp = await fetchWithBackoff(
+        () => net.fetch(url, { method: 'POST', headers, body: JSON.stringify(b), signal: acSignal }),
+        {
+          signal: acSignal,
+          label: 'ai:chatStream 续写',
+          onRetry: (info) => send('status', { status: 'retrying', retryCount: info.attempt, retryMax: info.maxRetries, delayMs: info.delayMs }),
+        }
+      );
       if (!resp.ok) throw new Error(`续写 API 返回 ${resp.status}`);
       let cont = '';
       let fin = '';
@@ -3371,7 +3489,14 @@ function setupIPC() {
               : buildThinkingParams(aiCfg.provider, aiCfg.thinkingLevel);
             if (fbTp && Object.keys(fbTp).length) Object.assign(fbBody, fbTp);
           }
-          const fbResp = await net.fetch(fbUrl, { method: 'POST', headers, body: JSON.stringify(fbBody), signal: acSignal });
+          const fbResp = await fetchWithBackoff(
+            () => net.fetch(fbUrl, { method: 'POST', headers, body: JSON.stringify(fbBody), signal: acSignal }),
+            {
+              signal: acSignal,
+              label: 'ai:chatStream 无思考降级',
+              onRetry: (info) => send('status', { status: 'retrying', retryCount: info.attempt, retryMax: info.maxRetries, delayMs: info.delayMs }),
+            }
+          );
           if (fbResp.ok) {
             const data = await fbResp.json();
             if (isGateway) {
@@ -3471,6 +3596,11 @@ function setupIPC() {
     const baseURL = (aiCfg.provider === 'gateway' && aiCfg.gatewayUrl) ? aiCfg.gatewayUrl : (resolveAiBaseURL(aiCfg) || provider.baseURL);
     const useModel = resolveModel(null, aiCfg, provider);
     if (!baseURL) return { success: false, error: '未配置baseURL' };
+    // 出站安全闸：这是设置页「测试连接」的入口，用户在填错地址的当场就能看到原因
+    {
+      const epMsg = insecureEndpoint(baseURL, aiCfg.provider === 'gateway' ? '账号 API 地址' : 'API 地址');
+      if (epMsg) return { success: false, error: epMsg };
+    }
     try {
       // 网关模式：用 /api/me 验证 token 有效性（不消耗积分）
       // 遍历候选（用户 token 过期时回退到管理后台后端 key），任一有效即算连通
@@ -3479,7 +3609,7 @@ function setupIPC() {
         if (!candidates.length) return { success: false, status: 401, error: '未登录，请在设置中登录' };
         let lastStatus = null, lastKind = null;
         for (const c of candidates) {
-          const gwUrl = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '') + '/api/me';
+          const gwUrl = gwEndpoint(c.url) + '/api/me';
           lastKind = c.kind;
           const gwResp = await net.fetch(gwUrl, { headers: { Authorization: 'Bearer ' + c.token } });
           lastStatus = gwResp.status;
@@ -3521,8 +3651,9 @@ function setupIPC() {
     let valid = false, usingBackend = false;
     // 逐个候选打 /api/me，第一个有效即停（用户 token 过期时回退到管理后台后端 key）
     for (const c of candidates) {
-      const gwBase = (c.url || AI_PROVIDERS.gateway.baseURL).replace(/\/$/, '');
       try {
+        // 取址过闸放进 try 内：地址不安全就当这个候选不可用，既不发 token，也不把拒因变成 IPC 异常
+        const gwBase = gwEndpoint(c.url);
         const res = await net.fetch(gwBase + '/api/me', { headers: { Authorization: 'Bearer ' + c.token } });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -3630,7 +3761,10 @@ function setupIPC() {
   ipcMain.handle('ai:gatewayAuth', async (_, { action, email, password, gatewayUrl, inviteCode, code, username } = {}) => {
     // 优先级：显式传入 > 已保存config.ai.gatewayUrl > 环境变量 > 默认生产域名
     const savedGw = (config.ai || {}).gatewayUrl || '';
-    const gwBase = (gatewayUrl || savedGw || process.env.GATEWAY_URL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
+    // 登录/注册把邮箱与密码明文送出去的风险最高：先过闸，拒发时给出可操作原因
+    let gwBase = '';
+    try { gwBase = gwEndpoint(gatewayUrl || savedGw || process.env.GATEWAY_URL); }
+    catch (e) { return { success: false, error: e.message || String(e) }; }
     try {
       if (action === 'send-code') {
       if (!email) return { success: false, error: '请输入邮箱' };
@@ -4149,9 +4283,10 @@ function setupIPC() {
 
   ipcMain.handle('payment:getPlans', async () => {
     const savedGw = (config.ai || {}).gatewayUrl || '';
-    const gwBase = (savedGw || process.env.GATEWAY_URL || AI_PROVIDERS.gateway.baseURL || 'https://bluebubai.work').replace(/\/$/, '');
     const token = (config.ai || {}).gatewayToken || '';
     try {
+      // 取址过闸：不安全就直接走内置兜底套餐，绝不带着 token 出门
+      const gwBase = gwEndpoint(savedGw || process.env.GATEWAY_URL);
       const res = await net.fetch(gwBase + '/api/payment/plans', {
         headers: token ? { Authorization: 'Bearer ' + token } : {}
       });
@@ -4441,10 +4576,10 @@ function setupIPC() {
       const dataUrl = 'data:' + mime + ';base64,' + b64;
       const aiCfg = config.ai || {};
       const provider = AI_PROVIDERS[aiCfg.provider] || AI_PROVIDERS.deepseek;
-      const baseURL = resolveAiBaseURL(aiCfg) || provider.baseURL;
+      const baseURL = netGuard.guardEndpoint(resolveAiBaseURL(aiCfg) || provider.baseURL, '识图 baseURL');
       const apiKey = aiCfg.apiKey || '';
-      const url = baseURL.replace(/\/$/, '') + '/chat/completions';
-      const resp = await net.fetch(url, {
+      const url = baseURL + '/chat/completions';
+      const resp = await fetchWithBackoff(() => net.fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify({
@@ -4455,8 +4590,14 @@ function setupIPC() {
           ]}],
           max_tokens: 1000
         })
-      });
-      if (!resp.ok) return { success: false, error: 'API ' + resp.status + '（当前模型可能不支持视觉）' };
+      }), { label: 'fs:analyzeImage' });
+      if (!resp.ok) {
+        // 5xx/429 是服务的事，不是「模型不支持视觉」——退避重试用完还失败就这样说，别把用户推向换模型的死路。
+        if (aiBackoff.isRetryableStatus(resp.status)) {
+          return { success: false, error: '识图服务暂时不可用（' + resp.status + '），已自动重试仍失败，请稍后再试' };
+        }
+        return { success: false, error: 'API ' + resp.status + '（当前模型可能不支持视觉）' };
+      }
       const data = await resp.json();
       return { success: true, description: (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（无描述）' };
     } catch (e) {
@@ -4559,6 +4700,21 @@ function setupIPC() {
       return result;
     } catch (e) {
       return { success: false, error: e.message };
+    }
+  });
+
+  // ============ 审批审计落盘（ALIGN_LEDGER R2）============
+  // 护栏结论由 terminal.js 自己写（audit-store.recordGuardVerdict），这里只开读写口：
+  // 渲染层的 agent 轴决策/处置也汇到同一个目录，面板看的是「一份历史」而不是两套各记各的。
+  ipcMain.handle('audit:append', (_e, ev) => auditStore.appendEvent(ev));
+  ipcMain.handle('audit:list', (_e, filter) => auditStore.listEvents(filter || {}));
+  ipcMain.handle('audit:clear', () => auditStore.clearEvents());
+  ipcMain.handle('audit:openDir', () => {
+    try {
+      fs.mkdirSync(auditStore.getDir(), { recursive: true });
+      return { ok: true, path: auditStore.getDir(), opened: shell.openPath(auditStore.getDir()) === '' };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message) };
     }
   });
 
@@ -5104,19 +5260,48 @@ function setupIPC() {
     } catch (e) { return { cwd: realCwd, link: null }; }
   }
 
-  function runArduinoCli(args, cwd) {
+  // 正在跑的 arduino-cli（编译/烧录），compile:cancel 按这份登记杀进程树。
+  // 终端服务里另有一份（executeCommand 走 exec 的那条编译路径），取消时两处一起收口。
+  const compileTasks = createKillableTasks({
+    kill: killProcessTree,
+    onError: (e) => console.warn('[compile] 取消失败:', (e && e.message) || e)
+  });
+
+  // opts.cancelTag 非空（「编译」/「烧录」）时才可被 compile:cancel 中止；
+  // core:list、board:list 这类秒级查询不登记，免得取消按钮捎带杀掉无关查询。
+  function runArduinoCli(args, cwd, opts) {
+    const tag = opts && typeof opts.cancelTag === 'string' ? opts.cancelTag : '';
     return new Promise((resolve) => {
       if (!fs.existsSync(ARDUINO_CLI)) {
         resolve({ success: false, error: 'arduino-cli 未找到，请先安装 Arduino 编译插件', code: -1 });
         return;
       }
       const ac = asciiCwd(cwd || process.cwd());
+      let taskId = 0;
       const child = execFile(ARDUINO_CLI, args, { cwd: ac.cwd, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
         const output = (stdout || '') + (stderr || '');
+        const cancelled = taskId > 0 && compileTasks.isCancelled(taskId);
+        if (taskId > 0) compileTasks.end(taskId);
+        if (cancelled) {
+          // 被杀的 err 是信号退出，不先分流就会报成「编译失败: null」，上层还会顺势唤起 AI 误诊
+          resolve({ success: false, cancelled: true, error: tag + '已取消', output, code: -1 });
+          return;
+        }
         resolve({ success: !err, error: err ? err.message : '', output, code: err ? (err.code || 1) : 0 });
       });
+      // child 的 pid 在 execFile 返回时已确定，登记必须紧跟其后（回调至少晚一个 tick）
+      if (tag) taskId = compileTasks.begin(tag, child);
     });
   }
+
+  // 取消编译/烧录：两条出站都收口，用户点一次就全停（对齐 ChipCode compile:cancel 的语义）
+  ipcMain.handle('compile:cancel', async () => {
+    const killed = compileTasks.cancel().concat(terminalService.cancelExecutions());
+    if (!killed.length) return { ok: false, cancelled: [], error: '没有进行中的编译/烧录' };
+    const tags = killed.map(k => k.tag);
+    console.log('[compile] 已取消: ' + tags.join(','));
+    return { ok: true, cancelled: tags, count: killed.length };
+  });
 
   /**
    * Arduino sketch 目录规范化：
@@ -5149,7 +5334,7 @@ function setupIPC() {
   }
 
   // 编译核心：供 compile:arduino 与 compile:aiFix 复用
-  async function doCompile(sketchPath, fqbn, outputDir) {
+  async function doCompile(sketchPath, fqbn, outputDir, opts) {
     if (!sketchPath) return { success: false, error: '缺少 sketchPath' };
     // 2026-10-17：fqbn 缺失时用 Board.guessFQBN 兜底（无需先 select_board）
     let effectiveFqbn = fqbn;
@@ -5162,13 +5347,13 @@ function setupIPC() {
     const args = ['compile', '--fqbn', effectiveFqbn];
     if (outputDir) args.push('--output-dir', outputDir);
     args.push(norm.target);
-    const result = await runArduinoCli(args, path.dirname(norm.target));
+    const result = await runArduinoCli(args, path.dirname(norm.target), opts);
     if (norm.cleanup) { try { fs.rmSync(norm.cleanup, { recursive: true, force: true }); } catch (e) {} }
     return result;
   }
   ipcMain.handle('compile:arduino', async (_, options) => {
     const { sketchPath, fqbn, outputDir } = options || {};
-    return doCompile(sketchPath, fqbn, outputDir);
+    return doCompile(sketchPath, fqbn, outputDir, { cancelTag: '编译' });
   });
 
   ipcMain.handle('compile:upload', async (_, options) => {
@@ -5186,7 +5371,7 @@ function setupIPC() {
     // 2026-11-16 修复：改用 compile -u（现编现烧），避免 `arduino-cli upload` 上传缓存里的旧产物
     // （compile:arduino 与 upload 各自 normalizeSketchDir 生成不同临时目录，upload 可能烧到旧 .bin）。
     const args = ['compile', '-u', '--fqbn', effectiveFqbn, '--port', port, norm.target];
-    const result = await runArduinoCli(args, path.dirname(norm.target));
+    const result = await runArduinoCli(args, path.dirname(norm.target), { cancelTag: '烧录' });
     if (norm.cleanup) { try { fs.rmSync(norm.cleanup, { recursive: true, force: true }); } catch (e) {} }
     return result;
   });
@@ -5204,9 +5389,13 @@ function setupIPC() {
     if (!sketchPath) return { success: false, error: '缺少 sketchPath' };
     if (!fs.existsSync(sketchPath)) return { success: false, error: '文件不存在: ' + sketchPath };
     try {
-      const first = await doCompile(sketchPath, fqbn, outputDir);
+      const first = await doCompile(sketchPath, fqbn, outputDir, { cancelTag: '编译' });
       if (first.success) {
         return { success: true, alreadyOk: true, message: '编译已通过，无需修复', output: first.output };
+      }
+      // 用户取消 = 整条修复链停在这里：不能把「已取消」当编译错误喂给 AI 去修
+      if (first.cancelled) {
+        return { success: false, cancelled: true, stage: 'cancelled', message: '编译已取消，未做修复', output: first.output };
       }
       const ext = path.extname(sketchPath).toLowerCase();
       const sourceCode = fs.readFileSync(sketchPath, 'utf8');
@@ -5239,7 +5428,18 @@ function setupIPC() {
         try { fs.copyFileSync(sketchPath, backup); } catch (e) {}
         fs.writeFileSync(sketchPath, fixed, 'utf8');
         current = fixed;
-        const second = await doCompile(sketchPath, fqbn, outputDir);
+        const second = await doCompile(sketchPath, fqbn, outputDir, { cancelTag: '编译' });
+        if (second.cancelled) {
+          // 修复已写回，只是验证被取消：保留修复与备份并如实说「未验证」，
+          // 不能把「已取消」当错误日志喂给下一轮 AI——那会让它去修一个并不存在的问题。
+          return {
+            success: false, cancelled: true, applied: true, fixedCode: fixed, explanation: aiText,
+            compileErrorBefore: String(first.error || '') + '\n' + String(first.output || ''),
+            backupPath: fs.existsSync(backup) ? backup : null,
+            recompiled: { success: false, cancelled: true, output: second.output },
+            roundsUsed: i + 1, message: 'AI 已修复并写回，但重新编译被取消（未验证）'
+          };
+        }
         if (second.success) {
           return {
             success: true, applied: true, fixedCode: fixed, explanation: aiText,
@@ -5394,7 +5594,7 @@ function setupIPC() {
     if (!exportPath) return { success: false, error: '未指定导出路径（exportPath）' };
     const buildDir = outputDir || path.join(path.dirname(sketchPath), 'build');
     try { if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir, { recursive: true }); } catch (e) {}
-    const res = await doCompile(sketchPath, fqbn, buildDir);
+    const res = await doCompile(sketchPath, fqbn, buildDir, { cancelTag: '编译' });
     if (!res.success) {
       return { success: false, stage: 'compile', error: res.error, output: res.output };
     }
@@ -6450,9 +6650,9 @@ function setupIPC() {
     const useModel = opts.model || aiCfg.model || provider.defaultModel;
     if (!baseURL) throw new Error('AI baseURL not configured');
     const isGateway = aiCfg.provider === 'gateway';
-    const url = isGateway
-      ? baseURL.replace(/\/$/, '') + '/api/chat'
-      : baseURL.replace(/\/$/, '') + '/chat/completions';
+    // 出站安全闸：ghost/定时任务这类一次性调用同样不许把 key 走明文
+    const ep = netGuard.guardEndpoint(baseURL, isGateway ? '账号 API 地址' : 'API 地址');
+    const url = isGateway ? ep + '/api/chat' : ep + '/chat/completions';
     const headers = { 'Content-Type': 'application/json' };
     if (isGateway) {
       const gwAuth = resolveGatewayAuth(aiCfg);
@@ -6464,7 +6664,7 @@ function setupIPC() {
     const body = isGateway
       ? { model: useModel, messages, temperature: opts.temperature !== undefined ? opts.temperature : 0.3 }
       : { model: useModel, messages, temperature: opts.temperature !== undefined ? opts.temperature : 0.3, max_tokens: opts.maxTokens || 512, stream: false };
-    const resp = await net.fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const resp = await fetchWithBackoff(() => net.fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }), { label: 'callAiOnce' });
     if (!resp.ok) throw new Error('AI HTTP ' + resp.status);
     const data = await resp.json();
     return isGateway

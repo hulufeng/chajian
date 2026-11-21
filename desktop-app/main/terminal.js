@@ -7,12 +7,21 @@
 const os = require('os');
 const path = require('path');
 const guard = require('./terminal-guard');
+const audit = require('./audit-store');
+const { createKillableTasks } = require('../packages/engine/killable-tasks.js');
+const { killProcessTree } = require('./kill-tree.js');
 
 class TerminalService {
   constructor() {
     this.terminals = new Map();
     this.nextId = 1;
     this.pty = null;
+    // 一次性命令（executeCommand）的可中止登记：只有带 cancelTag 的（编译/烧录）才进来了，
+    // 终端里用户自己敲的长跑命令不归它管——点「取消编译」不该把无关 shell 一起杀掉。
+    this.execTasks = createKillableTasks({
+      kill: killProcessTree,
+      onError: (e) => console.warn('[TerminalService] 取消执行失败:', (e && e.message) || e)
+    });
     
     // 尝试加载 node-pty
     try {
@@ -324,7 +333,8 @@ class TerminalService {
    * @param {string} command - 要执行的命令
    * @param {string} cwd - 工作目录
    * @param {number} timeout - 超时时间（毫秒）
-   * @param {Object} opts - 选项 { force: boolean } force=true 表示用户已确认高风险命令
+   * @param {Object} opts - 选项 { force: boolean, cancelTag: string } force=true 表示用户已确认高风险命令；
+   *                        cancelTag 给这次执行挂一个可取消的标签（如「编译」），见 cancelExecutions
    * @returns {Promise<Object>} 执行结果（blocked: 'deny'|'confirm' 表示被护栏拦截）
    */
   async executeCommand(command, cwd = process.cwd(), timeout = 30000, opts = {}) {
@@ -358,10 +368,18 @@ class TerminalService {
         }
       };
 
-      exec(command, options, (error, stdoutBuf, stderrBuf) => {
+      const tag = typeof opts.cancelTag === 'string' ? opts.cancelTag : '';
+      let taskId = 0;
+      const child = exec(command, options, (error, stdoutBuf, stderrBuf) => {
         const stdout = guard.decodeOutput(stdoutBuf);
         const stderr = guard.decodeOutput(stderrBuf);
-        if (error) {
+        const cancelled = taskId > 0 && this.execTasks.isCancelled(taskId);
+        if (taskId > 0) this.execTasks.end(taskId);
+        if (cancelled) {
+          // 被「取消」杀掉的进程 error 一定非空（信号退出），不先分流就会报成「命令失败」，
+          // 上层还会顺势唤起 AI 诊断根因——用户取消一次，等于凭空多一轮误诊。
+          resolve({ success: false, cancelled: true, exitCode: -1, stdout, stderr, error: tag + '已取消' });
+        } else if (error) {
           resolve({
             success: false,
             exitCode: error.code || 1,
@@ -378,7 +396,18 @@ class TerminalService {
           });
         }
       });
+      // child 的 pid 在 exec() 返回时就已确定，登记必须紧跟其后（回调至少晚一个 tick）
+      if (tag) taskId = this.execTasks.begin(tag, child);
     });
+  }
+
+  /**
+   * 取消正在跑的一次性命令（编译/烧录走这里，pty 终端不受影响）。
+   * @param {string} [tag] 只取消指定标签；不传则全取消
+   * @returns {Array<{id:number,tag:string}>} 被取消的任务
+   */
+  cancelExecutions(tag) {
+    return this.execTasks.cancel(tag);
   }
 
   /**

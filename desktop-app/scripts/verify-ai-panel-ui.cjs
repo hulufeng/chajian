@@ -14,9 +14,13 @@ const HTML = fs.readFileSync(path.join(ROOT, 'renderer', 'index.html'), 'utf8');
 const MARK = '2026-11-14 右侧 AI 面板排版修复';
 const tail = CSS.slice(CSS.lastIndexOf(MARK));
 
-test('面板宽度放宽到 400px 且窄窗仍可收缩', () => {
-  assert.match(tail, /\.ai-panel\s*\{[^}]*flex:\s*0 1 400px\s*!important/, '面板应以 400px 为基准并可收缩');
-  assert.match(tail, /\.ai-panel\s*\{[^}]*min-width:\s*360px/, '窄窗保底 360px');
+test('面板宽度走 --ai-panel-width（基础360/大窗335对齐ChipCode）且窄窗可收缩', () => {
+  // 2026-11-21 起 AI 面板宽度由 --ai-panel-width 统一驱动：基础 360px，
+  // ≥1400px 大窗按 ChipCode 实测收窄到 335px；面板本身 flex:0 1 可收缩。
+  assert.match(tail, /\.ai-panel\s*\{[^}]*flex:\s*0 1 var\(--ai-panel-width\)\s*!important/, '面板应走变量且可收缩');
+  assert.match(CSS, /--ai-panel-width:\s*360px/, '基础宽度 360px');
+  assert.match(CSS, /--ai-panel-width:\s*335px/, '大窗对齐 ChipCode 335px');
+  assert.match(CSS, /\.ai-panel\s*\{\s*order:\s*3\s*!important/, 'AI 面板固定排最右');
 });
 
 test('工具栏单行对齐 ChipCode，仅极窄容器兜底折行（2026-11-20 策略变更）', () => {
