@@ -7981,3 +7981,15 @@ body.cb-compact .chat-message.user .chat-bubble {
   box-shadow: none !important;
 }
 
+
+
+/* ============================================================
+   2026-11-22 AI 回答区白色背景（用户要求）
+   覆盖 11-18 v7「灰底 surface-0 #f5f6f8」：对话区改纯白，
+   消息卡片保持白底+细边框，靠边框而非底色差建立层次。
+   回退：删除本块即恢复灰底。 */
+body.cb-compact .ai-messages { background: #ffffff !important; }
+body.cb-compact .ai-panel { background: #ffffff !important; }
+body.cb-compact .chat-message.user .chat-bubble,
+body.cb-compact .chat-message.ai .chat-bubble { background: #ffffff !important; }
+
