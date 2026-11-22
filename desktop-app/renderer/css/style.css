@@ -7993,3 +7993,16 @@ body.cb-compact .ai-panel { background: #ffffff !important; }
 body.cb-compact .chat-message.user .chat-bubble,
 body.cb-compact .chat-message.ai .chat-bubble { background: #ffffff !important; }
 
+
+
+/* ============================================================
+   2026-11-22 AI 回答卡片线条柔化（用户：线条可以柔一些）
+   边框 #e2e2df → #ececea（更浅）+ 14px 圆角 + 极淡阴影，
+   白底卡片靠柔和轮廓浮起，取代原来的硬描边。回退：删除本块。 */
+body.cb-compact .chat-message.user .chat-bubble,
+body.cb-compact .chat-message.ai .chat-bubble {
+  border: 1px solid #ececea !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 3px rgba(16,24,40,.04) !important;
+}
+
