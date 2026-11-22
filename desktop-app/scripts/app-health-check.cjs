@@ -160,10 +160,43 @@ if (DO_SHOT) {
   const child = require('node:child_process').spawn(unpackedExe, ['--remote-debugging-port=9266', '--user-data-dir=' + ud], { detached: true, stdio: 'ignore' });
   child.unref();
   console.log(C.gray('  已启动，等待 18s...'));
-  // 用 PowerShell 截屏（等窗口起来）
-  execSync('powershell -NoProfile -Command "Start-Sleep 18"', { stdio: 'ignore' });
-  const ps = 'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height); $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save(\'' + shotDir + '\\软件体检_' + version + '.png\',[System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose();$bmp.Dispose();';
-  const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' });
+  // 用 PowerShell 截屏：必须先把 BubaiCode 窗口切到前台，否则会截到别的窗口（如 IDE）
+  const ps = `
+Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinShoter {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+}
+"@
+$proc = $null
+for ($i=0; $i -lt 25; $i++) {
+  $proc = Get-Process -Name BubaiCode -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1
+  if ($proc) { break }
+  Start-Sleep 1
+}
+if ($proc) {
+  [WinShoter]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+  [WinShoter]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+  Start-Sleep 2
+}
+$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+$tmpShot = Join-Path $env:TEMP 'app-health-shot.png'
+$bmp.Save($tmpShot, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose()
+$bmp.Dispose()
+Copy-Item -LiteralPath $tmpShot -Destination '${shotDir}\\软件体检_${version}.png' -Force
+`;
+  // 写成 .ps1 用 -File 执行：-Command 传多行 C# here-string 会解析失败
+  const psFile = path.join(require('node:os').tmpdir(), 'app-health-shot-' + process.pid + '.ps1');
+  fs.writeFileSync(psFile, ps, 'utf8');
+  const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psFile], { encoding: 'utf8' });
+  try { fs.rmSync(psFile, { force: true }); } catch {}
   const shot = path.join(shotDir, '软件体检_' + version + '.png');
   ok('截图成功', r.status === 0 && fs.existsSync(shot), fs.existsSync(shot) ? Math.round(fs.statSync(shot).size / 1024) + 'KB' : '');
 } else {
