@@ -7563,7 +7563,7 @@ body.cb-compact .chat-message.ai .ask-user-card {
 }
 
 
-/* ===== 2026-11-18 输出面板日志换行 v10（用户反馈：日志“不应该拉满”）=====
+/* ===== 2026-11-18 输出面板日志换行 v10（用户反馈：日志"不应该拉满"）=====
    根因：.log-line / #output-content 无专门 CSS 规则，长 token（API响应/文件路径/JSON）
         不断行，横向撑满窗口。修法：强制换行 + 左右留白。
    回退：删除本块。 */
@@ -8043,12 +8043,21 @@ body.cb-compact .diff-summary-header {
   padding: 0 0 8px !important;
   margin-bottom: 4px !important;
 }
+/* 2026-11-22 对齐 ChipCode 原品：撤销/重做是文本链接式按钮
+   （原品 JS: fontSize11.5/fontWeight600/color:var(--ai-color)/background:none/
+     border:none/cursor:pointer/padding:0），不是有边框灰字按钮——后者看着像禁用。 */
 body.cb-compact .diff-undo-btns button {
-  border: 1px solid #e2e2df !important;
-  border-radius: 5px !important;
-  color: #475467 !important;
-  background: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--ai-color) !important;
+  background: none !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
 }
+body.cb-compact .diff-undo-btns button:hover { text-decoration: underline !important; }
+body.cb-compact .diff-undo-btns button:disabled { color: var(--text-tertiary) !important; cursor: not-allowed !important; text-decoration: none !important; }
 body.cb-compact .diff-file-row {
   background: transparent !important;
   border: 0 !important;
