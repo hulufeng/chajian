@@ -8006,3 +8006,64 @@ body.cb-compact .chat-message.ai .chat-bubble {
   box-shadow: 0 1px 3px rgba(16,24,40,.04) !important;
 }
 
+
+
+/* ============================================================
+   2026-11-22 AI 对话页对齐 ChipCode 1.3.7 原品（用户截图要求模仿）
+   产物证据（原品 app.asar CSS）：
+     .chat-msg-card { background:#fff; border:1px solid #eceef1;
+                      border-radius:var(--radius-card)=12px;
+                      box-shadow:0 1px 2px #1018280a }
+     原品文件变更是轻量「查看改动 N 个文件」文本链接，无双层重卡、
+     无彩色 +/- 强调卡。本块把变更验收卡从「白卡套灰卡 + 绿渐变头像 +
+     深色按钮」收敛为单层白卡细边框；AI 回复气泡对齐原品令牌。
+     回退：删除本块。
+   ============================================================ */
+/* 变更验收卡：去绿色头像，去内层灰底重卡 */
+body.cb-compact .chat-message:has(.diff-summary-card) .chat-avatar { display: none !important; }
+body.cb-compact .chat-message:has(.diff-summary-card) .chat-bubble {
+  background: #fff !important;
+  border: 1px solid #eceef1 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04) !important;
+  padding: 12px 14px !important;
+}
+body.cb-compact .diff-summary-card {
+  background: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+body.cb-compact .diff-summary-header {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid #f0f1f3 !important;
+  padding: 0 0 8px !important;
+  margin-bottom: 4px !important;
+}
+body.cb-compact .diff-undo-btns button {
+  border: 1px solid #e2e2df !important;
+  border-radius: 5px !important;
+  color: #475467 !important;
+  background: #fff !important;
+}
+body.cb-compact .diff-file-row {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 5px 0 !important;
+}
+/* AI 回复气泡：对齐原品 chat-msg-card（用户气泡保持 1.2.67 浅灰扁平，不动） */
+body.cb-compact .chat-message.ai .chat-bubble {
+  background: #fff !important;
+  border: 1px solid #eceef1 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04) !important;
+}
+/* 代码块：对齐原品 .code-block 细边框 + 12px 圆角 */
+body.cb-compact .chat-bubble pre {
+  border: 1px solid #e2e2df !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
