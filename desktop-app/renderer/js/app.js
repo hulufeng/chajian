@@ -11330,6 +11330,11 @@ function bindEvents() {
   // ============ 活动栏按钮 ============
   document.querySelectorAll('.activity-btn').forEach(item => {
     item.addEventListener('click', () => {
+      // 2026-11-23 修复：插件工具链按钮同时带 activity-btn + plugin-activity-btn，
+      // 两个 click handler 会打架——这个通用 handler 会隐藏所有侧栏面板并显示文件树，
+      // 覆盖掉 11578 的插件专用处理，导致 9 个工具链按钮点了没反应。
+      // 插件按钮交给 plugin-activity-buttons 容器委托的 handler 处理，这里直接跳过。
+      if (item.classList.contains('plugin-activity-btn')) return;
       document.querySelectorAll('.activity-btn').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
       const panel = item.dataset.panel;
@@ -20397,15 +20402,32 @@ function bindEvents() {
     const rsubmit = document.getElementById('gw-ov-reset-btn'); if (rsubmit) rsubmit.addEventListener('click', gwResetPassword);
     window.__showGwLoginOverlay = showLoginOverlay;
     window.__showGwForgot = () => { showLoginOverlay(); gwForgotOverlay(); };
-    // 启动检查：登录门禁
-    // 2026-11-17 产品决策：使用前必须登录（不再只拦云端通道）。
-    // 未登录时强制弹出登录/注册遮罩，登录后本地模型/编译/烧录等全部能力可用。
+
+    // 2026-11-23 按需登录：未登录时界面完整可见，点任意功能（按钮/输入框/链接）弹登录遮罩。
+    // 排除：登录遮罩自身（否则登录按钮点不了）、窗口控制按钮（否则关不了窗口）。
+    const gateLogin = (e) => {
+      if (!document.body.classList.contains('logged-out')) return;   // 已登录：放行
+      if (ov.style.display === 'flex') return;                       // 遮罩已显示：不重复弹
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#gw-login-overlay')) return;                    // 遮罩内元素：放行
+      if (t.closest('#minimize-btn, #maximize-btn, #close-btn, .window-controls')) return; // 窗口控制：放行
+      if (!t.closest('button, input, textarea, select, a, [contenteditable="true"], [role="button"]')) return; // 只拦可交互元素
+      e.preventDefault(); e.stopPropagation();
+      showToast('使用功能需要登录 BubaiCode 账号', 'info');
+      showLoginOverlay();
+    };
+    document.addEventListener('click', gateLogin, true);   // 捕获阶段，先于业务 handler
+    document.addEventListener('input', gateLogin, true);   // 输入框输入也拦
+    // 启动检查：登录门禁（2026-11-23 改为「不强制首屏遮罩」）
+    // 产品决策仍是「用本地也要登录」，但不再一进来就用全屏遮罩挡死界面：
+    // 保留 logged-out 标记，界面完整可见；点任意功能（按钮/输入框/链接）时才弹登录遮罩。
     (async () => {
       try {
         const cfg = await window.BubaiCode.config.get();
         const loggedIn = !!(cfg.ai && cfg.ai.gatewayToken);
-        if (!loggedIn && window.__showGwLoginOverlay) {
-          window.__showGwLoginOverlay();
+        if (!loggedIn) {
+          document.body.classList.add('logged-out');
         }
         await refreshCreditsBadge();
       } catch (e) { /* 不影响主流程 */ }

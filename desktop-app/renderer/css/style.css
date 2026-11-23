@@ -5752,13 +5752,15 @@ body { font-size: 13px; }
   border: 1px solid var(--border-color); border-radius: 6px;
   font-size: 12px; color: var(--text-color);
 }
-/* ===== 未登录首屏（对齐参考基线）：主区居中登录卡，左侧欢迎面板全高 ===== */
+/* ===== 未登录首屏（2026-11-23 改为不强制遮罩）：界面完整可见，点功能时才弹登录 ===== */
 .editor-container { position: relative; min-height: 0; /* 允许收缩到 main-container 行高，避免内容撑高整页（编辑器区域出现大量留白） */ }
+/* 以下隐藏规则已停用：未登录时也要能看到 AI 面板/工具栏/编辑器，改为按需登录
 body.logged-out .ai-panel { display: none !important; }
 body.logged-out .editor-toolbar { display: none !important; }
 body.logged-out #welcome-screen { display: none !important; }
 body.logged-out .editor-tabs { display: none !important; }
 body.logged-out .editor-container, body.logged-out .editor-wrapper { background: var(--bg-primary) !important; border-top: none !important; box-shadow: none !important; }
+*/
 
 /* ================================================================
    UI 质感升级层 v2（2026-10-17）
