@@ -194,7 +194,8 @@ Copy-Item -LiteralPath $tmpShot -Destination '${shotDir}\\软件体检_${version
 `;
   // 写成 .ps1 用 -File 执行：-Command 传多行 C# here-string 会解析失败
   const psFile = path.join(require('node:os').tmpdir(), 'app-health-shot-' + process.pid + '.ps1');
-  fs.writeFileSync(psFile, ps, 'utf8');
+  // UTF-8 BOM：ps1 含中文路径（内测实时记录），无 BOM 时 PowerShell -File 会读成乱码导致 Copy-Item 失败
+  fs.writeFileSync(psFile, '\uFEFF' + ps, 'utf8');
   const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psFile], { encoding: 'utf8' });
   try { fs.rmSync(psFile, { force: true }); } catch {}
   const shot = path.join(shotDir, '软件体检_' + version + '.png');
